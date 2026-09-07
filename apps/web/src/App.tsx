@@ -20,7 +20,6 @@ import { ManageBookingPage } from './appointment/public/ManageBookingPage';
 import { ClinicsPage } from './core/ClinicsPage';
 import { PatientsPage } from './core/PatientsPage';
 import { StaffPage } from './hr/StaffPage';
-import { AttendancePage } from './hr/AttendancePage';
 import { LeaveRequestsPage } from './hr/LeaveRequestsPage';
 import { PublicHolidaysPage } from './hr/PublicHolidaysPage';
 import { ServicesPage } from './clinical/ServicesPage';
@@ -177,7 +176,15 @@ export function App() {
             <Route path="/management/reports/wait-times" element={<WaitTimesPage />} />
 
             <Route path="/management/hr/staff" element={<StaffPage />} />
-            <Route path="/management/hr/attendance" element={<AttendancePage />} />
+            {/*
+              * ONE ATTENDANCE. This used to render a SECOND attendance screen,
+              * derived from `Visit.checkInAt` — patient traffic, not punches —
+              * so a doctor who saw nobody was "absent" and a receptionist who
+              * never sees a patient was permanently absent. The canonical
+              * screen reads real clock-ins against the roster. The old URL is
+              * kept working rather than broken, because it is bookmarked.
+              */}
+            <Route path="/management/hr/attendance" element={<Navigate to="/admin/hr/attendance" replace />} />
             <Route path="/management/hr/leave-requests" element={<LeaveRequestsPage />} />
 
             <Route path="/management/stock/health" element={<StockHealthPage />} />

@@ -6,12 +6,35 @@ import { currentTenantId } from '../core/tenant-context';
 import { actorCan, requirePermission, resolveClinicId, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { computeAttendance, hoursOf, totalTimesheet } from './attendance-hours';
+import { AttendancePolicy, DEFAULT_ATTENDANCE_POLICY, resolveAttendancePolicy } from './attendance-policy';
+import { clinicDateKey } from '../appointment/time.util';
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
 import { ClockDto } from './dto/clock.dto';
 
-function utcDay(value: Date | string): Date {
-  const date = value instanceof Date ? value : new Date(`${String(value).slice(0, 10)}T00:00:00.000Z`);
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+/**
+ * A date-only column value from a `YYYY-MM-DD` string.
+ *
+ * `workDate` is a Postgres DATE, which Prisma reads and writes as UTC
+ * midnight. That is a STORAGE convention and says nothing about which day the
+ * clinic means — deciding that is `clinicDay` below.
+ */
+function dateOnly(value: string): Date {
+  return new Date(`${String(value).slice(0, 10)}T00:00:00.000Z`);
+}
+
+/**
+ * THE DAY A PUNCH BELONGS TO, as the clinic reckons it.
+ *
+ * This was `utcDay(now)`, and in a UTC+8 country that is wrong for a third of
+ * the day. A nurse clocking in at 07:00 in Kuala Lumpur is clocking in at
+ * 23:00 UTC the day BEFORE, so her shift was filed against yesterday; her
+ * clock-out at 15:00 local landed on today, found no open record, and opened a
+ * second one with no clock-in. Both records then looked like missing punches
+ * and neither had her hours. Every clinic opening before 08:00 was affected,
+ * and a 23:00→07:00 night shift was affected at both ends.
+ */
+function clinicDay(instant: Date, timeZone: string): Date {
+  return dateOnly(clinicDateKey(instant, timeZone));
 }
 
 /**
@@ -30,15 +53,61 @@ export class AttendanceRecordService {
     private readonly rawPrisma: PrismaService,
   ) {}
 
-  /** The shift the roster planned for this person on this day, if any. */
+  /** The clinic's own reckoning of a calendar day. Malaysia unless told otherwise. */
+  private async timeZoneOf(clinicId: string | null | undefined): Promise<string> {
+    if (!clinicId) return 'Asia/Kuala_Lumpur';
+    const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId }, select: { timezone: true } });
+    return clinic?.timezone ?? 'Asia/Kuala_Lumpur';
+  }
+
+  /** How this clinic measures grace, overtime and breaks. */
+  private async policyFor(clinicId: string | null | undefined): Promise<AttendancePolicy> {
+    const rows = await this.prisma.attendancePolicy.findMany({
+      where: clinicId ? { OR: [{ clinicId }, { clinicId: null }] } : { clinicId: null },
+    });
+    return resolveAttendancePolicy(rows, clinicId ?? null);
+  }
+
+  /**
+   * The shift the roster planned for this person on this day, if any.
+   *
+   * Matched on `shiftDate` — the roster's OWN clinic-local date, the day a
+   * shift is read aloud and paid as. It used to be a UTC window over
+   * `startsAt`, which put a Malaysian 07:00 shift in the previous day's bucket
+   * and found nothing.
+   *
+   * The EARLIEST shift of the day, because a person clocking in once against a
+   * split day is measured against the shift they turned up for.
+   */
   private async scheduledFor(staffId: string, day: Date) {
-    const next = new Date(day.getTime() + 86400000);
-    const shift = await this.prisma.providerShift.findFirst({
-      where: { staffId, startsAt: { gte: day, lt: next } },
+    return this.prisma.providerShift.findFirst({
+      where: { staffId, shiftDate: day },
       orderBy: { startsAt: 'asc' },
       select: { startsAt: true, endsAt: true },
     });
-    return shift;
+  }
+
+  /**
+   * THE RECORD AN OVERNIGHT CLOCK-OUT BELONGS TO.
+   *
+   * A 23:00→07:00 shift is ONE shift on the day it starts. The clock-out comes
+   * on the next calendar day, and filing it there would leave the night with a
+   * missing clock-out and the morning with a clock-out for a shift nobody
+   * worked. So: if yesterday has an open punch whose shift was still running
+   * when this one landed, this punch closes yesterday.
+   *
+   * Bounded by the shift's own end plus an hour of slack rather than by "was
+   * it recent" — somebody who forgets to clock out on Monday and clocks in on
+   * Tuesday morning must open Tuesday, not close Monday twelve hours late.
+   */
+  private async openOvernightRecord(staffId: string, day: Date, now: Date) {
+    const yesterday = new Date(day.getTime() - 86400000);
+    const open = await this.prisma.attendanceRecord.findFirst({
+      where: { staffId, workDate: yesterday, clockInAt: { not: null }, clockOutAt: null },
+    });
+    if (!open?.scheduledEnd) return null;
+    const grace = new Date(open.scheduledEnd.getTime() + 60 * 60 * 1000);
+    return open.scheduledEnd > open.clockInAt! && now <= grace ? open : null;
   }
 
   /** Clock in, or clock out. The same endpoint, because the record decides. */
@@ -53,34 +122,40 @@ export class AttendanceRecordService {
       }
 
       const now = dto.at ? new Date(dto.at) : new Date();
-      const day = utcDay(now);
       const clinicId = dto.clinicId ?? actor.clinicId ?? null;
+      const timeZone = await this.timeZoneOf(clinicId);
+      const policy = await this.policyFor(clinicId);
+      const today = clinicDay(now, timeZone);
 
-      const existing = await tx.attendanceRecord.findFirst({ where: { staffId, workDate: day } });
+      // An overnight shift's clock-out closes the day it STARTED on. Checked
+      // before today's record, because on that morning both exist.
+      const overnight = await this.openOvernightRecord(staffId, today, now);
+      const day = overnight ? new Date(today.getTime() - 86400000) : today;
+      const existing = overnight ?? (await tx.attendanceRecord.findFirst({ where: { staffId, workDate: day } }));
       const shift = await this.scheduledFor(staffId, day);
 
       const clockInAt = existing?.clockInAt ?? now;
       const clockOutAt = existing?.clockInAt ? now : null;
-      const computed = computeAttendance({
-        clockInAt,
-        clockOutAt,
-        scheduledStart: shift?.startsAt ?? existing?.scheduledStart ?? null,
-        scheduledEnd: shift?.endsAt ?? existing?.scheduledEnd ?? null,
-      });
+      const scheduledStart = shift?.startsAt ?? existing?.scheduledStart ?? null;
+      const scheduledEnd = shift?.endsAt ?? existing?.scheduledEnd ?? null;
+      const computed = computeAttendance({ clockInAt, clockOutAt, scheduledStart, scheduledEnd }, policy);
 
       const data = {
         clinicId,
         clockInAt,
         clockOutAt,
-        scheduledStart: shift?.startsAt ?? existing?.scheduledStart ?? null,
-        scheduledEnd: shift?.endsAt ?? existing?.scheduledEnd ?? null,
+        scheduledStart,
+        scheduledEnd,
         status: computed.status as AttendanceStatus,
         lateMinutes: computed.lateMinutes,
         earlyOutMinutes: computed.earlyOutMinutes,
         workedMinutes: computed.workedMinutes,
-        // EXCESS IS NOT OVERTIME until somebody approves it. Recorded so the
-        // claim can be made; not paid until `overtimeApproved`.
-        overtimeMinutes: computed.excessMinutes,
+        // EXTRA TIME IS NOT OVERTIME until somebody approves it. What is stored
+        // is the CANDIDATE the clinic's policy would consider — past its
+        // minimum, rounded its way — because that is the number a manager
+        // approves and payroll pays. The raw excess stays derivable from the
+        // clock-out and the scheduled end, both of which are on this row.
+        overtimeMinutes: computed.overtimeCandidateMinutes,
       };
 
       return existing
@@ -106,12 +181,20 @@ export class AttendanceRecordService {
         throw new BadRequestException('Clock-out cannot be before clock-in.');
       }
 
-      const computed = computeAttendance({
-        clockInAt,
-        clockOutAt,
-        scheduledStart: record.scheduledStart,
-        scheduledEnd: record.scheduledEnd,
-      });
+      // The clinic's CURRENT policy, deliberately. A correction is a fresh
+      // decision about what happened, so it is measured by the rules in force
+      // when it is made; changing the policy does not silently re-measure
+      // punches nobody has touched.
+      const policy = await this.policyFor(record.clinicId);
+      const computed = computeAttendance(
+        {
+          clockInAt,
+          clockOutAt,
+          scheduledStart: record.scheduledStart,
+          scheduledEnd: record.scheduledEnd,
+        },
+        policy,
+      );
 
       const updated = await tx.attendanceRecord.update({
         where: { id },
@@ -122,7 +205,7 @@ export class AttendanceRecordService {
           lateMinutes: computed.lateMinutes,
           earlyOutMinutes: computed.earlyOutMinutes,
           workedMinutes: computed.workedMinutes,
-          overtimeMinutes: computed.excessMinutes,
+          overtimeMinutes: computed.overtimeCandidateMinutes,
           correctedAt: new Date(),
           correctedByStaffId: actor.id,
           correctionReason: dto.reason,
@@ -183,7 +266,7 @@ export class AttendanceRecordService {
       where: {
         ...(clinicId ? { clinicId } : {}),
         ...(params.staffId ? { staffId: params.staffId } : {}),
-        workDate: { gte: utcDay(params.from), lte: utcDay(params.to) },
+        workDate: { gte: dateOnly(params.from), lte: dateOnly(params.to) },
       },
       orderBy: [{ workDate: 'asc' }],
       include: { staff: { select: { id: true, fullName: true } }, clinic: { select: { name: true } } },
@@ -241,8 +324,11 @@ export class AttendanceRecordService {
   async today(clinicIdInput?: string) {
     const actor = await requirePermission(this.rawPrisma, 'hr.view');
     const clinicId = clinicIdInput ?? actor.clinicId ?? undefined;
-    const day = utcDay(new Date());
-    const next = new Date(day.getTime() + 86400000);
+    // TODAY AS THE CLINIC READS IT. At 07:30 in Kuala Lumpur the UTC date is
+    // still yesterday, and a board that opens on yesterday tells the morning
+    // shift they are not scheduled.
+    const timeZone = await this.timeZoneOf(clinicId);
+    const day = clinicDay(new Date(), timeZone);
 
     const [records, onLeave, pendingLeave, unapprovedOvertime, missingPunches] = await Promise.all([
       this.prisma.attendanceRecord.findMany({
@@ -262,8 +348,10 @@ export class AttendanceRecordService {
       }),
     ]);
 
+    // Matched on the roster's own date, not on a UTC window over `startsAt`.
     const shifts = await this.prisma.providerShift.findMany({
-      where: { startsAt: { gte: day, lt: next }, ...(clinicId ? { clinicId } : {}) },
+      where: { shiftDate: day, ...(clinicId ? { clinicId } : {}) },
+      orderBy: { startsAt: 'asc' },
       include: { staff: { select: { id: true, fullName: true } } },
     });
 

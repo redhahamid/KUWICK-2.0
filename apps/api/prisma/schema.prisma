@@ -341,6 +341,7 @@ model Tenant {
   dayEndClosings             DayEndClosing[]
   employeeProfiles           EmployeeProfile[]
   attendanceRecords          AttendanceRecord[]
+  attendancePolicies         AttendancePolicy[]
   leavePolicies              LeavePolicy[]
   leavePolicyEntitlements    LeavePolicyEntitlement[]
   leaveBalances              LeaveBalance[]
@@ -469,6 +470,7 @@ model Clinic {
   stockTransfersOut           StockTransfer[]              @relation("StockTransferFrom")
   stockTransfersIn            StockTransfer[]              @relation("StockTransferTo")
   attendanceRecords           AttendanceRecord[]
+  attendancePolicies          AttendancePolicy[]
   incentiveRules              IncentiveRule[]
   incentiveRuns               IncentiveRun[]
   payrollRuns                 PayrollRun[]
@@ -1072,6 +1074,7 @@ model Staff {
   employeeProfile              EmployeeProfile?             @relation("StaffEmployeeProfile")
   directReports                EmployeeProfile[]            @relation("EmployeeManager")
   attendanceRecords            AttendanceRecord[]           @relation("AttendanceStaff")
+  attendancePoliciesAuthored   AttendancePolicy[]           @relation("AttendancePolicyAuthor")
   attendanceCorrections        AttendanceRecord[]           @relation("AttendanceCorrectedBy")
   overtimeApprovals            AttendanceRecord[]           @relation("AttendanceOvertimeApprover")
   leaveBalances                LeaveBalance[]               @relation("LeaveBalanceStaff")
@@ -6529,6 +6532,69 @@ enum AttendanceStatus {
 /// which is what the old attendance report did: a doctor who saw no patients
 /// was absent by that measure, and a receptionist who sees none ever was
 /// permanently absent.
+/// HOW THIS CLINIC MEASURES ATTENDANCE — grace, overtime and breaks.
+///
+/// These were five constants in `attendance-hours.ts`, which meant every
+/// clinic in every tenant shared one grace period. They are not arithmetic;
+/// they are a clinic's employment practice, and two clinics in the same group
+/// legitimately differ. A twenty-four-hour clinic with a rotating night shift
+/// and a nine-to-five family practice do not agree about when 09:06 is late.
+///
+/// Scoped to the CLINIC rather than the legal employer, because attendance is
+/// measured where a person physically works. `clinicId` NULL is the tenant's
+/// default, used by any clinic without its own row — so a group configures
+/// once and overrides only where practice differs.
+///
+/// NOT effective-dated, deliberately. Attendance is computed at punch time and
+/// stored on the record, so changing the policy cannot retroactively make a
+/// past arrival late; it governs punches and corrections from that point on.
+/// An effective-dated policy would imply a recompute of history that nothing
+/// in this product performs and that no clinic has asked for.
+model AttendancePolicy {
+  id       String  @id @default(uuid())
+  tenantId String  @map("tenant_id")
+  /// NULL is the tenant default. A clinic row overrides it entirely.
+  clinicId String? @map("clinic_id")
+
+  /// Minutes after the scheduled start before an arrival counts as late.
+  lateGraceMinutes     Int @default(5) @map("late_grace_minutes")
+  /// Minutes before the scheduled end that leaving is not counted as short.
+  earlyOutGraceMinutes Int @default(5) @map("early_out_grace_minutes")
+
+  /// Extra time below this is not even an overtime CANDIDATE — staying eight
+  /// minutes to finish a note is not a claim on the payroll.
+  overtimeMinimumMinutes   Int     @default(30) @map("overtime_minimum_minutes")
+  /// Candidate overtime is rounded DOWN to a multiple of this. 0 = no rounding.
+  overtimeRoundingMinutes  Int     @default(15) @map("overtime_rounding_minutes")
+  /// When true (the default, and the safe direction) approved overtime is the
+  /// only overtime that reaches payroll. A clinic that pays all recorded extra
+  /// time can turn this off deliberately, and the run says which it was.
+  overtimeRequiresApproval Boolean @default(true) @map("overtime_requires_approval")
+  /// Whether clocking in EARLY counts toward extra time. Off by default:
+  /// arriving at 07:30 for an 08:00 shift is not usually overtime.
+  countEarlyClockIn        Boolean @default(false) @map("count_early_clock_in")
+
+  /// Deducted from worked minutes when a shift is at least `breakAfterMinutes`
+  /// long. 0 disables it. A paid break is simply 0 here.
+  unpaidBreakMinutes Int @default(0) @map("unpaid_break_minutes")
+  breakAfterMinutes  Int @default(360) @map("break_after_minutes")
+
+  /// A shift longer than this raises a warning rather than being computed
+  /// silently — usually a forgotten clock-out rather than a 19-hour day.
+  maximumShiftHours Int @default(16) @map("maximum_shift_hours")
+
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  updatedByStaffId String?  @map("updated_by_staff_id")
+
+  tenant        Tenant  @relation(fields: [tenantId], references: [id])
+  clinic        Clinic? @relation(fields: [clinicId], references: [id])
+  updatedByStaff Staff? @relation("AttendancePolicyAuthor", fields: [updatedByStaffId], references: [id])
+
+  @@unique([tenantId, clinicId])
+  @@map("attendance_policies")
+}
+
 model AttendanceRecord {
   id       String   @id @default(uuid())
   tenantId String   @map("tenant_id")

@@ -3,11 +3,13 @@ import { Response } from 'express';
 import { EmploymentStatus, LeaveType } from '@prisma/client';
 import { EmployeeService } from './employee.service';
 import { AttendanceRecordService } from './attendance-record.service';
+import { AttendancePolicyService } from './attendance-policy.service';
 import { LeaveService } from './leave.service';
 import { IncentiveService } from './incentive.service';
 import { PayrollService } from './payroll.service';
 import { UpsertEmployeeDto } from './dto/upsert-employee.dto';
 import { ClockDto } from './dto/clock.dto';
+import { SaveAttendancePolicyDto } from './dto/save-attendance-policy.dto';
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
 import { UpsertLeavePolicyDto } from './dto/upsert-leave-policy.dto';
 import { AdjustLeaveBalanceDto } from './dto/adjust-leave-balance.dto';
@@ -61,6 +63,7 @@ export class WorkforceController {
   constructor(
     private readonly employees: EmployeeService,
     private readonly attendance: AttendanceRecordService,
+    private readonly attendancePolicies: AttendancePolicyService,
     private readonly leave: LeaveService,
     private readonly incentives: IncentiveService,
     private readonly payroll: PayrollService,
@@ -520,6 +523,28 @@ export class WorkforceController {
   @Patch('attendance/:id/approve-overtime')
   approveOvertime(@Param('id') id: string, @Body('minutes') minutes?: number) {
     return this.attendance.approveOvertime(id, minutes);
+  }
+
+  /**
+   * HOW THIS CLINIC MEASURES ATTENDANCE — and where each rule came from.
+   *
+   * Readable by anybody who may open HR, because every screen showing a late
+   * arrival has to be able to say what late means here.
+   */
+  @Get('attendance/policy')
+  attendancePolicy(@Query('clinicId') clinicId?: string) {
+    return this.attendancePolicies.effective(clinicId);
+  }
+
+  @Get('attendance/policies')
+  attendancePolicies_(){
+    return this.attendancePolicies.list();
+  }
+
+  /** Group default when `clinicId` is omitted; one clinic's override when it is not. */
+  @Post('attendance/policy')
+  saveAttendancePolicy(@Body() dto: SaveAttendancePolicyDto) {
+    return this.attendancePolicies.save(dto);
   }
 
   @Get('attendance/timesheet')

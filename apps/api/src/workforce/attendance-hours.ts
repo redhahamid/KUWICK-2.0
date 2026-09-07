@@ -1,3 +1,9 @@
+import {
+  AttendancePolicy,
+  DEFAULT_ATTENDANCE_POLICY,
+  overtimeCandidateMinutes,
+} from './attendance-policy';
+
 /**
  * ATTENDANCE ARITHMETIC — pure, so it can be tested exhaustively.
  *
@@ -14,62 +20,139 @@ export interface PunchPair {
 
 export interface AttendanceComputation {
   workedMinutes: number | null;
+  /** Worked minutes the clinic pays for — worked, less any unpaid break. */
+  payableMinutes: number | null;
+  scheduledMinutes: number | null;
   lateMinutes: number | null;
   earlyOutMinutes: number | null;
+  /**
+   * Minutes short of the scheduled day, past the clinic's grace.
+   *
+   * NEVER deducted from anybody automatically. It is raised as an exception
+   * for a manager to resolve — approved early release, half-day leave, unpaid
+   * time, a correction — because the system cannot know which of those it was,
+   * and guessing costs somebody real money.
+   */
+  shortMinutes: number;
   /** Minutes beyond the scheduled end. NOT overtime until somebody approves it. */
   excessMinutes: number;
+  /** What the clinic's policy would actually consider paying, if approved. */
+  overtimeCandidateMinutes: number;
   status: 'PRESENT' | 'LATE' | 'ABSENT' | 'MISSING_PUNCH';
+  /** Named reasons this record needs a human. Empty means it does not. */
+  exceptions: AttendanceExceptionCode[];
 }
 
 /**
- * Grace before a late arrival counts as late.
+ * WHY A RECORD NEEDS A PERSON.
  *
- * Stated as a constant with a name rather than hidden in a comparison, because
- * "am I late at 09:05" is a question employees ask and managers must be able to
- * answer the same way twice.
+ * Codes rather than prose so a queue can be counted and filtered, and so the
+ * screen and the API cannot drift apart on what "needs review" means.
  */
-export const LATE_GRACE_MINUTES = 5;
+export type AttendanceExceptionCode =
+  | 'MISSING_PUNCH'
+  | 'ABSENT_WITH_SHIFT'
+  | 'LATE'
+  | 'SHORT_TIME'
+  | 'OVERTIME_PENDING'
+  | 'IMPLAUSIBLE_LENGTH'
+  | 'UNSCHEDULED';
 
 function minutesBetween(from: Date, to: Date): number {
   return Math.round((to.getTime() - from.getTime()) / 60000);
 }
 
-export function computeAttendance(punch: PunchPair): AttendanceComputation {
+/**
+ * @param policy the clinic's measurement rules. Omitted, the built-in
+ *   defaults apply — which are the constants this module used to hardcode, so
+ *   a caller that has not been taught about policy yet measures as before.
+ */
+export function computeAttendance(
+  punch: PunchPair,
+  policy: AttendancePolicy = DEFAULT_ATTENDANCE_POLICY,
+): AttendanceComputation {
   const { clockInAt, clockOutAt, scheduledStart, scheduledEnd } = punch;
+  const scheduledMinutes =
+    scheduledStart && scheduledEnd ? Math.max(0, minutesBetween(scheduledStart, scheduledEnd)) : null;
+  const scheduled = Boolean(scheduledStart || scheduledEnd);
 
   // Neither punch: absent. One punch: a missing punch, which is a DIFFERENT
   // state — somebody was here and the record is incomplete, and paying them
   // zero hours for it would be wrong.
   if (!clockInAt && !clockOutAt) {
-    return { workedMinutes: null, lateMinutes: null, earlyOutMinutes: null, excessMinutes: 0, status: 'ABSENT' };
-  }
-  if (!clockInAt || !clockOutAt) {
     return {
       workedMinutes: null,
-      lateMinutes:
-        clockInAt && scheduledStart ? Math.max(0, minutesBetween(scheduledStart, clockInAt) - LATE_GRACE_MINUTES) : null,
+      payableMinutes: null,
+      scheduledMinutes,
+      lateMinutes: null,
       earlyOutMinutes: null,
+      shortMinutes: 0,
       excessMinutes: 0,
+      overtimeCandidateMinutes: 0,
+      status: 'ABSENT',
+      // Absent on a day nobody scheduled them is not an exception; absent on a
+      // day the roster expected them is the whole point of the roster.
+      exceptions: scheduled ? ['ABSENT_WITH_SHIFT'] : [],
+    };
+  }
+  if (!clockInAt || !clockOutAt) {
+    const lateMinutes =
+      clockInAt && scheduledStart
+        ? Math.max(0, minutesBetween(scheduledStart, clockInAt) - policy.lateGraceMinutes)
+        : null;
+    return {
+      workedMinutes: null,
+      payableMinutes: null,
+      scheduledMinutes,
+      lateMinutes,
+      earlyOutMinutes: null,
+      shortMinutes: 0,
+      excessMinutes: 0,
+      overtimeCandidateMinutes: 0,
       status: 'MISSING_PUNCH',
+      exceptions: lateMinutes && lateMinutes > 0 ? ['MISSING_PUNCH', 'LATE'] : ['MISSING_PUNCH'],
     };
   }
 
   // An overnight shift clocks out on the following calendar day. Treating that
   // as negative hours is how a night nurse ends a month owing the clinic time.
   const workedMinutes = Math.max(0, minutesBetween(clockInAt, clockOutAt));
+  const breakMinutes = policy.unpaidBreakMinutes > 0 && workedMinutes >= policy.breakAfterMinutes ? policy.unpaidBreakMinutes : 0;
+  const payableMinutes = Math.max(0, workedMinutes - breakMinutes);
 
   const lateMinutes = scheduledStart
-    ? Math.max(0, minutesBetween(scheduledStart, clockInAt) - LATE_GRACE_MINUTES)
+    ? Math.max(0, minutesBetween(scheduledStart, clockInAt) - policy.lateGraceMinutes)
     : null;
   const earlyOutMinutes = scheduledEnd ? Math.max(0, minutesBetween(clockOutAt, scheduledEnd)) : null;
-  const excessMinutes = scheduledEnd ? Math.max(0, minutesBetween(scheduledEnd, clockOutAt)) : 0;
+  const shortMinutes = earlyOutMinutes ? Math.max(0, earlyOutMinutes - policy.earlyOutGraceMinutes) : 0;
+
+  // EXTRA TIME, which is not overtime. Time worked after the scheduled end,
+  // plus — only where the clinic says so — time worked before the scheduled
+  // start. Arriving half an hour early to settle in is not usually a claim.
+  const afterEnd = scheduledEnd ? Math.max(0, minutesBetween(scheduledEnd, clockOutAt)) : 0;
+  const beforeStart =
+    policy.countEarlyClockIn && scheduledStart ? Math.max(0, minutesBetween(clockInAt, scheduledStart)) : 0;
+  const excessMinutes = afterEnd + beforeStart;
+  const candidate = overtimeCandidateMinutes(excessMinutes, policy);
+
+  const exceptions: AttendanceExceptionCode[] = [];
+  if ((lateMinutes ?? 0) > 0) exceptions.push('LATE');
+  if (shortMinutes > 0) exceptions.push('SHORT_TIME');
+  if (candidate > 0) exceptions.push('OVERTIME_PENDING');
+  if (workedMinutes > policy.maximumShiftHours * 60) exceptions.push('IMPLAUSIBLE_LENGTH');
+  if (!scheduled) exceptions.push('UNSCHEDULED');
 
   return {
     workedMinutes,
+    payableMinutes,
+    scheduledMinutes,
     lateMinutes,
     earlyOutMinutes,
+    shortMinutes,
     excessMinutes,
+    overtimeCandidateMinutes: candidate,
     status: (lateMinutes ?? 0) > 0 ? 'LATE' : 'PRESENT',
+    exceptions,
   };
 }
 

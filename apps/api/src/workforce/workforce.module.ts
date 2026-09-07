@@ -3,6 +3,7 @@ import { CoreModule } from '../core/core.module';
 import { WorkforceController } from './workforce.controller';
 import { EmployeeService } from './employee.service';
 import { AttendanceRecordService } from './attendance-record.service';
+import { AttendancePolicyService } from './attendance-policy.service';
 import { LeaveService } from './leave.service';
 import { IncentiveService } from './incentive.service';
 import { PayrollService } from './payroll.service';
@@ -43,6 +44,7 @@ import { PayrollFinanceService } from './payroll-finance.service';
   providers: [
     EmployeeService,
     AttendanceRecordService,
+    AttendancePolicyService,
     LeaveService,
     IncentiveService,
     PayrollService,
@@ -68,6 +70,7 @@ import { PayrollFinanceService } from './payroll-finance.service';
   exports: [
     EmployeeService,
     AttendanceRecordService,
+    AttendancePolicyService,
     LeaveService,
     IncentiveService,
     PayrollService,

@@ -1,0 +1,101 @@
+/**
+ * THE CLINIC'S ATTENDANCE POLICY — resolved, with defaults that change nothing.
+ *
+ * Pure, so the resolution order can be tested without a database, and so the
+ * defaults are readable in one place rather than inferred from five column
+ * definitions.
+ *
+ * The defaults ARE the constants that used to live in `attendance-hours.ts`,
+ * which is why introducing this table changed no computed attendance anywhere:
+ * a clinic with no policy row measures exactly as it did before.
+ */
+
+export interface AttendancePolicy {
+  /** Minutes after the scheduled start before an arrival counts as late. */
+  lateGraceMinutes: number;
+  /** Minutes before the scheduled end that leaving early is not counted short. */
+  earlyOutGraceMinutes: number;
+  /** Extra time below this is not even an overtime candidate. */
+  overtimeMinimumMinutes: number;
+  /** Candidate overtime rounds DOWN to a multiple of this. 0 disables it. */
+  overtimeRoundingMinutes: number;
+  /** When true, only APPROVED overtime reaches payroll. */
+  overtimeRequiresApproval: boolean;
+  /** Whether clocking in before the shift counts toward extra time. */
+  countEarlyClockIn: boolean;
+  /** Minutes deducted from a shift at least `breakAfterMinutes` long. */
+  unpaidBreakMinutes: number;
+  breakAfterMinutes: number;
+  /** Longer than this and the record is flagged rather than believed. */
+  maximumShiftHours: number;
+}
+
+/**
+ * What every clinic measured by before this table existed.
+ *
+ * `overtimeRequiresApproval` defaults TRUE and `countEarlyClockIn` defaults
+ * FALSE because both are the direction that cannot overpay by accident. A
+ * clinic that wants the other behaviour is choosing it, and the choice is on
+ * the record.
+ */
+export const DEFAULT_ATTENDANCE_POLICY: AttendancePolicy = {
+  lateGraceMinutes: 5,
+  earlyOutGraceMinutes: 5,
+  overtimeMinimumMinutes: 30,
+  overtimeRoundingMinutes: 15,
+  overtimeRequiresApproval: true,
+  countEarlyClockIn: false,
+  unpaidBreakMinutes: 0,
+  breakAfterMinutes: 360,
+  maximumShiftHours: 16,
+};
+
+/** A stored row, with every field optional so a partial row still resolves. */
+export type AttendancePolicyRow = Partial<AttendancePolicy> & { clinicId?: string | null };
+
+/**
+ * CLINIC ROW, THEN TENANT DEFAULT, THEN THE BUILT-IN.
+ *
+ * Field by field rather than row by row: a clinic that overrides only its
+ * grace period should still inherit the group's overtime rounding, not fall
+ * back to the built-in for everything it did not mention.
+ */
+export function resolveAttendancePolicy(
+  rows: AttendancePolicyRow[],
+  clinicId: string | null | undefined,
+): AttendancePolicy {
+  const forClinic = clinicId ? rows.find((row) => row.clinicId === clinicId) : undefined;
+  const tenantDefault = rows.find((row) => !row.clinicId);
+  const pick = <K extends keyof AttendancePolicy>(key: K): AttendancePolicy[K] => {
+    const fromClinic = forClinic?.[key];
+    if (fromClinic !== undefined && fromClinic !== null) return fromClinic as AttendancePolicy[K];
+    const fromTenant = tenantDefault?.[key];
+    if (fromTenant !== undefined && fromTenant !== null) return fromTenant as AttendancePolicy[K];
+    return DEFAULT_ATTENDANCE_POLICY[key];
+  };
+  return {
+    lateGraceMinutes: pick('lateGraceMinutes'),
+    earlyOutGraceMinutes: pick('earlyOutGraceMinutes'),
+    overtimeMinimumMinutes: pick('overtimeMinimumMinutes'),
+    overtimeRoundingMinutes: pick('overtimeRoundingMinutes'),
+    overtimeRequiresApproval: pick('overtimeRequiresApproval'),
+    countEarlyClockIn: pick('countEarlyClockIn'),
+    unpaidBreakMinutes: pick('unpaidBreakMinutes'),
+    breakAfterMinutes: pick('breakAfterMinutes'),
+    maximumShiftHours: pick('maximumShiftHours'),
+  };
+}
+
+/**
+ * Extra minutes worked → the minutes a clinic would actually consider paying.
+ *
+ * Two rules, applied in this order and not the other: the MINIMUM decides
+ * whether there is a claim at all, and the ROUNDING then shapes it. Rounding
+ * first would turn 8 minutes into 0 and hide the fact that a threshold was
+ * ever consulted.
+ */
+export function overtimeCandidateMinutes(extraMinutes: number, policy: AttendancePolicy): number {
+  if (extraMinutes < policy.overtimeMinimumMinutes) return 0;
+  if (policy.overtimeRoundingMinutes <= 0) return extraMinutes;
+  return Math.floor(extraMinutes / policy.overtimeRoundingMinutes) * policy.overtimeRoundingMinutes;
+}

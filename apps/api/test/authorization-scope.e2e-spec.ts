@@ -81,8 +81,12 @@ describe('branch authorization (e2e)', () => {
     });
 
     it('REFUSES an attendance request that names a branch it does not hold', async () => {
+      // The canonical timesheet — real punches against the roster. The old
+      // visit-derived `/attendance` this used to call was retired: two screens
+      // labelled attendance, answering different questions from different
+      // tables, is how they come to disagree.
       const refused = await request(server())
-        .get(`/attendance?clinicId=${clinicB}`)
+        .get(`/workforce/attendance/timesheet?from=2026-08-01&to=2026-08-31&clinicId=${clinicB}`)
         .set('Authorization', branchAStaff);
       expect(refused.status).toBeGreaterThanOrEqual(400);
     });
@@ -112,14 +116,17 @@ describe('branch authorization (e2e)', () => {
     it('may name either branch', async () => {
       for (const clinicId of [clinicA, clinicB]) {
         await request(server())
-          .get(`/attendance?clinicId=${clinicId}`)
+          .get(`/workforce/attendance/timesheet?from=2026-08-01&to=2026-08-31&clinicId=${clinicId}`)
           .set('Authorization', owner)
           .expect(200);
       }
     });
 
     it('reading with no branch named returns every branch it may manage', async () => {
-      await request(server()).get('/attendance').set('Authorization', owner).expect(200);
+      await request(server())
+        .get('/workforce/attendance/timesheet?from=2026-08-01&to=2026-08-31')
+        .set('Authorization', owner)
+        .expect(200);
     });
   });
 

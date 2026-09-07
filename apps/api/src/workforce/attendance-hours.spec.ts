@@ -1,4 +1,5 @@
-import { LATE_GRACE_MINUTES, computeAttendance, hoursOf, totalTimesheet } from './attendance-hours';
+import { computeAttendance, hoursOf, totalTimesheet } from './attendance-hours';
+import { DEFAULT_ATTENDANCE_POLICY } from './attendance-policy';
 
 const at = (iso: string) => new Date(iso);
 
@@ -32,7 +33,7 @@ describe('attendance hours', () => {
     it('allows a grace period before an arrival is late', () => {
       const scheduledStart = at('2026-08-03T01:00:00Z');
       const onTime = computeAttendance({
-        clockInAt: at(`2026-08-03T01:0${LATE_GRACE_MINUTES}:00Z`),
+        clockInAt: at(`2026-08-03T01:0${DEFAULT_ATTENDANCE_POLICY.lateGraceMinutes}:00Z`),
         clockOutAt: at('2026-08-03T09:00:00Z'),
         scheduledStart,
       });

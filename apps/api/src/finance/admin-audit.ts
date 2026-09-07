@@ -81,6 +81,7 @@ export type AuditAction =
   // HR
   | 'employee.changed'
   | 'attendance.corrected'
+  | 'attendancePolicy.saved'
   | 'leave.decided'
   | 'payroll.calculated'
   | 'payroll.approved'
