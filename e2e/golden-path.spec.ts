@@ -1,5 +1,5 @@
 import { Locator, Page, expect, test } from '@playwright/test';
-import { ACCOUNTS, DIAGNOSIS_CODE, MEDICATION, chooseRadio, collectConsoleErrors, describeControls, login, logout, uniquePatientName } from './support/app';
+import { ACCOUNTS, DIAGNOSIS_CODE, MEDICATION, PASSWORD, chooseRadio, collectConsoleErrors, describeControls, login, logout, uniquePatientName } from './support/app';
 
 /**
  * THE GUARDRAIL — one patient, front door to front door.
@@ -101,19 +101,44 @@ async function openAndPick(
  * application says about itself, and a test that reaches past the API can
  * confirm a row the app would never have shown anybody.
  */
+/**
+ * How much of this medicine the LEDGER says has moved.
+ *
+ * Read as the OWNER, deliberately, and not with whatever session the flow
+ * happens to be holding. `/reports/drug-movement` is clinic analytics and
+ * `analytics.view` belongs to the owner and finance — a front desk cannot open
+ * it and should not be able to. This function used to run on the caller's
+ * session and answer `if (!response.ok) return 0`, which turned that 403 into
+ * "no stock moved": the dispense was fine, the ledger was fine, and the test
+ * reported the one thing that was not true. WHO DISPENSES and WHO MAY AUDIT
+ * are different questions, and swallowing the difference cost an afternoon.
+ *
+ * A non-OK response now throws with its status, so a permissions problem reads
+ * as one.
+ */
 async function stockMovementsFor(page: Page, medication: string): Promise<number> {
-  return page.evaluate(async (name: string) => {
-    const auth = JSON.parse(window.localStorage.getItem('kuwick-auth') ?? '{}');
-    const response = await fetch('http://localhost:3000/reports/drug-movement', {
-      headers: { authorization: `Bearer ${auth?.state?.accessToken}` },
-    });
-    if (!response.ok) return 0;
-    const rows = (await response.json()) as Array<Record<string, unknown>>;
-    const list = Array.isArray(rows) ? rows : ((rows as { rows?: unknown[] }).rows ?? []);
-    return (list as Array<Record<string, unknown>>).filter((row) =>
-      String(row.itemName ?? row.name ?? '').includes(name),
-    ).length;
-  }, medication);
+  return page.evaluate(
+    async ({ name, email, password }: { name: string; email: string; password: string }) => {
+      const auth = await fetch('http://localhost:3000/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!auth.ok) throw new Error(`ledger audit could not sign in: HTTP ${auth.status}`);
+      const { accessToken } = (await auth.json()) as { accessToken: string };
+
+      const response = await fetch('http://localhost:3000/reports/drug-movement', {
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+      if (!response.ok) throw new Error(`drug-movement report: HTTP ${response.status}`);
+      const rows = (await response.json()) as Array<Record<string, unknown>>;
+      const list = Array.isArray(rows) ? rows : ((rows as { rows?: unknown[] }).rows ?? []);
+      return (list as Array<Record<string, unknown>>).filter((row) =>
+        String(row.itemName ?? row.name ?? '').includes(name),
+      ).length;
+    },
+    { name: medication, email: ACCOUNTS.owner, password: PASSWORD },
+  );
 }
 
 /**
