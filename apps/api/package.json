@@ -17,6 +17,8 @@
     "start:prod": "node scripts/migrate-deploy.mjs && node dist/main",
     "seed:staging": "tsx prisma/seed-staging-uat.ts",
     "reset:uat-owner": "tsx prisma/reset-uat-owner.ts",
+    "augment:hr-uat": "tsx prisma/augment-hr-uat.ts",
+    "verify:hr-flows": "tsx prisma/verify-hr-flows.ts",
     "seed:catalogues": "tsx prisma/seed-clinic-catalogues.ts",
     "seed:reference": "tsx prisma/seed-reference-catalogs.ts",
     "seed:standard-rx": "tsx prisma/seed-standard-prescriptions.ts",
