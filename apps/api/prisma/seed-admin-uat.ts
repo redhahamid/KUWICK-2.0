@@ -679,7 +679,10 @@ async function reset() {
     'incentive_results', 'incentive_runs', 'incentive_rules',
     'staff_benefit_usages', 'staff_benefit_members', 'staff_benefit_accounts',
     'leave_balances', 'leave_policy_entitlements', 'leave_policies',
-    'attendance_records', 'employee_profiles',
+    // Correction requests point at the attendance record they ask to change,
+    // so they go first; the policy points only at the clinic and the person who
+    // last edited it, so it can go anywhere before `staff`.
+    'attendance_correction_requests', 'attendance_records', 'attendance_policies', 'employee_profiles',
     // AFTER the profiles that reference them, BEFORE the staff that authored
     // them.
     // The employer's dated statutory profile before the employer it points at.

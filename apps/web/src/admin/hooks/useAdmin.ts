@@ -84,6 +84,8 @@ import type {
   PayrollStatutoryReport,
   PayrollVarianceReport,
   PayrollJourney,
+  AttendancePolicy,
+  EffectiveAttendancePolicy,
 } from '../types';
 
 function qs(params: Record<string, string | number | boolean | undefined>): string {
@@ -1427,5 +1429,31 @@ export function usePayrollJourney(runId: string | undefined) {
     queryKey: ['admin-hr', 'payroll-journey', runId],
     queryFn: () => apiClient.get<PayrollJourney>(`/workforce/payroll/runs/${runId}/journey`),
     enabled: Boolean(runId),
+  });
+}
+
+/** What "late" means here, and where that answer came from. */
+export function useAttendancePolicy(clinicId?: string) {
+  return useQuery({
+    queryKey: ['admin-hr', 'attendance-policy', clinicId ?? 'group'],
+    queryFn: () =>
+      apiClient.get<EffectiveAttendancePolicy>(
+        `/workforce/attendance/policy${clinicId ? `?clinicId=${clinicId}` : ''}`,
+      ),
+  });
+}
+
+export function useSaveAttendancePolicy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<AttendancePolicy> & { clinicId?: string; reason?: string }) =>
+      apiClient.post<EffectiveAttendancePolicy>('/workforce/attendance/policy', body),
+    onSuccess: () => {
+      // The timesheet is JUDGED by this, so it must not keep showing yesterday's
+      // verdict under today's rule.
+      queryClient.invalidateQueries({ queryKey: ['admin-hr', 'attendance-policy'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-hr', 'timesheet'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-hr', 'workforce-today'] });
+    },
   });
 }

@@ -1,5 +1,5 @@
-import { Alert } from 'antd';
-import { AdminShell } from '../components/AdminShell';
+import { Alert, Button, Space, Spin } from 'antd';
+import { AdminNotice, AdminShell } from '../components/AdminShell';
 import { RosterPage as CanonicalRosterPage } from '../../appointment/roster/RosterPage';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 
@@ -17,7 +17,48 @@ import { useClinicFilter } from '../../core/hooks/useClinicFilter';
  * arriving here from HR ▸ Roster does not feel like leaving Admin.
  */
 export function AdminRosterPage() {
-  const { clinicId } = useClinicFilter();
+  const { clinicId, setClinicId, clinics } = useClinicFilter();
+
+  // A ROSTER IS ONE BRANCH'S, and the Admin hub opens on "All branches".
+  //
+  // So the default arrival at HR ▸ Roster was a blank page reading "Choose a
+  // branch to see its roster" — an instruction whose control is in the hub
+  // header, above the tabs, where somebody looking at an empty board is not
+  // looking. The matrix genuinely cannot be drawn for two branches at once
+  // (providers down, dates across, one clinic's shifts in the cells), so the
+  // answer is not to render something: it is to put the choice where the
+  // person is already looking.
+  //
+  // The branch list arrives asynchronously, so this covers the whole of
+  // "no branch yet" rather than only the settled case — otherwise the screen
+  // flashes the canonical board's own bare empty state on the way here, which
+  // is the very thing being replaced.
+  if (!clinicId) {
+    return (
+      <AdminShell
+        title="Roster"
+        subtitle="Who is scheduled, by branch and month. The same roster the Appointments module uses — edited here, read everywhere."
+      >
+        <AdminNotice tone="info">
+          <strong>A roster belongs to one branch.</strong> Shifts are people against dates at a place, so this
+          board shows one branch at a time rather than averaging two. Pick the one you are rostering:
+          <div style={{ marginTop: 12 }}>
+            {clinics ? (
+              <Space wrap>
+                {clinics.map((clinic) => (
+                  <Button key={clinic.id} onClick={() => setClinicId(clinic.id)}>
+                    {clinic.name}
+                  </Button>
+                ))}
+              </Space>
+            ) : (
+              <Spin size="small" />
+            )}
+          </div>
+        </AdminNotice>
+      </AdminShell>
+    );
+  }
 
   return (
     <AdminShell

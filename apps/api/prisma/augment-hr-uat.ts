@@ -36,6 +36,9 @@ config({ path: join(__dirname, '..', '.env') });
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
 
+/** Whatever client the current call is writing through — the CLI's, or a test's. */
+type Client = Pick<PrismaClient, '$transaction'>;
+
 /** RFC 2606 reserves `.invalid`; nothing here can reach a real inbox. */
 const DOMAIN = 'hr-uat.kuwick.invalid';
 const PASSWORD = process.env.HR_UAT_PASSWORD ?? 'HrUat!2026';
@@ -56,8 +59,18 @@ const PEOPLE = [
 
 type PersonKey = (typeof PEOPLE)[number]['key'];
 
-async function scoped<T>(tenantId: string, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
-  return prisma.$transaction(async (tx) => {
+async function scoped<T>(
+  client: Client,
+  tenantId: string,
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  return client.$transaction(async (tx) => {
+    // The bypass is needed because a few policies are written to require it,
+    // and it cuts BOTH ways: with it on, a lookup that does not name the tenant
+    // searches every tenant in the database. So every query below carries
+    // `tenantId` explicitly — the guard keeps this to a one-tenant database in
+    // practice, but "in practice" is not a constraint the queries can rely on,
+    // and a test running against a shared database found exactly that.
     await tx.$executeRawUnsafe(`SELECT set_config('app.bypass_tenant_scope', 'true', true)`);
     await tx.$executeRawUnsafe(`SELECT set_config('app.tenant_id', $1, true)`, tenantId);
     return fn(tx);
@@ -71,27 +84,56 @@ async function scoped<T>(tenantId: string, fn: (tx: Prisma.TransactionClient) =>
  * nothing. What proves something is that every tenant in the database is one a
  * seed in this repository invented.
  */
-async function assertSafe(): Promise<{ tenantId: string; tenantName: string }> {
+export interface AugmentEnvironment {
+  nodeEnv?: string;
+  flag?: string;
+  databaseUrl?: string;
+}
+
+/**
+ * WOULD IT REFUSE, AND WHY — as a pure decision.
+ *
+ * Separated from the database read so the refusals can be tested without a
+ * database to be refused against, and so each one is a sentence somebody can
+ * act on rather than a thrown string assembled at the call site.
+ */
+export function augmentationRefusals(env: AugmentEnvironment, tenants: { name: string }[]): string[] {
   const problems: string[] = [];
-  if (process.env.NODE_ENV === 'production') problems.push('NODE_ENV is production');
-  if (process.env.KUWICK_HR_UAT_AUGMENT !== 'yes') problems.push('KUWICK_HR_UAT_AUGMENT is not "yes"');
-  if (!process.env.DATABASE_URL) problems.push('DATABASE_URL is not set');
-  if (problems.length) throw new Error(`Refusing to run:\n  - ${problems.join('\n  - ')}`);
+  if (env.nodeEnv === 'production') problems.push('NODE_ENV is production');
+  if (env.flag !== 'yes') problems.push('KUWICK_HR_UAT_AUGMENT is not "yes"');
+  if (!env.databaseUrl) problems.push('DATABASE_URL is not set');
+  if (problems.length) return problems;
+
+  if (tenants.length === 0) return ['No tenant here. Seed a UAT world first.'];
+  const real = tenants.filter((t) => !isSyntheticTenantName(t.name));
+  if (real.length > 0) {
+    return [
+      `${real.map((t) => `"${t.name}"`).join(', ')} ${real.length === 1 ? 'is' : 'are'} not marked synthetic. This looks like a real database.`,
+    ];
+  }
+  if (tenants.length > 1) {
+    return [`Refusing to guess: ${tenants.length} synthetic tenants here. Point DATABASE_URL at one at a time.`];
+  }
+  return [];
+}
+
+async function assertSafe(): Promise<{ tenantId: string; tenantName: string }> {
+  const env: AugmentEnvironment = {
+    nodeEnv: process.env.NODE_ENV,
+    flag: process.env.KUWICK_HR_UAT_AUGMENT,
+    databaseUrl: process.env.DATABASE_URL,
+  };
+  // The environment half can refuse before anything is read, so a run pointed
+  // at the wrong database with the flag unset never opens a connection to it.
+  const early = augmentationRefusals(env, [{ name: 'Placeholder (Synthetic)' }]);
+  if (early.length) throw new Error(`Refusing to run:\n  - ${early.join('\n  - ')}`);
 
   const tenants = await prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe(`SELECT set_config('app.bypass_tenant_scope', 'true', true)`);
     return tx.$queryRawUnsafe<{ id: string; name: string }[]>(`SELECT id, name FROM tenants`);
   });
-  if (tenants.length === 0) throw new Error('No tenant here. Seed a UAT world first.');
-  const real = tenants.filter((t) => !isSyntheticTenantName(t.name));
-  if (real.length > 0) {
-    throw new Error(
-      `Refusing to run: ${real.map((t) => `"${t.name}"`).join(', ')} ${real.length === 1 ? 'is' : 'are'} not marked synthetic. This looks like a real database.`,
-    );
-  }
-  if (tenants.length > 1) {
-    throw new Error(`Refusing to guess: ${tenants.length} synthetic tenants here. Point DATABASE_URL at one at a time.`);
-  }
+  const refusals = augmentationRefusals(env, tenants);
+  if (refusals.length) throw new Error(`Refusing to run:\n  - ${refusals.join('\n  - ')}`);
   return { tenantId: tenants[0].id, tenantName: tenants[0].name };
 }
 
@@ -112,19 +154,29 @@ function weekdays(year: number, month: number): string[] {
   return dates;
 }
 
-async function main() {
-  const { tenantId, tenantName } = await assertSafe();
-  console.log(`HR UAT augmentation — ${tenantName}\n`);
-
+/**
+ * THE WORK ITSELF, over a client and a tenant somebody else chose.
+ *
+ * `assertSafe` decides WHERE this may run; this decides WHAT it writes. Keeping
+ * them apart is what makes the idempotence claim testable: a test can prepare
+ * its own synthetic tenant and run this twice, which it could not do through a
+ * guard whose whole job is to refuse a database with more than one tenant in
+ * it.
+ */
+export async function augmentHrUat(client: Client, tenantId: string): Promise<string[]> {
   const summary: string[] = [];
 
-  const staffIds = await scoped(tenantId, async (tx) => {
-    const clinic = await tx.clinic.findFirst({ orderBy: { createdAt: 'asc' }, select: { id: true, name: true } });
+  const staffIds = await scoped(client, tenantId, async (tx) => {
+    const clinic = await tx.clinic.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, name: true },
+    });
     if (!clinic) throw new Error('No clinic in this tenant. Seed a UAT world first.');
 
     // An owner to attribute credentials and approvals to. Any existing one
     // will do — this never creates a second.
-    const owner = await tx.staff.findFirst({ where: { role: 'OWNER_ADMIN' }, orderBy: { createdAt: 'asc' } });
+    const owner = await tx.staff.findFirst({ where: { tenantId, role: 'OWNER_ADMIN' }, orderBy: { createdAt: 'asc' } });
     if (!owner) throw new Error('No owner in this tenant to attribute approvals to.');
 
     const passwordHash = await bcrypt.hash(PASSWORD, 10);
@@ -133,12 +185,12 @@ async function main() {
     for (const person of PEOPLE) {
       // KEYED ON THE NAME, so a second run updates the same person rather than
       // minting a second Nurul.
-      let staff = await tx.staff.findFirst({ where: { fullName: person.name } });
+      let staff = await tx.staff.findFirst({ where: { tenantId, fullName: person.name } });
       let userId = staff?.userId ?? null;
 
       if (person.login && !userId) {
         const email = `${person.key}@${DOMAIN}`;
-        const existing = await tx.user.findFirst({ where: { email } });
+        const existing = await tx.user.findFirst({ where: { tenantId, email } });
         userId =
           existing?.id ??
           (await tx.user.create({ data: { tenantId, email, passwordHash, status: 'active' } })).id;
@@ -212,7 +264,7 @@ async function main() {
   // -------------------------------------------------------------------------
   // ROSTER — August complete, September published.
   // -------------------------------------------------------------------------
-  await scoped(tenantId, async (tx) => {
+  await scoped(client, tenantId, async (tx) => {
     let created = 0;
     for (const [year, month] of [[2026, 8], [2026, 9]] as const) {
       for (const date of weekdays(year, month)) {
@@ -263,7 +315,7 @@ async function main() {
   // -------------------------------------------------------------------------
   // AUGUST — a finished month, with the exceptions already resolved.
   // -------------------------------------------------------------------------
-  await scoped(tenantId, async (tx) => {
+  await scoped(client, tenantId, async (tx) => {
     let punches = 0;
     for (const date of weekdays(2026, 8)) {
       for (const person of PEOPLE) {
@@ -324,7 +376,7 @@ async function main() {
   // -------------------------------------------------------------------------
   // AUGUST leave and claims — decided.
   // -------------------------------------------------------------------------
-  await scoped(tenantId, async (tx) => {
+  await scoped(client, tenantId, async (tx) => {
     const decided = [
       { key: 'nurse' as const, type: 'ANNUAL' as const, from: '2026-08-24', to: '2026-08-25', status: 'APPROVED' as const },
       { key: 'reception' as const, type: 'UNPAID' as const, from: '2026-08-13', to: '2026-08-13', status: 'APPROVED' as const },
@@ -386,7 +438,7 @@ async function main() {
   // -------------------------------------------------------------------------
   // SEPTEMBER — deliberately UNFINISHED. These are the owner's decisions.
   // -------------------------------------------------------------------------
-  await scoped(tenantId, async (tx) => {
+  await scoped(client, tenantId, async (tx) => {
     const open: string[] = [];
 
     // Punches for the first half of the month, with three exceptions left open.
@@ -501,6 +553,14 @@ async function main() {
     summary.push(`September left OPEN: ${open.join('; ')}`);
   });
 
+  return summary;
+}
+
+async function main() {
+  const { tenantId, tenantName } = await assertSafe();
+  console.log(`HR UAT augmentation — ${tenantName}\n`);
+  const summary = await augmentHrUat(prisma, tenantId);
+
   console.log('Added or confirmed:');
   for (const line of summary) console.log(`  ${line}`);
   console.log('');
@@ -509,9 +569,13 @@ async function main() {
   console.log(`Password: ${PASSWORD}`);
 }
 
-main()
-  .catch((error) => {
-    console.error(error instanceof Error ? error.message : error);
-    process.exitCode = 1;
-  })
-  .finally(() => prisma.$disconnect());
+// Only when RUN, never when imported — a test importing `augmentHrUat` must not
+// set a whole database going as a side effect of the import.
+if (require.main === module) {
+  main()
+    .catch((error) => {
+      console.error(error instanceof Error ? error.message : error);
+      process.exitCode = 1;
+    })
+    .finally(() => prisma.$disconnect());
+}

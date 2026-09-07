@@ -163,8 +163,20 @@ export function RosterPage({ clinicId }: RosterPageProps) {
       board.querySelector<HTMLElement>('th[data-first-shift]');
     if (!target) return;
     const rail = board.querySelector<HTMLElement>('.kw-roster-provider-head');
-    const railWidth = rail?.offsetWidth ?? 0;
-    board.scrollLeft = Math.max(0, target.offsetLeft - railWidth);
+    // MEASURED, NOT COMPUTED FROM offsetLeft.
+    //
+    // This read `scrollLeft = target.offsetLeft - railWidth`, and offsetLeft is
+    // relative to the nearest POSITIONED ancestor — which, for a th inside a
+    // static table, is <body>. The board's own left inset (32px of hub padding)
+    // was therefore counted twice, and today's column opened a third of its
+    // width underneath the sticky provider rail: the one date a manager came to
+    // look at was the one partly hidden.
+    //
+    // Two live rects and a relative nudge instead. It cannot drift when the
+    // rail's width, the hub's padding or the board's ancestors change.
+    const railRight = (rail ?? board).getBoundingClientRect().right;
+    const delta = target.getBoundingClientRect().left - railRight;
+    board.scrollLeft = Math.max(0, board.scrollLeft + delta);
   }, [data, monthKey]);
 
   // The first date in this month with any shift on it, for the initial

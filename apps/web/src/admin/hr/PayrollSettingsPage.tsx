@@ -11,6 +11,7 @@ import {
   useStatutoryRuleSets,
 } from '../hooks/useAdmin';
 import type { LegalEmployerRow } from '../types';
+import { AttendanceRulesPanel } from './AttendanceRulesPanel';
 
 /**
  * PAYROLL SETTINGS — set up once, then leave alone.
@@ -323,6 +324,10 @@ export function PayrollSettingsPage() {
           </>
         ) : null}
       </AdminSection>
+
+      {/* BEFORE "Advanced", because it is not advanced: it is the answer to
+          "why does this say I was late", and somebody asks that in week one. */}
+      <AttendanceRulesPanel />
 
       <AdminSection
         title="Advanced"

@@ -341,4 +341,102 @@ describe('Row-Level Security enforcement (e2e, DB-level)', () => {
       ),
     ).rejects.toThrow();
   });
+
+  /*
+   * THE SWEEP — every tenant-scoped table, not the handful somebody remembered.
+   *
+   * The tests above prove RLS works on the tables they name. What none of them
+   * proves is that a table added next month has it at all: a new model without
+   * ENABLE/FORCE in its migration is not a failing test, it is a silent hole
+   * that the application's own scoping hides until something reads outside it.
+   *
+   * So this asks Postgres directly. The rule is mechanical and needs no list to
+   * maintain: a table with a tenant column is tenant data and must have RLS
+   * both ENABLED and FORCED. FORCE is the half that matters most — without it
+   * the table's owner bypasses every policy, and migrations run as the owner.
+   *
+   * The column is `tenant_id`, not `tenantId`: Prisma's field name is mapped,
+   * and the first version of this sweep asked for the FIELD name, matched no
+   * tables at all and passed green while proving nothing. Hence the population
+   * assertion below — a sweep that can go vacuous is worse than no sweep,
+   * because it reads like coverage.
+   */
+  it('EVERY table carrying a tenant column has RLS enabled AND forced', async () => {
+    const gaps = await prisma.$queryRaw<{ table: string; enabled: boolean; forced: boolean }[]>`
+      SELECT c.relname AS "table", c.relrowsecurity AS enabled, c.relforcerowsecurity AS forced
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relkind = 'r'
+        AND EXISTS (
+          SELECT 1 FROM information_schema.columns col
+          WHERE col.table_schema = 'public'
+            AND col.table_name = c.relname
+            AND col.column_name = 'tenant_id'
+        )
+        AND (c.relrowsecurity IS FALSE OR c.relforcerowsecurity IS FALSE)
+      ORDER BY c.relname
+    `;
+    // Named, so a failure says which table and which half is missing rather
+    // than only that the count moved.
+    expect(gaps.map((row) => `${row.table} (enabled=${row.enabled}, forced=${row.forced})`)).toEqual([]);
+
+    // AND THE SWEEP ACTUALLY SWEPT SOMETHING. Without this the query above
+    // passes just as happily against a predicate that matches nothing.
+    const [{ count }] = await prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT count(*) AS count
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relkind = 'r'
+        AND EXISTS (
+          SELECT 1 FROM information_schema.columns col
+          WHERE col.table_schema = 'public'
+            AND col.table_name = c.relname
+            AND col.column_name = 'tenant_id'
+        )
+    `;
+    expect(Number(count)).toBeGreaterThan(50);
+  });
+
+  it('every tenant-scoped table actually carries an isolation policy', async () => {
+    // ENABLE with no policy is deny-all, which looks secure and is in fact a
+    // table nothing can read — a different failure, equally worth catching
+    // before it reaches a clinic.
+    const unpoliced = await prisma.$queryRaw<{ table: string }[]>`
+      SELECT c.relname AS "table"
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relkind = 'r'
+        AND c.relrowsecurity IS TRUE
+        AND EXISTS (
+          SELECT 1 FROM information_schema.columns col
+          WHERE col.table_schema = 'public'
+            AND col.table_name = c.relname
+            AND col.column_name = 'tenant_id'
+        )
+        AND NOT EXISTS (SELECT 1 FROM pg_policies p WHERE p.schemaname = 'public' AND p.tablename = c.relname)
+      ORDER BY c.relname
+    `;
+    expect(unpoliced.map((row) => row.table)).toEqual([]);
+  });
+
+  it('the two tables this HR pass added are covered by that sweep', async () => {
+    // A sweep that silently matches nothing passes for the wrong reason. This
+    // names the tables the pass introduced and asserts they are actually in
+    // the population the sweep examines.
+    const covered = await prisma.$queryRaw<{ table: string; enabled: boolean; forced: boolean }[]>`
+      SELECT c.relname AS "table", c.relrowsecurity AS enabled, c.relforcerowsecurity AS forced
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relname IN ('attendance_policies', 'attendance_correction_requests')
+      ORDER BY c.relname
+    `;
+    expect(covered).toEqual([
+      { table: 'attendance_correction_requests', enabled: true, forced: true },
+      { table: 'attendance_policies', enabled: true, forced: true },
+    ]);
+  });
 });

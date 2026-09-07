@@ -14,10 +14,53 @@
 - 14-my-claims-ipad.png — My Kuwick — my claims, with where the money is in plain words · iPad portrait 834×1112
 - 15-my-payslips-ipad.png — My Kuwick — my payslips, approved months only · iPad portrait 834×1112
 - 16-my-profile-ipad.png — My Kuwick — who Kuwick thinks I am, and no salary on it · iPad portrait 834×1112
-- 17-my-home-desktop.png — My Kuwick — the home screen: clock in, today, what is waiting · Desktop 1440×900
-- 18-my-schedule-desktop.png — My Kuwick — my shifts, read from the one canonical roster · Desktop 1440×900
-- 19-my-attendance-desktop.png — My Kuwick — what the clock recorded, and how to ask for a fix · Desktop 1440×900
-- 20-my-leave-desktop.png — My Kuwick — my leave and its decisions · Desktop 1440×900
-- 21-my-claims-desktop.png — My Kuwick — my claims, with where the money is in plain words · Desktop 1440×900
-- 22-my-payslips-desktop.png — My Kuwick — my payslips, approved months only · Desktop 1440×900
-- 23-my-profile-desktop.png — My Kuwick — who Kuwick thinks I am, and no salary on it · Desktop 1440×900
+- 17-hr-today-ipad.png — HR Today — who is on, who is not, and every count that opens the work · iPad portrait 834×1112
+- 18-hr-employees-ipad.png — Employees — the directory, with Add Employee and the incomplete-profile queue · iPad portrait 834×1112
+- 19-hr-roster-ipad.png — Roster — the whole workforce, filtered by what kind of work they do · iPad portrait 834×1112
+- 20-hr-attendance-ipad.png — Timesheets — and the attendance fixes staff have asked for · iPad portrait 834×1112
+- 21-hr-leave-ipad.png — Leave — waiting, approved, refused · iPad portrait 834×1112
+- 22-hr-claims-ipad.png — Claims — and the route decision that decides how each is paid · iPad portrait 834×1112
+- 23-hr-payroll-ipad.png — Payroll — the month and what it needs before anybody is paid · iPad portrait 834×1112
+- 24-hr-add-employee-ipad.png — Add Employee — the guided wizard, opened from the directory · iPad portrait 834×1112
+- 25-hr-employee-detail-ipad.png — One employee — account, employment and clinical credential on one page · iPad portrait 834×1112
+- 26-hr-attendance-detail-ipad.png — Timesheets — one person opened, day by day, with the exceptions named · iPad portrait 834×1112
+- 27-hr-payroll-run-ipad.png — Payroll — one run opened at the employee review step · iPad portrait 834×1112
+- 28-hr-payroll-settings-ipad.png — Payroll settings — the setup checklist, the attendance rules, and what stays outside Kuwick · iPad portrait 834×1112
+- 29-my-home-ipad-landscape.png — My Kuwick — the home screen: clock in, today, what is waiting · iPad landscape 1024×768
+- 30-my-schedule-ipad-landscape.png — My Kuwick — my shifts, read from the one canonical roster · iPad landscape 1024×768
+- 31-my-attendance-ipad-landscape.png — My Kuwick — what the clock recorded, and how to ask for a fix · iPad landscape 1024×768
+- 32-my-leave-ipad-landscape.png — My Kuwick — my leave and its decisions · iPad landscape 1024×768
+- 33-my-claims-ipad-landscape.png — My Kuwick — my claims, with where the money is in plain words · iPad landscape 1024×768
+- 34-my-payslips-ipad-landscape.png — My Kuwick — my payslips, approved months only · iPad landscape 1024×768
+- 35-my-profile-ipad-landscape.png — My Kuwick — who Kuwick thinks I am, and no salary on it · iPad landscape 1024×768
+- 36-hr-today-ipad-landscape.png — HR Today — who is on, who is not, and every count that opens the work · iPad landscape 1024×768
+- 37-hr-employees-ipad-landscape.png — Employees — the directory, with Add Employee and the incomplete-profile queue · iPad landscape 1024×768
+- 38-hr-roster-ipad-landscape.png — Roster — the whole workforce, filtered by what kind of work they do · iPad landscape 1024×768
+- 39-hr-attendance-ipad-landscape.png — Timesheets — and the attendance fixes staff have asked for · iPad landscape 1024×768
+- 40-hr-leave-ipad-landscape.png — Leave — waiting, approved, refused · iPad landscape 1024×768
+- 41-hr-claims-ipad-landscape.png — Claims — and the route decision that decides how each is paid · iPad landscape 1024×768
+- 42-hr-payroll-ipad-landscape.png — Payroll — the month and what it needs before anybody is paid · iPad landscape 1024×768
+- 43-hr-add-employee-ipad-landscape.png — Add Employee — the guided wizard, opened from the directory · iPad landscape 1024×768
+- 44-hr-employee-detail-ipad-landscape.png — One employee — account, employment and clinical credential on one page · iPad landscape 1024×768
+- 45-hr-attendance-detail-ipad-landscape.png — Timesheets — one person opened, day by day, with the exceptions named · iPad landscape 1024×768
+- 46-hr-payroll-run-ipad-landscape.png — Payroll — one run opened at the employee review step · iPad landscape 1024×768
+- 47-hr-payroll-settings-ipad-landscape.png — Payroll settings — the setup checklist, the attendance rules, and what stays outside Kuwick · iPad landscape 1024×768
+- 48-my-home-desktop.png — My Kuwick — the home screen: clock in, today, what is waiting · Desktop 1440×900
+- 49-my-schedule-desktop.png — My Kuwick — my shifts, read from the one canonical roster · Desktop 1440×900
+- 50-my-attendance-desktop.png — My Kuwick — what the clock recorded, and how to ask for a fix · Desktop 1440×900
+- 51-my-leave-desktop.png — My Kuwick — my leave and its decisions · Desktop 1440×900
+- 52-my-claims-desktop.png — My Kuwick — my claims, with where the money is in plain words · Desktop 1440×900
+- 53-my-payslips-desktop.png — My Kuwick — my payslips, approved months only · Desktop 1440×900
+- 54-my-profile-desktop.png — My Kuwick — who Kuwick thinks I am, and no salary on it · Desktop 1440×900
+- 55-hr-today-desktop.png — HR Today — who is on, who is not, and every count that opens the work · Desktop 1440×900
+- 56-hr-employees-desktop.png — Employees — the directory, with Add Employee and the incomplete-profile queue · Desktop 1440×900
+- 57-hr-roster-desktop.png — Roster — the whole workforce, filtered by what kind of work they do · Desktop 1440×900
+- 58-hr-attendance-desktop.png — Timesheets — and the attendance fixes staff have asked for · Desktop 1440×900
+- 59-hr-leave-desktop.png — Leave — waiting, approved, refused · Desktop 1440×900
+- 60-hr-claims-desktop.png — Claims — and the route decision that decides how each is paid · Desktop 1440×900
+- 61-hr-payroll-desktop.png — Payroll — the month and what it needs before anybody is paid · Desktop 1440×900
+- 62-hr-add-employee-desktop.png — Add Employee — the guided wizard, opened from the directory · Desktop 1440×900
+- 63-hr-employee-detail-desktop.png — One employee — account, employment and clinical credential on one page · Desktop 1440×900
+- 64-hr-attendance-detail-desktop.png — Timesheets — one person opened, day by day, with the exceptions named · Desktop 1440×900
+- 65-hr-payroll-run-desktop.png — Payroll — one run opened at the employee review step · Desktop 1440×900
+- 66-hr-payroll-settings-desktop.png — Payroll settings — the setup checklist, the attendance rules, and what stays outside Kuwick · Desktop 1440×900

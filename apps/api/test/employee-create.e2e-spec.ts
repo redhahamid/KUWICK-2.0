@@ -55,6 +55,18 @@ describe('Adding an employee (e2e)', () => {
   const create = (body: Record<string, unknown>) =>
     request(server()).post('/workforce/employees').set('Authorization', bearer).send(body);
 
+  /**
+   * A SIGN-IN ADDRESS NOBODY ELSE HAS.
+   *
+   * These specs deliberately leave their rows behind (the house convention —
+   * `kuwick_test` is disposable and every test uses a fresh random tenant), but
+   * an email is not tenant-scoped the way a tenant's own rows are: a fixed
+   * address is unique on the first run and a conflict on the second, and
+   * signing in with one that exists in two tenants is ambiguous rather than
+   * wrong. So each run gets its own.
+   */
+  const uniqueEmail = (who: string) => `${who}-${randomId().slice(0, 8)}@ambil-uat.kuwick.invalid`;
+
   // -------------------------------------------------------------------------
   it('creates the staff row and the employment profile together', async () => {
     const created = await create({
@@ -81,21 +93,43 @@ describe('Adding an employee (e2e)', () => {
   });
 
   it('creates a working login when one is asked for', async () => {
+    const email = uniqueEmail('rahim');
     await create({
       fullName: 'Rahim Kaunter Ujian',
       role: Role.FRONT_DESK_CLINICAL_STAFF,
       clinicId,
       position: 'Receptionist',
-      loginEmail: 'rahim@ambil-uat.kuwick.invalid',
+      loginEmail: email,
       loginPassword: 'AmbilUat!2026',
     }).expect(201);
 
     // The proof is that they can sign in, not that a row exists.
     const login = await request(server())
       .post('/auth/login')
-      .send({ email: 'rahim@ambil-uat.kuwick.invalid', password: 'AmbilUat!2026' })
+      .send({ email, password: 'AmbilUat!2026' })
       .expect(201);
     expect(login.body.accessToken).toBeTruthy();
+  });
+
+  it('REFUSES a sign-in address somebody already uses', async () => {
+    const email = uniqueEmail('taken');
+    await create({
+      fullName: 'Pertama Ujian',
+      role: Role.FRONT_DESK_CLINICAL_STAFF,
+      clinicId,
+      loginEmail: email,
+      loginPassword: 'AmbilUat!2026',
+    }).expect(201);
+
+    const refused = await create({
+      fullName: 'Kedua Ujian',
+      role: Role.FRONT_DESK_CLINICAL_STAFF,
+      clinicId,
+      loginEmail: email,
+      loginPassword: 'AmbilUat!2026',
+    });
+    expect(refused.status).toBe(400);
+    expect(String(refused.body.message)).toMatch(/already signs in/i);
   });
 
   it('REFUSES half a login rather than creating an account nobody can use', async () => {
@@ -182,7 +216,7 @@ describe('Adding an employee (e2e)', () => {
         fullName: 'Dengan Akaun Ujian',
         role: Role.FRONT_DESK_CLINICAL_STAFF,
         clinicId,
-        loginEmail: 'keys@ambil-uat.kuwick.invalid',
+        loginEmail: uniqueEmail('keys'),
         loginPassword: 'AmbilUat!2026',
       });
     expect(refused.status).toBe(400);

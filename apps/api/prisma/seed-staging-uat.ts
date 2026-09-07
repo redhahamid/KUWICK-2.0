@@ -89,6 +89,15 @@ function scoped<T>(fn: (tx: Parameters<Parameters<PrismaClient['$transaction']>[
   return prisma.$transaction(async (tx) => {
     // The tenants table is FORCE RLS against its own id, so the very first
     // insert only works once the session already claims that tenant.
+    //
+    // AND THE BYPASS CUTS BOTH WAYS. With it on, a lookup that does not name
+    // the tenant searches EVERY tenant. `const existing = await
+    // tx.clinic.findFirst({ select: { id: true } })` therefore adopted another
+    // tenant's clinic on any database that already held one, and this seed
+    // wrote its entire synthetic world — patients, stock, staff, panel — into
+    // somebody else's clinic while leaving its own tenant empty. Invisible in
+    // CI, where the database starts empty; certain on a developer machine or a
+    // shared UAT box. Every query below names `TENANT_ID`.
     await tx.$executeRawUnsafe(`SELECT set_config('app.bypass_tenant_scope', 'true', true)`);
     await tx.$executeRawUnsafe(`SELECT set_config('app.tenant_id', $1, true)`, TENANT_ID);
     return fn(tx);
@@ -114,7 +123,7 @@ async function main() {
       'Kuwick UAT Staging (Synthetic)',
       TENANT_SLUG,
     );
-    const existing = await tx.clinic.findFirst({ select: { id: true } });
+    const existing = await tx.clinic.findFirst({ where: { tenantId: TENANT_ID }, select: { id: true } });
     const clinic =
       existing ??
       (await tx.clinic.create({
@@ -126,7 +135,7 @@ async function main() {
           timezone: 'Asia/Kuala_Lumpur',
         },
       }));
-    const room = await tx.room.findFirst({ where: { clinicId: clinic.id } });
+    const room = await tx.room.findFirst({ where: { tenantId: TENANT_ID, clinicId: clinic.id } });
     if (!room) {
       await tx.room.create({ data: { tenantId: TENANT_ID, clinicId: clinic.id, name: 'Consultation 1' } });
       await tx.room.create({ data: { tenantId: TENANT_ID, clinicId: clinic.id, name: 'Treatment Room' } });
@@ -138,7 +147,7 @@ async function main() {
   const staffIds: Record<string, string> = {};
   for (const account of ROLES) {
     staffIds[account.key] = await scoped(async (tx) => {
-      const existingUser = await tx.user.findFirst({ where: { email: account.email } });
+      const existingUser = await tx.user.findFirst({ where: { tenantId: TENANT_ID, email: account.email } });
       const user =
         existingUser ??
         (await tx.user.create({
@@ -147,7 +156,7 @@ async function main() {
       if (existingUser) {
         await tx.user.update({ where: { id: user.id }, data: { passwordHash, status: 'active' } });
       }
-      const existingStaff = await tx.staff.findFirst({ where: { userId: user.id } });
+      const existingStaff = await tx.staff.findFirst({ where: { tenantId: TENANT_ID, userId: user.id } });
       const isDoctor = account.role === 'DOCTOR_RESIDENT';
       // The owner is first in ROLES, so it exists by the time a doctor is
       // reached. Asserted rather than assumed — reordering ROLES would
@@ -233,7 +242,7 @@ async function main() {
   const itemIds: Record<string, string> = {};
   for (const med of MEDICINES) {
     itemIds[med.code] = await scoped(async (tx) => {
-      const existing = await tx.item.findFirst({ where: { code: med.code } });
+      const existing = await tx.item.findFirst({ where: { tenantId: TENANT_ID, code: med.code } });
       const item =
         existing ??
         (await tx.item.create({
@@ -272,7 +281,7 @@ async function main() {
       // Age brackets are part of the medicine's definition, not stock.
       for (const bracket of med.brackets ?? []) {
         const already = await tx.itemAgeDosage.findFirst({
-          where: { itemId: item.id, ageFromMonths: bracket.ageFromMonths },
+          where: { tenantId: TENANT_ID, itemId: item.id, ageFromMonths: bracket.ageFromMonths },
         });
         if (!already) {
           await tx.itemAgeDosage.create({
@@ -298,7 +307,7 @@ async function main() {
   ];
   await scoped(async (tx) => {
     for (const svc of SERVICES) {
-      const existing = await tx.serviceCatalog.findFirst({ where: { name: svc.name } });
+      const existing = await tx.serviceCatalog.findFirst({ where: { tenantId: TENANT_ID, name: svc.name } });
       if (!existing) {
         await tx.serviceCatalog.create({
           data: {
@@ -336,12 +345,12 @@ async function main() {
   await scoped(async (tx) => {
     const clinic = await tx.clinic.findFirst({ where: { tenantId: TENANT_ID }, select: { id: true } });
     const consultation = await tx.serviceCatalog.findFirst({
-      where: { name: 'General Consultation' },
+      where: { tenantId: TENANT_ID, name: 'General Consultation' },
       select: { id: true },
     });
     if (!clinic || !consultation) return;
     const existing = await tx.consultationTariffRule.findFirst({
-      where: { clinicId: clinic.id, classification: 'CONSULTATION' },
+      where: { tenantId: TENANT_ID, clinicId: clinic.id, classification: 'CONSULTATION' },
       select: { id: true },
     });
     if (existing) return;
@@ -359,7 +368,7 @@ async function main() {
   });
 
   const panelId = await scoped(async (tx) => {
-    const existing = await tx.panelClinic.findFirst({ where: { name: 'UAT Panel Sdn Bhd (Synthetic)' } });
+    const existing = await tx.panelClinic.findFirst({ where: { tenantId: TENANT_ID, name: 'UAT Panel Sdn Bhd (Synthetic)' } });
     if (existing) return existing.id;
     const panel = await tx.panelClinic.create({
       data: { tenantId: TENANT_ID, name: 'UAT Panel Sdn Bhd (Synthetic)', code: 'UATPANEL', active: true },
@@ -390,7 +399,7 @@ async function main() {
       // Idempotent: re-running the seed against an already-seeded staging
       // database must be a no-op, not a unique-constraint crash.
       const already = await tx.patient.findFirst({
-        where: { identifierValue: nric(seq) },
+        where: { tenantId: TENANT_ID, identifierValue: nric(seq) },
         select: { id: true, visits: { select: { id: true, visitNumber: true }, take: 1 } },
       });
       if (already) {
@@ -658,7 +667,7 @@ async function main() {
       };
       const payable = await scoped((tx) =>
         tx.queueTicket.findMany({
-          where: { status: 'READY_FOR_PAYMENT' as never },
+          where: { tenantId: TENANT_ID, status: 'READY_FOR_PAYMENT' as never },
           select: { visitId: true },
         }),
       );

@@ -2754,3 +2754,31 @@ export interface PayrollApprovalPolicy {
   inert: string[];
   limits: string[];
 }
+
+/**
+ * HOW THIS CLINIC MEASURES ATTENDANCE.
+ *
+ * `source` is on the response because "why is 09:06 late here and not at the
+ * other branch" is the first question anybody asks, and the honest answer is
+ * one of three: this clinic's own row, the group's default, or Kuwick's.
+ */
+export interface AttendancePolicy {
+  lateGraceMinutes: number;
+  earlyOutGraceMinutes: number;
+  overtimeMinimumMinutes: number;
+  overtimeRoundingMinutes: number;
+  overtimeRequiresApproval: boolean;
+  countEarlyClockIn: boolean;
+  unpaidBreakMinutes: number;
+  breakAfterMinutes: number;
+  maximumShiftHours: number;
+}
+
+export interface EffectiveAttendancePolicy {
+  clinicId: string | null;
+  policy: AttendancePolicy;
+  source: 'CLINIC' | 'GROUP_DEFAULT' | 'KUWICK_DEFAULT';
+  defaults: AttendancePolicy;
+  hasOwnPolicy: boolean;
+  hasGroupDefault: boolean;
+}

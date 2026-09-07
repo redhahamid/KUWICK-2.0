@@ -572,4 +572,129 @@ describe('Synthetic payroll month (e2e)', () => {
       .expect(200);
     expect(pcb.body.totals).toMatchObject({ employees: 7, calculated: 6, entered: 1, missing: 0, tp1Applied: 1 });
   });
+
+  /*
+   * A CLAIM IS PAID ONCE, BY ONE ROUTE.
+   *
+   * Everything above proves the month adds up. This proves the thing that
+   * would not show up in any total: a claim reaching a payslip twice, or
+   * reaching one at all after Finance was told to reimburse it. Both are
+   * silent — the run still balances, the reports still agree — and both cost a
+   * clinic real money.
+   */
+  describe('paid exactly once', () => {
+    const claimsOf = (route: 'PAYROLL' | 'FINANCE') =>
+      withTenantContext(prisma, tenantId, (tx) =>
+        tx.staffClaim.findMany({ where: { tenantId, staffId: farid, paymentRoute: route } }),
+      );
+
+    it('the payroll-routed claim is bound to exactly one payroll input', async () => {
+      const [claim] = await claimsOf('PAYROLL');
+      expect(claim.payrollInputEntryId).toBeTruthy();
+      expect(claim.payoutStatus).toBe('IN_PAYROLL');
+
+      const inputs = await withTenantContext(prisma, tenantId, (tx) =>
+        tx.payrollInputEntry.findMany({ where: { tenantId, staffId: farid, source: 'CLAIM' } }),
+      );
+      expect(inputs).toHaveLength(1);
+      expect(inputs[0].id).toBe(claim.payrollInputEntryId);
+      expect(inputs[0].amount.toString()).toBe('85');
+    });
+
+    it('PULLING UPSTREAM FIGURES IN AGAIN, on a paid month, is refused outright', async () => {
+      // The realistic way this goes wrong: somebody presses the button again
+      // on a month that is already approved and paid. The answer is not a
+      // silent no-op — that leaves a person believing something happened — and
+      // it is certainly not a second input row. It is a refusal that names the
+      // month and says why.
+      const [before] = await claimsOf('PAYROLL');
+      const again = await request(server())
+        .post('/workforce/payroll/inputs/materialise')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId });
+      expect(again.status).toBe(409);
+      expect(String(again.body.message)).toMatch(/already paid/i);
+
+      // And nothing moved: still one input, still the same binding.
+      const inputs = await withTenantContext(prisma, tenantId, (tx) =>
+        tx.payrollInputEntry.findMany({ where: { tenantId, staffId: farid, source: 'CLAIM' } }),
+      );
+      expect(inputs).toHaveLength(1);
+      const [after] = await claimsOf('PAYROLL');
+      expect(after.payrollInputEntryId).toBe(before.payrollInputEntryId);
+    });
+
+    it('the Finance-routed claim NEVER reaches a payslip', async () => {
+      const [claim] = await claimsOf('FINANCE');
+      // No link, and nothing in the period's inputs carrying its id.
+      expect(claim.payrollInputEntryId).toBeNull();
+      const linked = await withTenantContext(prisma, tenantId, (tx) =>
+        tx.payrollInputEntry.findMany({ where: { tenantId, sourceRecordId: claim.id } }),
+      );
+      expect(linked).toEqual([]);
+    });
+
+    it('the database itself refuses TWO claims against one payroll input', async () => {
+      // What `StaffClaim.payrollInputEntryId @unique` actually guarantees, said
+      // precisely: an input row pays at most one claim. It is the half of the
+      // guard that survives somebody writing a new code path which forgets the
+      // service-level check — and it is NOT the same as "a claim has one
+      // link", which is true simply because the column holds one value.
+      const [paid] = await claimsOf('PAYROLL');
+      const [finance] = await claimsOf('FINANCE');
+      expect(paid.payrollInputEntryId).toBeTruthy();
+
+      await expect(
+        withTenantContext(prisma, tenantId, (tx) =>
+          tx.staffClaim.update({
+            where: { id: finance.id },
+            data: { payrollInputEntryId: paid.payrollInputEntryId },
+          }),
+        ),
+      ).rejects.toThrow();
+
+      // Neither claim moved.
+      expect((await claimsOf('PAYROLL'))[0].payrollInputEntryId).toBe(paid.payrollInputEntryId);
+      expect((await claimsOf('FINANCE'))[0].payrollInputEntryId).toBeNull();
+    });
+
+    it('a SECOND MONTH cannot pick up a claim July already paid', async () => {
+      /*
+       * The double payment this guard exists to stop, reproduced.
+       *
+       * July paid the taxi fare and holds the link. Something then moves the
+       * claim into August — a stale plan, a corrected date, two runs whose
+       * periods overlap — and August's CALCULATION wants an input for a claim
+       * that has already been paid once. (Claims are bound during calculate,
+       * not by the materialise endpoint, which carries incentives.) The
+       * service must refuse, and say so in words a clinic manager can act on.
+       */
+      const [claim] = await claimsOf('PAYROLL');
+      const julyInput = claim.payrollInputEntryId;
+      expect(julyInput).toBeTruthy();
+
+      await withTenantContext(prisma, tenantId, (tx) =>
+        tx.staffClaim.update({ where: { id: claim.id }, data: { payrollPeriod: new Date('2026-08-01') } }),
+      );
+
+      const august = await request(server())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: '2026-08', clinicId })
+        .expect(201);
+      const calculated = await request(server())
+        .patch(`/workforce/payroll/runs/${august.body.id}/calculate`)
+        .set('Authorization', bearer);
+
+      expect(calculated.status).toBe(409);
+      expect(String(calculated.body.message)).toMatch(/paid once, by one route/i);
+
+      // August created nothing for it, and July's payment is untouched.
+      const inputs = await withTenantContext(prisma, tenantId, (tx) =>
+        tx.payrollInputEntry.findMany({ where: { tenantId, sourceRecordId: claim.id } }),
+      );
+      expect(inputs).toHaveLength(1);
+      expect(inputs[0].id).toBe(julyInput);
+    });
+  });
 });

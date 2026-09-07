@@ -207,6 +207,21 @@ The dependency order is real: later steps genuinely cannot be completed without 
 | **Why** | Whether a component is EPF wages, SOCSO wages, taxable, or part of the overtime rate is decided **once, per component, with a date and a source** — not per payroll run. |
 | **If missing** | The seeded catalogue covers the ordinary cases; a component you invent without treatment would be paid with no statutory treatment behind it, which Kuwick refuses. |
 
+### Step 7a — Attendance rules (late, overtime, breaks)
+
+| | |
+| --- | --- |
+| **Where** | Administration → HR → Payroll settings → *Attendance rules* |
+| **What to enter** | The grace before an arrival counts as late; the grace before an early finish counts as short; the **minimum** extra time before it is even an overtime candidate; how overtime rounds; whether early clock-in counts; unpaid break length and the shift length after which a break applies; the longest shift a single punch pair may span. |
+| **Why** | A twenty-four-hour clinic and a nine-to-five practice do not agree about when 09:06 is late, and neither is wrong. Hard-coding one answer makes the other clinic's timesheet a fiction. |
+| **Who** | Owner. A **group default** is set with no branch chosen; a branch can override any single field and inherits the rest. |
+| **If missing** | Kuwick's own defaults apply — nothing breaks and nothing is silently mis-paid; the figures are simply computed on a policy nobody chose. |
+| **Confirm it worked** | Clock somebody in a few minutes late and check the timesheet agrees with your grace period. |
+
+> **The minimum is applied BEFORE the rounding, not after.** Twelve minutes over on a fifteen-minute minimum
+> is not overtime; rounding it up to fifteen first and then comparing would pay it. This is the kind of
+> difference nobody notices for a year and then notices for every month of that year.
+
 ### Step 8 — Panel companies and their fees
 
 | | |
@@ -449,6 +464,73 @@ Payroll.
 > The timesheet shows approved and unapproved overtime in two columns so nobody is paid for hours that
 > were never agreed — and payroll warns you if unapproved hours exist when you run it.
 
+### Two people use HR, and they use two different products
+
+Everything above is the **owner/manager** side, inside Administration. There is a second half, and it is the
+one most of your staff will ever see.
+
+<a name="my-kuwick"></a>
+#### My Kuwick — what a member of staff gets
+
+Any member of staff who can sign in has **My Kuwick** at `/my`, reachable from the menu under their own name.
+It is designed for a phone, because that is where it is used: clocking in at the door, photographing a
+receipt in a car park, checking next week's shift on a bus.
+
+| Screen | What they can do |
+| --- | --- |
+| **Home** | One big **Clock in / Clock out** button, today's shift, what is waiting on somebody else, their latest payslip |
+| **My schedule** | Their own shifts, month by month, read from the one roster. **Read-only** — the roster is written by whoever manages it |
+| **My attendance** | What the clock recorded against what they were rostered for, and **Ask for a fix** when a punch is wrong |
+| **My leave** | Request leave, and see what was decided |
+| **My claims** | Submit a claim with a receipt from the phone camera, and read in plain words where the money is |
+| **My payslips** | Their own payslips, **approved months only** |
+| **My profile** | Who Kuwick thinks they are. No salary on it |
+
+> **Three things My Kuwick will not do, on purpose.**
+> An employee cannot edit their own attendance — they *ask*, and a manager decides, and the original punch
+> stays on the record. An employee cannot see a payslip for a month that is still being worked on, because
+> the figures in it can still change. And an employee cannot see anybody else's anything: there is no screen,
+> no field and no URL through which one member of staff can reach another's hours, leave, claims or pay.
+
+#### Adding somebody, and the staff who never got finished
+
+**HR → Employees → + Add Employee** is four steps: the person, their employment, whether they get a login,
+and a review. Only the first step is required; the rest can be finished later from their own page.
+
+Two things it deliberately does not ask for. **Salary** and the **Malaysian statutory profile** (EPF, SOCSO,
+EIS, PCB, LINDUNG) are recorded *with the date they take effect from*, and the form has no such date to give
+them — putting a salary box there would mean inventing "from today", and the employee record and the payroll
+run would then disagree about what somebody is paid. Both are on the employee's own page once they exist.
+
+If any staff record has no employment profile, a warning at the top of **Employees** names those people and
+clicking any of them opens the form that finishes them. Those people can sign in and be rostered; payroll
+leaves them out — not with a refusal, simply absent, which is much harder to notice.
+
+#### The roster holds everybody, not only the doctors
+
+**HR → Roster** is the same board the Appointments calendar books against. It now carries the whole
+workforce, with a filter across the top — **Everyone / Doctors / Clinical / Admin / Finance / Other** — and
+every chip carries its count, so choosing one does not make the rest look empty.
+
+A receptionist's shift is a real shift and **not** appointment capacity: only staff who are registered
+providers can be booked into. A 23:00–07:00 night shift is **one** shift on the day it starts, marked as
+crossing midnight, and two shifts in one day are two entries in one cell.
+
+#### How lateness and overtime are actually decided
+
+Under **HR → Payroll settings** the clinic sets its own attendance rules: the grace before an arrival counts
+as late, the minimum extra time before it is even an overtime candidate, how overtime rounds, whether early
+arrival counts, and unpaid breaks. A twenty-four-hour clinic and a nine-to-five practice do not agree about
+when 09:06 is late, and neither is wrong. A group sets a default; a branch can override it.
+
+Three rules hold whatever those settings are:
+
+- **Extra time is not overtime** until a manager approves it, and never your own.
+- **Short time is never deducted automatically.** Leaving at 16:30 on a 17:00 shift raises an exception for a
+  manager to resolve; the system cannot know whether it was approved early release, half-day leave or unpaid
+  time, and guessing costs somebody real money.
+- **Attendance never invents an expected shift.** It reads the roster and never writes back to it.
+
 <a name="hr-tests"></a>
 ### HR tests
 
@@ -464,6 +546,36 @@ Payroll.
 | **HR-08** | HR → Doctor incentives | The incentive run and its results | A **paid** incentive is never recalculated with today's rules |
 | **HR-09** | HR → Locum sessions | Sessions with their rate and settlement | |
 | **HR-10** | Sign in as `finance@…` and open HR → Employees | You can see the directory | You **cannot** see anybody's salary |
+| **HR-11** | HR → Employees → **+ Add Employee**, complete the four steps without a login | The person appears in the directory | The review step says salary and statutory details are recorded separately, *with the date they take effect from* |
+| **HR-12** | Add another, this time switching on **Give them a login** | They appear, and can sign in with the password you set | An email with no password is refused rather than half-created |
+| **HR-13** | HR → Today | Five counts across the top and five tiles under *Waiting for a decision* | **Every tile opens the work** — click one and you land on the queue it counts |
+| **HR-14** | HR → Today, before the morning shift has clocked in | *Rostered, not clocked in* | Somebody whose shift has not started yet reads "Not due yet", not as missing |
+| **HR-15** | HR → Roster, choose **Everyone**, then **Doctors** | The board narrows | Every chip still shows its own count — the others do not read as empty |
+| **HR-15a** | HR → Roster with the branch picker on **All branches** | *"A roster belongs to one branch"* and the branches as buttons | Choosing one on the board draws it — you are not sent back to the header to hunt for the picker |
+| **HR-15b** | HR → Roster, in the current month | The board opens on **today**, whose column carries a dark date pill | Today is **fully** visible, not half-hidden under the Provider column on the left |
+| **HR-16** | HR → Roster, look at the night nurse | 23:00–07:00 shifts | **One** entry per night, marked as crossing midnight — not two half-shifts on two days |
+| **HR-17** | HR → Timesheets | *Attendance fixes requested* at the top, if any | Approving one keeps the original punch on the record and names you as the approver |
+| **HR-18** | HR → Payroll settings → *Attendance rules* | Seven numbers, two switches, and a tag saying whose rules are in force | Change *Late after*, save, reload — the new value is still there |
+| **HR-19** | HR-18, then switch *Rules for* to one branch | The branch inherits until you save it | Saving a branch changes that branch only; the other one still reads the group default |
+
+<a name="employee-tests"></a>
+### Employee tests — sign in as a member of staff
+
+Sign in as `nurse@hr-uat.kuwick.invalid` (password `HrUat!2026`) — or any staff account — and go to **My
+Kuwick** from the menu under your name. Best done on a phone, or with the browser window narrowed.
+
+| ID | Do this | You should see | Check |
+| --- | --- | --- | --- |
+| **ESS-01** | Open My Kuwick | Your name, your branch, today's shift | **No** Administration rail, branch picker or patient list |
+| **ESS-02** | Tap **Clock in**, then **Clock out** | The card changes to "On duty · Since HH:MM", then back | The times are the **clinic's**, not your device's |
+| **ESS-03** | My schedule → previous and next month | Your shifts, grouped by day | A 23:00 shift says "(next morning)" rather than looking like a typo |
+| **ESS-04** | My attendance → **Ask for a fix** on a day with a missing punch | A form asking what the times should have been and why | It says nothing changes until a manager decides |
+| **ESS-05** | As the manager, HR → Timesheets, approve that fix | The attendance record updates | The **original** punch is still on the record, and you are named as approver |
+| **ESS-06** | My leave → **Request leave**, choose **Unpaid** | A note that unpaid leave is deducted for the days approved | It appears in HR → Leave for the manager — the same record, not a copy |
+| **ESS-07** | My claims → **New claim**, attach a photo | The claim appears reading *"Waiting for your manager."* | Plain words, not "SUBMITTED / payoutStatus PENDING" |
+| **ESS-08** | As the manager, approve it **Pay with salary** | The employee's screen reads *"Approved. It will be paid with your salary."* | It appears **once** in payroll and Finance never reimburses it separately |
+| **ESS-09** | My payslips, while September is still open | *"No payslip yet"* and an explanation | A month being worked on is **not** shown — its figures can still change |
+| **ESS-10** | Sign in as a **second** member of staff | Only their own schedule, leave, claims and payslips | Nothing of the first person's is reachable — not by any screen, field or URL |
 
 ---
 

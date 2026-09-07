@@ -93,4 +93,96 @@ test.describe('The roster holds the whole clinic', () => {
     // look empty.
     for (const chip of chips) expect(chip).toMatch(/\(\d+\)/);
   });
+
+  test('opens with today fully visible, not tucked under the provider rail', async ({ page }) => {
+    await loginAdmin(page);
+    await gotoAdmin(page, '/admin/hr/roster');
+    await chooseBranch(page, 'Contoh Central');
+
+    const today = page.locator('th[data-today]');
+    // A month that does not contain today has nothing to assert here.
+    if ((await today.count()) === 0) test.skip();
+
+    // The board auto-scrolls to today. It used to compute that scroll from
+    // `offsetLeft`, which is measured from <body> for a static table, so the
+    // hub's 32px inset was counted twice and today's column opened a third of
+    // its width UNDER the sticky provider rail — the one date a manager came
+    // to look at was the one partly hidden.
+    const geometry = await page.evaluate(() => {
+      const th = document.querySelector('th[data-today]') as HTMLElement;
+      const rail = document.querySelector('.kw-roster-provider-head') as HTMLElement;
+      return { columnLeft: th.getBoundingClientRect().left, railRight: rail.getBoundingClientRect().right };
+    });
+    // Flush or clear of the rail, never behind it. One pixel of tolerance for
+    // sub-pixel layout.
+    expect(geometry.columnLeft).toBeGreaterThanOrEqual(geometry.railRight - 1);
+  });
+});
+
+test.describe('A roster belongs to one branch', () => {
+  test('the branch question is answerable where it is asked', async ({ page }) => {
+    await loginAdmin(page);
+    // The Admin hub opens on "All branches" and a roster is one branch's board,
+    // so this screen has a question to ask first. It used to ask it as a bare
+    // "Choose a branch to see its roster" over an empty page, with the only
+    // control for answering it in the hub header above the tabs — where
+    // somebody staring at an empty board is not looking.
+    await page.evaluate(() => window.sessionStorage.removeItem('kuwick.selectedBranch'));
+    await gotoAdmin(page, '/admin/hr/roster');
+
+    const notice = page.locator('.kw-adminNotice', { hasText: 'A roster belongs to one branch' });
+    await expect(notice).toBeVisible();
+
+    const choices = notice.getByRole('button');
+    expect(await choices.count()).toBeGreaterThan(1);
+    await choices.first().click();
+
+    // And answering it draws the board.
+    await expect(page.locator('.kw-roster-filters')).toBeVisible();
+  });
+});
+
+test.describe('What "late" means here', () => {
+  test('the clinic can set its own attendance rules, and the answer survives a reload', async ({ page }) => {
+    // These numbers were constants in the attendance calculation, which made
+    // one of every two clinics' timesheets a fiction: a 24-hour clinic and a
+    // nine-to-five practice do not agree about when 09:06 is late.
+    await loginAdmin(page);
+    await gotoAdmin(page, '/admin/hr/settings');
+
+    const panel = page.locator('.kw-adminSection', { hasText: 'Attendance rules' });
+    await expect(panel).toBeVisible();
+    // The screen SAYS which of the three answers is in force, because "why is
+    // this branch different" is the first question anybody asks.
+    await expect(panel.locator('.ant-tag').first()).toContainText('In force:');
+
+    const lateGrace = panel.locator('.ant-input-number-input').first();
+    const original = await lateGrace.inputValue();
+    const changed = String(Number(original) + 3);
+
+    await lateGrace.fill(changed);
+    await panel.getByRole('button', { name: 'Save attendance rules' }).click();
+    await expect(page.locator('.ant-spin-spinning')).toHaveCount(0, { timeout: 30_000 });
+
+    await page.reload();
+    await expect(page.locator('.ant-spin-spinning')).toHaveCount(0, { timeout: 30_000 });
+    const reloaded = page.locator('.kw-adminSection', { hasText: 'Attendance rules' });
+    await expect(reloaded.locator('.ant-input-number-input').first()).toHaveValue(changed);
+
+    // Put it back, so a test does not leave the clinic measuring by something
+    // nobody chose.
+    await reloaded.locator('.ant-input-number-input').first().fill(original);
+    await reloaded.getByRole('button', { name: 'Save attendance rules' }).click();
+    await expect(page.locator('.ant-spin-spinning')).toHaveCount(0, { timeout: 30_000 });
+  });
+
+  test('the order of minimum and rounding is stated on the screen, not only in the code', async ({ page }) => {
+    // Twelve minutes over on a fifteen-minute minimum is not overtime. Rounding
+    // first and comparing second would pay it — the kind of difference nobody
+    // notices for a year and then notices for every month of that year.
+    await loginAdmin(page);
+    await gotoAdmin(page, '/admin/hr/settings');
+    const panel = page.locator('.kw-adminSection', { hasText: 'Attendance rules' });
+    await expect(panel).toContainText('The minimum is applied before the rounding');
+  });
 });
