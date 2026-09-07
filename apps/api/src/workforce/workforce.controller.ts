@@ -8,6 +8,7 @@ import { LeaveService } from './leave.service';
 import { IncentiveService } from './incentive.service';
 import { PayrollService } from './payroll.service';
 import { UpsertEmployeeDto } from './dto/upsert-employee.dto';
+import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { ClockDto } from './dto/clock.dto';
 import { SaveAttendancePolicyDto } from './dto/save-attendance-policy.dto';
 import { DecideCorrectionDto } from './dto/decide-correction.dto';
@@ -475,6 +476,18 @@ export class WorkforceController {
 
   // --- Employees ------------------------------------------------------------
 
+  /**
+   * Active staff with no employment profile — the queue nobody could see.
+   *
+   * ABOVE `employees/:staffId`, or Nest reads "incomplete" as a staff id and
+   * this route never runs. The same trap `provider-shift.controller.ts`
+   * records for `/month`.
+   */
+  @Get('employees/incomplete')
+  incompleteProfiles() {
+    return this.employees.incompleteProfiles();
+  }
+
   @Get('employees')
   listEmployees(
     @Query('clinicId') clinicId?: string,
@@ -507,6 +520,12 @@ export class WorkforceController {
   @Post('employees/:staffId')
   upsertEmployee(@Param('staffId') staffId: string, @Body() dto: UpsertEmployeeDto) {
     return this.employees.upsert(staffId, dto);
+  }
+
+  /** Add somebody: staff row, employment profile and optionally a login. */
+  @Post('employees')
+  createEmployee(@Body() dto: CreateEmployeeDto) {
+    return this.employees.create(dto);
   }
 
   // --- Attendance -----------------------------------------------------------

@@ -6,12 +6,15 @@ import { currentTenantId } from '../core/tenant-context';
 import { actorCan, requirePermission, requireScope, withAdminTx } from '../finance/admin-actor';
 import { diffOf, recordAudit } from '../finance/admin-audit';
 import { UpsertEmployeeDto } from './dto/upsert-employee.dto';
+import { CreateEmployeeDto } from './dto/create-employee.dto';
+import * as bcrypt from 'bcryptjs';
 import { formatCents, fromCents, toCents } from '../finance/money';
 import { resolveSalaryForPayroll } from './salary-resolution';
 import { resolveClassificationForPayroll } from './statutory-classification';
 import { toClassificationRow } from './statutory-classification.service';
 import { buildPayrollReadiness } from './payroll-readiness';
 import { LINDUNG_EFFECTIVE_FROM } from '../statutory/lindung-24-jam';
+import { credentialedClinicianFields } from '../core/credentialing';
 
 /**
  * THE EMPLOYEE PROFILE — the employment half of a person.
@@ -565,6 +568,122 @@ export class EmployeeService {
       legacyBasicSalary: legacyBasic,
       legacyHourlyRate: legacyHourly,
     };
+  }
+
+  /**
+   * HIRE SOMEBODY — one act, three records, one transaction.
+   *
+   * The staff row, the employment profile and (optionally) the login are
+   * created together or not at all. Before this there was no single door: an
+   * owner had to create a staff member on one screen, find them again on
+   * another, and complete an employment profile there — and if they stopped
+   * half way, which people do, the result was a staff row that looked like an
+   * employee and could not be paid.
+   *
+   * The separation between the three is KEPT, because it is real. What changes
+   * is that an owner no longer has to know about it to hire a receptionist.
+   */
+  async create(dto: CreateEmployeeDto) {
+    const { fullName, role, clinicId, loginEmail, loginPassword, medicalRegistrationNo, bookable, ...profile } = dto;
+
+    // An email with no password is an account nobody can use. Refused rather
+    // than half-created, so there is no state where somebody appears to have a
+    // login and cannot sign in.
+    if (Boolean(loginEmail) !== Boolean(loginPassword)) {
+      throw new BadRequestException(
+        'A login needs both an email and a password. Leave both empty to add somebody who does not sign in yet.',
+      );
+    }
+
+    const staffId = await withAdminTx(this.rawPrisma, 'hr.employee.manage', async (tx, actor) => {
+      // CREATING AN ACCOUNT IS USER MANAGEMENT, a different permission from
+      // maintaining employment records. An HR clerk may hire; giving somebody
+      // the keys is the owner's act.
+      if (loginEmail && !actorCan(actor, 'users.manage')) {
+        throw new BadRequestException(
+          'You may add an employee, but creating a login for them needs user-management access. Add them without one and ask an account holder to give them a login.',
+        );
+      }
+
+      const tenantId = currentTenantId();
+      let userId: string | null = null;
+      if (loginEmail && loginPassword) {
+        const existing = await tx.user.findFirst({ where: { email: loginEmail } });
+        if (existing) throw new BadRequestException('Somebody already signs in with that email address.');
+        const created = await tx.user.create({
+          data: { tenantId, email: loginEmail, passwordHash: await bcrypt.hash(loginPassword, 10), status: 'active' },
+        });
+        userId = created.id;
+      }
+
+      const staff = await tx.staff.create({
+        data: {
+          tenantId,
+          fullName,
+          role,
+          clinicId: clinicId ?? null,
+          active: true,
+          userId,
+          // A REGISTRATION NUMBER IS WHAT MAKES A PROVIDER, not a job title.
+          // Without one this is an employee with a clinical role, which is a
+          // different and perfectly ordinary thing.
+          //
+          // Through the ONE definition of "credentialed" rather than by hand:
+          // the eight fields were hand-written twice before and both times the
+          // result was a doctor who could not, in fact, sign anything.
+          ...(medicalRegistrationNo
+            ? credentialedClinicianFields({
+                registrationNo: medicalRegistrationNo,
+                grantedByStaffId: actor.id,
+              })
+            : {}),
+        },
+      });
+
+      await recordAudit(tx, actor, {
+        action: 'employee.created',
+        entityType: 'Staff',
+        entityId: staff.id,
+        after: { fullName, role, clinicId: clinicId ?? null, hasLogin: Boolean(userId), provider: Boolean(medicalRegistrationNo) },
+        reason: `Added ${fullName}`,
+        source: 'hr.employees',
+      });
+
+      return staff.id;
+    });
+
+    // The employment half, through the ONE path that writes it — so the same
+    // refusals apply (salary and statutory classification are effective-dated
+    // and belong to their own endpoints) and the same audit diff is recorded.
+    await this.upsert(staffId, profile as UpsertEmployeeDto);
+    return this.get(staffId);
+  }
+
+  /**
+   * STAFF RECORDS WITH NO EMPLOYMENT PROFILE — the queue nobody could see.
+   *
+   * A staff row without one is legitimate and common: an account is created
+   * before HR finishes the paperwork. What was missing was any screen that
+   * said so, so people sat in that state indefinitely and were quietly left
+   * out of payroll — not refused, simply absent, which is much harder to
+   * notice than a refusal.
+   */
+  async incompleteProfiles() {
+    const { scope } = await requireScope(this.rawPrisma, 'hr.view');
+    const rows = await this.prisma.staff.findMany({
+      where: { ...scope.where(undefined), active: true, employeeProfile: null, role: { not: 'PATIENT_PORTAL' } },
+      orderBy: { fullName: 'asc' },
+      include: { clinic: { select: { name: true } } },
+    });
+    return rows.map((row) => ({
+      staffId: row.id,
+      fullName: row.fullName,
+      role: row.role,
+      clinicId: row.clinicId,
+      clinicName: row.clinic?.name ?? null,
+      hasLogin: row.userId !== null,
+      createdAt: row.createdAt,
+    }));
   }
 
   async upsert(staffId: string, dto: UpsertEmployeeDto) {

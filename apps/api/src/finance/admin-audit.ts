@@ -82,6 +82,7 @@ export type AuditAction =
   | 'employee.changed'
   | 'attendance.corrected'
   | 'attendancePolicy.saved'
+  | 'employee.created'
   | 'attendanceCorrection.requested'
   | 'attendanceCorrection.decided'
   | 'leaveRequest.submitted'

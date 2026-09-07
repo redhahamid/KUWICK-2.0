@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { Tag } from 'antd';
+import { useEffect, useState } from 'react';
+import { Button, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
@@ -7,6 +7,8 @@ import { DataTable } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useEmployees } from '../hooks/useAdmin';
+import { AddEmployeeDrawer } from './AddEmployeeDrawer';
+import { CompleteProfileDrawer } from './CompleteProfileDrawer';
 
 /**
  * THE EMPLOYEE DIRECTORY.
@@ -44,9 +46,30 @@ export function EmployeesPage() {
 
   const withProfile = data?.filter((row) => row.hasProfile) ?? [];
   const clinicians = data?.filter((row) => row.professionalActive) ?? [];
+  const incomplete = data?.filter((row) => !row.hasProfile) ?? [];
+  const [adding, setAdding] = useState(false);
+  // A staff member with no employment profile cannot be opened on the employee
+  // page — that page reads a profile that does not exist yet — so finishing
+  // one happens here, where the queue is.
+  const [completing, setCompleting] = useState<{ staffId: string; fullName: string } | null>(null);
 
   return (
-    <AdminShell error={firstError({ isError, error })} title="Employees" subtitle="Account, employment and clinical credential are three separate facts about one person.">
+    <AdminShell
+      error={firstError({ isError, error })}
+      title="Employees"
+      subtitle="Account, employment and clinical credential are three separate facts about one person."
+      actions={
+        <Button type="primary" onClick={() => setAdding(true)}>
+          + Add employee
+        </Button>
+      }
+    >
+      <AddEmployeeDrawer open={adding} onClose={() => setAdding(false)} clinicId={clinicId} />
+      <CompleteProfileDrawer
+        staffId={completing?.staffId ?? null}
+        fullName={completing?.fullName ?? ''}
+        onClose={() => setCompleting(null)}
+      />
       <StatStrip
         stats={[
           { label: 'Staff records', value: data?.length ?? 0 },
@@ -65,10 +88,24 @@ export function EmployeesPage() {
         ]}
       />
 
-      {withProfile.length < (data?.length ?? 0) ? (
+      {incomplete.length > 0 ? (
         <AdminNotice tone="warn">
-          {(data?.length ?? 0) - withProfile.length} staff member(s) have no employee profile. They cannot appear in a
-          payroll run until one exists — a payroll that silently skipped them would be worse.
+          <strong>
+            {incomplete.length} staff record{incomplete.length === 1 ? '' : 's'} without an employment profile.
+          </strong>{' '}
+          They can sign in and be rostered, but payroll cannot include them until somebody completes their
+          profile — they are left out rather than refused, which is much harder to notice. Open each one to
+          finish it:{' '}
+          {incomplete.slice(0, 6).map((row, index) => (
+            <span key={row.staffId}>
+              {index > 0 ? ', ' : ''}
+              {/* Straight into finishing THAT person's profile. The employee
+                  page cannot open them yet, because it reads a profile that
+                  does not exist — which is the thing being fixed. */}
+              <a onClick={() => setCompleting({ staffId: row.staffId, fullName: row.fullName })}>{row.fullName}</a>
+            </span>
+          ))}
+          {incomplete.length > 6 ? ` and ${incomplete.length - 6} more.` : '.'}
         </AdminNotice>
       ) : null}
 
@@ -87,7 +124,12 @@ export function EmployeesPage() {
           // run, or reached from an exception without landing on the directory
           // first. The drawer is gone; the workspace is a route.
           onRow={(row) => ({
-            onClick: () => row.hasProfile && navigate(`/admin/hr/employees/${row.staffId}`),
+            onClick: () =>
+              row.hasProfile
+                ? navigate(`/admin/hr/employees/${row.staffId}`)
+                : // A row that does nothing when clicked reads as broken. An
+                  // incomplete record opens the form that completes it.
+                  setCompleting({ staffId: row.staffId, fullName: row.fullName }),
           })}
           columns={[
             { title: 'Name', dataIndex: 'fullName', key: 'fullName', sorter: (a, b) => a.fullName.localeCompare(b.fullName) },
