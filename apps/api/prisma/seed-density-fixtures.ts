@@ -62,6 +62,14 @@ async function inTenant<T>(fn: (tx: Tx, tenantId: string, clinicId: string) => P
     const tenant = await tx.tenant.findFirst({ where: { slug: TENANT_SLUG }, select: { id: true } });
     if (!tenant) throw new Error(`Tenant ${TENANT_SLUG} not found — run the staging seed first.`);
     await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenant.id}, true)`;
+    // AND EVERY QUERY BELOW STILL NAMES THE TENANT. This script connects as the
+    // MIGRATION OWNER, which on a superuser role is not subject to row-level
+    // security at all — so `app.tenant_id` scopes nothing and an unscoped
+    // `findFirst({ where: { name } })` reaches into whatever other tenant
+    // happens to be in the database. It did: four of this tenant's
+    // prescriptions ended up pointing at another tenant's medicines, which
+    // showed up much later as a foreign key that would not let that other
+    // tenant be reset. Invisible in CI, where the database starts empty.
     const clinic = await tx.clinic.findFirst({ where: { tenantId: tenant.id }, select: { id: true } });
     if (!clinic) throw new Error('No clinic in the tenant — run the staging seed first.');
     return fn(tx, tenant.id, clinic.id);
@@ -97,7 +105,7 @@ async function main() {
     // as "Staff member is not an active doctor" from a screen that offered
     // them. Failing here instead names the fixture, which is what is wrong.
     const doctor = await tx.staff.findFirst({
-      where: { role: { in: ['DOCTOR_RESIDENT', 'DOCTOR_LOCUM'] }, active: true },
+      where: { tenantId, role: { in: ['DOCTOR_RESIDENT', 'DOCTOR_LOCUM'] }, active: true },
       // `fullName` travels to the fixture file so a spec can pick this doctor
       // out of a dropdown rather than guessing which seeded staff member it is.
       select: { id: true, fullName: true },
@@ -113,7 +121,7 @@ async function main() {
     // before: this script is re-run on every CI e2e job.
     const items = [];
     for (const name of MEDICATIONS) {
-      const existing = await tx.item.findFirst({ where: { name }, select: { id: true } });
+      const existing = await tx.item.findFirst({ where: { tenantId, name }, select: { id: true } });
       items.push(
         existing ??
           (await tx.item.create({
@@ -124,7 +132,7 @@ async function main() {
     }
 
     let service = await tx.serviceCatalog.findFirst({
-      where: { code: 'E2E-WOUNDCARE' },
+      where: { tenantId, code: 'E2E-WOUNDCARE' },
       select: { id: true, name: true },
     });
     service ??= await tx.serviceCatalog.findFirst({ select: { id: true, name: true } });
@@ -132,7 +140,7 @@ async function main() {
 
     const patient =
       (await tx.patient.findFirst({
-        where: { identifierValue: DENSITY_PATIENT_IC },
+        where: { tenantId, identifierValue: DENSITY_PATIENT_IC },
         select: { id: true },
       })) ??
       (await tx.patient.create({
@@ -152,7 +160,7 @@ async function main() {
       visitNumber: string,
       counts: { medications: number; orders: number; documents: number },
     ) => {
-      const existing = await tx.visit.findFirst({ where: { visitNumber }, select: { id: true } });
+      const existing = await tx.visit.findFirst({ where: { tenantId, visitNumber }, select: { id: true } });
       if (existing) {
         lines.push(`${visitNumber}: already seeded — ${existing.id}`);
         return existing.id;
