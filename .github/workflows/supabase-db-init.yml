@@ -52,6 +52,18 @@ jobs:
       # pooler endpoint. node-pg steps use the derived form below instead.
       DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
       APP_ROLE_PASSWORD: ${{ secrets.SUPABASE_APP_ROLE_PASSWORD }}
+      # PREFER IPv4. GitHub-hosted runners have no routable IPv6, but the
+      # Supabase session pooler hostname publishes BOTH an A and an AAAA
+      # record. Node 22 resolves DNS in "verbatim" order by default, so pg can
+      # be handed the AAAA (IPv6) address first and the socket dies with
+      # `connect ENETUNREACH` before it ever tries the reachable IPv4 address —
+      # exactly the pre-migration failure this patch fixes. Forcing IPv4 first
+      # makes dns.lookup return the pooler's A record, which the runner can
+      # reach. Set at JOB level so every step inherits it (job env + step env
+      # merge per-key, and no step redefines NODE_OPTIONS): the provision role
+      # step, prisma migrate deploy, all four seed scripts, and the
+      # verification step. Credentials and the pooler URL are untouched.
+      NODE_OPTIONS: '--dns-result-order=ipv4first'
     steps:
       - name: Refuse to run without the three secrets
         env:
