@@ -43,7 +43,27 @@ END $$;
 -- And re-assert the flags every run. A role granted SUPERUSER or BYPASSRLS by
 -- hand for one migration, then left that way, is exactly how this guarantee
 -- would be lost again — silently, because everything would keep working.
-ALTER ROLE kuwick_app WITH NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+--
+-- Re-asserted ONLY when the connected user is a superuser. PostgreSQL 16 lets
+-- only a role that HAS an attribute change that attribute — even to switch it
+-- OFF, even on a role it just created (measured: "Only roles with the
+-- SUPERUSER attribute may change the SUPERUSER attribute"). So the pooled
+-- Supabase `postgres`, which is NOT a superuser, cannot run this ALTER at all
+-- and must not try — an unconditional ALTER is exactly what produced the bare
+-- "permission denied to alter role". It also does not NEED to: CREATE ROLE
+-- above already sets these NO-defaults, and a non-superuser cannot grant
+-- SUPERUSER/BYPASSRLS to the role afterwards, so they cannot drift. The
+-- provisioning script still VERIFIES rolsuper and rolbypassrls are false after
+-- this file runs and refuses success otherwise — that check, not this ALTER,
+-- is the security guarantee. On Railway/CI (a superuser) every flag is re-
+-- asserted on each run exactly as before.
+DO $$
+BEGIN
+  IF current_setting('is_superuser') = 'on' THEN
+    ALTER ROLE kuwick_app WITH NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+  END IF;
+END
+$$;
 
 GRANT USAGE ON SCHEMA public TO kuwick_app;
 
