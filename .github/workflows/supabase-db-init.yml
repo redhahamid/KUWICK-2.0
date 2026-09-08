@@ -77,6 +77,57 @@ jobs:
           [ "$HAS_SEED_PW" = "true" ] || { echo "::error::Repository secret KUWICK_STAGING_SEED_PASSWORD is not set."; ok=no; }
           [ "$ok" = yes ]
 
+      - name: Pin the Supabase pooler hostname to IPv4
+        # WHY. GitHub-hosted runners have no routable IPv6, yet the Supabase
+        # session pooler hostname publishes BOTH an A and an AAAA record.
+        # NODE_OPTIONS=--dns-result-order=ipv4first only reorders addresses
+        # inside Node's own resolver and was measured insufficient here (pg
+        # still reached the AAAA and failed `connect ENETUNREACH`), and it has
+        # no effect at all on Prisma's Rust migration engine, which resolves
+        # DNS through the OS itself. Pinning the hostname to its A record in
+        # /etc/hosts removes the AAAA from resolution for THIS host at the glibc
+        # layer, which both Node/pg and the Rust engine consult before DNS — so
+        # every later step connects over IPv4. The connection URL and every
+        # credential are untouched; only name resolution changes.
+        #
+        # No secret is printed: only the (non-secret) hostname and its IPv4 are
+        # echoed. The URL is parsed with shell expansion and never emitted; the
+        # password is URL-encoded so it carries no literal '@', and stripping to
+        # the last '@' is robust regardless.
+        env:
+          SUPABASE_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          noscheme="${SUPABASE_DATABASE_URL#*://}"
+          authority="${noscheme%%/*}"
+          hostport="${authority##*@}"
+          host="${hostport%%:*}"
+          if [ -z "$host" ]; then
+            echo "::error::Could not extract a hostname from SUPABASE_DATABASE_URL."
+            exit 1
+          fi
+          # glibc's getent is always present on the runner; ahostsv4 returns
+          # only IPv4 (A) results.
+          ipv4="$(getent ahostsv4 "$host" | awk '{print $1; exit}')"
+          if [ -z "${ipv4:-}" ]; then
+            echo "::error::No IPv4 (A) record resolved for $host — cannot pin to IPv4. Aborting before any database connection."
+            exit 1
+          fi
+          echo "$ipv4 $host" | sudo tee -a /etc/hosts >/dev/null
+          echo "Supabase pooler hostname : $host"
+          echo "Resolved + pinned IPv4   : $ipv4"
+          # Confirm the pin now wins over DNS, and that what resolves is IPv4.
+          echo "getent hosts after pin   :"
+          getent hosts "$host"
+          resolved="$(getent hosts "$host" | awk '{print $1; exit}')"
+          case "$resolved" in
+            *:*)
+              echo "::error::$host still resolves to a non-IPv4 address ($resolved) after pinning."
+              exit 1
+              ;;
+          esac
+          echo "IPv4 pin verified."
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
