@@ -1,0 +1,240 @@
+# SUPABASE DB INIT — one-shot, MANUAL-ONLY initialisation of a fresh Supabase
+# PostgreSQL database from this repository's EXISTING pipeline, in the exact
+# order ci.yml proves against an empty database on every push:
+#
+#   provision kuwick_app -> prisma migrate deploy -> re-provision (grants on
+#   the tables the migrations just created) -> staging seed -> clinical
+#   catalogues -> prescription reference catalogues -> standard prescriptions
+#   -> migrate status -> read-only verification.
+#
+# It changes no application code, no schema, no migrations and no seed data —
+# it only RUNS what the repository already contains, against the database the
+# SUPABASE_DATABASE_URL secret points at.
+#
+# TRIGGER: workflow_dispatch only. Deliberately NOT on push or pull_request —
+# this touches a real database and must never run because somebody pushed.
+#
+# SECRETS (Settings -> Secrets and variables -> Actions -> Repository secrets):
+#   SUPABASE_DATABASE_URL         the OWNER (postgres.<project-ref>) session-
+#                                 pooler URL, with sslmode=require
+#   SUPABASE_APP_ROLE_PASSWORD    the password this run sets on kuwick_app
+#   KUWICK_STAGING_SEED_PASSWORD  the password for the five synthetic UAT
+#                                 accounts the staging seed creates
+#
+# No secret value is ever echoed; GitHub masks registered secrets in logs, and
+# the one derived value (the node-pg form of the URL) is masked explicitly
+# before use. The job's token is read-only, so nothing this run generates
+# (e.g. docs/seed-review/*.csv, rewritten by the standard-prescriptions seed)
+# can ever be committed or pushed by it.
+
+name: Supabase DB Init (manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-db-init
+  cancel-in-progress: false
+
+jobs:
+  init:
+    name: provision + migrate + seed + verify
+    runs-on: ubuntu-latest
+    # Generous: the seeds issue many sequential queries and the runner is a
+    # long way from the ap-southeast-1 pooler, so round-trips dominate.
+    timeout-minutes: 45
+    env:
+      # Prisma's CLI reads this verbatim. Under sslmode=require Prisma's
+      # engine speaks TLS without CA verification, which suits the shared
+      # pooler endpoint. node-pg steps use the derived form below instead.
+      DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+      APP_ROLE_PASSWORD: ${{ secrets.SUPABASE_APP_ROLE_PASSWORD }}
+    steps:
+      - name: Refuse to run without the three secrets
+        env:
+          HAS_DB_URL: ${{ secrets.SUPABASE_DATABASE_URL != '' }}
+          HAS_ROLE_PW: ${{ secrets.SUPABASE_APP_ROLE_PASSWORD != '' }}
+          HAS_SEED_PW: ${{ secrets.KUWICK_STAGING_SEED_PASSWORD != '' }}
+        run: |
+          ok=yes
+          [ "$HAS_DB_URL" = "true" ]  || { echo "::error::Repository secret SUPABASE_DATABASE_URL is not set."; ok=no; }
+          [ "$HAS_ROLE_PW" = "true" ] || { echo "::error::Repository secret SUPABASE_APP_ROLE_PASSWORD is not set."; ok=no; }
+          [ "$HAS_SEED_PW" = "true" ] || { echo "::error::Repository secret KUWICK_STAGING_SEED_PASSWORD is not set."; ok=no; }
+          [ "$ok" = yes ]
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Derive the node-pg form of the connection URL
+        # node-postgres verifies the certificate chain under a plain
+        # sslmode=require, which the shared pooler's chain may not satisfy.
+        # The repository's own runbook (docs/STAGING_DEPLOYMENT.md, step 2)
+        # documents sslmode=no-verify — TLS without CA verification — as the
+        # remote form for pg-based scripts. Derived once here, masked, and
+        # exported for the provision/seed/verify steps; never printed.
+        run: |
+          PG_URL="${DATABASE_URL/sslmode=require/sslmode=no-verify}"
+          echo "::add-mask::$PG_URL"
+          {
+            echo "PG_DATABASE_URL<<__PG_URL_EOF__"
+            echo "$PG_URL"
+            echo "__PG_URL_EOF__"
+          } >> "$GITHUB_ENV"
+
+      - name: Provision kuwick_app BEFORE migrations
+        # PHASE 0, same order as ci.yml: several migrations GRANT to
+        # kuwick_app, so the role must exist before `migrate deploy` runs.
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+        run: node scripts/provision-app-role.mjs
+
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: npx prisma generate
+
+      - name: Apply all existing migrations
+        working-directory: apps/api
+        run: npx prisma migrate deploy
+
+      - name: Re-provision kuwick_app AFTER migrations
+        # ALTER DEFAULT PRIVILEGES covers tables a FUTURE migration creates,
+        # not ones created by the migrations that just ran — same as ci.yml.
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+        run: node scripts/provision-app-role.mjs
+
+      - name: Seed — staging UAT clinic (bootstraps an empty database)
+        working-directory: apps/api
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+          KUWICK_STAGING_SEED: 'yes'
+          STAGING_SEED_PASSWORD: ${{ secrets.KUWICK_STAGING_SEED_PASSWORD }}
+        run: npx tsx prisma/seed-staging-uat.ts
+
+      - name: Seed — clinical catalogues (diagnoses + medications)
+        working-directory: apps/api
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+        run: npx tsx prisma/seed-clinic-catalogues.ts
+
+      - name: Seed — prescription reference catalogues
+        working-directory: apps/api
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+        run: npx tsx prisma/seed-reference-catalogs.ts
+
+      - name: Seed — standard prescriptions
+        working-directory: apps/api
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+        run: npx tsx prisma/seed-standard-prescriptions.ts
+
+      - name: Migration status — must report fully applied
+        working-directory: apps/api
+        run: npx prisma migrate status
+
+      - name: Verify database state (read-only)
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+        run: |
+          cat > verify-db-state.cjs <<'__VERIFY_EOF__'
+          // Read-only verification. Prints counts and PASS/FAIL only — no row
+          // data, no credentials. The catalogue check reads inside a rolled-
+          // back transaction with the staging tenant's app.tenant_id GUC set,
+          // mirroring how the application itself reads under forced RLS.
+          const { Client } = require('pg');
+          const STAGING_TENANT = 'ffffffff-0000-4000-8000-000000000001';
+          (async () => {
+            const c = new Client({ connectionString: process.env.DATABASE_URL });
+            await c.connect();
+            const one = async (sql, ...v) => (await c.query(sql, v)).rows[0];
+            const fails = [];
+            const check = (label, ok, detail) => {
+              console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? ' — ' + detail : ''}`);
+              if (!ok) fails.push(label);
+            };
+
+            const t = await one(
+              `SELECT count(*)::int AS n FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`,
+            );
+            check('tables in public schema', t.n >= 165, `${t.n} (expected >= 165)`);
+
+            const m = await one(
+              `SELECT count(*) FILTER (WHERE finished_at IS NOT NULL)::int AS done,
+                      count(*) FILTER (WHERE finished_at IS NULL)::int  AS unfinished
+                 FROM _prisma_migrations`,
+            );
+            check('migrations applied', m.done >= 128 && m.unfinished === 0,
+              `${m.done} applied, ${m.unfinished} unfinished (expected >= 128 / 0)`);
+
+            const fk = await one(
+              `SELECT count(*)::int AS n FROM information_schema.table_constraints
+                WHERE constraint_schema = 'public' AND constraint_type = 'FOREIGN KEY'`,
+            );
+            check('foreign keys', fk.n >= 520, `${fk.n} (expected >= 520)`);
+
+            const rls = await one(
+              `SELECT count(*)::int AS n FROM pg_class c
+                 JOIN pg_namespace ns ON ns.oid = c.relnamespace
+                WHERE ns.nspname = 'public' AND c.relrowsecurity AND c.relforcerowsecurity`,
+            );
+            check('forced row-level security', rls.n >= 158, `${rls.n} tables (expected >= 158)`);
+
+            const role = await one(
+              `SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = 'kuwick_app'`,
+            );
+            check('kuwick_app role exists', Boolean(role));
+            if (role) {
+              check('kuwick_app is NOSUPERUSER', role.rolsuper === false);
+              check('kuwick_app is NOBYPASSRLS', role.rolbypassrls === false);
+            }
+
+            await c.query('BEGIN');
+            await c.query(`SELECT set_config('app.tenant_id', $1, true)`, [STAGING_TENANT]);
+            const cat = await one(
+              `SELECT (SELECT count(*)::int FROM diagnosis_catalog) AS dx,
+                      (SELECT count(*)::int FROM items)             AS items`,
+            );
+            await c.query('ROLLBACK');
+            check('catalogue seeded for staging tenant', cat.dx >= 162 && cat.items >= 229,
+              `${cat.dx} diagnoses, ${cat.items} items (expected >= 162 / >= 229)`);
+
+            const ext = await one(
+              `SELECT count(*)::int AS n FROM pg_extension
+                WHERE extname IN ('btree_gist', 'pgcrypto')`,
+            );
+            check('extensions btree_gist + pgcrypto', ext.n === 2, `${ext.n} of 2 present`);
+
+            await c.end();
+            if (fails.length > 0) {
+              console.error(`\n${fails.length} verification check(s) FAILED.`);
+              process.exit(1);
+            }
+            console.log('\nAll verification checks passed.');
+          })().catch((e) => {
+            console.error('verification error:', e.message);
+            process.exit(1);
+          });
+          __VERIFY_EOF__
+          node verify-db-state.cjs
+          rm -f verify-db-state.cjs
+
+      - name: Discard generated review artefacts (they are never committed)
+        if: always()
+        run: |
+          git checkout -- docs/seed-review/ 2>/dev/null || true
+          rm -f verify-db-state.cjs
+          echo "Workspace after cleanup (should list nothing):"
+          git status --porcelain
+          echo "This job's token is contents:read — it cannot push commits regardless."
