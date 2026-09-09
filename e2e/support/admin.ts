@@ -37,8 +37,14 @@ export const ADMIN_ROUTES = [
   { path: '/admin/panel', module: 'Panel', heading: 'Panel Claims' },
   { path: '/admin/panel/configuration', module: 'Panel', heading: 'Panel Configuration' },
   { path: '/admin/hr', module: 'HR', heading: 'Workforce' },
-  { path: '/admin/hr/employees', module: 'HR', heading: 'Employees' },
-  { path: '/admin/hr/attendance', module: 'HR', heading: 'Timesheets' },
+  // The canonical HR paths. `/admin/hr/employees`, `/roster` and `/leave` still
+  // resolve — they redirect here — but a walk should assert the URL somebody is
+  // actually given, not the one that bounces.
+  { path: '/admin/hr/people', module: 'HR', heading: 'Employees' },
+  { path: '/admin/hr/schedule', module: 'HR', heading: 'Schedule' },
+  { path: '/admin/hr/attendance', module: 'HR', heading: 'Attendance' },
+  { path: '/admin/hr/requests', module: 'HR', heading: 'Leave' },
+  { path: '/admin/hr/claims', module: 'HR', heading: 'Claims' },
   { path: '/admin/hr/payroll', module: 'HR', heading: 'Payroll' },
   { path: '/admin/hr/incentives', module: 'HR', heading: 'Doctor Incentives' },
   { path: '/admin/finance', module: 'Finance', heading: 'Finance' },
@@ -49,7 +55,6 @@ export const ADMIN_ROUTES = [
   // Added by the integration pass. These are Admin-native pages like the
   // twenty above — same `AdminShell`, same heading element.
   { path: '/admin/stock/value', module: 'Stock', heading: 'Stock Value' },
-  { path: '/admin/hr/roster', module: 'HR', heading: 'Roster' },
   { path: '/admin/hr/benefits', module: 'HR', heading: 'Staff Benefits' },
   { path: '/admin/finance/tax', module: 'Finance', heading: 'Tax / SST' },
   { path: '/admin/finance/profitability', module: 'Finance', heading: 'Profitability' },

@@ -240,7 +240,20 @@ test.describe('an appointment booked in the module reaches the canvas', () => {
     // and the option list renders in a portal outside the drawer.
     await drawer.locator('.ant-select').first().click();
     await page.keyboard.type(booking.patientName.slice(0, 12));
-    await page.getByTitle(booking.patientName, { exact: false }).first().click();
+    // SCOPED TO THE DROPDOWN, not the page.
+    //
+    // This searched the whole page for the patient's name in a `title`, and
+    // every appointment THIS TEST HAS EVER BOOKED carries it: react-big-calendar
+    // titles each event "08:00 Density Fixture (Synthetic) · Density Follow-up
+    // Review". So the first run passed, left an event on the calendar, and
+    // every run after it clicked that event instead of the option — landing on
+    // a drawer that then swallowed the click. A test that breaks the moment it
+    // has run once reads as a flake and is not one.
+    await page
+      .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)')
+      .getByTitle(booking.patientName, { exact: false })
+      .first()
+      .click();
 
     // §22 — the service step is a card per service, not a dropdown.
     await drawer.getByRole('button', { name: booking.followUpService }).click();
