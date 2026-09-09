@@ -42,6 +42,13 @@ config({ path: join(__dirname, '..', '.env') });
  * CUSTOM rows are never touched. They are the clinic's, including their
  * `active` flag.
  *
+ * HIGH-LATENCY SAFE. Each catalogue runs in its OWN transaction rather than all
+ * five sharing one. Over a cross-region link (the GitHub runner to a Supabase
+ * database) a single interactive transaction doing a round-trip per row across
+ * every catalogue tripped Prisma's transaction timeout (P2028); a transaction
+ * per catalogue keeps each one short, and a partial run resumes because each
+ * committed catalogue stays. The upsert-and-repair logic is unchanged.
+ *
  *   npx tsx prisma/seed-reference-catalogs.ts [--tenant <id>]
  */
 const prisma = new PrismaClient({
@@ -66,7 +73,9 @@ async function withTenant<T>(tenantId: string, fn: (tx: Tx) => Promise<T>): Prom
       await tx.$executeRawUnsafe(`SELECT set_config('app.tenant_id', $1, true)`, tenantId);
       return fn(tx);
     },
-    { timeout: 120_000 },
+    // A ceiling for a stuck connection, not the mechanism that keeps runs
+    // short — a transaction per catalogue does that.
+    { timeout: 900_000 },
   );
 }
 
@@ -124,10 +133,10 @@ async function main(): Promise<void> {
         (await prisma.tenant.findFirst({ select: { id: true } }))?.id;
   if (!tenantId) throw new Error('No tenant found. Pass --tenant <id>.');
 
-  await withTenant(tenantId, async (tx) => {
-    console.log(`\nSeeding prescription reference catalogues — tenant ${tenantId}`);
+  console.log(`\nSeeding prescription reference catalogues — tenant ${tenantId}`);
 
-    const frequencies = await seedCatalog('frequencies', SEED_FREQUENCIES, {
+  const frequencies = await withTenant(tenantId, (tx) =>
+    seedCatalog('frequencies', SEED_FREQUENCIES, {
       find: (row) =>
         tx.prescriptionFrequency.findFirst({
           where: { tenantId, code: row.code },
@@ -150,9 +159,11 @@ async function main(): Promise<void> {
         });
         return result.count;
       },
-    });
+    }),
+  );
 
-    const units = await seedCatalog('dosage units', SEED_DOSAGE_UNITS, {
+  const units = await withTenant(tenantId, (tx) =>
+    seedCatalog('dosage units', SEED_DOSAGE_UNITS, {
       find: (row) =>
         tx.dosageUnit.findFirst({
           where: { tenantId, systemNameEn: row.systemNameEn },
@@ -175,9 +186,11 @@ async function main(): Promise<void> {
         });
         return result.count;
       },
-    });
+    }),
+  );
 
-    const methods = await seedCatalog('consumption methods', SEED_CONSUMPTION_METHODS, {
+  const methods = await withTenant(tenantId, (tx) =>
+    seedCatalog('consumption methods', SEED_CONSUMPTION_METHODS, {
       find: (row) =>
         tx.consumptionMethodRef.findFirst({
           where: { tenantId, methodBilingual: row.methodBilingual },
@@ -205,9 +218,11 @@ async function main(): Promise<void> {
         });
         return result.count;
       },
-    });
+    }),
+  );
 
-    const indications = await seedCatalog('indications', SEED_INDICATIONS, {
+  const indications = await withTenant(tenantId, (tx) =>
+    seedCatalog('indications', SEED_INDICATIONS, {
       find: (row) =>
         tx.indicationPreset.findFirst({
           where: { tenantId, labelEn: row.labelEn },
@@ -225,9 +240,11 @@ async function main(): Promise<void> {
         });
         return result.count;
       },
-    });
+    }),
+  );
 
-    const stockUnits = await seedCatalog(
+  const stockUnits = await withTenant(tenantId, (tx) =>
+    seedCatalog(
       'stock units',
       // The Malay label rides along on create AND on repair, so an existing
       // SYSTEM row seeded before the column existed picks it up on the next run
@@ -249,30 +266,30 @@ async function main(): Promise<void> {
           return result.count;
         },
       },
-    );
+    ),
+  );
 
-    const report = (name: string, counts: Counts) => {
-      console.log(
-        `  ${name.padEnd(21)} inserted ${String(counts.inserted).padStart(3)}  ` +
-          `repaired ${String(counts.repaired).padStart(3)}  retired ${counts.retired}`,
-      );
-      if (counts.clinicOwned.length > 0) {
-        console.log(
-          `  ${' '.repeat(21)} NOT applied — this clinic owns a row with the same key: ` +
-            counts.clinicOwned.join(', '),
-        );
-      }
-    };
-
-    report('frequencies', frequencies);
-    report('dosage units', units);
-    report('consumption methods', methods);
-    report('indications', indications);
-    report('stock units', stockUnits);
+  const report = (name: string, counts: Counts) => {
     console.log(
-      '\n  All seeded as SYSTEM: locked in Settings, refused by the API, editable only by re-running this.',
+      `  ${name.padEnd(21)} inserted ${String(counts.inserted).padStart(3)}  ` +
+        `repaired ${String(counts.repaired).padStart(3)}  retired ${counts.retired}`,
     );
-  });
+    if (counts.clinicOwned.length > 0) {
+      console.log(
+        `  ${' '.repeat(21)} NOT applied — this clinic owns a row with the same key: ` +
+          counts.clinicOwned.join(', '),
+      );
+    }
+  };
+
+  report('frequencies', frequencies);
+  report('dosage units', units);
+  report('consumption methods', methods);
+  report('indications', indications);
+  report('stock units', stockUnits);
+  console.log(
+    '\n  All seeded as SYSTEM: locked in Settings, refused by the API, editable only by re-running this.',
+  );
 }
 
 main()
