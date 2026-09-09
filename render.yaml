@@ -1,0 +1,91 @@
+# Render Blueprint for KUWICK 2.0 — https://render.com/docs/blueprint-spec
+#
+# Two services, same repo, mirroring the old Railway split:
+#   • kuwick-api  — the NestJS API (apps/api), a Node web service
+#   • kuwick-web  — the Vite/React SPA (apps/web), a static site
+#
+# The database stays on Supabase. This blueprint NEVER runs migrations:
+# `prisma migrate` is owned by the GitHub "Supabase DB Init (manual)" workflow,
+# so the API start command is `node dist/main` only. The app also refuses to
+# boot as a superuser, so DATABASE_URL must use the kuwick_app role, not
+# postgres (see the env-var notes below).
+#
+# Values marked `sync: false` are NOT stored in git — you type them into the
+# Render dashboard once. Every one is explained in the deployment guide.
+
+services:
+  # ── API ───────────────────────────────────────────────────────────────────
+  - type: web
+    name: kuwick-api
+    runtime: node
+    plan: free # bump to "starter" to stop the free-tier cold starts (see notes)
+    region: singapore # closest to the Supabase ap-southeast-1 database
+    branch: master
+    rootDir: . # npm workspaces install from the repo root
+    autoDeploy: true
+    # `--include=dev` forces devDependencies (nest CLI, prisma, typescript) to
+    # install even though NODE_ENV=production, which npm would otherwise skip.
+    # prisma generate is a build step here; it is NOT `prisma migrate`.
+    buildCommand: >-
+      npm ci --include=dev &&
+      npm run prisma:generate --workspace=apps/api &&
+      npm run build --workspace=apps/api
+    # Start ONLY. No migrations. `start` is `node dist/main` (start:prod, which
+    # runs migrate first, is deliberately not used).
+    startCommand: npm run start --workspace=apps/api
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      # The Supabase pooler hostname can resolve to IPv6; prefer IPv4 so a node
+      # without IPv6 egress never stalls on an unreachable address.
+      - key: NODE_OPTIONS
+        value: --dns-result-order=ipv4first
+      # Supabase SESSION POOLER url, using the kuwick_app role. Set in dashboard.
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      # The web site's HTTPS origin, no trailing slash. Set after kuwick-web
+      # has a URL (see the guide). Leaving it unset allows every origin, which
+      # is wrong for a public API.
+      - key: CORS_ORIGINS
+        sync: false
+    # ── Clinical file attachments (optional, needs a paid plan) ───────────────
+    # The API writes uploaded files to local disk (UPLOADS_DIR, default
+    # ./uploads). On the FREE plan that disk is wiped on every deploy/restart,
+    # so attachments do not persist — the app still runs. To keep them, move
+    # this service to a paid plan and UNCOMMENT the block below:
+    # disk:
+    #   name: kuwick-uploads
+    #   mountPath: /var/data
+    #   sizeGB: 1
+    # and add an env var:  UPLOADS_DIR = /var/data/uploads
+
+  # ── WEB (static SPA) ────────────────────────────────────────────────────────
+  - type: web
+    name: kuwick-web
+    runtime: static
+    branch: master
+    rootDir: .
+    autoDeploy: true
+    buildCommand: npm ci --include=dev && npm run build --workspace=apps/web
+    staticPublishPath: apps/web/dist
+    # Single-page app: every path must fall back to index.html (React Router
+    # handles the route client-side), matching the old `serve -s dist`.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Baked into the bundle AT BUILD TIME — the API's HTTPS URL, no trailing
+      # slash. Changing it requires a redeploy, not just a restart. Never put a
+      # secret in a VITE_* var: the bundle is public.
+      - key: VITE_API_BASE_URL
+        sync: false

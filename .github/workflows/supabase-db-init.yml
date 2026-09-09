@@ -1,0 +1,351 @@
+# SUPABASE DB INIT — one-shot, MANUAL-ONLY initialisation of a fresh Supabase
+# PostgreSQL database from this repository's EXISTING pipeline, in the exact
+# order ci.yml proves against an empty database on every push:
+#
+#   provision kuwick_app -> prisma migrate deploy -> re-provision (grants on
+#   the tables the migrations just created) -> staging seed -> clinical
+#   catalogues -> prescription reference catalogues -> standard prescriptions
+#   -> migrate status -> read-only verification.
+#
+# It changes no application code, no schema, no migrations and no seed data —
+# it only RUNS what the repository already contains, against the database the
+# SUPABASE_DATABASE_URL secret points at.
+#
+# TRIGGER: workflow_dispatch only. Deliberately NOT on push or pull_request —
+# this touches a real database and must never run because somebody pushed.
+#
+# SECRETS (Settings -> Secrets and variables -> Actions -> Repository secrets):
+#   SUPABASE_DATABASE_URL         the OWNER (postgres.<project-ref>) session-
+#                                 pooler URL, with sslmode=require
+#   SUPABASE_APP_ROLE_PASSWORD    the password this run sets on kuwick_app
+#   KUWICK_STAGING_SEED_PASSWORD  the password for the five synthetic UAT
+#                                 accounts the staging seed creates
+#
+# No secret value is ever echoed; GitHub masks registered secrets in logs, and
+# the one derived value (the node-pg form of the URL) is masked explicitly
+# before use. The job's token is read-only, so nothing this run generates
+# (e.g. docs/seed-review/*.csv, rewritten by the standard-prescriptions seed)
+# can ever be committed or pushed by it.
+
+name: Supabase DB Init (manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-db-init
+  cancel-in-progress: false
+
+jobs:
+  init:
+    name: provision + migrate + seed + verify
+    runs-on: ubuntu-latest
+    # Generous: the seeds issue many sequential queries and the runner is a
+    # long way from the ap-southeast-1 pooler, so round-trips dominate.
+    timeout-minutes: 45
+    env:
+      # Prisma's CLI reads this verbatim. Under sslmode=require Prisma's
+      # engine speaks TLS without CA verification, which suits the shared
+      # pooler endpoint. node-pg steps use the derived form below instead.
+      DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+      APP_ROLE_PASSWORD: ${{ secrets.SUPABASE_APP_ROLE_PASSWORD }}
+      # PREFER IPv4. GitHub-hosted runners have no routable IPv6, but the
+      # Supabase session pooler hostname publishes BOTH an A and an AAAA
+      # record. Node 22 resolves DNS in "verbatim" order by default, so pg can
+      # be handed the AAAA (IPv6) address first and the socket dies with
+      # `connect ENETUNREACH` before it ever tries the reachable IPv4 address —
+      # exactly the pre-migration failure this patch fixes. Forcing IPv4 first
+      # makes dns.lookup return the pooler's A record, which the runner can
+      # reach. Set at JOB level so every step inherits it (job env + step env
+      # merge per-key, and no step redefines NODE_OPTIONS): the provision role
+      # step, prisma migrate deploy, all four seed scripts, and the
+      # verification step. Credentials and the pooler URL are untouched.
+      NODE_OPTIONS: '--dns-result-order=ipv4first'
+    steps:
+      - name: Refuse to run without the three secrets
+        env:
+          HAS_DB_URL: ${{ secrets.SUPABASE_DATABASE_URL != '' }}
+          HAS_ROLE_PW: ${{ secrets.SUPABASE_APP_ROLE_PASSWORD != '' }}
+          HAS_SEED_PW: ${{ secrets.KUWICK_STAGING_SEED_PASSWORD != '' }}
+        run: |
+          ok=yes
+          [ "$HAS_DB_URL" = "true" ]  || { echo "::error::Repository secret SUPABASE_DATABASE_URL is not set."; ok=no; }
+          [ "$HAS_ROLE_PW" = "true" ] || { echo "::error::Repository secret SUPABASE_APP_ROLE_PASSWORD is not set."; ok=no; }
+          [ "$HAS_SEED_PW" = "true" ] || { echo "::error::Repository secret KUWICK_STAGING_SEED_PASSWORD is not set."; ok=no; }
+          [ "$ok" = yes ]
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Pin the Supabase pooler hostname to IPv4
+        # WHY. GitHub-hosted runners have no routable IPv6. The pooler hostname
+        # is an AWS ELB; from a runner it can hand out an AAAA (IPv6) address,
+        # and a connection to it dies with `connect ENETUNREACH`. Two earlier
+        # fixes were insufficient: NODE_OPTIONS=--dns-result-order=ipv4first
+        # only reorders inside Node's own resolver (and not at all for Prisma's
+        # Rust engine), and a getent-based pin aborted the step with a bare
+        # "exit code 2" — `getent ahostsv4` returns exit 2 when the A lookup
+        # comes back empty (a transient/partial DNS answer for the dual-stack
+        # ELB), and under errexit+pipefail the command-substitution assignment
+        # took the whole step down before the "no IPv4" guard could report it.
+        #
+        # This step is the robust replacement. It resolves the pooler's IPv4 A
+        # records with Node itself — dns.resolve4 (a direct A query) with an
+        # IPv4-only getaddrinfo fallback, retried to ride out transient DNS —
+        # then pins EVERY resolved IPv4 into /etc/hosts. glibc consults
+        # /etc/hosts before DNS for BOTH Node/pg and Prisma's Rust engine, so
+        # once pinned no later step performs a DNS lookup for this host at all:
+        # the unreachable AAAA is out of the picture and every connection goes
+        # over IPv4. It runs AFTER checkout/setup-node (Node guaranteed, and a
+        # git tree exists for cleanup) and BEFORE the first DB connection.
+        #
+        # Errexit is deliberately OFF here so a resolution miss yields a clear
+        # ::error:: and exit 1, never an opaque exit code. No secret is printed:
+        # the URL is parsed inside Node (never echoed); only the non-secret
+        # hostname and its public IPv4 addresses are shown. Credentials and the
+        # connection URL are untouched — only name resolution changes.
+        env:
+          SUPABASE_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+        run: |
+          set +e
+          set -u
+
+          host="$(node -e 'process.stdout.write(new URL(process.env.SUPABASE_DATABASE_URL).hostname)')"
+          if [ -z "${host:-}" ]; then
+            echo "::error::Could not parse a hostname from SUPABASE_DATABASE_URL."
+            exit 1
+          fi
+
+          cat > /tmp/resolve-ipv4.cjs <<'RESOLVE_EOF'
+          const dnsp = require("dns").promises;
+          const host = new URL(process.env.SUPABASE_DATABASE_URL).hostname;
+          (async () => {
+            const once = async () => {
+              try { const a = await dnsp.resolve4(host); if (a && a.length) return a; } catch (e) {}
+              try {
+                const r = await dnsp.lookup(host, { family: 4, all: true });
+                const a = r.map((x) => x.address).filter(Boolean);
+                if (a.length) return a;
+              } catch (e) {}
+              return [];
+            };
+            for (let i = 0; i < 6; i++) {
+              const a = await once();
+              if (a.length) { process.stdout.write(Array.from(new Set(a)).join(" ")); return; }
+              await new Promise((res) => setTimeout(res, 2000));
+            }
+            process.exit(3);
+          })().catch(() => process.exit(3));
+          RESOLVE_EOF
+
+          ipv4s="$(node /tmp/resolve-ipv4.cjs)"
+          rm -f /tmp/resolve-ipv4.cjs
+          if [ -z "${ipv4s:-}" ]; then
+            echo "::error::The Supabase pooler hostname '$host' did not resolve to any IPv4 (A) record from this runner (tried dns.resolve4 and IPv4 getaddrinfo, with retries)."
+            echo "::error::GitHub-hosted runners have no routable IPv6, so an IPv4 A record is required. If this endpoint is IPv6-only here, use an IPv4-capable connection or an IPv6-capable runner."
+            exit 1
+          fi
+
+          # Pin every resolved IPv4 (the ELB publishes several) so resolution
+          # never falls back to the AAAA for this host.
+          for ip in $ipv4s; do
+            printf '%s %s\n' "$ip" "$host" | sudo tee -a /etc/hosts >/dev/null
+          done
+
+          echo "Supabase pooler hostname : $host"
+          echo "Pinned IPv4 address(es)  : $ipv4s"
+          echo "getent hosts after pin   :"
+          getent hosts "$host" || true
+          # 'NR==1' without 'exit' consumes all input, so getent never takes a
+          # SIGPIPE; assert the first resolved address is IPv4 (no colon).
+          first="$(getent hosts "$host" | awk 'NR==1{print $1}')"
+          case "${first:-}" in
+            ""|*:*)
+              echo "::error::'$host' still does not resolve to IPv4 after pinning (got '${first:-none}')."
+              exit 1
+              ;;
+          esac
+          echo "IPv4 pin verified: $first"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Derive the node-pg form of the connection URL
+        # node-postgres verifies the certificate chain under a plain
+        # sslmode=require, which the shared pooler's chain may not satisfy.
+        # The repository's own runbook (docs/STAGING_DEPLOYMENT.md, step 2)
+        # documents sslmode=no-verify — TLS without CA verification — as the
+        # remote form for pg-based scripts. Derived once here, masked, and
+        # exported for the provision/seed/verify steps; never printed.
+        run: |
+          PG_URL="${DATABASE_URL/sslmode=require/sslmode=no-verify}"
+          echo "::add-mask::$PG_URL"
+          {
+            echo "PG_DATABASE_URL<<__PG_URL_EOF__"
+            echo "$PG_URL"
+            echo "__PG_URL_EOF__"
+          } >> "$GITHUB_ENV"
+
+      - name: Provision kuwick_app BEFORE migrations
+        # PHASE 0, same order as ci.yml: several migrations GRANT to
+        # kuwick_app, so the role must exist before `migrate deploy` runs.
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+        run: node scripts/provision-app-role.mjs
+
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: npx prisma generate
+
+      - name: Apply all existing migrations
+        working-directory: apps/api
+        run: npx prisma migrate deploy
+
+      - name: Re-provision kuwick_app AFTER migrations
+        # ALTER DEFAULT PRIVILEGES covers tables a FUTURE migration creates,
+        # not ones created by the migrations that just ran — same as ci.yml.
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+        run: node scripts/provision-app-role.mjs
+
+      - name: Seed — staging UAT clinic (bootstraps an empty database)
+        working-directory: apps/api
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+          KUWICK_STAGING_SEED: 'yes'
+          STAGING_SEED_PASSWORD: ${{ secrets.KUWICK_STAGING_SEED_PASSWORD }}
+        run: npx tsx prisma/seed-staging-uat.ts
+
+      - name: Seed — clinical catalogues (diagnoses + medications)
+        working-directory: apps/api
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+        run: npx tsx prisma/seed-clinic-catalogues.ts
+
+      - name: Seed — prescription reference catalogues
+        working-directory: apps/api
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+        run: npx tsx prisma/seed-reference-catalogs.ts
+
+      - name: Seed — standard prescriptions
+        working-directory: apps/api
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+        run: npx tsx prisma/seed-standard-prescriptions.ts
+
+      - name: Migration status — must report fully applied
+        working-directory: apps/api
+        run: npx prisma migrate status
+
+      - name: Verify database state (read-only)
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+        run: |
+          cat > verify-db-state.cjs <<'__VERIFY_EOF__'
+          // Read-only verification. Prints counts and PASS/FAIL only — no row
+          // data, no credentials. The catalogue check reads inside a rolled-
+          // back transaction with the staging tenant's app.tenant_id GUC set,
+          // mirroring how the application itself reads under forced RLS.
+          const { Client } = require('pg');
+          const STAGING_TENANT = 'ffffffff-0000-4000-8000-000000000001';
+          (async () => {
+            const c = new Client({ connectionString: process.env.DATABASE_URL });
+            await c.connect();
+            const one = async (sql, ...v) => (await c.query(sql, v)).rows[0];
+            const fails = [];
+            const check = (label, ok, detail) => {
+              console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? ' — ' + detail : ''}`);
+              if (!ok) fails.push(label);
+            };
+
+            const t = await one(
+              `SELECT count(*)::int AS n FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`,
+            );
+            check('tables in public schema', t.n >= 165, `${t.n} (expected >= 165)`);
+
+            const m = await one(
+              `SELECT count(*) FILTER (WHERE finished_at IS NOT NULL)::int AS done,
+                      count(*) FILTER (WHERE finished_at IS NULL)::int  AS unfinished
+                 FROM _prisma_migrations`,
+            );
+            check('migrations applied', m.done >= 128 && m.unfinished === 0,
+              `${m.done} applied, ${m.unfinished} unfinished (expected >= 128 / 0)`);
+
+            const fk = await one(
+              `SELECT count(*)::int AS n FROM information_schema.table_constraints
+                WHERE constraint_schema = 'public' AND constraint_type = 'FOREIGN KEY'`,
+            );
+            check('foreign keys', fk.n >= 520, `${fk.n} (expected >= 520)`);
+
+            const rls = await one(
+              `SELECT count(*)::int AS n FROM pg_class c
+                 JOIN pg_namespace ns ON ns.oid = c.relnamespace
+                WHERE ns.nspname = 'public' AND c.relrowsecurity AND c.relforcerowsecurity`,
+            );
+            check('forced row-level security', rls.n >= 158, `${rls.n} tables (expected >= 158)`);
+
+            const role = await one(
+              `SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = 'kuwick_app'`,
+            );
+            check('kuwick_app role exists', Boolean(role));
+            if (role) {
+              check('kuwick_app is NOSUPERUSER', role.rolsuper === false);
+              check('kuwick_app is NOBYPASSRLS', role.rolbypassrls === false);
+            }
+
+            await c.query('BEGIN');
+            await c.query(`SELECT set_config('app.tenant_id', $1, true)`, [STAGING_TENANT]);
+            const cat = await one(
+              `SELECT (SELECT count(*)::int FROM diagnosis_catalog) AS dx,
+                      (SELECT count(*)::int FROM items)             AS items`,
+            );
+            await c.query('ROLLBACK');
+            check('catalogue seeded for staging tenant', cat.dx >= 162 && cat.items >= 229,
+              `${cat.dx} diagnoses, ${cat.items} items (expected >= 162 / >= 229)`);
+
+            const ext = await one(
+              `SELECT count(*)::int AS n FROM pg_extension
+                WHERE extname IN ('btree_gist', 'pgcrypto')`,
+            );
+            check('extensions btree_gist + pgcrypto', ext.n === 2, `${ext.n} of 2 present`);
+
+            await c.end();
+            if (fails.length > 0) {
+              console.error(`\n${fails.length} verification check(s) FAILED.`);
+              process.exit(1);
+            }
+            console.log('\nAll verification checks passed.');
+          })().catch((e) => {
+            console.error('verification error:', e.message);
+            process.exit(1);
+          });
+          __VERIFY_EOF__
+          node verify-db-state.cjs
+          rm -f verify-db-state.cjs
+
+      - name: Discard generated review artefacts (they are never committed)
+        if: always()
+        run: |
+          # Never fail the job from cleanup. If an early step failed before
+          # checkout there is no git tree — that must not surface as
+          # "fatal: not a git repository". Guard every git call on a real repo.
+          set +e
+          rm -f verify-db-state.cjs /tmp/resolve-ipv4.cjs 2>/dev/null || true
+          if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            git checkout -- docs/seed-review/ 2>/dev/null || true
+            echo "Workspace after cleanup (should list nothing):"
+            git status --porcelain || true
+          else
+            echo "No git checkout in this run (an earlier step failed before checkout) — nothing to clean."
+          fi
+          echo "This job's token is contents:read — it cannot push commits regardless."
+          exit 0

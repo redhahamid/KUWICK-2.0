@@ -101,7 +101,13 @@ function scoped<T>(fn: (tx: Parameters<Parameters<PrismaClient['$transaction']>[
     await tx.$executeRawUnsafe(`SELECT set_config('app.bypass_tenant_scope', 'true', true)`);
     await tx.$executeRawUnsafe(`SELECT set_config('app.tenant_id', $1, true)`, TENANT_ID);
     return fn(tx);
-  });
+  },
+  // Each phase is already its own small transaction, so this is a ceiling for a
+  // stuck connection over a high-latency link (the GitHub runner to a Supabase
+  // database), not the usual runtime — it protects against the same P2028
+  // transaction-timeout the catalogue seeds hit, without changing what is
+  // written.
+  { timeout: 900_000 });
 }
 
 const nric = (n: number) => `000000-00-${String(1000 + n)}`;
