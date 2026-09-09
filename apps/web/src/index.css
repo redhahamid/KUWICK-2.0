@@ -5550,3 +5550,75 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 .kw-settingRow {
   max-width: 760px;
 }
+
+/* ---------------------------------------------------------------------------
+   WHO IS NOT READY TO BE PAID — the payroll start gate's list.
+   One row per person: who, what is missing, and the way to fix it. Missing
+   items are chips rather than a sentence, because a manager scans this looking
+   for a pattern ("everybody is missing a bank account") and prose hides that.
+   --------------------------------------------------------------------------- */
+.kw-blockedList { display: flex; flex-direction: column; gap: 2px; }
+.kw-blockedList__row {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+.kw-blockedList__row:nth-child(odd) { background: #fafafa; }
+.kw-blockedList__who { display: flex; flex-direction: column; min-width: 0; }
+.kw-blockedList__name { font-weight: 600; }
+.kw-blockedList__who .kw-muted { font-size: 12px; }
+.kw-blockedList__missing { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+
+@media (max-width: 720px) {
+  .kw-blockedList__row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+}
+
+/* ---------------------------------------------------------------------------
+   THE PAYROLL REGISTER — one table, people down, money across.
+   Enterprise density: this is read by somebody checking a month, so the row
+   height is tight, every figure is right-aligned and tabular, and the two
+   columns you never want to lose while scrolling sideways — who, and what
+   they take home — are pinned.
+   --------------------------------------------------------------------------- */
+.kw-payrollGrid { margin-top: 4px; }
+.kw-payrollGrid .ant-table-cell { padding: 7px 10px !important; font-size: 12.5px; }
+.kw-payrollGrid .ant-table-thead > tr > th {
+  background: #f7f9fb;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #5a6b7b;
+  white-space: nowrap;
+}
+.kw-payrollGrid__who { display: flex; flex-direction: column; line-height: 1.25; }
+.kw-payrollGrid__name { font-weight: 600; }
+.kw-payrollGrid__who .kw-muted { font-size: 11.5px; }
+/* Every number in this table is compared with the one above it. */
+.kw-payrollGrid .kw-num { font-variant-numeric: tabular-nums; }
+.kw-payrollGrid__net { color: var(--kw-navy, #184a6b); }
+.kw-payrollGrid__totals > td { background: #f7f9fb !important; border-top: 2px solid #e3e8ee !important; }
+
+/* WHERE EACH FIGURE CAME FROM. */
+.kw-lineage { padding: 4px 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+.kw-lineage__row {
+  display: grid;
+  grid-template-columns: minmax(0, 200px) 96px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+  padding: 5px 0;
+}
+.kw-lineage__row .kw-num { text-align: right; font-variant-numeric: tabular-nums; }
+.kw-lineage__label { font-weight: 500; }
+.kw-lineage__row--facts,
+.kw-lineage__row--cost { border-top: 1px solid #eef1f4; }
+.kw-lineage__row--cost { margin-top: 4px; padding-top: 8px; }
+.kw-lineage__fixed { border-bottom: 1px solid #eef1f4; padding-bottom: 4px; margin-bottom: 4px; }
+
+@media (max-width: 720px) {
+  .kw-lineage__row { grid-template-columns: minmax(0, 1fr) auto; }
+  .kw-lineage__row .kw-muted { grid-column: 1 / -1; }
+}

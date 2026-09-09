@@ -9,10 +9,12 @@ import {
   useApprovePayroll,
   useCalculatePayroll,
   usePayrollJourney,
+  usePayrollRun,
   usePayrollVariance,
 } from '../hooks/useAdmin';
 import { ProvisionalBanner } from './ProvisionalBanner';
-import { PayrollStepper, STEPS, stepsWithProblems, type StepKey } from './PayrollStepper';
+import { PayrollStepper, STEPS, normaliseStep, stepsWithProblems, type StepKey } from './PayrollStepper';
+import { PayrollGrid } from './PayrollGrid';
 import { PayrollExceptionCentre } from './PayrollExceptionCentre';
 import { PayrollInputsDrawer } from './PayrollInputsDrawer';
 import { PayslipsPanel } from './PayslipsPanel';
@@ -45,7 +47,8 @@ export function PayrollRunPage() {
   const { id } = useParams<{ id: string }>();
   const [search, setSearch] = useSearchParams();
   const journey = usePayrollJourney(id);
-  const step = (search.get('step') as StepKey) ?? 'employees';
+  // Old six-step links still resolve — see normaliseStep.
+  const step = normaliseStep(search.get('step'));
   const stepMeta = STEPS.find((s) => s.key === step) ?? STEPS[0];
   const data = journey.data;
   const mayApprove = useCan('hr.payroll.approve');
@@ -91,14 +94,30 @@ export function PayrollRunPage() {
 
       {data ? (
         <>
-          {step === 'employees' ? <EmployeesStep data={data} /> : null}
-          {step === 'attendance' ? <AttendanceStep data={data} /> : null}
-          {step === 'earnings' ? <EarningsStep data={data} /> : null}
-          {step === 'deductions' ? <DeductionsStep data={data} /> : null}
-          {step === 'review' ? (
-            <ReviewStep data={data} runId={id!} mayApprove={mayApprove} onFixInputs={onFixInputs} />
+          {/* PREPARE — the two screens that were about getting the month
+              straight, now one stage, because they are one job. */}
+          {step === 'prepare' ? (
+            <>
+              <EmployeesStep data={data} />
+              <AttendanceStep data={data} />
+            </>
           ) : null}
+
+          {/* REVIEW — the register first, because it is the answer to the
+              owner's actual question. Everything that used to be the Earnings
+              and Deductions steps is under the rows, beside the figure it
+              explains; the attention list and the totals follow it. */}
+          {step === 'review' ? (
+            <>
+              <RunGridSection runId={id!} period={data.run.period} />
+              <ReviewStep data={data} runId={id!} mayApprove={mayApprove} onFixInputs={onFixInputs} />
+              <EarningsStep data={data} />
+              <DeductionsStep data={data} />
+            </>
+          ) : null}
+
           {step === 'approve' ? <ApproveStep data={data} runId={id!} /> : null}
+          {step === 'complete' ? <ApproveStep data={data} runId={id!} /> : null}
           <StepFooter data={data} step={step} onChange={goTo} runId={id!} />
           <PayrollInputsDrawer
             open={inputsOpen}
@@ -1040,6 +1059,46 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * THE REGISTER, on the Review stage.
+ *
+ * Loaded separately from the journey read because it is the only thing on this
+ * page that needs every line of every employee — the journey summarises, and
+ * summarising is what made the owner reassemble the month in their head.
+ */
+function RunGridSection({ runId, period }: { runId: string; period: string }) {
+  const run = usePayrollRun(runId);
+
+  if (run.isLoading) {
+    return (
+      <AdminSection title="The month, employee by employee">
+        <p className="kw-muted">Working out the register…</p>
+      </AdminSection>
+    );
+  }
+  if (!run.data) return null;
+  if (run.data.lines.length === 0) {
+    return (
+      <AdminSection
+        title="Nothing has been worked out yet"
+        description="Calculate the month and every employee's figures appear here."
+      >
+        <span />
+      </AdminSection>
+    );
+  }
+
+  return (
+    <AdminSection
+      title="The month, employee by employee"
+      description="Open a row to see where each amount came from."
+      padded={false}
+    >
+      <PayrollGrid run={run.data} period={`${period}-01`} />
+    </AdminSection>
+  );
+}
+
 function StepFooter({
   data,
   step,
@@ -1072,7 +1131,7 @@ function StepFooter({
         </span>
       ) : null}
       <span className="kw-stepFoot__spacer" />
-      {step === 'attendance' || step === 'earnings' || step === 'deductions' ? (
+      {step === 'prepare' || step === 'review' ? (
         <Button
           loading={calculate.isPending}
           onClick={() =>

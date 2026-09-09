@@ -1,35 +1,35 @@
-export type StepKey = 'employees' | 'attendance' | 'earnings' | 'deductions' | 'review' | 'approve';
+export type StepKey = 'prepare' | 'review' | 'approve' | 'complete';
 
+/**
+ * FOUR STAGES, NOT SIX STEPS.
+ *
+ * This was Employees · Attendance & leave · Earnings · Deductions · Review ·
+ * Approve, and each one was a screen the owner had to walk through to reach
+ * the next. Four of the six were READING screens — they showed figures the
+ * engine had already worked out, asked for nothing, and existed because the
+ * domain has four kinds of input. Somebody paying five people clicked through
+ * four pages that wanted nothing from them.
+ *
+ * The stages below are the decisions instead: get it ready, look at it,
+ * approve it, finish it. The earnings and deductions detail did not go
+ * anywhere — it is under the register's own rows, next to the figure it
+ * explains, which is where somebody asks the question.
+ *
+ * The old keys still resolve (see `normaliseStep`) because links to
+ * `?step=earnings` are in exception remedies and in the guide.
+ */
 export const STEPS: { key: StepKey; label: string; heading: string; blurb: string }[] = [
   {
-    key: 'employees',
-    label: 'Employees',
-    heading: 'Who is being paid',
-    blurb: 'Who is included, who joined, who left, and whose setup is not finished.',
-  },
-  {
-    key: 'attendance',
-    label: 'Attendance & leave',
-    heading: 'What people worked',
-    blurb: 'What people worked this month, and anything still waiting on a manager.',
-  },
-  {
-    key: 'earnings',
-    label: 'Earnings',
-    heading: 'What each person earns',
-    blurb: 'Salary, allowances, overtime, incentives and approved claims.',
-  },
-  {
-    key: 'deductions',
-    label: 'Deductions',
-    heading: 'What comes off',
-    blurb: 'Statutory contributions, monthly tax, and anything the clinic is recovering.',
+    key: 'prepare',
+    label: 'Prepare',
+    heading: 'Getting the month ready',
+    blurb: 'Who is being paid, what they worked, and anything still waiting on somebody.',
   },
   {
     key: 'review',
-    label: 'Review',
-    heading: 'Review',
-    blurb: 'The whole month in three numbers, and everything still standing in the way.',
+    label: 'Review payroll',
+    heading: 'The month, employee by employee',
+    blurb: 'Every figure that makes up every payslip. Open a row to see where each amount came from.',
   },
   {
     key: 'approve',
@@ -37,7 +37,38 @@ export const STEPS: { key: StepKey; label: string; heading: string; blurb: strin
     heading: 'Approve & finalise',
     blurb: 'What you are signing off, and what happens when you do.',
   },
+  {
+    key: 'complete',
+    label: 'Complete',
+    heading: 'Payslips and payment',
+    blurb: 'Payslips, the payment listing, and the statutory figures to file.',
+  },
 ];
+
+/**
+ * The six-step vocabulary, mapped onto the four stages.
+ *
+ * Anything unrecognised lands on Prepare rather than throwing somebody into a
+ * blank screen.
+ */
+export function normaliseStep(raw: string | null): StepKey {
+  switch (raw) {
+    case 'prepare':
+    case 'employees':
+    case 'attendance':
+      return 'prepare';
+    case 'review':
+    case 'earnings':
+    case 'deductions':
+      return 'review';
+    case 'approve':
+      return 'approve';
+    case 'complete':
+      return 'complete';
+    default:
+      return 'prepare';
+  }
+}
 
 /**
  * WHICH STEP EACH BLOCKER BELONGS TO.
@@ -48,16 +79,19 @@ export const STEPS: { key: StepKey; label: string; heading: string; blurb: strin
  * not vanish from the stepper.
  */
 const STEP_OF_CODE: Record<string, StepKey> = {
-  NO_SALARY: 'employees',
-  SALARY_CHANGED_MID_PERIOD: 'employees',
-  SALARY_BASIS_UNSUPPORTED: 'employees',
-  NO_DOB: 'employees',
-  NO_LEGAL_EMPLOYER: 'employees',
-  UNAPPROVED_OVERTIME: 'attendance',
-  MISSING_PUNCH: 'attendance',
-  UNKNOWN_COMPONENT: 'earnings',
-  PCB_MISSING: 'deductions',
-  STATUTORY_UNKNOWN: 'deductions',
+  // Everything that has to be SORTED OUT before the month is worth reading is
+  // Prepare; everything that is a judgement about the figures themselves is
+  // Review. That is the whole division now the six became four.
+  NO_SALARY: 'prepare',
+  SALARY_CHANGED_MID_PERIOD: 'prepare',
+  SALARY_BASIS_UNSUPPORTED: 'prepare',
+  NO_DOB: 'prepare',
+  NO_LEGAL_EMPLOYER: 'prepare',
+  UNAPPROVED_OVERTIME: 'prepare',
+  MISSING_PUNCH: 'prepare',
+  UNKNOWN_COMPONENT: 'review',
+  PCB_MISSING: 'review',
+  STATUTORY_UNKNOWN: 'review',
 };
 
 export function stepsWithProblems(

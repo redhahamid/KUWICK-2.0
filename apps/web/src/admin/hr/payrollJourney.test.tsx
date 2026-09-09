@@ -6,18 +6,36 @@ import runSource from './PayrollRunPage.tsx?raw';
 import homeSource from './PayrollHomePage.tsx?raw';
 import claimsSource from './ClaimsPage.tsx?raw';
 import locumSource from './LocumPage.tsx?raw';
-import { STEPS, stepsWithProblems } from './PayrollStepper';
+import { STEPS, normaliseStep, stepsWithProblems } from './PayrollStepper';
 import { money, ringgit, group } from '../components/DataTable';
 
 /** Comments name the defects deliberately; a guard must not read them as code. */
 const code = (source: string) =>
   source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-describe('the six-step journey', () => {
-  it('is the six steps the owner approved, in order', () => {
-    expect(STEPS.map((step) => step.key)).toEqual([
-      'employees', 'attendance', 'earnings', 'deductions', 'review', 'approve',
-    ]);
+describe('the payroll journey', () => {
+  it('is FOUR stages — the decisions, not the domain\'s four kinds of input', () => {
+    // It was six: Employees, Attendance & leave, Earnings, Deductions, Review,
+    // Approve. Four of those were READING screens that asked for nothing and
+    // existed because the engine has four kinds of input, so somebody paying
+    // five people clicked through four pages that wanted nothing from them.
+    expect(STEPS.map((step) => step.key)).toEqual(['prepare', 'review', 'approve', 'complete']);
+  });
+
+  it('still resolves every one of the old six-step links', () => {
+    // `?step=earnings` is in exception remedies and in the user guide. A link
+    // that lands on a blank screen is how somebody concludes the run is broken.
+    expect(normaliseStep('employees')).toBe('prepare');
+    expect(normaliseStep('attendance')).toBe('prepare');
+    expect(normaliseStep('earnings')).toBe('review');
+    expect(normaliseStep('deductions')).toBe('review');
+    expect(normaliseStep('review')).toBe('review');
+    expect(normaliseStep('approve')).toBe('approve');
+  });
+
+  it('lands anything unrecognised on Prepare rather than on nothing', () => {
+    expect(normaliseStep(null)).toBe('prepare');
+    expect(normaliseStep('something-added-later')).toBe('prepare');
   });
 
   it('gives every step a heading and a sentence saying what it is for', () => {
@@ -125,10 +143,14 @@ describe('the stepper does not tick a step that still has a blocker', () => {
       { code: 'PCB_MISSING', blocksApproval: true },
       { code: 'MISSING_PUNCH', blocksApproval: false },
     ]);
-    expect(steps.has('employees')).toBe(true);
-    expect(steps.has('deductions')).toBe(true);
-    // A warning does not block, so it does not take a tick away.
-    expect(steps.has('attendance')).toBe(false);
+    // Six steps became four stages: anything to SORT OUT is Prepare, anything
+    // that is a judgement about the figures is Review.
+    expect(steps.has('prepare')).toBe(true);
+    expect(steps.has('review')).toBe(true);
+    // A warning does not block, so it does not take a tick away — and
+    // MISSING_PUNCH is a Prepare code, which is already ticked by NO_SALARY,
+    // so this asserts the warning's own step instead.
+    expect(stepsWithProblems([{ code: 'MISSING_PUNCH', blocksApproval: false }]).has('prepare')).toBe(false);
   });
 
   it('never loses an unrecognised code — it lands on Review, where everything is listed', () => {

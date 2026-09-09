@@ -7,6 +7,7 @@ import { DataTable, ringgit } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useCreatePayrollRun, usePayrollHome } from '../hooks/useAdmin';
 import { ProvisionalBanner } from './ProvisionalBanner';
+import { PayrollStartGate } from './PayrollStartGate';
 import type { PayrollHome } from '../types';
 
 /**
@@ -49,20 +50,29 @@ export function PayrollHomePage() {
 
       {data ? (
         <>
-          <PeriodHero
-            data={data}
-            busy={createRun.isPending}
-            onStart={() =>
-              createRun.mutate(
-                { period: `${period}-01`, clinicId },
-                {
-                  onSuccess: (created) => navigate(`/admin/hr/payroll/${(created as { id: string }).id}`),
-                  onError: (error: Error) => message.error(error.message),
-                },
-              )
-            }
-            onContinue={() => data.run && navigate(`/admin/hr/payroll/${data.run.id}`)}
-          />
+          {/* The gate decides whether the month may start, and says who is
+              missing what when it may not. It wraps the hero rather than
+              sitting beside it so the verdict and the button cannot disagree. */}
+          <PayrollStartGate period={period} clinicId={clinicId}>
+            {({ canStart, reason }) => (
+              <PeriodHero
+                data={data}
+                busy={createRun.isPending}
+                canStart={canStart}
+                blockedReason={reason}
+                onStart={() =>
+                  createRun.mutate(
+                    { period: `${period}-01`, clinicId },
+                    {
+                      onSuccess: (created) => navigate(`/admin/hr/payroll/${(created as { id: string }).id}`),
+                      onError: (error: Error) => message.error(error.message),
+                    },
+                  )
+                }
+                onContinue={() => data.run && navigate(`/admin/hr/payroll/${data.run.id}`)}
+              />
+            )}
+          </PayrollStartGate>
 
           <div className="kw-homeGrid">
             <AttentionCard data={data} />
@@ -135,11 +145,16 @@ export function PayrollHomePage() {
 function PeriodHero({
   data,
   busy,
+  canStart,
+  blockedReason,
   onStart,
   onContinue,
 }: {
   data: PayrollHome;
   busy: boolean;
+  /** False when not one employee could be paid — see PayrollStartGate. */
+  canStart: boolean;
+  blockedReason: string | null;
   onStart: () => void;
   onContinue: () => void;
 }) {
@@ -195,7 +210,16 @@ function PeriodHero({
 
       <div className="kw-periodHero__cta">
         {data.state === 'NOT_STARTED' ? (
-          <Button type="primary" size="large" loading={busy} onClick={onStart}>
+          <Button
+            type="primary"
+            size="large"
+            loading={busy}
+            // A month that can pay nobody does not start. The reason is on the
+            // button rather than discovered six screens later.
+            disabled={!canStart}
+            title={blockedReason ?? ''}
+            onClick={onStart}
+          >
             Run {dayjs(`${data.period}-01`).format('MMMM')} payroll
           </Button>
         ) : (
