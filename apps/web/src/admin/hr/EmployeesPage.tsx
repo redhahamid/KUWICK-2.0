@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Button, Tag } from 'antd';
+import { Avatar, Button, Select, Tag, Tooltip } from 'antd';
 import dayjs from 'dayjs';
+import { useMemo } from 'react';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useEmployees } from '../hooks/useAdmin';
+import { useEmployees, usePayrollReadiness } from '../hooks/useAdmin';
 import { AddEmployeeDrawer } from './AddEmployeeDrawer';
 import { CompleteProfileDrawer } from './CompleteProfileDrawer';
 
@@ -28,9 +29,42 @@ import { CompleteProfileDrawer } from './CompleteProfileDrawer';
  * a route now — see EmployeeWorkspacePage — and this screen is a directory
  * again rather than a directory with a record inside it.
  */
+/** Initials, for somebody with no photograph — which is everybody. */
+function initials(name: string): string {
+  return name
+    .replace(/\(.*?\)/g, '')
+    .split(/\s+/)
+    .filter((part) => /^[A-Za-z]/.test(part))
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
 export function EmployeesPage() {
   const { clinicId } = useClinicFilter();
   const { data, isLoading, isError, error } = useEmployees({ clinicId });
+  /*
+   * WHETHER SOMEBODY CAN ACTUALLY BE PAID, on the directory.
+   *
+   * This screen listed employment facts and said nothing about whether payroll
+   * would include the person — which is the single thing an owner is checking
+   * for when they open it before a pay run. Readiness is joined in here rather
+   * than duplicated: the same read the payroll gate uses, so a person cannot
+   * read READY on one screen and hold up approval on the next.
+   */
+  const readiness = usePayrollReadiness({ period: dayjs().format('YYYY-MM'), clinicId });
+  const readinessByStaff = useMemo(() => {
+    const map = new Map<string, { done: number; total: number; ready: boolean; missing: string[] }>();
+    for (const row of readiness.data?.employees ?? []) {
+      map.set(row.staffId, {
+        done: row.readiness.done,
+        total: row.readiness.total,
+        ready: row.readiness.ready,
+        missing: row.readiness.items.filter((item) => !item.done).map((item) => item.label),
+      });
+    }
+    return map;
+  }, [readiness.data]);
   // ?staffId= OPENS THAT PERSON. Every remedy link on a payroll exception —
   // "no salary is in force", "no date of birth is recorded" — points here, and
   // landing on a directory to search through is not the same as landing on the
@@ -56,15 +90,26 @@ export function EmployeesPage() {
   return (
     <AdminShell
       error={firstError({ isError, error })}
-      title="Employees"
-      subtitle="Account, employment and clinical credential are three separate facts about one person."
+      title="People"
+      // WHAT THE OWNER IS HERE FOR, not what the schema is proud of. The old
+      // subtitle explained that account, employment and clinical credential
+      // are three separate records — true, load-bearing, and none of somebody's
+      // business while they are looking for a receptionist's phone number.
+      subtitle="Everybody who works here, and whether payroll can pay them."
       actions={
         <Button type="primary" onClick={() => setAdding(true)}>
           + Add employee
         </Button>
       }
     >
-      <AddEmployeeDrawer open={adding} onClose={() => setAdding(false)} clinicId={clinicId} />
+      <AddEmployeeDrawer
+        open={adding}
+        onClose={() => setAdding(false)}
+        clinicId={clinicId}
+        // The directory re-reads readiness on its own, so the new person shows
+        // up with their setup state rather than as a name with nothing beside it.
+        onAdded={() => readiness.refetch()}
+      />
       <CompleteProfileDrawer
         staffId={completing?.staffId ?? null}
         fullName={completing?.fullName ?? ''}
@@ -72,19 +117,27 @@ export function EmployeesPage() {
       />
       <StatStrip
         stats={[
-          { label: 'Staff records', value: data?.length ?? 0 },
+          { label: 'People', value: data?.length ?? 0 },
           {
-            label: 'With an employee profile',
-            value: withProfile.length,
-            tone: withProfile.length < (data?.length ?? 0) ? 'warn' : 'good',
-            hint: `${(data?.length ?? 0) - withProfile.length} without one`,
+            label: 'Ready for payroll',
+            value: readiness.data?.summary.ready ?? 0,
+            tone: (readiness.data?.summary.withBlockers ?? 0) > 0 ? 'warn' : 'good',
+            hint:
+              (readiness.data?.summary.withBlockers ?? 0) > 0
+                ? `${readiness.data?.summary.withBlockers} would hold up approval`
+                : undefined,
+          },
+          {
+            label: 'Without an employment record',
+            value: incomplete.length,
+            tone: incomplete.length > 0 ? 'warn' : 'good',
+            explain: 'They can sign in and be rostered. Payroll leaves them out rather than refusing.',
           },
           {
             label: 'Active clinicians',
             value: clinicians.length,
             explain: 'A professional identity, verified by the clinic group. Separate from being on the payroll.',
           },
-          { label: 'Active accounts', value: data?.filter((row) => row.active).length ?? 0 },
         ]}
       />
 
@@ -132,15 +185,56 @@ export function EmployeesPage() {
                   setCompleting({ staffId: row.staffId, fullName: row.fullName }),
           })}
           columns={[
-            { title: 'Name', dataIndex: 'fullName', key: 'fullName', sorter: (a, b) => a.fullName.localeCompare(b.fullName) },
-            { title: 'Employee no', dataIndex: 'employeeNo', key: 'employeeNo' },
-            { title: 'Position', dataIndex: 'position', key: 'position' },
+            {
+              // NAME, ROLE AND FACE IN ONE CELL. The directory used to spend
+              // three columns on what a person reads as one fact.
+              title: 'Employee',
+              dataIndex: 'fullName',
+              key: 'fullName',
+              sorter: (a, b) => a.fullName.localeCompare(b.fullName),
+              render: (value: string, row) => (
+                <div className="kw-person">
+                  <Avatar size={30} className="kw-person__avatar">
+                    {initials(value)}
+                  </Avatar>
+                  <div className="kw-person__text">
+                    <span className="kw-person__name">{value}</span>
+                    <span className="kw-muted">
+                      {row.position ?? 'No position recorded'}
+                      {row.employeeNo ? ` · ${row.employeeNo}` : ''}
+                    </span>
+                  </div>
+                </div>
+              ),
+            },
+            {
+              // CAN THIS PERSON BE PAID. The question the directory is opened
+              // with before a pay run, and the one it never answered.
+              title: 'Payroll',
+              key: 'payrollReadiness',
+              render: (_: unknown, row) => {
+                if (!row.hasProfile) return <Tag color="default">No employment record</Tag>;
+                const state = readinessByStaff.get(row.staffId);
+                if (!state) return <span className="kw-muted">—</span>;
+                if (state.ready) return <Tag color="green">Ready</Tag>;
+                return (
+                  <Tooltip title={`Missing: ${state.missing.join(', ')}`}>
+                    <Tag color="gold">
+                      Setup {state.done}/{state.total}
+                    </Tag>
+                  </Tooltip>
+                );
+              },
+            },
+            { title: 'Employee no', dataIndex: 'employeeNo', key: 'employeeNo', optional: true },
+            { title: 'Position', dataIndex: 'position', key: 'position', optional: true },
             { title: 'Department', dataIndex: 'department', key: 'department', optional: true },
             { title: 'Branch', dataIndex: 'clinicName', key: 'clinicName' },
             {
               title: 'Employment',
               dataIndex: 'employmentType',
               key: 'employmentType',
+              optional: true,
               render: (value: string | null) => (value ? <Tag>{value}</Tag> : <span className="kw-muted">no profile</span>),
             },
             {

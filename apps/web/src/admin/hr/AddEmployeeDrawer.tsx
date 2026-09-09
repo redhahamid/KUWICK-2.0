@@ -18,12 +18,21 @@ import { useClinics } from '../../core/hooks/useClinics';
  * pretending a half-filled form is a problem. What it will NOT do is create
  * something incomplete without saying which parts are missing.
  *
- * SALARY AND STATUTORY DETAILS ARE NOT HERE, deliberately. Both are
- * effective-dated — recorded with the date they take effect from — and this
- * form has no such date to give them. Putting a salary box here would mean
- * inventing "from today", and the employee profile and the payroll run would
- * then disagree about what somebody is paid. The review step says where they
- * go instead.
+ * SALARY IS HERE NOW, AND WITH ITS DATE. It used to be left out on the
+ * grounds that it is effective-dated and this form had no date to give it —
+ * true, and the honest answer was to ASK for the date rather than to omit the
+ * salary. Leaving it out meant almost every new hire was created unpayable,
+ * and "no salary in force" is the single most common payroll blocker.
+ *
+ * It is recorded through the SAME endpoint the employee's own salary panel
+ * uses, as a second call after the employee exists — not folded into the
+ * create — so there is exactly one path that writes an effective-dated salary
+ * and one audit trail behind it.
+ *
+ * The STATUTORY classification stays out for the reason salary no longer does:
+ * it is not one field with one date but a set of dated positions (EPF, SOCSO,
+ * EIS, PCB category, LINDUNG), and asking for them at hiring would be asking
+ * somebody to guess. The review step names them and links to where they go.
  */
 
 const ROLES = [
@@ -45,17 +54,20 @@ const EMPLOYMENT_TYPES = [
   { value: 'INTERN', label: 'Intern' },
 ];
 
-const STEPS = ['Person', 'Employment', 'Access', 'Review'];
+const STEPS = ['Person', 'Employment', 'Pay & bank', 'Access', 'Review'];
 
 export function AddEmployeeDrawer({
   open,
   onClose,
   /** Pre-fills the branch when the directory is filtered to one. */
   clinicId,
+  /** So the directory can say what is still needed before payroll. */
+  onAdded,
 }: {
   open: boolean;
   onClose: () => void;
   clinicId?: string;
+  onAdded?: (name: string) => void;
 }) {
   const { message } = App.useApp();
   const [form] = Form.useForm();
@@ -71,7 +83,7 @@ export function AddEmployeeDrawer({
     // Validated step by step, so somebody is told about a missing name on the
     // step that has the name box rather than four steps later.
     if (step === 0) await form.validateFields(['fullName', 'role']);
-    if (step === 2 && wantsLogin) await form.validateFields(['loginEmail', 'loginPassword']);
+    if (step === 3 && wantsLogin) await form.validateFields(['loginEmail', 'loginPassword']);
     setStep((current) => current + 1);
   };
 
@@ -79,7 +91,7 @@ export function AddEmployeeDrawer({
     const values = await form.validateFields();
     setSaving(true);
     try {
-      await apiClient.post('/workforce/employees', {
+      const created = await apiClient.post('/workforce/employees', {
         fullName: values.fullName,
         role: values.role,
         clinicId: values.clinicId ?? clinicId,
@@ -96,13 +108,46 @@ export function AddEmployeeDrawer({
         medicalRegistrationNo: values.medicalRegistrationNo || undefined,
         loginEmail: values.wantsLogin ? values.loginEmail : undefined,
         loginPassword: values.wantsLogin ? values.loginPassword : undefined,
+        // The bank account the create already accepted and nothing ever sent.
+        bankName: values.bankName || undefined,
+        bankAccountNo: values.bankAccountNo || undefined,
       });
+
+      /*
+       * THE SALARY, THROUGH ITS OWN DATED PATH.
+       *
+       * A second call rather than a field on the create, so an effective-dated
+       * salary has exactly one way in and one audit trail. If this half fails
+       * the person still exists — which is the right failure: an employee with
+       * no salary is a known, visible state the directory reports, whereas a
+       * half-written create would be neither.
+       */
+      if (created && values.salaryAmount) {
+        const staffId = (created as { staffId?: string; id?: string }).staffId ?? (created as { id?: string }).id;
+        if (staffId) {
+          await apiClient
+            .post(`/workforce/employees/${staffId}/salary`, {
+              amount: String(values.salaryAmount),
+              basis: values.salaryBasis ?? 'MONTHLY',
+              effectiveFrom: (values.salaryEffectiveFrom ?? values.startDate)?.format('YYYY-MM-DD'),
+              reason: 'Recorded when the employee was added',
+            })
+            .catch((error: unknown) => {
+              message.warning(
+                `${values.fullName} was added, but the salary could not be recorded: ${
+                  error instanceof ApiError ? error.message : 'unknown error'
+                }. Set it on their page.`,
+              );
+            });
+        }
+      }
       message.success(`${values.fullName} added.`);
       await queryClient.invalidateQueries({ queryKey: ['admin-hr'] });
       await queryClient.invalidateQueries({ queryKey: ['admin-employees'] });
       form.resetFields();
       setStep(0);
       onClose();
+      onAdded?.(values.fullName);
     } catch (error) {
       message.error(error instanceof ApiError ? error.message : 'Could not add this person.');
     } finally {
@@ -197,7 +242,48 @@ export function AddEmployeeDrawer({
           ) : null}
         </div>
 
+        {/* PAY & BANK — the two things whose absence stops payroll, asked for
+            at the moment somebody is hired rather than discovered on pay day. */}
         <div style={{ display: step === 2 ? 'block' : 'none' }}>
+          <Form.Item
+            name="salaryAmount"
+            label="Basic salary"
+            extra="Leave blank to set it later. Payroll leaves out anybody with no salary in force."
+          >
+            <Input prefix="RM" inputMode="decimal" placeholder="3200.00" />
+          </Form.Item>
+          <Form.Item name="salaryBasis" label="Paid">
+            <Select
+              options={[
+                { value: 'MONTHLY', label: 'Monthly' },
+                { value: 'DAILY', label: 'Daily' },
+                { value: 'HOURLY', label: 'Hourly' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            name="salaryEffectiveFrom"
+            label="From"
+            extra="Salary is dated, so a later change closes this one rather than overwriting it. Defaults to their start date."
+          >
+            <DatePicker style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Divider />
+
+          <Form.Item name="bankName" label="Bank">
+            <Input placeholder="Maybank" />
+          </Form.Item>
+          <Form.Item
+            name="bankAccountNo"
+            label="Account number"
+            extra="Needed before anybody can be paid. Only the last four digits are ever shown back."
+          >
+            <Input inputMode="numeric" />
+          </Form.Item>
+        </div>
+
+        <div style={{ display: step === 3 ? 'block' : 'none' }}>
           <Form.Item name="wantsLogin" label="Give them a login now" valuePropName="checked">
             <Switch />
           </Form.Item>
@@ -227,7 +313,7 @@ export function AddEmployeeDrawer({
           ) : null}
         </div>
 
-        <div style={{ display: step === 3 ? 'block' : 'none' }}>
+        <div style={{ display: step === 4 ? 'block' : 'none' }}>
           <p className="kw-adminSection__desc">
             <strong>{values.fullName || '—'}</strong>
             {values.position ? ` · ${values.position}` : ''}
@@ -239,15 +325,20 @@ export function AddEmployeeDrawer({
               ? ' Registered as a provider, so appointments can be booked with them.'
               : ''}
           </p>
+          <p className="kw-adminSection__desc">
+            {values.salaryAmount
+              ? `Paid RM${values.salaryAmount} ${String(values.salaryBasis ?? 'MONTHLY').toLowerCase()}.`
+              : 'No salary yet — payroll will leave them out until one is set.'}
+            {values.bankAccountNo ? ' Bank account on file.' : ' No bank account yet.'}
+          </p>
           <Divider />
           {/* WHAT STILL HAS TO HAPPEN, said before they click rather than
               discovered when payroll refuses to include somebody. */}
           <p className="kw-adminSection__desc">
-            <strong>Two things this form deliberately does not do.</strong> Salary and the Malaysian statutory
-            profile (EPF, SOCSO, EIS, PCB, LINDUNG) are both recorded <em>with the date they take effect
-            from</em>, and this form has no such date to give them. Add them from this person's own page once
-            they exist. Until salary is set, payroll will raise them as an exception rather than pay them
-            nothing.
+            <strong>Still to do after this.</strong> The Malaysian statutory profile — EPF, SOCSO, EIS, PCB
+            category and LINDUNG — is a set of <em>dated positions</em> rather than one field, so it is set on
+            this person's own page. Until it is, payroll works out what it can and raises the rest as an
+            exception; it never guesses.
           </p>
         </div>
       </Form>

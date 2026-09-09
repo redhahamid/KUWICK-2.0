@@ -40,7 +40,7 @@ export const ADMIN_ROUTES = [
   // The canonical HR paths. `/admin/hr/employees`, `/roster` and `/leave` still
   // resolve — they redirect here — but a walk should assert the URL somebody is
   // actually given, not the one that bounces.
-  { path: '/admin/hr/people', module: 'HR', heading: 'Employees' },
+  { path: '/admin/hr/people', module: 'HR', heading: 'People' },
   { path: '/admin/hr/schedule', module: 'HR', heading: 'Schedule' },
   { path: '/admin/hr/attendance', module: 'HR', heading: 'Attendance' },
   { path: '/admin/hr/requests', module: 'HR', heading: 'Leave' },

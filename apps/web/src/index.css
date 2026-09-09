@@ -5670,3 +5670,11 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 }
 .kw-coverage__count { font-size: 22px; font-weight: 600; line-height: 1.1; color: var(--kw-navy, #184a6b); }
 .kw-coverage__label { font-size: 12px; color: #5a6b7b; }
+
+/* A person in one cell: initials, name, and what they do. Three columns of
+   name / employee number / position said one thing in three places. */
+.kw-person { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.kw-person__avatar { background: #e7edf3 !important; color: #40566b !important; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+.kw-person__text { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.kw-person__name { font-weight: 600; }
+.kw-person__text .kw-muted { font-size: 11.5px; }
