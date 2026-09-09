@@ -83,7 +83,11 @@ export interface CreateLeaveRequestDto {
 }
 
 export interface DecideLeaveRequestDto {
-  approvedByStaffId: string;
+  /**
+   * WHO DECIDED IT IS NOT SENT. The server takes the approver from the
+   * session, like every other decision in this product; it used to be named in
+   * the body, which let any caller record anybody as the approver.
+   */
   rejectReason?: string;
 }
 

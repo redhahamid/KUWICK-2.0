@@ -1,0 +1,45 @@
+- 01-hr-overview-desktop.png — HR Overview — is the workforce okay today, and what needs me · Desktop 1440×900
+- 02-hr-people-desktop.png — People — the directory and payroll readiness · Desktop 1440×900
+- 03-hr-schedule-desktop.png — Schedule — who is working, by branch and month · Desktop 1440×900
+- 04-hr-attendance-desktop.png — Attendance — scheduled against actual · Desktop 1440×900
+- 05-hr-leave-desktop.png — Leave — what was asked, and what was decided · Desktop 1440×900
+- 06-hr-claims-desktop.png — Claims — and how each one gets paid · Desktop 1440×900
+- 07-hr-payroll-home-desktop.png — Payroll — the month and whether it can start · Desktop 1440×900
+- 08-hr-settings-desktop.png — Settings — how pay, attendance and statutory work · Desktop 1440×900
+- 09-hr-incentives-desktop.png — Doctor incentives · Desktop 1440×900
+- 10-hr-locum-desktop.png — Locum and contractor pay · Desktop 1440×900
+- 11-hr-reports-desktop.png — Payroll reports · Desktop 1440×900
+- 12-my-home-desktop.png — My Kuwick — home · Desktop 1440×900
+- 13-my-schedule-desktop.png — My Kuwick — my shifts · Desktop 1440×900
+- 14-my-attendance-desktop.png — My Kuwick — what the clock recorded · Desktop 1440×900
+- 15-my-leave-desktop.png — My Kuwick — my leave · Desktop 1440×900
+- 16-my-claims-desktop.png — My Kuwick — my claims · Desktop 1440×900
+- 17-my-payslips-desktop.png — My Kuwick — my payslips · Desktop 1440×900
+- 18-hr-overview-ipad-landscape.png — HR Overview — is the workforce okay today, and what needs me · iPad landscape 1024×768
+- 19-hr-people-ipad-landscape.png — People — the directory and payroll readiness · iPad landscape 1024×768
+- 20-hr-schedule-ipad-landscape.png — Schedule — who is working, by branch and month · iPad landscape 1024×768
+- 21-hr-attendance-ipad-landscape.png — Attendance — scheduled against actual · iPad landscape 1024×768
+- 22-hr-leave-ipad-landscape.png — Leave — what was asked, and what was decided · iPad landscape 1024×768
+- 23-hr-claims-ipad-landscape.png — Claims — and how each one gets paid · iPad landscape 1024×768
+- 24-hr-payroll-home-ipad-landscape.png — Payroll — the month and whether it can start · iPad landscape 1024×768
+- 25-hr-settings-ipad-landscape.png — Settings — how pay, attendance and statutory work · iPad landscape 1024×768
+- 26-hr-incentives-ipad-landscape.png — Doctor incentives · iPad landscape 1024×768
+- 27-hr-locum-ipad-landscape.png — Locum and contractor pay · iPad landscape 1024×768
+- 28-hr-reports-ipad-landscape.png — Payroll reports · iPad landscape 1024×768
+- 29-hr-overview-ipad.png — HR Overview — is the workforce okay today, and what needs me · iPad portrait 834×1112
+- 30-hr-people-ipad.png — People — the directory and payroll readiness · iPad portrait 834×1112
+- 31-hr-schedule-ipad.png — Schedule — who is working, by branch and month · iPad portrait 834×1112
+- 32-hr-attendance-ipad.png — Attendance — scheduled against actual · iPad portrait 834×1112
+- 33-hr-leave-ipad.png — Leave — what was asked, and what was decided · iPad portrait 834×1112
+- 34-hr-claims-ipad.png — Claims — and how each one gets paid · iPad portrait 834×1112
+- 35-hr-payroll-home-ipad.png — Payroll — the month and whether it can start · iPad portrait 834×1112
+- 36-hr-settings-ipad.png — Settings — how pay, attendance and statutory work · iPad portrait 834×1112
+- 37-hr-incentives-ipad.png — Doctor incentives · iPad portrait 834×1112
+- 38-hr-locum-ipad.png — Locum and contractor pay · iPad portrait 834×1112
+- 39-hr-reports-ipad.png — Payroll reports · iPad portrait 834×1112
+- 40-my-home-phone.png — My Kuwick — home · iPhone 390×844
+- 41-my-schedule-phone.png — My Kuwick — my shifts · iPhone 390×844
+- 42-my-attendance-phone.png — My Kuwick — what the clock recorded · iPhone 390×844
+- 43-my-leave-phone.png — My Kuwick — my leave · iPhone 390×844
+- 44-my-claims-phone.png — My Kuwick — my claims · iPhone 390×844
+- 45-my-payslips-phone.png — My Kuwick — my payslips · iPhone 390×844

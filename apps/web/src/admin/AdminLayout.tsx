@@ -88,26 +88,58 @@ const ADMIN_CATEGORIES: HubCategory[] = [
     key: 'hr',
     label: 'HR',
     items: [
-      // DAILY WORK ONLY.
-      //
-      // "Legal employers" and "Roles & access" used to sit here between Payroll
-      // and Staff benefits, which is how a monthly payroll navigation became an
-      // admin console: the owner had to walk past two configuration screens to
-      // reach the one they open every month. Both are still mounted and both
-      // are reachable from Payroll settings; neither is a step in paying
-      // anybody.
-      { path: '/admin/hr', label: 'Today' },
-      { path: '/admin/hr/employees', label: 'Employees' },
-      { path: '/admin/hr/attendance', label: 'Timesheets' },
-      { path: '/admin/hr/leave', label: 'Leave' },
-      { path: '/admin/hr/claims', label: 'Claims' },
-      { path: '/admin/hr/roster', label: 'Roster' },
-      { path: '/admin/hr/payroll', label: 'Payroll' },
-      { path: '/admin/hr/incentives', label: 'Doctor incentives' },
-      { path: '/admin/hr/locum', label: 'Locum sessions' },
-      { path: '/admin/hr/benefits', label: 'Staff benefits' },
-      { path: '/admin/hr/reports', label: 'Reports' },
-      { path: '/admin/hr/settings', label: 'Payroll settings' },
+      /*
+       * SIX GROUPS, NOT TWELVE ITEMS.
+       *
+       * This row read: Today · Employees · Timesheets · Leave · Claims ·
+       * Roster · Payroll · Doctor incentives · Locum sessions · Staff
+       * benefits · Reports · Payroll settings.
+       *
+       * Twelve destinations, and the owner who designed the system was still
+       * asking "why are there so many tabs?" — a fair question, because the
+       * row was a map of the DOMAIN MODEL rather than of the work. Three of
+       * the twelve were configuration; two were one subject split in half
+       * (Roster and Timesheets are both "who was meant to work, and did
+       * they?"); two more were pay inputs standing in the nav as if they were
+       * places you go rather than things that feed payroll.
+       *
+       * These six are the tasks somebody actually has: see the day, manage
+       * people, plan and check the hours, decide requests, pay everybody,
+       * change how it all works.
+       *
+       * `covers` keeps every old URL lighting the right tab — nothing was
+       * deleted, and a bookmark that lands somewhere unlit teaches people the
+       * navigation is lying to them.
+       */
+      { path: '/admin/hr', label: 'Overview' },
+      {
+        path: '/admin/hr/people',
+        label: 'People',
+        covers: ['/admin/hr/employees'],
+      },
+      {
+        path: '/admin/hr/schedule',
+        label: 'Schedule & Attendance',
+        covers: ['/admin/hr/roster', '/admin/hr/attendance'],
+      },
+      {
+        path: '/admin/hr/requests',
+        label: 'Leave & Claims',
+        covers: ['/admin/hr/leave', '/admin/hr/claims'],
+      },
+      {
+        path: '/admin/hr/payroll',
+        label: 'Payroll',
+        // Incentives and locum sessions are payroll INPUTS. They were
+        // top-level destinations, which is why an owner opening HR met two
+        // tabs whose relationship to being paid was left for them to infer.
+        covers: ['/admin/hr/incentives', '/admin/hr/locum', '/admin/hr/reports'],
+      },
+      {
+        path: '/admin/hr/settings',
+        label: 'Settings',
+        covers: ['/admin/hr/benefits', '/admin/hr/employers', '/admin/hr/access'],
+      },
     ],
   },
   {

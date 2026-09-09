@@ -8,6 +8,17 @@ const { Text, Title } = Typography;
 export interface HubItem {
   path: string;
   label: string;
+  /**
+   * OTHER ROUTES THIS ENTRY OWNS.
+   *
+   * A nav entry that absorbed screens keeps their URLs working — links to them
+   * exist in the user guide, in payroll exception remedies, and in people's
+   * bookmarks — but a URL that lights no tab tells somebody they are nowhere.
+   * Listing them here means "Schedule & Attendance" stays lit at
+   * `/admin/hr/attendance` even though the entry's own path is
+   * `/admin/hr/schedule`.
+   */
+  covers?: string[];
 }
 
 export interface HubCategory {
@@ -68,13 +79,18 @@ export function HubShell({ title, categories, headerExtra, scopeClass }: HubShel
    * `/admin/hr/payroll` beats `/admin/hr` for a run detail page.
    */
   const activePath = useMemo(() => {
-    const all = categories.flatMap((category) => category.items.map((item) => item.path));
-    const exact = all.find((path) => path === location.pathname);
-    if (exact) return exact;
-    const prefixes = all.filter(
-      (path) => location.pathname === path || location.pathname.startsWith(`${path}/`),
+    // Each entry is matched on its own path AND on every route it absorbed, but
+    // resolves back to its own path — the tab that lights is the one you can
+    // click, not the old URL you arrived on.
+    const all = categories.flatMap((category) =>
+      category.items.flatMap((item) => [item.path, ...(item.covers ?? [])].map((path) => ({ path, owner: item.path }))),
     );
-    return prefixes.sort((a, b) => b.length - a.length)[0];
+    const exact = all.find((entry) => entry.path === location.pathname);
+    if (exact) return exact.owner;
+    const prefixes = all.filter(
+      (entry) => location.pathname === entry.path || location.pathname.startsWith(`${entry.path}/`),
+    );
+    return prefixes.sort((a, b) => b.path.length - a.path.length)[0]?.owner;
   }, [categories, location.pathname]);
 
   const activeCategory = useMemo(

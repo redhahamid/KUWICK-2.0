@@ -28,7 +28,6 @@ import { ManageBookingPage } from './appointment/public/ManageBookingPage';
 import { ClinicsPage } from './core/ClinicsPage';
 import { PatientsPage } from './core/PatientsPage';
 import { StaffPage } from './hr/StaffPage';
-import { LeaveRequestsPage } from './hr/LeaveRequestsPage';
 import { PublicHolidaysPage } from './hr/PublicHolidaysPage';
 import { ServicesPage } from './clinical/ServicesPage';
 import { ConsultationTariffsPage } from './clinical/ConsultationTariffsPage';
@@ -92,6 +91,7 @@ import { LegalEmployersPage } from './admin/hr/LegalEmployersPage';
 import { IncentivesPage } from './admin/hr/IncentivesPage';
 import { BenefitsPage } from './admin/hr/BenefitsPage';
 import { AdminRosterPage } from './admin/hr/RosterPage';
+import { LeavePage } from './admin/hr/LeavePage';
 import { ClaimsPage } from './admin/hr/ClaimsPage';
 import { LocumPage } from './admin/hr/LocumPage';
 import { PayrollReportsPage } from './admin/hr/PayrollReportsPage';
@@ -216,7 +216,11 @@ export function App() {
               * kept working rather than broken, because it is bookmarked.
               */}
             <Route path="/management/hr/attendance" element={<Navigate to="/admin/hr/attendance" replace />} />
-            <Route path="/management/hr/leave-requests" element={<LeaveRequestsPage />} />
+            {/* The Management-era leave screen is gone: it carried an
+                "Approving/Rejecting as" picker whose value the server wrote
+                down as the approver, unchecked. Its URL still resolves, to
+                the work area that replaced it. */}
+            <Route path="/management/hr/leave-requests" element={<Navigate to="/admin/hr/requests" replace />} />
 
             <Route path="/management/stock/health" element={<StockHealthPage />} />
             <Route path="/management/stock/items" element={<ItemsPage />} />
@@ -286,17 +290,32 @@ export function App() {
             <Route path="/admin/panel/companies" element={<PanelClinicsPage />} />
 
             <Route path="/admin/hr" element={<HrOverviewPage />} />
-            <Route path="/admin/hr/employees" element={<EmployeesPage />} />
+
+            {/* SIX GROUPS, AND THE URLS THAT USED TO BE TWELVE.
+                Each group has a canonical path; every route it absorbed still
+                resolves, because links to them are in the user guide, in
+                payroll exception remedies, and in people's bookmarks. The old
+                top-level names redirect so there is ONE canonical URL per
+                screen; the detail routes under them are untouched. */}
+            <Route path="/admin/hr/people" element={<EmployeesPage />} />
+            <Route path="/admin/hr/employees" element={<Navigate to="/admin/hr/people" replace />} />
             {/* One employee, addressable. The record used to live only in a
                 drawer, so it could not be linked to, left open, or reached from
                 a payroll exception without landing on a directory first. */}
             <Route path="/admin/hr/employees/:staffId" element={<EmployeeWorkspacePage />} />
-            <Route path="/admin/hr/attendance" element={<TimesheetPage />} />
-            <Route path="/admin/hr/leave" element={<LeaveRequestsPage />} />
-            {/* The Appointments roster, rendered in the Admin shell. There is
+
+            {/* Schedule & Attendance — one subject that had been two tabs.
+                The Appointments roster, rendered in the Admin shell: there is
                 exactly one shift table and exactly one component that writes
                 it — see admin/hr/RosterPage.tsx. */}
-            <Route path="/admin/hr/roster" element={<AdminRosterPage />} />
+            <Route path="/admin/hr/schedule" element={<AdminRosterPage />} />
+            <Route path="/admin/hr/roster" element={<Navigate to="/admin/hr/schedule" replace />} />
+            <Route path="/admin/hr/attendance" element={<TimesheetPage />} />
+
+            {/* Leave & Claims — one work area: what somebody has asked me to
+                decide. */}
+            <Route path="/admin/hr/requests" element={<LeavePage />} />
+            <Route path="/admin/hr/leave" element={<Navigate to="/admin/hr/requests" replace />} />
             {/* PAYROLL IS TWO SCREENS NOW, not one dense page: home answers "is
                 this month done", and the run is the six-step journey. The old
                 combined page stays mounted at /admin/hr/payroll/all so an
