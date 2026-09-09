@@ -113,10 +113,16 @@ test.describe('Admin integration', () => {
     // Mounting a screen in Admin must not have moved it. Bookmarks, the
     // redirects in App.tsx and every link in the existing product all point at
     // these, and a "consolidation" that breaks them is a regression.
+    //
+    // `/management/hr/leave-requests` is deliberately NOT in this list any
+    // more. That screen was not mounted elsewhere, it was DELETED — it let a
+    // caller name anybody as the approver of a leave request — and its URL now
+    // redirects to the work area that replaced it. The bookmark still lands
+    // somewhere real, which is what this test is protecting; asserting the old
+    // URL survives would be asserting the old screen survives.
     const originals = [
       ['/management/stock/items', 'Inventory'],
       ['/management/stock/purchase-orders', 'Purchase Orders'],
-      ['/management/hr/leave-requests', 'Leave Requests'],
       ['/management/panel/clinics', 'Panel Companies'],
       ['/settings/organisation/roles', 'Roles & permissions'],
     ] as const;

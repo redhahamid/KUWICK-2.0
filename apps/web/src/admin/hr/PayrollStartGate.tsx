@@ -24,43 +24,64 @@ import type { PayrollReadiness } from '../types';
 export function PayrollStartGate({
   period,
   clinicId,
+  /** How many employees have a salary in force — see the note below. */
+  salaryOnRecord,
   children,
 }: {
   period: string;
   clinicId?: string;
+  salaryOnRecord: number;
   children: (gate: { canStart: boolean; reason: string | null }) => React.ReactNode;
 }) {
   const { data } = usePayrollReadiness({ period, clinicId });
 
-  // FAIL CLOSED WHILE UNKNOWN is wrong here, and fail open is wrong too. Until
-  // the read lands there is nothing to gate ON, so the button stays enabled and
-  // the server refuses anything genuinely impossible — the gate is a courtesy
-  // ahead of a refusal, not the refusal itself.
-  if (!data) return <>{children({ canStart: true, reason: null })}</>;
-
-  const blocked = data.employees.filter((row) => !row.readiness.ready);
-  const canStart = data.summary.ready > 0;
+  /*
+   * WHAT STOPS A MONTH STARTING IS NOT WHAT STOPS IT BEING APPROVED, and
+   * conflating the two would replace one wrong answer with another.
+   *
+   * There are two honest readings of "ready", and Kuwick keeps both on
+   * purpose:
+   *
+   *   `setup.ready`     the STANDING facts — a salary, a bank account, a date
+   *                     of birth. Set once, true until somebody changes them.
+   *   `readiness.ready` nothing blocking THIS MONTH, which also counts the
+   *                     monthly tax figure — outstanding on the first of every
+   *                     month for everybody, by design, because Kuwick does
+   *                     not work PCB out.
+   *
+   * Gating the START on the second would refuse to open a month that only
+   * needs its PCB entering — which is work you do INSIDE the run. So the gate
+   * asks the narrower question the run itself asks: is there anybody whose pay
+   * can be computed at all, meaning anybody with a salary in force.
+   *
+   * The list below still uses the fuller reading, because "who will block
+   * approval" is exactly what somebody wants to see before they start.
+   */
+  const canStart = salaryOnRecord > 0;
+  const blocked = data?.employees.filter((row) => !row.readiness.ready) ?? [];
 
   return (
     <>
       {children({
         canStart,
-        reason: canStart ? null : `No employee is ready to be paid for ${data.periodLabel}.`,
+        reason: canStart
+          ? null
+          : 'Nobody has a salary on record, so there is no pay to work out. Set at least one salary first.',
       })}
 
-      {!canStart && data.summary.total > 0 ? (
+      {!canStart ? (
         <AdminSection
-          title={`${data.periodLabel} payroll cannot start`}
-          description={`${blocked.length} ${blocked.length === 1 ? 'person needs' : 'people need'} setting up before anybody can be paid.`}
+          title={`${data?.periodLabel ?? 'This month'} cannot start`}
+          description="Payroll needs at least one employee with a salary in force."
         >
-          <BlockedList rows={blocked} />
+          {blocked.length > 0 ? <BlockedList rows={blocked} /> : <span />}
         </AdminSection>
       ) : null}
 
       {canStart && blocked.length > 0 ? (
         <AdminSection
-          title={`${blocked.length} ${blocked.length === 1 ? 'person' : 'people'} will be left out`}
-          description="The month can run without them. They are not refused — they are simply absent from it, which is much harder to notice later."
+          title={`${blocked.length} ${blocked.length === 1 ? 'person' : 'people'} will hold up approval`}
+          description="The month can be worked out now, but it cannot be approved until these are sorted. Most are this month's data entry rather than a gap in somebody's record."
         >
           <BlockedList rows={blocked} />
         </AdminSection>

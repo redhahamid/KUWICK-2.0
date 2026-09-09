@@ -23,7 +23,7 @@ test.describe('HR', () => {
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
     await gotoAdmin(page, '/admin/hr');
 
-    await expect(page.getByRole('heading', { name: 'Workforce' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Workforce', exact: true })).toBeVisible();
 
     // Somebody is actually on the floor, and the roster is read from the
     // canonical provider roster rather than a second HR-only schedule.
@@ -62,8 +62,13 @@ test.describe('HR', () => {
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
     await gotoAdmin(page, '/admin/hr/attendance');
 
-    await expect(page.getByRole('heading', { name: 'Timesheets' })).toBeVisible();
-    await expect(page.getByText(/Overtime nobody has approved is shown separately and is not paid/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Attendance', exact: true })).toBeVisible();
+    // The GUARANTEE, not one wording of it. The subtitle was shortened when
+    // the copy was cut back — "shown separately and is not paid" became "is not
+    // paid" — and a test that pins the sentence rather than the promise breaks
+    // on every edit while proving nothing extra. What must stay true is that
+    // unapproved overtime is named as unpaid AND counted in its own column.
+    await expect(page.getByText(/Overtime nobody has approved is not paid/i)).toBeVisible();
 
     // Two columns, deliberately. A long day is not automatically overtime.
     await expect(statValue(page, 'APPROVED OVERTIME')).toBeVisible();

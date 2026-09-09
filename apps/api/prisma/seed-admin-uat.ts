@@ -69,11 +69,34 @@ const PASSWORD = process.env.ADMIN_UAT_PASSWORD ?? 'AdminUat!2026';
 
 type Tx = Prisma.TransactionClient;
 
+/**
+ * TODAY, AS THE CLINIC HAS IT — not as UTC has it.
+ *
+ * This read `now.getUTCDate()`, so the world it seeded was dated by UTC while
+ * every screen reading it resolves the attendance day through `clinicDateKey`
+ * in Asia/Kuala_Lumpur. Malaysia is UTC+8, so from 16:00 UTC onwards the two
+ * disagree: the seed wrote its open punches against yesterday, and HR ▸
+ * Overview — whose entire job is answering "who is here?" — answered "nobody",
+ * correctly, about a day nobody had seeded.
+ *
+ * It looked like a flaky test. It was a seed and an application disagreeing
+ * about what day it is for a third of every day.
+ */
+const SEED_ZONE = 'Asia/Kuala_Lumpur';
+
 function day(offset: number): Date {
-  const now = new Date();
-  const base = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  return new Date(base + offset * 86400000);
+  // The clinic-local date, at UTC midnight — the same shape `workDate` takes
+  // everywhere else (`dateOnly(clinicDateKey(...))`). `en-CA` renders
+  // YYYY-MM-DD, which is that date key.
+  const key = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SEED_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+  return new Date(new Date(`${key}T00:00:00.000Z`).getTime() + offset * 86400000);
 }
+
 function at(offset: number, hour: number, minute = 0): Date {
   return new Date(day(offset).getTime() + hour * 3600000 + minute * 60000);
 }

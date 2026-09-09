@@ -6,7 +6,9 @@ import { AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { ExceptionTiles, StatStrip } from '../components/StatStrip';
 import { DataTable } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
-import { useWorkforceToday } from '../hooks/useAdmin';
+import { useWorkforceToday, usePayrollReadiness } from '../hooks/useAdmin';
+import { HrSetupJourney } from './HrSetupJourney';
+import { WORKFORCE_CATEGORY_LABELS, type WorkforceCategory } from '../../appointment/hooks/useRoster';
 import { useNavigate } from 'react-router-dom';
 
 /**
@@ -22,6 +24,15 @@ export function HrOverviewPage() {
   const navigate = useNavigate();
   const { clinicId } = useClinicFilter();
   const { data, isLoading, isError, error } = useWorkforceToday(clinicId);
+  // Whose setup is unfinished, so the board can offer that as work rather than
+  // leaving it to be discovered on pay day.
+  const period = dayjs().format('YYYY-MM');
+  const readiness = usePayrollReadiness({ period, clinicId });
+  const needSetup = readiness.data?.summary.withBlockers ?? 0;
+  const employersMissing = (readiness.data?.employers ?? []).filter((row) => !row.ready).length;
+  // A clinic with nobody on the payroll has not started; a dashboard of zeros
+  // would tell them nothing is happening rather than nothing is configured.
+  const notSetUpYet = (readiness.data?.summary.total ?? 0) === 0;
 
   return (
     <AdminShell
@@ -29,6 +40,8 @@ export function HrOverviewPage() {
       title="Workforce"
       subtitle={`Who is working, who is absent, and what is waiting for a decision — ${clinicDayjs(`${data?.date ?? ''}T00:00:00`).format('dddd D MMMM')}.`}
     >
+      {notSetUpYet ? <HrSetupJourney period={period} clinicId={clinicId} /> : null}
+
       <StatStrip
         stats={[
           { label: 'On duty now', value: data?.onDuty?.length ?? 0, tone: 'good' },
@@ -55,7 +68,7 @@ export function HrOverviewPage() {
               label: 'Leave approvals pending',
               count: data?.pendingLeaveApprovals ?? 0,
               tone: 'warn',
-              onSelect: () => navigate('/admin/hr/leave'),
+              onSelect: () => navigate('/admin/hr/requests'),
             },
             {
               key: 'ot',
@@ -88,6 +101,27 @@ export function HrOverviewPage() {
               tone: 'warn',
               hint: 'Approving one also decides whether it is paid with salary or by Finance.',
               onSelect: () => navigate('/admin/hr/claims'),
+            },
+            {
+              key: 'setup',
+              // PRECISELY WHAT THE NUMBER MEANS. "Not ready to be paid" would
+              // disagree with Payroll home's own "ready" count, which asks a
+              // narrower question — the standing facts on somebody's record,
+              // not this month's outstanding data entry. Both are right; only
+              // a vague label makes them look like a contradiction.
+              label: 'Employees who would hold up approval',
+              count: needSetup,
+              tone: 'warn',
+              hint: 'Mostly this month\'s monthly-tax entry rather than a gap in anybody\'s record.',
+              onSelect: () => navigate('/admin/hr/payroll/readiness'),
+            },
+            {
+              key: 'employer',
+              label: 'Company details missing',
+              count: employersMissing,
+              tone: 'bad',
+              hint: 'EPF, SOCSO and LHDN returns are filed by a company. Without its numbers, nothing can be filed.',
+              onSelect: () => navigate('/admin/hr/employers'),
             },
           ]}
         />
@@ -129,6 +163,24 @@ export function HrOverviewPage() {
               },
             ]}
           />
+        </AdminSection>
+      ) : null}
+
+      {Object.keys(data?.coverage ?? {}).length > 0 ? (
+        <AdminSection
+          title="Today's workforce"
+          description="Who is scheduled, by the kind of work they do. A clinic can be fully staffed and still have no doctor in it."
+        >
+          <div className="kw-coverage">
+            {Object.entries(data?.coverage ?? {}).map(([category, count]) => (
+              <div className="kw-coverage__cell" key={category}>
+                <span className="kw-coverage__count">{count}</span>
+                <span className="kw-coverage__label">
+                  {WORKFORCE_CATEGORY_LABELS[category as WorkforceCategory] ?? category}
+                </span>
+              </div>
+            ))}
+          </div>
         </AdminSection>
       ) : null}
 
@@ -185,7 +237,7 @@ export function HrOverviewPage() {
       </AdminSection>
 
       <p className="kw-adminSection__desc">
-        <Link to="/admin/hr/employees">Employee directory →</Link> · <Link to="/admin/hr/attendance">Timesheets →</Link>{' '}
+        <Link to="/admin/hr/people">Employee directory →</Link> · <Link to="/admin/hr/attendance">Attendance →</Link>{' '}
         · <Link to="/admin/hr/payroll">Payroll →</Link>
       </p>
     </AdminShell>

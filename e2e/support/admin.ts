@@ -83,7 +83,13 @@ export const ADMIN_MOUNTED_ROUTES = [
   { path: '/admin/stock/suppliers', module: 'Stock', tab: 'Suppliers', marker: 'Suppliers', owns: 'management' },
   { path: '/admin/panel/batches', module: 'Panel', tab: 'Claim batches', marker: 'Panel Claims', owns: 'management' },
   { path: '/admin/panel/companies', module: 'Panel', tab: 'Panel companies', marker: 'Panel Companies', owns: 'management' },
-  { path: '/admin/hr/leave', module: 'HR', tab: 'Leave', marker: 'Leave Requests', owns: 'management' },
+  // Leave USED to be here — a Management-era screen mounted in the Admin rail.
+  // It is not any more, and not because it was moved: it carried an
+  // "Approving/Rejecting as" picker whose value the server wrote down as the
+  // approver, unchecked, so the screen was REPLACED rather than relocated. Its
+  // successor is a native AdminShell page, covered by the ordinary Admin walk
+  // that asserts on `.kw-admin__title` — the very thing this list exists to
+  // skip for screens that have no such title.
   { path: '/admin/finance/sales', module: 'Finance', tab: 'Sales', marker: 'Total Sales', owns: 'management' },
   { path: '/admin/finance/invoices', module: 'Finance', tab: 'Invoices', marker: 'Invoice', owns: 'management' },
 ] as const;

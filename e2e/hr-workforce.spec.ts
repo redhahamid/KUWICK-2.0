@@ -49,7 +49,7 @@ test.describe('HR Today', () => {
     // A counter that goes nowhere tells a manager they have work and not where
     // it is, which is most of the way to not doing it.
     for (const [label, path] of [
-      ['Leave approvals pending', '/admin/hr/leave'],
+      ['Leave approvals pending', '/admin/hr/requests'],
       ['Claims awaiting a decision', '/admin/hr/claims'],
     ] as const) {
       await gotoAdmin(page, '/admin/hr');

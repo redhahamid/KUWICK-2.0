@@ -53,7 +53,7 @@ export function PayrollHomePage() {
           {/* The gate decides whether the month may start, and says who is
               missing what when it may not. It wraps the hero rather than
               sitting beside it so the verdict and the button cannot disagree. */}
-          <PayrollStartGate period={period} clinicId={clinicId}>
+          <PayrollStartGate period={period} clinicId={clinicId} salaryOnRecord={data.setup.salaryOnRecord}>
             {({ canStart, reason }) => (
               <PeriodHero
                 data={data}

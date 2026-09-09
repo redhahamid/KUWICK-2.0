@@ -1457,3 +1457,17 @@ export function useSaveAttendancePolicy() {
     },
   });
 }
+
+/**
+ * THE LEAVE POLICIES THIS CLINIC HAS SET.
+ *
+ * Read by the setup journey to answer one question — has anybody said what
+ * leave people are entitled to — so it can say "Not started" rather than
+ * leaving an owner to guess whether silence means done.
+ */
+export function useLeavePolicies() {
+  return useQuery({
+    queryKey: ['admin-hr', 'leave-policies'],
+    queryFn: () => apiClient.get<{ id: string; name: string }[]>('/workforce/leave/policies'),
+  });
+}
