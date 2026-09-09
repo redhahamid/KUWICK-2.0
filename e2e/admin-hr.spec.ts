@@ -43,14 +43,23 @@ test.describe('HR', () => {
   test('account, employment and clinical credential stay three separate facts', async ({ page }) => {
     const errors = collectAdminConsoleErrors(page);
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
-    await gotoAdmin(page, '/admin/hr/employees');
+    await gotoAdmin(page, '/admin/hr/people');
 
-    await expect(page.getByRole('heading', { name: 'Employees', exact: true })).toBeVisible();
-    await expect(page.getByText(/three separate facts about one person/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'People', exact: true })).toBeVisible();
 
-    // A doctor is an employee AND a credentialed clinician; a stock controller
-    // is an employee and not a clinician. Collapsing those is how a clinic
-    // ends up letting the wrong person sign a prescription.
+    /*
+     * THE DISTINCTION IS SHOWN, NOT EXPLAINED.
+     *
+     * This asserted the subtitle "account, employment and clinical credential
+     * are three separate facts about one person" — which was accurate, and was
+     * the schema describing itself to somebody who came here to look up a
+     * receptionist's phone number. The sentence is gone; the guarantee is not,
+     * and the two assertions below are what it actually amounts to.
+     *
+     * A doctor is an employee AND a credentialed clinician; a stock controller
+     * is an employee and not a clinician. Collapsing those is how a clinic ends
+     * up letting the wrong person sign a prescription.
+     */
     await expect(page.getByRole('row', { name: /Dr Aisyah Rahman/ })).toContainText(/may sign/);
     await expect(page.getByRole('row', { name: /Hafiz Osman/ })).toContainText(/Non-clinical/);
 
