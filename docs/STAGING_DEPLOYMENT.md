@@ -1,3 +1,9 @@
+> **SUPERSEDED — this is the Railway runbook, and the project no longer uses
+> Railway.** Deployment is Render + Supabase; see `docs/RENDER_DEPLOYMENT.md`
+> and `render.yaml`. Everything below is kept as history: the service split and
+> the RLS reasoning still describe how the app is shaped, but every command,
+> variable reference and dashboard step in it is Railway's and will not work.
+
 # Staging / UAT deployment (Railway)
 
 Everything needed to bring a private owner-UAT environment up on Railway from
