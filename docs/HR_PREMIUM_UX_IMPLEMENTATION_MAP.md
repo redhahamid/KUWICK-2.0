@@ -99,3 +99,69 @@ resolving — links to these live in the user guide, in payroll exception remedi
 | Old deep links breaking | Redirects plus `HubItem.covers`; the Admin walk asserts canonical paths |
 | Incentive or claim reaching payroll twice | Existing unique constraint and service guard, both already covered by e2e |
 | A screen implying an export is submitted | Reports label unsupported outputs plainly; nothing says "submitted" without an acknowledgement |
+
+---
+
+# What was actually built
+
+Written after the pass, against the twelve-screen reference sheet. Screenshots:
+`docs/screenshots/hr-premium-final/`. Screen-by-screen verdicts:
+`docs/HR_PREMIUM_VISUAL_UAT.md`.
+
+## The prediction held
+
+**No endpoint was added for the register, the drawer, the review page or the
+readiness states.** `GET /workforce/payroll/runs/:id`, `/payroll/journey/:id`,
+`/payroll/readiness` and `/payroll/inputs` carried every figure the redesign
+needed, as the map said they would.
+
+**One read was added, and it is a bulk form of one that already existed.**
+`GET /workforce/leave/balances?clinicId&year` serves the Leave screen's
+Balances view. It exists because the alternative was the web calling
+`leave/balances/:staffId` once per employee — a permission check and three
+queries per person to draw a table. It reads the three underlying things once
+and runs the SAME per-person computation (`LeaveService.balanceRow`, extracted
+from `balancesFor` for exactly this reason), so a balance here cannot disagree
+with the one on somebody's own record. It writes nothing and invents no
+entitlement rule.
+
+## Shared primitives — the thing that makes six sections one product
+
+Every HR screen is now assembled from these rather than styled independently:
+
+| Primitive | What it decides once |
+| --- | --- |
+| `components/Person.tsx` | Identity: avatar, deterministic per-person tint, name over one contextual line |
+| `components/Chip.tsx` | One status vocabulary — ok · attention · blocked · info · neutral |
+| `components/Panel.tsx` | The workspace card, definition lists, list rows, empty states |
+| `components/FilterBar.tsx` | Period / branch / status / action, in the same place on every screen |
+| `components/StageBar.tsx` | Numbered stages — payroll's four and Add Employee's four |
+| `components/DetailDrawer.tsx` | The right-hand drawer, its sections, line items and pinned footer |
+| `components/ReadinessList.tsx` | Payroll readiness as sentences, never a bare score |
+
+Plus one decision in CSS: inside `.kw-admin`, antd's own `Tag` adopts the chip
+palette, so the dozen supporting panels that still use it are the same object
+as a `StatusChip` without twelve more edits.
+
+## Deviations from the reference, and why
+
+| Reference asks for | What was built | Why |
+| --- | --- | --- |
+| Photo upload on Add Employee | The generated avatar, with a line saying photographs are not stored | There is no photo column and no file store. A control that loses the file is worse than an honest absence. |
+| "Zakat where applicable" in the payroll drawer | The Zakat line appears only when that person has one | Zakat is an ordinary `DEDUCTION` pay component, not a column on `PayrollLine`. A permanent "Zakat 0.00" row would be a claim about a deduction nobody made. |
+| "Scheduled" on the Attendance summary | The figure when a branch is chosen; "—" plus the reason when it is not | A roster is drawn for one branch at a time. A number that silently meant one branch would be worse than a dash. |
+| Stage names 1–4 | Payroll Details · Review · Approve · Finalise, exactly | No conflict with the domain, so the reference's own words won. |
+| Documents tab | Which identity and statutory documents have been sighted, and a plain statement that copies are not held | Same reason as the photo. An empty list reads as "nothing uploaded". |
+
+## What moved rather than disappeared
+
+| Was | Is now |
+| --- | --- |
+| Twelve exception counter tiles on Overview | Named rows in Needs Attention, each opening the work |
+| Nine employee-profile tabs | Six; Salary + Tax + Payroll history became **Pay**, Leave + Claims became **Leave & Claims** |
+| Five-step Add Employee drawer | Four-stage page; "Access" became a switch under Employment |
+| Earnings and Deductions steps in a payroll run | The register's columns and the employee drawer's three sections |
+| Row expansion on the register | A right-hand drawer, so the register stays put behind it |
+| The Settings wall | A landing with the one-time checklist and six areas, each on its own page |
+| The "One roster" banner | Gone. It explained the data model to somebody rostering a Tuesday. |
+| A `Select` of thirteen reports | A card library with category chips |

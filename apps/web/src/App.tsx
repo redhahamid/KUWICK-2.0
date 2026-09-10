@@ -96,11 +96,14 @@ import { ClaimsPage } from './admin/hr/ClaimsPage';
 import { LocumPage } from './admin/hr/LocumPage';
 import { PayrollReportsPage } from './admin/hr/PayrollReportsPage';
 import { PayrollSettingsPage } from './admin/hr/PayrollSettingsPage';
+import { HrSettingsPage } from './admin/hr/HrSettingsPage';
+import { AttendanceSettingsPage } from './admin/hr/AttendanceSettingsPage';
 import { PayrollHomePage } from './admin/hr/PayrollHomePage';
 import { PayrollReadinessPage } from './admin/hr/PayrollReadinessPage';
 import { YtdOpeningImportPage } from './admin/hr/YtdOpeningImportPage';
 import { PayrollRunPage } from './admin/hr/PayrollRunPage';
 import { EmployeeWorkspacePage } from './admin/hr/EmployeeWorkspacePage';
+import { AddEmployeePage } from './admin/hr/AddEmployeePage';
 import { FinanceOverviewPage } from './admin/finance/FinanceOverviewPage';
 import { DayEndClosingPage } from './admin/finance/DayEndClosingPage';
 import { PaymentsPage } from './admin/finance/PaymentsPage';
@@ -298,6 +301,7 @@ export function App() {
                 top-level names redirect so there is ONE canonical URL per
                 screen; the detail routes under them are untouched. */}
             <Route path="/admin/hr/people" element={<EmployeesPage />} />
+            <Route path="/admin/hr/people/new" element={<AddEmployeePage />} />
             <Route path="/admin/hr/employees" element={<Navigate to="/admin/hr/people" replace />} />
             {/* One employee, addressable. The record used to live only in a
                 drawer, so it could not be linked to, left open, or reached from
@@ -329,7 +333,9 @@ export function App() {
             <Route path="/admin/hr/benefits" element={<BenefitsPage />} />
             <Route path="/admin/hr/locum" element={<LocumPage />} />
             <Route path="/admin/hr/reports" element={<PayrollReportsPage />} />
-            <Route path="/admin/hr/settings" element={<PayrollSettingsPage />} />
+            <Route path="/admin/hr/settings" element={<HrSettingsPage />} />
+            <Route path="/admin/hr/settings/payroll" element={<PayrollSettingsPage />} />
+            <Route path="/admin/hr/settings/attendance" element={<AttendanceSettingsPage />} />
             <Route path="/admin/hr/access" element={<RolesSettingsPage />} />
 
             <Route path="/admin/finance" element={<FinanceOverviewPage />} />

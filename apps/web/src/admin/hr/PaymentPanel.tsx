@@ -128,8 +128,7 @@ export function PaymentPanel({ runId }: { runId: string }) {
 
           {batch.status !== 'RECORDED_PAID' ? (
             <AdminNotice tone="info">
-              The listing is <strong>not a bank file</strong> — no verified bank format is on record. Key the payments
-              in your bank's own portal, then record the transfer here with its reference.
+              The listing is <strong>not a bank file</strong>: no verified bank format is on record. Key the payments at your bank&apos;s portal, then record the transfer here with its reference.
             </AdminNotice>
           ) : null}
 

@@ -50,7 +50,7 @@ describe('the statutory standing panel', () => {
     expect(screen.getByText('Not participating')).toBeTruthy();
     expect(screen.getByText('Sunday')).toBeTruthy();
     expect(screen.getByText('2')).toBeTruthy();
-    expect(screen.getByText(/in force since 1 Jan 2024/)).toBeTruthy();
+    expect(screen.getByText(/In force since 1 Jan 2024/i)).toBeTruthy();
   });
 
   it('says NOT RECORDED for every field when nothing is in force for the month', () => {

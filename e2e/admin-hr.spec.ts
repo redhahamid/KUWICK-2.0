@@ -29,12 +29,29 @@ test.describe('HR', () => {
     // canonical provider roster rather than a second HR-only schedule.
     await expect(statValue(page, 'ON DUTY NOW')).not.toHaveText('0');
     await expect(page.getByText(/Read from the provider roster/i)).toBeVisible();
-    await expect(page.getByText(/Changing a shift happens there, not here/i)).toBeVisible();
+    await expect(page.getByText(/changing a shift happens there, not here/i)).toBeVisible();
 
-    // Each of the three is a person blocked until a manager acts — the point
-    // of putting them above the tables.
-    for (const label of ['Leave approvals pending', 'Overtime claimed, not approved', 'Missing clock-in or clock-out']) {
-      await expect(page.locator('.kw-exceptionTile__label', { hasText: new RegExp(label) })).toBeVisible();
+    /*
+     * WHAT NEEDS ATTENTION IS NAMED, not counted.
+     *
+     * This asserted three exception TILES by label. The tiles are gone: twelve
+     * counters at the top of a screen told a manager they had work and nothing
+     * about whose it was. Needs Attention is a list of named rows now, and a
+     * clean clinic gets one sentence rather than a row of zeroes — so what is
+     * pinned here is the guarantee (every outstanding item is named and opens
+     * the work), not a fixed set of labels.
+     */
+    const attention = page.locator('.kw-panel', { hasText: 'Needs attention' });
+    await expect(attention).toBeVisible();
+    const rows = attention.locator('.kw-panelRow');
+    const count = await rows.count();
+    if (count === 0) {
+      await expect(attention).toContainText(/Nothing is waiting on you/i);
+    } else {
+      for (let index = 0; index < count; index += 1) {
+        // A row that names work and goes nowhere is the failure this replaced.
+        await expect(rows.nth(index)).toHaveAttribute('href', /\/admin\/hr\//);
+      }
     }
 
     expect(errors).toEqual([]);
@@ -61,7 +78,7 @@ test.describe('HR', () => {
      * up letting the wrong person sign a prescription.
      */
     await expect(page.getByRole('row', { name: /Dr Aisyah Rahman/ })).toContainText(/may sign/);
-    await expect(page.getByRole('row', { name: /Hafiz Osman/ })).toContainText(/Non-clinical/);
+    await expect(page.getByRole('row', { name: /Hafiz Osman/ })).toContainText(/Not a clinician/);
 
     expect(errors).toEqual([]);
   });
@@ -79,9 +96,19 @@ test.describe('HR', () => {
     // unapproved overtime is named as unpaid AND counted in its own column.
     await expect(page.getByText(/Overtime nobody has approved is not paid/i)).toBeVisible();
 
-    // Two columns, deliberately. A long day is not automatically overtime.
-    await expect(statValue(page, 'APPROVED OVERTIME')).toBeVisible();
-    await expect(statValue(page, 'UNAPPROVED OVERTIME')).toBeVisible();
+    /*
+     * TWO COLUMNS, DELIBERATELY — and they are the sheet's now, not the
+     * summary's.
+     *
+     * The summary strip carries the reference sheet's five figures (scheduled,
+     * present, late, missing punch, OT pending), so approved overtime moved to
+     * where it is compared with the pending hours: the per-person row. The
+     * guarantee is unchanged — approved and unapproved overtime are never one
+     * number — and this pins it where it now lives.
+     */
+    await expect(statValue(page, 'OT PENDING')).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'OT approved' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'OT pending' })).toBeVisible();
     await expect(page.getByText(/A long day is not automatically overtime/i)).toBeVisible();
 
     expect(errors).toEqual([]);
@@ -94,10 +121,14 @@ test.describe('HR', () => {
 
     await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible();
 
-    // The month in progress reads as a status, not a promise: CALCULATED. An
+    // The month in progress reads as a status, not a promise: Calculated. An
     // approved run on unchecked rates would read Provisional here instead of a
-    // plain green APPROVED — that substitution is the row-level admission.
-    await expect(page.locator('.ant-tag', { hasText: 'CALCULATED' }).first()).toBeVisible();
+    // plain green Approved — that substitution is the row-level admission.
+    //
+    // A chip rather than an antd tag, and sentence case rather than the enum:
+    // HR speaks one status vocabulary now (see components/Chip.tsx), and a
+    // screen that prints CALCULATED is talking to the database.
+    await expect(page.locator('.kw-chip', { hasText: 'Calculated' }).first()).toBeVisible();
 
     /*
      * THE ONE SAFETY INDICATOR — honest in BOTH directions. This spec used to

@@ -10,6 +10,28 @@ import { UpsertLeavePolicyDto } from './dto/upsert-leave-policy.dto';
 import { AdjustLeaveBalanceDto } from './dto/adjust-leave-balance.dto';
 
 /**
+ * The three reads a balance is computed from, named so the single-person and
+ * whole-clinic paths are provably passing the same shapes into one function.
+ */
+type LeaveProfile = {
+  startDate: Date | null;
+  endDate: Date | null;
+  leavePolicy: {
+    name: string;
+    proRateOnJoin: boolean;
+    entitlements: { leaveType: LeaveType; daysPerYear: unknown; paid: boolean }[];
+  } | null;
+};
+type StoredBalance = {
+  leaveType: LeaveType;
+  entitledDays: unknown;
+  carriedInDays: unknown;
+  adjustmentDays: unknown;
+  adjustmentReason: string | null;
+};
+type LeaveRequestRow = { leaveType: LeaveType; startDate: Date; endDate: Date; status: string };
+
+/**
  * LEAVE — policies, entitlements and balances.
  *
  * `LeaveRequest` itself stays where it is (`hr/leave-request.service.ts`,
@@ -135,6 +157,30 @@ export class LeaveService {
       }),
     ]);
 
+    return this.balanceRow({ staffId, year, profile, stored, requests });
+  }
+
+  /**
+   * ONE PERSON'S BALANCES, from facts already read.
+   *
+   * Split out of `balancesFor` so the whole-clinic read below computes each
+   * person the same way rather than growing a second entitlement rule. The
+   * only difference between the two callers is where the three inputs came
+   * from — one query each, or one query for everybody.
+   */
+  private balanceRow({
+    staffId,
+    year,
+    profile,
+    stored,
+    requests,
+  }: {
+    staffId: string;
+    year: number;
+    profile: LeaveProfile | null;
+    stored: StoredBalance[];
+    requests: LeaveRequestRow[];
+  }) {
     const storedByType = new Map(stored.map((row) => [row.leaveType, row]));
     const types: LeaveType[] = profile?.leavePolicy?.entitlements.map((entitlement) => entitlement.leaveType) ?? [
       ...new Set([...stored.map((row) => row.leaveType), ...requests.map((row) => row.leaveType)]),
@@ -181,6 +227,69 @@ export class LeaveService {
           adjustmentReason: storedRow?.adjustmentReason ?? null,
         };
       }),
+    };
+  }
+
+  /**
+   * EVERYBODY'S BALANCES, for the Leave screen's Balances view.
+   *
+   * The alternative was the web calling `balancesFor` once per employee, which
+   * is a permission check and three queries per person for a screen that shows
+   * a table. This reads the same three things once and runs the SAME row
+   * computation over them, so a figure here can never disagree with the one on
+   * somebody's own record.
+   *
+   * Read-only, `hr.view`, and it invents no entitlement rule of its own.
+   */
+  async balancesForEveryone(params: { clinicId?: string; year?: number } = {}) {
+    await requirePermission(this.rawPrisma, 'hr.view');
+    const year = params.year ?? new Date().getUTCFullYear();
+
+    const profiles = await this.prisma.employeeProfile.findMany({
+      where: {
+        staff: {
+          active: true,
+          ...(params.clinicId ? { clinicId: params.clinicId } : {}),
+        },
+      },
+      include: {
+        leavePolicy: { include: { entitlements: true } },
+        staff: { select: { id: true, fullName: true } },
+      },
+    });
+    const staffIds = profiles.map((profile) => profile.staffId);
+    if (staffIds.length === 0) return { year, employees: [] };
+
+    const [stored, requests] = await Promise.all([
+      this.prisma.leaveBalance.findMany({ where: { staffId: { in: staffIds }, benefitYear: year } }),
+      this.prisma.leaveRequest.findMany({
+        where: {
+          staffId: { in: staffIds },
+          startDate: { lte: new Date(Date.UTC(year, 11, 31)) },
+          endDate: { gte: new Date(Date.UTC(year, 0, 1)) },
+        },
+      }),
+    ]);
+
+    const storedByStaff = new Map<string, StoredBalance[]>();
+    for (const row of stored) storedByStaff.set(row.staffId, [...(storedByStaff.get(row.staffId) ?? []), row]);
+    const requestsByStaff = new Map<string, LeaveRequestRow[]>();
+    for (const row of requests) requestsByStaff.set(row.staffId, [...(requestsByStaff.get(row.staffId) ?? []), row]);
+
+    return {
+      year,
+      employees: profiles
+        .map((profile) => ({
+          name: profile.staff.fullName,
+          ...this.balanceRow({
+            staffId: profile.staffId,
+            year,
+            profile,
+            stored: storedByStaff.get(profile.staffId) ?? [],
+            requests: requestsByStaff.get(profile.staffId) ?? [],
+          }),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
     };
   }
 

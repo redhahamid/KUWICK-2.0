@@ -93,7 +93,7 @@ export function PayrollReadinessPage() {
 
           <AdminSection
             title="The employing companies"
-            description="Registrations gate the filings, not the calculation — payroll can run while a SOCSO code is still in the post, but nothing can be submitted under a number that is not on file."
+            description="Registrations gate the filings, not the calculation. Payroll runs; nothing is submitted under a number that is not on file."
           >
             <DataTable<PayrollReadiness['employers'][number]>
               rowKey="id"

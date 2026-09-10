@@ -1,3 +1,5 @@
+import { StageBar } from '../components/StageBar';
+
 export type StepKey = 'prepare' | 'review' | 'approve' | 'complete';
 
 /**
@@ -21,25 +23,28 @@ export type StepKey = 'prepare' | 'review' | 'approve' | 'complete';
 export const STEPS: { key: StepKey; label: string; heading: string; blurb: string }[] = [
   {
     key: 'prepare',
-    label: 'Prepare',
-    heading: 'Getting the month ready',
-    blurb: 'Who is being paid, what they worked, and anything still waiting on somebody.',
+    // THE REFERENCE SHEET'S NAMES, where the domain does not contradict them:
+    // Payroll Details · Review · Approve · Finalise. "Prepare" and "Complete"
+    // were mine; these are the words a payroll clerk already uses.
+    label: 'Payroll Details',
+    heading: 'The month, employee by employee',
+    blurb: 'Every figure that makes up every payslip. Open a row for one person’s detail.',
   },
   {
     key: 'review',
-    label: 'Review payroll',
-    heading: 'The month, employee by employee',
-    blurb: 'Every figure that makes up every payslip. Open a row to see where each amount came from.',
+    label: 'Review',
+    heading: 'What needs looking at',
+    blurb: 'What blocks this run, what is worth a look, and what the month adds up to.',
   },
   {
     key: 'approve',
     label: 'Approve',
-    heading: 'Approve & finalise',
+    heading: 'Approve the month',
     blurb: 'What you are signing off, and what happens when you do.',
   },
   {
     key: 'complete',
-    label: 'Complete',
+    label: 'Finalise',
     heading: 'Payslips and payment',
     blurb: 'Payslips, the payment listing, and the statutory figures to file.',
   },
@@ -106,26 +111,24 @@ export function stepsWithProblems(
 }
 
 /**
- * THE SIX STEPS.
+ * THE FOUR STAGES, on the shared stage strip.
  *
- * Every step a clinic owner can see at once. A stepper rather than tabs
- * because the order is real: earnings cannot be reviewed before attendance is
- * settled, and a tab strip says otherwise.
+ * It had its own bespoke stepper markup, which meant payroll's stages and Add
+ * Employee's stages looked like two different products doing the same thing.
+ * `StageBar` is one component and one set of styles; what stays here is the
+ * only thing payroll knows that the strip does not — which stage is carrying a
+ * blocker.
  *
  * A TICK MEANS SETTLED, NOT VISITED.
  *
  * It used to mean "behind where you are", which put a green tick beside
- * Employees while somebody on that step had no salary on file, and beside
- * Review while four things were blocking the run. A tick is the strongest
- * "this is fine" a screen has; spending it on "you have scrolled past this"
- * is how the design review's own mockups ended up showing a row of green
- * ticks over a run that could not be paid. A step someone has passed that
- * still holds a blocker is marked as needing attention instead.
+ * Payroll Details while somebody on that stage had no salary on file. A tick
+ * is the strongest "this is fine" a screen has; spending it on "you have
+ * scrolled past this" is how a row of green ticks ends up over a run that
+ * cannot be paid.
  *
- * Steps are NOT locked. An owner who wants to look ahead at Review before
- * settling the timesheet should be able to; what stops them finalising is the
- * approval gate, not a disabled tab. Locking navigation to enforce a rule the
- * gate already enforces just makes the product feel like it distrusts them.
+ * Stages are NOT locked. An owner who wants to look ahead should be able to;
+ * what stops them finalising is the approval gate, not a disabled tab.
  */
 export function PayrollStepper({
   current,
@@ -134,46 +137,25 @@ export function PayrollStepper({
 }: {
   current: StepKey;
   onChange: (key: StepKey) => void;
-  /** Steps carrying something that blocks approval. Omitted = nothing known. */
+  /** Stages carrying something that blocks approval. Omitted = nothing known. */
   problemSteps?: Set<StepKey>;
 }) {
   const currentIndex = STEPS.findIndex((step) => step.key === current);
 
   return (
-    <nav className="kw-stepper" aria-label="Payroll steps">
-      {STEPS.map((step, index) => {
-        const behind = index < currentIndex;
-        const active = index === currentIndex;
+    <StageBar
+      current={current}
+      stages={STEPS.map((step, index) => {
         const blocked = problemSteps?.has(step.key) ?? false;
-        const done = behind && !blocked;
-        return (
-          <button
-            key={step.key}
-            type="button"
-            className={
-              `kw-stepper__step${active ? ' kw-stepper__step--active' : ''}` +
-              `${done ? ' kw-stepper__step--done' : ''}` +
-              `${blocked ? ' kw-stepper__step--blocked' : ''}`
-            }
-            aria-current={active ? 'step' : undefined}
-            aria-label={blocked ? `${step.label} — needs attention` : step.label}
-            onClick={() => onChange(step.key)}
-          >
-            <span className="kw-stepper__mark">
-              {blocked ? (
-                '!'
-              ) : done ? (
-                <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden>
-                  <path d="M5 10.5 8.5 14 15 6.5" />
-                </svg>
-              ) : (
-                index + 1
-              )}
-            </span>
-            <span className="kw-stepper__label">{step.label}</span>
-          </button>
-        );
+        return {
+          key: step.key,
+          label: step.label,
+          hint: blocked ? 'Needs attention' : undefined,
+          attention: blocked,
+          done: index < currentIndex && !blocked,
+          onSelect: () => onChange(step.key),
+        };
       })}
-    </nav>
+    />
   );
 }

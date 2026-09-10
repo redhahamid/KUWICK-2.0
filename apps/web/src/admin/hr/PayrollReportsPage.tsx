@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Select, Tag } from 'antd';
+import { Button, Input, Select, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { DataTable, DataTableTotalRow, ringgit } from '../components/DataTable';
+import { FilterBar, Filter } from '../components/FilterBar';
+import { EmptyState } from '../components/Panel';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import {
   useEmployees,
@@ -72,20 +74,98 @@ type ReportKey =
   | 'EXCEPTIONS'
   | 'PAYMENT_STATUS';
 
+/**
+ * WHICH CATEGORY EACH REPORT BELONGS TO.
+ *
+ * Keyed by the API's own report keys, so the catalogue stays the source of
+ * truth for WHAT exists and this map only decides where it sits. Anything the
+ * server serves that is not named here lands in Payroll rather than vanishing
+ * — a report that exists and is unreachable is worse than one in the wrong
+ * drawer.
+ */
+const CATEGORY_OF: Record<string, ReportCategory> = {
+  PAYROLL_REGISTER: 'Payroll',
+  EMPLOYER_COST: 'Payroll',
+  VARIANCE: 'Payroll',
+  PAYMENT_STATUS: 'Payroll',
+  STATUTORY_TOTALS: 'Statutory',
+  PCB_SUMMARY: 'Statutory',
+  YTD: 'Statutory',
+  OVERTIME: 'Time & leave',
+  UNPAID_LEAVE: 'Time & leave',
+  CLAIMS: 'Claims & incentives',
+  INCENTIVES: 'Claims & incentives',
+  PAYROLL_HISTORY: 'People',
+  EXCEPTIONS: 'Payroll',
+};
+
+type ReportCategory = 'Payroll' | 'Statutory' | 'Time & leave' | 'Claims & incentives' | 'People';
+
+const CATEGORIES: ReportCategory[] = ['Payroll', 'Statutory', 'Time & leave', 'Claims & incentives', 'People'];
+
+/**
+ * WHAT LIVES ON ANOTHER SCREEN.
+ *
+ * Payslips, the attendance sheet, leave balances and the benefits register are
+ * real, working capabilities — they are simply not report endpoints, they are
+ * screens. A reports library that omits them sends somebody hunting; one that
+ * lists them as reports would be lying about what they are. They are listed,
+ * marked, and they navigate.
+ */
+const ELSEWHERE: { title: string; description: string; to: string; category: ReportCategory }[] = [
+  {
+    title: 'Payslips',
+    description: 'One per employee, from an approved run’s frozen snapshot.',
+    to: '/admin/hr/payroll',
+    category: 'People',
+  },
+  {
+    title: 'Attendance sheet',
+    description: 'Days, hours, lateness and overtime for any period. Exports to CSV.',
+    to: '/admin/hr/time',
+    category: 'Time & leave',
+  },
+  {
+    title: 'Leave balances',
+    description: 'Entitlement, taken and remaining, per person per leave type.',
+    to: '/admin/hr/time/leave',
+    category: 'Time & leave',
+  },
+  {
+    title: 'Medical benefits register',
+    description: 'What each employee has used against their entitlement this year.',
+    to: '/admin/hr/benefits',
+    category: 'Claims & incentives',
+  },
+];
+
+/**
+ * REPORTS — a library of cards, not a dropdown.
+ *
+ * The dropdown was the whole experience: thirteen options in one `Select`,
+ * where finding a report meant already knowing its name, and nothing on screen
+ * said what the thirteen were until you opened the list. A library shows the
+ * whole shelf at once — which is the only way somebody discovers that an
+ * employer-cost report exists.
+ *
+ * WHAT EXISTS IS STILL THE SERVER'S ANSWER. The cards come from the API's
+ * catalogue, so a report cannot appear here that the server does not serve,
+ * and the honestly-labelled absences keep their reason.
+ */
 export function PayrollReportsPage() {
   const { clinicId } = useClinicFilter();
   const catalogue = usePayrollReportCatalogue();
   const runs = usePayrollRuns({ clinicId });
   const employees = useEmployees({ clinicId, status: 'ACTIVE' });
   const employers = useLegalEmployers();
-  const [report, setReport] = useState<ReportKey>('PAYROLL_REGISTER');
+  const [report, setReport] = useState<ReportKey | null>(null);
+  const [category, setCategory] = useState<ReportCategory | 'All'>('All');
+  const [query, setQuery] = useState('');
   const [runId, setRunId] = useState<string | undefined>();
   const [staffId, setStaffId] = useState<string | undefined>();
   const [year, setYear] = useState<number>(dayjs().year());
   const [employerId, setEmployerId] = useState<string | undefined>();
 
-  // The most recent calculated run, so the page opens on something rather than
-  // on an empty selector the reader has to fill in before seeing anything.
   const runOptions = useMemo(
     () =>
       (runs.data ?? [])
@@ -110,10 +190,146 @@ export function PayrollReportsPage() {
   }, []);
   // THE SCOPE COMES FROM THE CATALOGUE — the API says what each report is a
   // view of, and the picker row follows it rather than a second list here.
-  const scope = catalogue.data?.available.find((entry) => entry.key === report)?.scope ?? 'RUN';
+  const entry = catalogue.data?.available.find((row) => row.key === report);
+  const scope = entry?.scope ?? 'RUN';
 
   const [from, setFrom] = useState(dayjs().startOf('month').format('YYYY-MM-DD'));
   const [to, setTo] = useState(dayjs().endOf('month').format('YYYY-MM-DD'));
+
+  const cards = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return (catalogue.data?.available ?? [])
+      .map((row) => ({ ...row, category: CATEGORY_OF[row.key] ?? ('Payroll' as ReportCategory) }))
+      .filter((row) => category === 'All' || row.category === category)
+      .filter(
+        (row) =>
+          !needle ||
+          row.title.toLowerCase().includes(needle) ||
+          row.description.toLowerCase().includes(needle),
+      );
+  }, [catalogue.data, category, query]);
+
+  const elsewhere = ELSEWHERE.filter((row) => category === 'All' || row.category === category).filter(
+    (row) => !query.trim() || row.title.toLowerCase().includes(query.trim().toLowerCase()),
+  );
+
+  // A CHOSEN REPORT TAKES OVER THE PAGE, with a way back to the shelf. Showing
+  // the library above a full report means the report starts below the fold.
+  if (report && entry) {
+    return (
+      <AdminShell
+        error={firstError(catalogue, runs)}
+        title={entry.title}
+        subtitle={entry.description}
+        actions={
+          <Button size="small" onClick={() => setReport(null)}>
+            ← All reports
+          </Button>
+        }
+      >
+        <FilterBar>
+          {scope === 'RUN' ? (
+            <Filter label="Payroll run">
+              <Select
+                size="small"
+                aria-label="Payroll run"
+                style={{ minWidth: 280 }}
+                value={selectedRun}
+                onChange={setRunId}
+                options={runOptions}
+                placeholder="No calculated runs yet"
+              />
+            </Filter>
+          ) : null}
+          {scope === 'DATE_RANGE' ? (
+            <>
+              <Filter label="From">
+                <input
+                  aria-label="From"
+                  className="kw-dateInput"
+                  type="date"
+                  value={from}
+                  onChange={(event) => setFrom(event.target.value)}
+                />
+              </Filter>
+              <Filter label="To">
+                <input
+                  aria-label="To"
+                  className="kw-dateInput"
+                  type="date"
+                  value={to}
+                  onChange={(event) => setTo(event.target.value)}
+                />
+              </Filter>
+            </>
+          ) : null}
+          {scope === 'EMPLOYEE' ? (
+            <>
+              <Filter label="Employee">
+                <Select
+                  size="small"
+                  aria-label="Employee"
+                  showSearch
+                  optionFilterProp="label"
+                  style={{ minWidth: 260 }}
+                  value={staffId}
+                  onChange={setStaffId}
+                  options={employeeOptions}
+                  placeholder="Choose an employee"
+                />
+              </Filter>
+              <Filter label="Year">
+                <Select size="small" aria-label="Year" style={{ minWidth: 110 }} value={year} onChange={setYear} options={yearOptions} />
+              </Filter>
+            </>
+          ) : null}
+          {scope === 'YEAR' ? (
+            <>
+              <Filter label="Year">
+                <Select size="small" aria-label="Year" style={{ minWidth: 110 }} value={year} onChange={setYear} options={yearOptions} />
+              </Filter>
+              <Filter label="Employer">
+                <Select
+                  size="small"
+                  aria-label="Legal employer"
+                  allowClear
+                  style={{ minWidth: 240 }}
+                  value={employerId}
+                  onChange={setEmployerId}
+                  options={(employers.data ?? []).map((row) => ({ value: row.id, label: row.name }))}
+                  placeholder="Every employer"
+                />
+              </Filter>
+            </>
+          ) : null}
+        </FilterBar>
+
+        {scope === 'RUN' && !selectedRun ? (
+          <AdminNotice tone="info">
+            <strong>No payroll has been calculated yet.</strong> A report is a view of a run, so there is nothing to
+            report on until one exists. <Link to="/admin/hr/payroll">Start this month’s payroll</Link>.
+          </AdminNotice>
+        ) : null}
+        {scope === 'EMPLOYEE' && !staffId ? (
+          <AdminNotice tone="info">Choose an employee to see their payroll history.</AdminNotice>
+        ) : null}
+
+        {report === 'PAYROLL_REGISTER' && selectedRun ? <RegisterReport runId={selectedRun} /> : null}
+        {report === 'EMPLOYER_COST' && selectedRun ? <EmployerCostReport runId={selectedRun} /> : null}
+        {report === 'STATUTORY_TOTALS' && selectedRun ? <StatutoryReport runId={selectedRun} /> : null}
+        {report === 'VARIANCE' && selectedRun ? <ComparisonReport runId={selectedRun} /> : null}
+        {report === 'CLAIMS' ? <ClaimsReport from={from} to={to} /> : null}
+        {report === 'PAYROLL_HISTORY' && staffId ? <HistoryReport staffId={staffId} year={year} /> : null}
+        {report === 'PCB_SUMMARY' && selectedRun ? <PcbSummaryReport runId={selectedRun} /> : null}
+        {report === 'YTD' ? <YtdReport year={year} legalEmployerId={employerId} /> : null}
+        {report === 'OVERTIME' && selectedRun ? <OvertimeReport runId={selectedRun} /> : null}
+        {report === 'UNPAID_LEAVE' && selectedRun ? <UnpaidLeaveReport runId={selectedRun} /> : null}
+        {report === 'INCENTIVES' && selectedRun ? <IncentivesReport runId={selectedRun} /> : null}
+        {report === 'EXCEPTIONS' && selectedRun ? <ExceptionsReport runId={selectedRun} /> : null}
+        {report === 'PAYMENT_STATUS' && selectedRun ? <PaymentStatusReport runId={selectedRun} /> : null}
+      </AdminShell>
+    );
+  }
 
   return (
     <AdminShell
@@ -121,121 +337,76 @@ export function PayrollReportsPage() {
       title="Reports"
       subtitle="Read-only views of what payroll has already recorded. Every figure comes from the run itself."
     >
-      <AdminSection title="Choose a report">
-        <div className="kw-filterRow">
-          <Select
-            aria-label="Report"
-            style={{ minWidth: 260 }}
-            value={report}
-            onChange={(value) => setReport(value as ReportKey)}
-            // Thirteen options: without this the list virtualises and the ones
-            // below the fold are not even in the DOM for a reader (or a UAT
-            // script) to find.
-            virtual={false}
-            listHeight={420}
-            options={(catalogue.data?.available ?? []).map((entry) => ({
-              value: entry.key,
-              label: entry.title,
-            }))}
+      <FilterBar
+        right={
+          <Input
+            allowClear
+            size="small"
+            style={{ width: 240 }}
+            placeholder="Search reports…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
           />
-          {scope === 'RUN' ? (
-            <Select
-              aria-label="Payroll run"
-              style={{ minWidth: 300 }}
-              value={selectedRun}
-              onChange={setRunId}
-              options={runOptions}
-              placeholder="No calculated runs yet"
-            />
-          ) : null}
-          {scope === 'DATE_RANGE' ? (
-            <>
-              <input
-                aria-label="From"
-                className="kw-dateInput"
-                type="date"
-                value={from}
-                onChange={(event) => setFrom(event.target.value)}
-              />
-              <input
-                aria-label="To"
-                className="kw-dateInput"
-                type="date"
-                value={to}
-                onChange={(event) => setTo(event.target.value)}
-              />
-            </>
-          ) : null}
-          {scope === 'EMPLOYEE' ? (
-            <>
-              <Select
-                aria-label="Employee"
-                showSearch
-                optionFilterProp="label"
-                style={{ minWidth: 280 }}
-                value={staffId}
-                onChange={setStaffId}
-                options={employeeOptions}
-                placeholder="Choose an employee"
-              />
-              <Select
-                aria-label="Year"
-                style={{ minWidth: 110 }}
-                value={year}
-                onChange={setYear}
-                options={yearOptions}
-              />
-            </>
-          ) : null}
-          {scope === 'YEAR' ? (
-            <>
-              <Select
-                aria-label="Year"
-                style={{ minWidth: 110 }}
-                value={year}
-                onChange={setYear}
-                options={yearOptions}
-              />
-              <Select
-                aria-label="Legal employer"
-                allowClear
-                style={{ minWidth: 260 }}
-                value={employerId}
-                onChange={setEmployerId}
-                options={(employers.data ?? []).map((row) => ({ value: row.id, label: row.name }))}
-                placeholder="Every employer"
-              />
-            </>
-          ) : null}
+        }
+      >
+        <div className="kw-chipRow" role="group" aria-label="Report categories">
+          {(['All', ...CATEGORIES] as const).map((name) => (
+            <button
+              key={name}
+              type="button"
+              className={`kw-catChip${category === name ? ' kw-catChip--on' : ''}`}
+              onClick={() => setCategory(name)}
+            >
+              {name}
+            </button>
+          ))}
         </div>
-        <p className="kw-muted" style={{ marginTop: 8, marginBottom: 0 }}>
-          {catalogue.data?.available.find((entry) => entry.key === report)?.description}
-        </p>
-      </AdminSection>
+      </FilterBar>
 
-      {scope === 'RUN' && !selectedRun ? (
-        <AdminNotice tone="info">
-          <strong>No payroll has been calculated yet.</strong> A report is a view of a run, so there is nothing to
-          report on until one exists. <Link to="/admin/hr/payroll">Start this month's payroll</Link>.
-        </AdminNotice>
-      ) : null}
-      {scope === 'EMPLOYEE' && !staffId ? (
-        <AdminNotice tone="info">Choose an employee to see their payroll history.</AdminNotice>
+      {cards.length === 0 && elsewhere.length === 0 ? (
+        <AdminSection padded={false}>
+          <EmptyState title="No report matches that" hint="Try another category, or clear the search." />
+        </AdminSection>
       ) : null}
 
-      {report === 'PAYROLL_REGISTER' && selectedRun ? <RegisterReport runId={selectedRun} /> : null}
-      {report === 'EMPLOYER_COST' && selectedRun ? <EmployerCostReport runId={selectedRun} /> : null}
-      {report === 'STATUTORY_TOTALS' && selectedRun ? <StatutoryReport runId={selectedRun} /> : null}
-      {report === 'VARIANCE' && selectedRun ? <ComparisonReport runId={selectedRun} /> : null}
-      {report === 'CLAIMS' ? <ClaimsReport from={from} to={to} /> : null}
-      {report === 'PAYROLL_HISTORY' && staffId ? <HistoryReport staffId={staffId} year={year} /> : null}
-      {report === 'PCB_SUMMARY' && selectedRun ? <PcbSummaryReport runId={selectedRun} /> : null}
-      {report === 'YTD' ? <YtdReport year={year} legalEmployerId={employerId} /> : null}
-      {report === 'OVERTIME' && selectedRun ? <OvertimeReport runId={selectedRun} /> : null}
-      {report === 'UNPAID_LEAVE' && selectedRun ? <UnpaidLeaveReport runId={selectedRun} /> : null}
-      {report === 'INCENTIVES' && selectedRun ? <IncentivesReport runId={selectedRun} /> : null}
-      {report === 'EXCEPTIONS' && selectedRun ? <ExceptionsReport runId={selectedRun} /> : null}
-      {report === 'PAYMENT_STATUS' && selectedRun ? <PaymentStatusReport runId={selectedRun} /> : null}
+      {cards.length > 0 ? (
+        <div className="kw-reportGrid">
+          {cards.map((row) => (
+            <button key={row.key} type="button" className="kw-reportCard" onClick={() => setReport(row.key as ReportKey)}>
+              <span className="kw-reportCard__cat">{row.category}</span>
+              <span className="kw-reportCard__title">{row.title}</span>
+              <span className="kw-reportCard__desc">{row.description}</span>
+              <span className="kw-reportCard__scope">
+                {row.scope === 'RUN'
+                  ? 'One payroll run'
+                  : row.scope === 'DATE_RANGE'
+                    ? 'A date range'
+                    : row.scope === 'EMPLOYEE'
+                      ? 'One employee, one year'
+                      : 'A tax year'}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {elsewhere.length > 0 ? (
+        <AdminSection
+          title="Elsewhere in HR"
+          description="Real, working views that are screens rather than report endpoints."
+        >
+          <div className="kw-reportGrid">
+            {elsewhere.map((row) => (
+              <Link key={row.title} className="kw-reportCard kw-reportCard--link" to={row.to}>
+                <span className="kw-reportCard__cat">{row.category}</span>
+                <span className="kw-reportCard__title">{row.title}</span>
+                <span className="kw-reportCard__desc">{row.description}</span>
+                <span className="kw-reportCard__scope">Opens the screen →</span>
+              </Link>
+            ))}
+          </div>
+        </AdminSection>
+      ) : null}
 
       {/*
         * WHAT DOES NOT EXIST, listed rather than left to be discovered on the
@@ -247,15 +418,12 @@ export function PayrollReportsPage() {
           title="Not available yet"
           description="Reports the payroll specification names that this build does not serve, and why."
         >
-          <div className="kw-setupList">
-            {catalogue.data.notAvailableYet.map((entry) => (
-              <div key={entry.key} className="kw-setupList__row">
-                <span className="kw-setupList__mark kw-setupList__mark--todo">—</span>
-                <div className="kw-setupList__body">
-                  <div className="kw-setupList__title">{entry.title}</div>
-                  <div className="kw-setupList__detail">{entry.why}</div>
-                </div>
-                <div />
+          <div className="kw-reportGrid">
+            {catalogue.data.notAvailableYet.map((row) => (
+              <div key={row.key} className="kw-reportCard kw-reportCard--off">
+                <span className="kw-reportCard__cat">Not built</span>
+                <span className="kw-reportCard__title">{row.title}</span>
+                <span className="kw-reportCard__desc">{row.why}</span>
               </div>
             ))}
           </div>

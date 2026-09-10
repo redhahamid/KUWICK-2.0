@@ -81,7 +81,7 @@ export function PayrollStartGate({
       {canStart && blocked.length > 0 ? (
         <AdminSection
           title={`${blocked.length} ${blocked.length === 1 ? 'person' : 'people'} will hold up approval`}
-          description="The month can be worked out now, but it cannot be approved until these are sorted. Most are this month's data entry rather than a gap in somebody's record."
+          description="The month can be worked out now; it cannot be approved until these are sorted."
         >
           <BlockedList rows={blocked} />
         </AdminSection>

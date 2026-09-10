@@ -1465,6 +1465,44 @@ export function useSaveAttendancePolicy() {
  * leave people are entitled to — so it can say "Not started" rather than
  * leaving an owner to guess whether silence means done.
  */
+/**
+ * EVERYBODY'S LEAVE BALANCES for a year — the Balances view.
+ *
+ * One read for the whole clinic rather than one per employee: the server
+ * computes each row through the same function `GET leave/balances/:staffId`
+ * uses, so a figure here cannot disagree with the one on somebody's record.
+ */
+export function useLeaveBalances(params: { clinicId?: string; year?: number } = {}) {
+  return useQuery({
+    queryKey: ['admin-hr', 'leave-balances', params],
+    queryFn: () =>
+      apiClient.get<{
+        year: number;
+        employees: {
+          staffId: string;
+          name: string;
+          policyName: string | null;
+          policyAssigned: boolean;
+          balances: {
+            leaveType: string;
+            paid: boolean;
+            proRated: boolean;
+            fullYearEntitlement: number;
+            entitled: number;
+            carriedIn: number;
+            adjustment: number;
+            available: number;
+            taken: number;
+            pending: number;
+            remaining: number;
+            overdrawn: boolean;
+            adjustmentReason: string | null;
+          }[];
+        }[];
+      }>(`/workforce/leave/balances${qs(params)}`),
+  });
+}
+
 export function useLeavePolicies() {
   return useQuery({
     queryKey: ['admin-hr', 'leave-policies'],

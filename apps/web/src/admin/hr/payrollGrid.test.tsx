@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { PayrollRunDetail } from '../types';
 
@@ -69,16 +69,21 @@ describe('the payroll register', () => {
   /*
    * THE TOTALS ROW HAS TO LINE UP WITH ITS COLUMNS.
    *
-   * It did not. The expand control is a COLUMN, and the summary emitted one
-   * cell fewer than the table had, so every total slid one place to the left:
-   * the figure sitting under NET PAY was the PCB total, and the month's net —
-   * the number the entire screen exists to show — was pushed off the end of
-   * the row. Nothing looked broken. RM110.25 under "Net pay" for six people is
-   * simply a number, and an owner reading it has no way to know it is the
+   * It did not. The summary's cells are POSITIONAL, and when the register
+   * still had an expand control that control was a column: the summary emitted
+   * one cell fewer than the table had and every total slid one place to the
+   * left. The figure sitting under NET PAY was the PCB total, and the month's
+   * net — the number the entire screen exists to show — was pushed off the end
+   * of the row. Nothing looked broken. RM110.25 under "Net pay" for six people
+   * is simply a number, and an owner reading it has no way to know it is the
    * wrong column's.
+   *
+   * The expander has since gone (a row opens a drawer now), which changes the
+   * count by one and is exactly why this test asserts the count rather than a
+   * remembered offset.
    */
   it('puts each total under its own column, net pay included', () => {
-    render(<PayrollGrid run={run([line(), line({ id: 'l2', name: 'Siti Zaleha', netPay: 2382.55, basicSalary: 2600, grossPay: 2686.4 })])} period="2026-08-01" />);
+    render(<PayrollGrid run={run([line(), line({ id: 'l2', name: 'Siti Zaleha', netPay: 2382.55, basicSalary: 2600, grossPay: 2686.4 })])} onOpenEmployee={() => {}} />);
 
     const header = screen.getAllByRole('columnheader').map((cell) => cell.textContent?.trim());
     const totals = document.querySelector('.kw-payrollGrid__totals');
@@ -94,11 +99,38 @@ describe('the payroll register', () => {
     expect(cells[netColumn]).toBe((3108.98 + 2382.55).toFixed(2));
   });
 
+  /*
+   * A ROW OPENS A DRAWER, NOT AN EXPANSION.
+   *
+   * The detail used to open UNDER the row, which pushed every other row down
+   * the screen — so the moment you opened one person you lost the register you
+   * were reading them against. This pins the register as the thing that stays
+   * put: clicking a row reports which line was chosen and adds no row to the
+   * table.
+   */
+  it('opens the chosen employee instead of expanding the table', () => {
+    const opened: string[] = [];
+    render(
+      <PayrollGrid
+        run={run([line(), line({ id: 'l2', staffId: 'staff-2', name: 'Siti Zaleha' })])}
+        onOpenEmployee={(chosen) => opened.push(chosen.name)}
+      />,
+    );
+
+    const before = document.querySelectorAll('tbody .ant-table-row').length;
+    fireEvent.click(screen.getByText('Siti Zaleha'));
+
+    expect(opened).toEqual(['Siti Zaleha']);
+    expect(document.querySelectorAll('tbody .ant-table-row')).toHaveLength(before);
+    // And no expand control survives to reintroduce the old behaviour.
+    expect(document.querySelectorAll('.ant-table-row-expand-icon')).toHaveLength(0);
+  });
+
   it('renders a statutory figure that was never worked out as a dash, never as 0.00', () => {
     // NULL means "not worked out" — no rates configured, or a fact missing.
     // Rendering it as 0.00 tells a clinic it owes nothing, which is the one
     // wrong answer that gets acted on.
-    render(<PayrollGrid run={run([line({ epfEmployee: null, pcb: null })])} period="2026-08-01" />);
+    render(<PayrollGrid run={run([line({ epfEmployee: null, pcb: null })])} onOpenEmployee={() => {}} />);
     const row = document.querySelector('tbody .ant-table-row');
     expect(within(row as HTMLElement).getAllByTitle(/not worked out/i).length).toBeGreaterThan(0);
   });

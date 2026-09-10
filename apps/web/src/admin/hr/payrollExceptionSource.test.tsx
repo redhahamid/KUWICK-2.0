@@ -183,21 +183,38 @@ describe('exception state has exactly one source', () => {
 
   it('3. the exception centre shows five rows and no empty state', () => {
     render(<PayrollPage />);
-    expect(screen.queryByText(/No exceptions\. Every employee in this run could be calculated\./)).toBeNull();
+    expect(screen.queryByText(/Every employee in this run could be calculated/)).toBeNull();
 
-    // Three blocking and two warning, counted separately inside the CENTRE's
-    // cards and inside the BANNER. Both must land on the same 3/2 — the two
-    // renderings walk the same array.
-    const centre = document.querySelectorAll('.kw-exceptionCentre .kw-sev');
+    /*
+     * THREE BLOCKING AND TWO WARNING, and the SECTION is what says which.
+     *
+     * This used to count severity TAGS inside the centre — which is how a
+     * blocker and a warning came to look identical apart from four words of
+     * pill. The centre draws two panels now, with their own edges and counts,
+     * so the tally is the rows in each. The guarantee is unchanged and is
+     * still the point of the test: the centre and the banner walk the SAME
+     * array and cannot land on different numbers.
+     */
+    const panels = [...document.querySelectorAll('.kw-panel')];
+    const panelFor = (heading: RegExp) =>
+      panels.find((panel) => heading.test(panel.querySelector('.kw-panel__title')?.textContent ?? ''));
+
+    const blockers = panelFor(/^Blockers/);
+    const warnings = panelFor(/^Warnings/);
+    expect(blockers, 'the centre draws a Blockers panel').toBeTruthy();
+    expect(warnings, 'the centre draws a Warnings panel').toBeTruthy();
+
+    expect(blockers!.querySelectorAll('.kw-attention')).toHaveLength(GATE.blocking);
+    expect(warnings!.querySelectorAll('.kw-attention')).toHaveLength(GATE.warnings);
+    // The heading carries the same count as the rows under it.
+    expect(blockers!.querySelector('.kw-panel__title')?.textContent).toContain(String(GATE.blocking));
+    expect(warnings!.querySelector('.kw-panel__title')?.textContent).toContain(String(GATE.warnings));
+
     const banner = document.querySelectorAll('.kw-adminNotice .kw-sev');
     const tally = (nodes: NodeListOf<Element>, severity: string) =>
       Array.from(nodes).filter((n) => n.classList.contains(`kw-sev--${severity}`)).length;
-
-    expect(tally(centre, 'blocking')).toBe(GATE.blocking);
-    expect(tally(centre, 'warning')).toBe(GATE.warnings);
     expect(tally(banner, 'blocking')).toBe(GATE.blocking);
     expect(tally(banner, 'warning')).toBe(GATE.warnings);
-    expect(centre.length).toBe(GATE.total);
     expect(banner.length).toBe(GATE.total);
   });
 

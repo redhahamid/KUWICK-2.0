@@ -49,13 +49,13 @@ test.describe('HR Today', () => {
     // A counter that goes nowhere tells a manager they have work and not where
     // it is, which is most of the way to not doing it.
     for (const [label, path] of [
-      ['Leave approvals pending', '/admin/hr/time/leave'],
-      ['Claims awaiting a decision', '/admin/hr/time/claims'],
+      ['Leave requests waiting', '/admin/hr/time/leave'],
+      ['Claims waiting for a decision', '/admin/hr/time/claims'],
     ] as const) {
       await gotoAdmin(page, '/admin/hr');
-      const tile = page.locator('.kw-exceptionTile', { hasText: label });
+      // A named row rather than a counter tile — see admin-hr.spec.ts for why.
+      const tile = page.locator('.kw-panelRow', { hasText: label });
       await expect(tile).toBeVisible();
-      await expect(tile).toBeEnabled();
       await tile.click();
       await expect(page).toHaveURL(new RegExp(`${path}$`));
     }
@@ -148,7 +148,7 @@ test.describe('What "late" means here', () => {
     // one of every two clinics' timesheets a fiction: a 24-hour clinic and a
     // nine-to-five practice do not agree about when 09:06 is late.
     await loginAdmin(page);
-    await gotoAdmin(page, '/admin/hr/settings');
+    await gotoAdmin(page, '/admin/hr/settings/attendance');
 
     const panel = page.locator('.kw-adminSection', { hasText: 'Attendance rules' });
     await expect(panel).toBeVisible();
@@ -181,7 +181,7 @@ test.describe('What "late" means here', () => {
     // first and comparing second would pay it — the kind of difference nobody
     // notices for a year and then notices for every month of that year.
     await loginAdmin(page);
-    await gotoAdmin(page, '/admin/hr/settings');
+    await gotoAdmin(page, '/admin/hr/settings/attendance');
     const panel = page.locator('.kw-adminSection', { hasText: 'Attendance rules' });
     await expect(panel).toContainText('The minimum is applied before the rounding');
   });

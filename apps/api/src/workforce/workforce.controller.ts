@@ -604,6 +604,17 @@ export class WorkforceController {
     return this.leave.upsertPolicy(dto);
   }
 
+  /**
+   * EVERYBODY'S BALANCES — the Leave screen's Balances view.
+   *
+   * Declared BEFORE `leave/balances/:staffId`, because Nest matches routes in
+   * declaration order and `:staffId` would otherwise swallow this path.
+   */
+  @Get('leave/balances')
+  leaveBalancesForEveryone(@Query('clinicId') clinicId?: string, @Query('year') year?: string) {
+    return this.leave.balancesForEveryone({ clinicId, year: year ? Number(year) : undefined });
+  }
+
   @Get('leave/balances/:staffId')
   leaveBalances(@Param('staffId') staffId: string, @Query('year') year?: string) {
     return this.leave.balancesFor(staffId, year ? Number(year) : undefined);

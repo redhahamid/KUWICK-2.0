@@ -251,11 +251,11 @@ export function RosterPage({ clinicId }: RosterPageProps) {
 
   return (
     <div className="kw-roster" data-testid="roster-page">
+      {/* One line, not five. Approved leave and closures appearing by
+          themselves is the fact somebody needs; the rest was an explanation of
+          the data model to a reader who is trying to roster a Tuesday. */}
       <p className="kw-roster-explain">
-        <strong>One roster, the whole clinic.</strong> Everybody who works here is on this board —
-        doctors, clinical staff, front desk, finance. Approved HR leave and clinic closures appear
-        automatically and are never re-entered. Shifts for staff who take appointments also become
-        booking availability; shifts for everybody else are simply their hours.
+        Everybody who works here is on this board. Approved leave and clinic closures appear automatically.
       </p>
       {/*
         * WHO IS ON THE BOARD. Counts come from the whole workforce whichever

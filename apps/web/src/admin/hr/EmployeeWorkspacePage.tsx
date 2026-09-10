@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { Button, Segmented, Tag } from 'antd';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Button, Segmented } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { DataTable, ringgit } from '../components/DataTable';
+import { Panel, DefinitionList, PanelList, PanelRow, EmptyState, PanelLink } from '../components/Panel';
+import { PersonAvatar } from '../components/Person';
+import { StatusChip, employmentTone, humanise } from '../components/Chip';
+import { ReadinessList, ReadinessMeter } from '../components/ReadinessList';
 import { useEmployeeRecord } from '../hooks/useAdmin';
 import { EmployeeSalaryPanel } from './EmployeeSalaryPanel';
 import { EpfBasisPanel } from './EpfBasisPanel';
@@ -12,44 +16,62 @@ import { EmployeeTaxPanel } from './EmployeeTaxPanel';
 import { StatutoryStandingManager } from './StatutoryStandingManager';
 import type { EmployeeRecord } from '../types';
 
-type TabKey = 'overview' | 'employment' | 'salary' | 'attendance' | 'leave' | 'claims' | 'payroll' | 'tax' | 'documents';
+/**
+ * THE EMPLOYEE PROFILE — six tabs, because there are six subjects.
+ *
+ * It had nine: Overview, Employment, Salary, Attendance, Leave, Claims,
+ * Payroll, Tax and Documents. Salary, Tax and Payroll are one subject — what
+ * this person is paid — split three ways because they are three API reads.
+ * Leave and Claims are one subject: what they have asked for. The reference
+ * sheet's six are the honest count, and they are what the record is made of:
+ *
+ *   Overview · Employment · Pay · Attendance · Leave & Claims · Documents
+ *
+ * NOTHING WAS DROPPED. Every panel that lived on the nine is on the six, and
+ * the tab it moved to is the one somebody would have looked in first.
+ *
+ * IT IS NOT A FOURTEENTH PLACE ANY OF THIS IS STORED. Every tab reads the
+ * module that owns its facts; attendance is corrected on the timesheet, leave
+ * on the leave record, a claim on the claim.
+ */
+
+type TabKey = 'overview' | 'employment' | 'pay' | 'attendance' | 'leaveClaims' | 'documents';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'employment', label: 'Employment' },
-  { key: 'salary', label: 'Salary' },
+  { key: 'pay', label: 'Pay' },
   { key: 'attendance', label: 'Attendance' },
-  { key: 'leave', label: 'Leave' },
-  { key: 'claims', label: 'Claims' },
-  { key: 'payroll', label: 'Payroll' },
-  { key: 'tax', label: 'Tax (TP1/TP3)' },
+  { key: 'leaveClaims', label: 'Leave & Claims' },
   { key: 'documents', label: 'Documents' },
 ];
 
-/**
- * THE EMPLOYEE WORKSPACE.
- *
- * The owner's finding was that an employee had nowhere to live: employment
- * terms, pay, statutory identifiers, attendance, leave, claims and payroll
- * history were spread across five screens, and the one place that gathered them
- * was a drawer you could not link to or leave open.
- *
- * TWO THINGS THIS DELIBERATELY IS NOT.
- *
- * It is not a database inspector. Salary is shown as PERIODS somebody worked
- * under — "5 Mar 2026 to 30 Sep 2026, RM3,200 a month" — rather than as
- * effective-dated rows, because the first is a fact about their employment and
- * the second is a fact about a table.
- *
- * It is not a fourteenth place any of this is stored. Every tab reads the
- * module that owns its facts; attendance is corrected on the timesheet, leave
- * on the leave record, a claim on the claim.
- */
+// The nine tabs' URLs still work: a payroll exception linking to ?tab=salary
+// lands on Pay rather than on a default it did not ask for.
+const TAB_ALIASES: Record<string, TabKey> = {
+  salary: 'pay',
+  tax: 'pay',
+  payroll: 'pay',
+  leave: 'leaveClaims',
+  claims: 'leaveClaims',
+};
+
 export function EmployeeWorkspacePage() {
   const { staffId } = useParams<{ staffId: string }>();
   const record = useEmployeeRecord(staffId);
-  const [tab, setTab] = useState<TabKey>('overview');
+  const [search, setSearch] = useSearchParams();
+  const requested = search.get('tab') ?? '';
+  const initial = (TABS.find((entry) => entry.key === requested)?.key ?? TAB_ALIASES[requested] ?? 'overview') as TabKey;
+  const [tab, setTab] = useState<TabKey>(initial);
   const data = record.data;
+
+  const select = (value: TabKey) => {
+    setTab(value);
+    // The tab is in the URL, so a link to somebody's pay history is a link.
+    const next = new URLSearchParams(search);
+    next.set('tab', value);
+    setSearch(next, { replace: true });
+  };
 
   return (
     <AdminShell
@@ -61,8 +83,8 @@ export function EmployeeWorkspacePage() {
           : undefined
       }
       actions={
-        <Link to="/admin/hr/employees">
-          <Button size="small">All employees</Button>
+        <Link to="/admin/hr/people">
+          <Button size="small">← All people</Button>
         </Link>
       }
     >
@@ -71,29 +93,17 @@ export function EmployeeWorkspacePage() {
           <EmployeeHeader data={data} />
 
           <Segmented
-            block
+            className="kw-workAreaTabs"
             value={tab}
-            onChange={(value) => setTab(value as TabKey)}
+            onChange={(value) => select(value as TabKey)}
             options={TABS.map((entry) => ({ label: entry.label, value: entry.key }))}
-            style={{ marginBottom: 16 }}
           />
 
-          {tab === 'overview' ? <OverviewTab data={data} /> : null}
+          {tab === 'overview' ? <OverviewTab data={data} onOpen={select} /> : null}
           {tab === 'employment' ? <EmploymentTab data={data} /> : null}
-          {tab === 'salary' ? <SalaryTab data={data} staffId={staffId!} /> : null}
+          {tab === 'pay' ? <PayTab data={data} staffId={staffId!} /> : null}
           {tab === 'attendance' ? <AttendanceTab data={data} /> : null}
-          {tab === 'leave' ? <LeaveTab data={data} /> : null}
-          {tab === 'claims' ? <ClaimsTab data={data} /> : null}
-          {tab === 'payroll' ? <PayrollTab data={data} /> : null}
-          {tab === 'tax' ? (
-            data.payVisible ? (
-              <EmployeeTaxPanel staffId={staffId!} />
-            ) : (
-              <AdminNotice tone="info">
-                Tax records ride with pay visibility. You do not have permission to see pay.
-              </AdminNotice>
-            )
-          ) : null}
+          {tab === 'leaveClaims' ? <LeaveClaimsTab data={data} /> : null}
           {tab === 'documents' ? <DocumentsTab data={data} /> : null}
         </>
       ) : null}
@@ -104,48 +114,51 @@ export function EmployeeWorkspacePage() {
 /**
  * WHO EMPLOYS THEM IS NOT WHERE THEY WORK.
  *
- * A group with two companies files EPF under one of them and rosters the person
- * at a branch of the other. The header states both, labelled, because getting
- * them the wrong way round means filing for somebody under a company that does
- * not employ them.
+ * A group with two companies files EPF under one of them and rosters the
+ * person at a branch of the other. The header states both, labelled, because
+ * getting them the wrong way round means filing for somebody under a company
+ * that does not employ them.
+ *
+ * THE SCORE CARRIES ITS MEANING. It used to read "5 of 8" and stop, which
+ * tells somebody they have a problem and nothing about what it is. It now says
+ * what is outstanding beside the bar.
  */
 function EmployeeHeader({ data }: { data: EmployeeRecord }) {
+  const readiness = data.payrollReadiness;
+  const outstanding = readiness?.items.filter((item) => !item.done) ?? [];
   return (
     <div className="kw-employeeHead">
-      <div className="kw-employeeHead__avatar">
-        {data.identity.fullName
-          .split(/\s+/)
-          .filter((part) => !/^(dr|mr|mrs|ms|puan|encik)$/i.test(part))
-          .slice(0, 2)
-          .map((part) => part[0]?.toUpperCase() ?? '')
-          .join('')}
-      </div>
+      <PersonAvatar name={data.identity.fullName} size={52} />
       <div className="kw-employeeHead__body">
         <div className="kw-employeeHead__nameRow">
           <span className="kw-employeeHead__name">{data.identity.fullName}</span>
-          <Tag color={data.employment.employmentStatus === 'ACTIVE' ? 'success' : 'warning'}>
-            {data.employment.employmentStatus}
-          </Tag>
+          <StatusChip tone={employmentTone(data.employment.employmentStatus)} dot>
+            {humanise(data.employment.employmentStatus)}
+          </StatusChip>
           {data.engagement === 'CONTRACTOR' ? (
-            <Tag color="processing">Contractor — not on payroll</Tag>
+            <StatusChip tone="info">Contractor — not on payroll</StatusChip>
           ) : null}
         </div>
         <div className="kw-employeeHead__facts">
-          <Fact label="WORKS AT" value={data.employment.clinicName ?? '—'} />
+          <Fact label="WORKS AT" value={data.employment.clinicName ?? 'All branches'} />
           <Fact label="EMPLOYED BY" value={data.employment.legalEmployerName ?? 'Not set'} />
-          <Fact label="STARTED" value={data.employment.startDate ? dayjs(data.employment.startDate).format('D MMM YYYY') : '—'} />
+          <Fact
+            label="STARTED"
+            value={data.employment.startDate ? dayjs(data.employment.startDate).format('D MMM YYYY') : '—'}
+          />
           <Fact label="EMPLOYEE NO" value={data.employment.employeeNo ?? '—'} />
         </div>
       </div>
-      {data.payrollReadiness ? (
+      {readiness ? (
         <div className="kw-employeeHead__readiness">
-          <span className="kw-employeeHead__readinessLabel">PAYROLL SETUP</span>
-          <span
-            className={`kw-employeeHead__readinessValue${
-              data.payrollReadiness.done === data.payrollReadiness.total ? '' : ' kw-employeeHead__readinessValue--warn'
-            }`}
-          >
-            {data.payrollReadiness.done} of {data.payrollReadiness.total}
+          <span className="kw-employeeHead__readinessLabel">PAYROLL READINESS</span>
+          <ReadinessMeter done={readiness.done} total={readiness.total} ready={readiness.ready} />
+          <span className="kw-employeeHead__readinessNote">
+            {outstanding.length === 0
+              ? 'Nothing outstanding'
+              : outstanding.length === 1
+                ? outstanding[0].label
+                : `${outstanding[0].label} + ${outstanding.length - 1} more`}
           </span>
         </div>
       ) : null}
@@ -162,105 +175,243 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
-function OverviewTab({ data }: { data: EmployeeRecord }) {
-  return (
-    <>
-      {data.payrollReadiness ? (
-        <AdminSection
-          title={`Payroll setup — ${data.payrollReadiness.done} of ${data.payrollReadiness.total} complete`}
-          description="What payroll needs from this person before they can be paid. Each item says what is missing, not just that something is."
-        >
-          <div className="kw-setupList">
-            {data.payrollReadiness.items.map((item) => (
-              <div key={item.key} className="kw-setupList__row">
-                <span className={`kw-setupList__mark kw-setupList__mark--${item.done ? 'done' : 'todo'}`}>
-                  {item.done ? '✓' : '!'}
-                </span>
-                <div className="kw-setupList__body">
-                  <div className="kw-setupList__title">
-                    {item.label}
-                    {/* BLOCKING mirrors the run's own refusals; an advisory item
-                        is real work that does not stop this person being paid. */}
-                    {!item.done ? (
-                      <span className={`kw-sev kw-sev--${item.severity === 'BLOCKING' ? 'blocking' : 'warning'}`}>
-                        {item.severity === 'BLOCKING' ? 'Blocks payroll' : 'Advisory'}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="kw-setupList__detail">{item.detail}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </AdminSection>
-      ) : (
-        <AdminNotice tone="info">
-          This person is engaged as a <strong>contractor</strong>, so they are not on payroll and payroll readiness does
-          not apply to them. Their sessions are paid as professional fees.{' '}
-          <Link to="/admin/hr/locum">Open locum sessions</Link>
-        </AdminNotice>
-      )}
+/**
+ * OVERVIEW — the five panels the reference sheet asks for: Personal
+ * Information, Employment, Payroll Readiness, Salary Information and Recent
+ * Activity.
+ *
+ * The old Overview was a readiness checklist and four counters. It answered
+ * "can this person be paid" and nothing else, so anybody opening a colleague's
+ * record to find a phone number went straight past it into Employment.
+ */
+function OverviewTab({ data, onOpen }: { data: EmployeeRecord; onOpen: (tab: TabKey) => void }) {
+  const activity = useRecentActivity(data);
+  const current = data.salaryPeriods?.find((period) => period.current);
+  const upcoming = data.salaryPeriods?.find((period) => period.upcoming);
 
-      <AdminSection title="This month">
-        <div className="kw-factGrid">
-          <Fact label="DAYS WORKED" value={String(data.attendance.daysWorked)} />
-          <Fact label="APPROVED OVERTIME" value={`${data.attendance.approvedOvertimeHours} hrs`} />
-          <Fact label="LATE DAYS" value={String(data.attendance.lateDays)} />
-          <Fact
-            label="LAST PAID"
-            value={(() => {
-              // The newest APPROVED or PAID month — never a draft. On run
-              // day the in-progress calculation used to be history[0], so
-              // this fact labelled an unapproved figure "PAID".
-              const paid = data.payrollHistory.find(
-                (row) => (row.runStatus === 'APPROVED' || row.runStatus === 'PAID') && row.net !== null,
-              );
-              return paid
-                ? `${ringgit(Number(paid.net).toFixed(2))} · ${dayjs(paid.period).format('MMM YYYY')}`
-                : '—';
-            })()}
+  return (
+    <div className="kw-hrGrid">
+      <Panel title="Personal information" action={<button className="kw-panel__link" onClick={() => onOpen('employment')} type="button">Edit →</button>}>
+        <DefinitionList
+          items={[
+            { label: 'Full name', value: data.identity.fullName },
+            { label: 'Legal name', value: data.identity.legalName },
+            {
+              label: 'Date of birth',
+              value: data.identity.dateOfBirth ? dayjs(data.identity.dateOfBirth).format('D MMM YYYY') : null,
+            },
+            { label: 'Gender', value: humanise(data.identity.gender) },
+            { label: 'Nationality', value: data.identity.nationality },
+            { label: 'Marital status', value: humanise(data.identity.maritalStatus) },
+            { label: 'Phone', value: data.identity.phone },
+            { label: 'Email', value: data.identity.email },
+            { label: 'Address', value: data.identity.address, span: true },
+            {
+              label: 'Emergency contact',
+              value: data.identity.emergencyContactName
+                ? `${data.identity.emergencyContactName}${
+                    data.identity.emergencyContactRelation ? ` (${data.identity.emergencyContactRelation})` : ''
+                  }${data.identity.emergencyContactPhone ? ` · ${data.identity.emergencyContactPhone}` : ''}`
+                : null,
+              span: true,
+            },
+          ]}
+        />
+      </Panel>
+
+      <Panel title="Employment">
+        <DefinitionList
+          items={[
+            { label: 'Position', value: data.employment.position },
+            { label: 'Department', value: data.employment.department },
+            { label: 'Type', value: humanise(data.employment.employmentType) },
+            { label: 'Status', value: humanise(data.employment.employmentStatus) },
+            { label: 'Manager', value: data.employment.manager },
+            { label: 'Branch', value: data.employment.clinicName },
+            {
+              label: 'Started',
+              value: data.employment.startDate ? dayjs(data.employment.startDate).format('D MMM YYYY') : null,
+            },
+            {
+              label: 'Confirmed',
+              value: data.employment.confirmedDate ? dayjs(data.employment.confirmedDate).format('D MMM YYYY') : null,
+            },
+            { label: 'Employed by', value: data.employment.legalEmployerName },
+            { label: 'Leave policy', value: data.leavePolicy?.name },
+          ]}
+        />
+      </Panel>
+
+      <Panel
+        title="Payroll readiness"
+        tone={data.payrollReadiness?.ready === false ? 'attention' : undefined}
+        hint={
+          data.payrollReadiness
+            ? undefined
+            : 'A contractor is paid professional fees rather than a salary, so payroll readiness does not apply.'
+        }
+      >
+        {data.payrollReadiness ? (
+          <ReadinessList items={data.payrollReadiness.items} />
+        ) : (
+          <EmptyState
+            title="Engaged as a contractor"
+            hint="Their sessions are paid as professional fees."
+            action={<Link to="/admin/hr/payroll/locum">Open locum sessions →</Link>}
           />
-        </div>
-      </AdminSection>
-    </>
+        )}
+      </Panel>
+
+      <Panel
+        title="Salary information"
+        action={<button className="kw-panel__link" onClick={() => onOpen('pay')} type="button">Pay history →</button>}
+      >
+        {!data.payVisible || data.salaryPeriods === null ? (
+          <EmptyState
+            title="Pay is not visible to you"
+            hint="This is a different statement from “no salary is recorded”."
+          />
+        ) : (
+          <>
+            <DefinitionList
+              items={[
+                { label: 'Basic salary', value: current ? <strong>{ringgit(current.amount)}</strong> : null },
+                { label: 'Basis', value: current ? humanise(current.basis) : null },
+                {
+                  label: 'In force since',
+                  value: current ? dayjs(current.from).format('D MMM YYYY') : null,
+                },
+                { label: 'Bank', value: data.pay?.bankAccountOnFile ? (data.pay.bankName ?? 'On file') : null },
+              ]}
+            />
+            {upcoming ? (
+              <p className="kw-panelNote">
+                A change to <strong>{ringgit(upcoming.amount)}</strong> takes effect{' '}
+                {dayjs(upcoming.from).format('D MMMM YYYY')}.
+              </p>
+            ) : null}
+          </>
+        )}
+      </Panel>
+
+      <Panel title="Recent activity" action={<PanelLink to="/admin/hr/reports">Reports</PanelLink>}>
+        {activity.length === 0 ? (
+          <EmptyState title="Nothing recorded yet" />
+        ) : (
+          <PanelList>
+            {activity.map((row) => (
+              <PanelRow
+                key={row.key}
+                title={row.title}
+                meta={row.meta}
+                right={<span className="kw-muted">{dayjs(row.at).format('D MMM')}</span>}
+              />
+            ))}
+          </PanelList>
+        )}
+      </Panel>
+    </div>
   );
+}
+
+/**
+ * RECENT ACTIVITY, assembled from the facts already on the record.
+ *
+ * There is no activity log for an employee and this does not invent one: every
+ * row here is a dated thing that happened to this person and is already stored
+ * — a salary that took effect, a claim that was decided, a month they were
+ * paid, a day that was corrected. Ordered newest first and capped at six,
+ * because a feed longer than a panel is a table.
+ */
+function useRecentActivity(data: EmployeeRecord) {
+  return useMemo(() => {
+    const rows: { key: string; at: string; title: string; meta?: string }[] = [];
+
+    for (const period of data.salaryPeriods ?? []) {
+      rows.push({
+        key: `salary-${period.id}`,
+        at: period.from,
+        title: period.upcoming ? `Salary change to ${ringgit(period.amount)} recorded` : `Salary set to ${ringgit(period.amount)}`,
+        meta: period.reason ?? undefined,
+      });
+    }
+    for (const claim of data.claims.slice(0, 6)) {
+      rows.push({
+        key: `claim-${claim.id}`,
+        at: claim.claimDate,
+        title: `${humanise(claim.category)} claim ${claim.status.toLowerCase()}`,
+        meta: `${ringgit(claim.amountClaimed)}${claim.decidedBy ? ` · ${claim.decidedBy}` : ''}`,
+      });
+    }
+    for (const run of data.payrollHistory.slice(0, 4)) {
+      if (run.runStatus !== 'APPROVED' && run.runStatus !== 'PAID') continue;
+      rows.push({
+        key: `pay-${run.id}`,
+        at: run.period,
+        title: `Paid for ${dayjs(run.period).format('MMMM YYYY')}`,
+        meta: run.net === null ? undefined : ringgit(run.net.toFixed(2)),
+      });
+    }
+
+    return rows.sort((a, b) => b.at.localeCompare(a.at)).slice(0, 6);
+  }, [data]);
 }
 
 function EmploymentTab({ data }: { data: EmployeeRecord }) {
   return (
     <>
-      <AdminSection title="Employment">
-        <div className="kw-factGrid">
-          <Fact label="POSITION" value={data.employment.position ?? '—'} />
-          <Fact label="DEPARTMENT" value={data.employment.department ?? '—'} />
-          <Fact label="TYPE" value={data.employment.employmentType} />
-          <Fact label="ENGAGEMENT" value={data.engagement === 'CONTRACTOR' ? 'Contractor' : 'Employee'} />
-          <Fact label="MANAGER" value={data.employment.manager ?? '—'} />
-          <Fact label="CONFIRMED" value={data.employment.confirmedDate ? dayjs(data.employment.confirmedDate).format('D MMM YYYY') : '—'} />
-        </div>
-      </AdminSection>
-
-      <AdminSection title="Person">
-        <div className="kw-factGrid">
-          <Fact label="DATE OF BIRTH" value={data.identity.dateOfBirth ? dayjs(data.identity.dateOfBirth).format('D MMM YYYY') : 'Not recorded'} />
-          <Fact label="PHONE" value={data.identity.phone ?? '—'} />
-          <Fact label="EMAIL" value={data.identity.email ?? '—'} />
-          <Fact label="LEAVE POLICY" value={data.leavePolicy?.name ?? '—'} />
-        </div>
+      <AdminSection title="Employment terms">
+        <DefinitionList
+          columns={3}
+          items={[
+            { label: 'Position', value: data.employment.position },
+            { label: 'Department', value: data.employment.department },
+            { label: 'Type', value: humanise(data.employment.employmentType) },
+            { label: 'Engagement', value: data.engagement === 'CONTRACTOR' ? 'Contractor' : 'Employee' },
+            { label: 'Manager', value: data.employment.manager },
+            { label: 'Leave policy', value: data.leavePolicy?.name },
+            {
+              label: 'Started',
+              value: data.employment.startDate ? dayjs(data.employment.startDate).format('D MMM YYYY') : null,
+            },
+            {
+              label: 'Confirmed',
+              value: data.employment.confirmedDate ? dayjs(data.employment.confirmedDate).format('D MMM YYYY') : null,
+            },
+            {
+              label: 'Ended',
+              value: data.employment.endDate
+                ? `${dayjs(data.employment.endDate).format('D MMM YYYY')}${
+                    data.employment.endReason ? ` · ${data.employment.endReason}` : ''
+                  }`
+                : null,
+            },
+            { label: 'Notes', value: data.employment.notes, span: true },
+          ]}
+        />
       </AdminSection>
 
       <AdminSection
-        title="Statutory numbers"
-        description="Held so a filing can be prepared. Only people with the payroll permission can see whether they are on file, and nobody sees the numbers here."
+        title="Statutory reference numbers"
+        description="Held so a filing can be prepared. The numbers themselves are never shown back."
       >
-        <div className="kw-factGrid">
-          <Fact label="EPF / KWSP" value={data.statutory.epfNumberOnFile ? 'On file' : 'Missing'} />
-          <Fact label="SOCSO / PERKESO" value={data.statutory.socsoNumberOnFile ? 'On file' : 'Missing'} />
-          <Fact label="INCOME TAX NUMBER" value={data.statutory.taxNumberOnFile ? 'On file' : 'Missing'} />
-        </div>
-        <p className="kw-muted" style={{ marginTop: 12, marginBottom: 0, fontSize: 12 }}>
-          {data.statutory.note}
-        </p>
+        <DefinitionList
+          columns={3}
+          items={[
+            {
+              label: 'EPF / KWSP',
+              value: <StatusChip tone={data.statutory.epfNumberOnFile ? 'ok' : 'attention'} dot>{data.statutory.epfNumberOnFile ? 'On file' : 'Missing'}</StatusChip>,
+            },
+            {
+              label: 'SOCSO / PERKESO',
+              value: <StatusChip tone={data.statutory.socsoNumberOnFile ? 'ok' : 'attention'} dot>{data.statutory.socsoNumberOnFile ? 'On file' : 'Missing'}</StatusChip>,
+            },
+            {
+              label: 'Income tax number',
+              value: <StatusChip tone={data.statutory.taxNumberOnFile ? 'ok' : 'attention'} dot>{data.statutory.taxNumberOnFile ? 'On file' : 'Missing'}</StatusChip>,
+            },
+          ]}
+        />
       </AdminSection>
 
       <StatutoryStandingManager data={data} />
@@ -313,8 +464,8 @@ export function StatutoryStandingSection({ data, actions }: { data: EmployeeReco
       actions={actions}
       description={
         resolved && since
-          ? `What applies to this employee, in force since ${since}. Changing any of it is a new dated version, so an earlier month keeps what was true then.`
-          : 'What applies to this employee. Recorded from the date it takes effect, so an earlier month keeps what was true then.'
+          ? `In force since ${since}. Changing any of it opens a new dated version, so an earlier month keeps what was true then.`
+          : 'Recorded from the date it takes effect, so an earlier month keeps what was true then.'
       }
     >
       {resolved ? null : (
@@ -338,18 +489,17 @@ export function StatutoryStandingSection({ data, actions }: { data: EmployeeReco
 }
 
 /**
- * SALARY AS PERIODS.
+ * PAY — one subject, one tab.
  *
- * "5 Mar 2026 → 30 Sep 2026 · RM3,200 a month" is a fact about somebody's
- * employment. "effective_from / effective_to" is a fact about a table, and the
- * owner rejected a product that made them read the second to learn the first.
+ * Salary, EPF basis, monthly-tax reliefs and payroll history were four tabs
+ * because they are four API reads. To the reader they are one question: what
+ * is this person paid, on what basis, and what have they actually received.
  */
-function SalaryTab({ data, staffId }: { data: EmployeeRecord; staffId: string }) {
+function PayTab({ data, staffId }: { data: EmployeeRecord; staffId: string }) {
   if (!data.payVisible || data.salaryPeriods === null) {
     return (
       <AdminNotice tone="info">
-        You do not have permission to see pay. This is a different statement from "no salary is recorded" — Kuwick will
-        not show you one and will not imply the other.
+        You do not have permission to see pay. That is a different statement from "no salary is recorded", and Kuwick will not imply the other.
       </AdminNotice>
     );
   }
@@ -365,20 +515,68 @@ function SalaryTab({ data, staffId }: { data: EmployeeRecord; staffId: string })
         </AdminNotice>
       ) : null}
 
-      {/*
-        ONE SALARY SURFACE, not two. This page briefly carried its own history
-        table above the panel, which showed the same periods twice — and two
-        renderings of one fact are two things to keep in step. The panel already
-        presents salary as periods somebody worked under, with the reason and
-        the person who recorded each, and it owns the action that adds one.
-      */}
       <EmployeeSalaryPanel staffId={staffId} canSeePay={data.payVisible} />
-      {/*
-        THE EPF BASIS LIVES BESIDE THE SALARY IT PRICES: what the employee is
-        paid, then which of it the employer contributes EPF on. Same pay
-        gate — the basis reveals the shape of somebody's income.
-      */}
+      {/* THE EPF BASIS LIVES BESIDE THE SALARY IT PRICES: what the employee is
+          paid, then which of it the employer contributes EPF on. */}
       <EpfBasisPanel staffId={staffId} canSeePay={data.payVisible} />
+      <EmployeeTaxPanel staffId={staffId} />
+
+      <AdminSection title="Payroll history" description="One row per payroll run this employee was on." padded={false}>
+        <DataTable
+          rowKey="id"
+          rows={data.payrollHistory}
+          emptyText="This employee has not been on a payroll run."
+          columns={[
+            {
+              title: 'Period',
+              dataIndex: 'period',
+              width: 150,
+              render: (value: string) => dayjs(value).format('MMMM YYYY'),
+            },
+            {
+              title: 'Status',
+              width: 170,
+              render: (_: unknown, row: EmployeeRecord['payrollHistory'][number]) =>
+                row.statutoryStatus !== 'CONFIGURED' ? (
+                  <StatusChip tone="attention" dot>
+                    {humanise(row.runStatus)} · provisional
+                  </StatusChip>
+                ) : (
+                  <StatusChip tone={row.runStatus === 'PAID' ? 'ok' : 'neutral'} dot>
+                    {humanise(row.runStatus)}
+                  </StatusChip>
+                ),
+            },
+            {
+              title: 'Earnings',
+              dataIndex: 'gross',
+              width: 130,
+              align: 'right' as const,
+              // toFixed(2), because the API sends a NUMBER here and
+              // String(3200.5) is "3200.5" — which printed take-homes with one
+              // decimal for any amount ending in a whole ten sen.
+              render: (value: number | null) => (value === null ? '—' : ringgit(value.toFixed(2))),
+            },
+            {
+              title: 'Take-home',
+              dataIndex: 'net',
+              width: 130,
+              align: 'right' as const,
+              render: (value: number | null) => (value === null ? '—' : <strong>{ringgit(value.toFixed(2))}</strong>),
+            },
+            {
+              title: '',
+              width: 110,
+              noExport: true,
+              render: (_: unknown, row: EmployeeRecord['payrollHistory'][number]) => (
+                <Link to={`/admin/hr/payroll/${row.runId}?step=review`}>
+                  <Button size="small">Open run</Button>
+                </Link>
+              ),
+            },
+          ]}
+        />
+      </AdminSection>
     </>
   );
 }
@@ -389,18 +587,21 @@ function AttendanceTab({ data }: { data: EmployeeRecord }) {
       title={`Attendance — ${data.year}`}
       description="From the timesheet. Corrections are made there; payroll never holds a second copy of somebody's hours."
       actions={
-        <Link to={`/admin/hr/attendance?staffId=${data.staffId}`}>
+        <Link to={`/admin/hr/time?staffId=${data.staffId}`}>
           <Button size="small">Open timesheet</Button>
         </Link>
       }
+      padded={false}
     >
-      <div className="kw-factGrid" style={{ marginBottom: 16 }}>
-        <Fact label="DAYS RECORDED" value={String(data.attendance.daysRecorded)} />
-        <Fact label="DAYS WORKED" value={String(data.attendance.daysWorked)} />
-        <Fact label="ABSENT" value={String(data.attendance.absent)} />
-        <Fact label="LATE" value={String(data.attendance.lateDays)} />
-        <Fact label="APPROVED OVERTIME" value={`${data.attendance.approvedOvertimeHours} hrs`} />
-        <Fact label="CORRECTED" value={String(data.attendance.corrected)} />
+      <div className="kw-adminSection__body">
+        <div className="kw-factGrid">
+          <Fact label="DAYS RECORDED" value={String(data.attendance.daysRecorded)} />
+          <Fact label="DAYS WORKED" value={String(data.attendance.daysWorked)} />
+          <Fact label="ABSENT" value={String(data.attendance.absent)} />
+          <Fact label="LATE" value={String(data.attendance.lateDays)} />
+          <Fact label="APPROVED OVERTIME" value={`${data.attendance.approvedOvertimeHours} hrs`} />
+          <Fact label="CORRECTED" value={String(data.attendance.corrected)} />
+        </div>
       </div>
       <DataTable
         rowKey="id"
@@ -413,7 +614,16 @@ function AttendanceTab({ data }: { data: EmployeeRecord }) {
             width: 130,
             render: (value: string) => dayjs(value).format('ddd D MMM'),
           },
-          { title: 'Status', dataIndex: 'status', width: 120 },
+          {
+            title: 'Status',
+            dataIndex: 'status',
+            width: 130,
+            render: (value: string) => (
+              <StatusChip tone={value === 'PRESENT' ? 'ok' : value === 'ABSENT' ? 'blocked' : 'neutral'} dot>
+                {humanise(value)}
+              </StatusChip>
+            ),
+          },
           {
             title: 'Worked',
             dataIndex: 'workedMinutes',
@@ -423,86 +633,14 @@ function AttendanceTab({ data }: { data: EmployeeRecord }) {
           },
           {
             title: 'Overtime',
-            width: 160,
-            render: (_: unknown, row: EmployeeRecord['attendance']['recent'][number]) =>
-              row.overtimeMinutes > 0
-                ? `${(row.overtimeMinutes / 60).toFixed(1)} hrs ${row.overtimeApproved ? 'approved' : '· not approved'}`
-                : '—',
-          },
-        ]}
-      />
-    </AdminSection>
-  );
-}
-
-function LeaveTab({ data }: { data: EmployeeRecord }) {
-  return (
-    <AdminSection
-      title="Leave"
-      description="Entitlement and balances come from the leave policy this employee is on. Requests and approvals live on the leave screen."
-      actions={
-        <Link to="/admin/hr/leave">
-          <Button size="small">Open leave</Button>
-        </Link>
-      }
-    >
-      <div className="kw-factGrid">
-        <Fact label="LEAVE POLICY" value={data.leavePolicy?.name ?? 'Not assigned'} />
-        <Fact label="ON LEAVE THIS YEAR" value={`${data.attendance.onLeave} day(s)`} />
-      </div>
-      <p className="kw-muted" style={{ marginTop: 14, marginBottom: 0 }}>
-        Approved unpaid leave reduces pay automatically and shows on the payroll run's attendance step with a link back
-        to the request. Nobody re-keys the days into payroll.
-      </p>
-    </AdminSection>
-  );
-}
-
-function ClaimsTab({ data }: { data: EmployeeRecord }) {
-  return (
-    <AdminSection
-      title="Claims"
-      description="What this person spent that the clinic agreed to give back. Every approved claim is paid once, by one route."
-      actions={
-        <Link to={`/admin/hr/claims?staffId=${data.staffId}`}>
-          <Button size="small">Open claims</Button>
-        </Link>
-      }
-    >
-      <DataTable
-        rowKey="id"
-        rows={data.claims}
-        emptyText="No claims from this employee."
-        columns={[
-          { title: 'Date', dataIndex: 'claimDate', width: 120 },
-          { title: 'Category', dataIndex: 'category', width: 140 },
-          { title: 'What for', dataIndex: 'description' },
-          {
-            title: 'Claimed',
-            dataIndex: 'amountClaimed',
-            width: 120,
-            align: 'right' as const,
-            render: (value: string) => ringgit(value),
-          },
-          {
-            title: 'Approved',
-            dataIndex: 'amountApproved',
-            width: 120,
-            align: 'right' as const,
-            render: (value: string | null) => (value ? <strong>{ringgit(value)}</strong> : <span className="kw-muted">—</span>),
-          },
-          {
-            title: 'Paid from',
             width: 180,
-            render: (_: unknown, row: EmployeeRecord['claims'][number]) =>
-              row.status !== 'APPROVED' ? (
-                <Tag>{row.status === 'SUBMITTED' ? 'Awaiting a decision' : row.status}</Tag>
-              ) : row.paymentRoute === 'PAYROLL' ? (
-                <Tag color="processing">With salary</Tag>
+            render: (_: unknown, row: EmployeeRecord['attendance']['recent'][number]) =>
+              row.overtimeMinutes > 0 ? (
+                <StatusChip tone={row.overtimeApproved ? 'ok' : 'attention'} dot>
+                  {(row.overtimeMinutes / 60).toFixed(1)} hrs {row.overtimeApproved ? 'approved' : 'not approved'}
+                </StatusChip>
               ) : (
-                <Tag color={row.payoutStatus === 'PAID' ? 'success' : 'warning'}>
-                  Finance{row.payoutStatus === 'PAID' ? '' : ', not yet paid'}
-                </Tag>
+                <span className="kw-muted">—</span>
               ),
           },
         ]}
@@ -511,75 +649,136 @@ function ClaimsTab({ data }: { data: EmployeeRecord }) {
   );
 }
 
-function PayrollTab({ data }: { data: EmployeeRecord }) {
-  if (!data.payVisible) {
-    return (
-      <AdminNotice tone="info">
-        You do not have permission to see pay. The runs this employee was on are listed without amounts.
-      </AdminNotice>
-    );
-  }
+/**
+ * LEAVE & CLAIMS — one subject: what this person has asked the clinic for.
+ */
+function LeaveClaimsTab({ data }: { data: EmployeeRecord }) {
   return (
-    <AdminSection title="Recent pay" description="One row per payroll run this employee was on.">
-      <DataTable
-        rowKey="id"
-        rows={data.payrollHistory}
-        emptyText="This employee has not been on a payroll run."
-        columns={[
-          {
-            title: 'Period',
-            dataIndex: 'period',
-            width: 150,
-            render: (value: string) => dayjs(value).format('MMMM YYYY'),
-          },
-          {
-            title: 'Status',
-            width: 160,
-            render: (_: unknown, row: EmployeeRecord['payrollHistory'][number]) =>
-              row.statutoryStatus !== 'CONFIGURED' ? (
-                <Tag color="warning">{row.runStatus} · Provisional</Tag>
-              ) : (
-                <Tag>{row.runStatus}</Tag>
-              ),
-          },
-          {
-            title: 'Earnings',
-            dataIndex: 'gross',
-            width: 130,
-            align: 'right' as const,
-            // toFixed(2), because the API sends a NUMBER here and
-            // String(3200.5) is "3200.5" — which printed take-homes with one
-            // decimal on this tab for any amount ending in a whole ten sen.
-            render: (value: number | null) => (value === null ? '—' : ringgit(value.toFixed(2))),
-          },
-          {
-            title: 'Take-home',
-            dataIndex: 'net',
-            width: 130,
-            align: 'right' as const,
-            render: (value: number | null) => (value === null ? '—' : <strong>{ringgit(value.toFixed(2))}</strong>),
-          },
-          {
-            title: '',
-            width: 110,
-            noExport: true,
-            render: (_: unknown, row: EmployeeRecord['payrollHistory'][number]) => (
-              <Link to={`/admin/hr/payroll/${row.runId}?step=review`}>
-                <Button size="small">Open run</Button>
-              </Link>
-            ),
-          },
-        ]}
-      />
-    </AdminSection>
+    <>
+      <AdminSection
+        title="Leave"
+        description="Entitlement comes from the leave policy this employee is on. Requests and approvals live on the leave screen."
+        actions={
+          <Link to="/admin/hr/time/leave">
+            <Button size="small">Open leave</Button>
+          </Link>
+        }
+      >
+        <div className="kw-factGrid">
+          <Fact label="LEAVE POLICY" value={data.leavePolicy?.name ?? 'Not assigned'} />
+          <Fact label="ON LEAVE THIS YEAR" value={`${data.attendance.onLeave} day(s)`} />
+        </div>
+        <p className="kw-muted" style={{ marginTop: 14, marginBottom: 0, fontSize: 12 }}>
+          Approved unpaid leave reduces pay automatically and shows on the payroll run with a link back to the request.
+        </p>
+      </AdminSection>
+
+      <AdminSection
+        title="Claims"
+        description="Every approved claim is paid once, by one route."
+        actions={
+          <Link to={`/admin/hr/time/claims?staffId=${data.staffId}`}>
+            <Button size="small">Open claims</Button>
+          </Link>
+        }
+        padded={false}
+      >
+        <DataTable
+          rowKey="id"
+          rows={data.claims}
+          emptyText="No claims from this employee."
+          columns={[
+            {
+              title: 'Date',
+              dataIndex: 'claimDate',
+              width: 120,
+              render: (value: string) => dayjs(value).format('D MMM YYYY'),
+            },
+            { title: 'Category', dataIndex: 'category', width: 140, render: (value: string) => humanise(value) },
+            { title: 'What for', dataIndex: 'description' },
+            {
+              title: 'Claimed',
+              dataIndex: 'amountClaimed',
+              width: 120,
+              align: 'right' as const,
+              render: (value: string) => ringgit(value),
+            },
+            {
+              title: 'Approved',
+              dataIndex: 'amountApproved',
+              width: 120,
+              align: 'right' as const,
+              render: (value: string | null) =>
+                value ? <strong>{ringgit(value)}</strong> : <span className="kw-muted">—</span>,
+            },
+            {
+              title: 'Paid from',
+              width: 190,
+              render: (_: unknown, row: EmployeeRecord['claims'][number]) =>
+                row.status !== 'APPROVED' ? (
+                  <StatusChip tone={row.status === 'SUBMITTED' ? 'attention' : 'neutral'} dot>
+                    {row.status === 'SUBMITTED' ? 'Awaiting a decision' : humanise(row.status)}
+                  </StatusChip>
+                ) : row.paymentRoute === 'PAYROLL' ? (
+                  <StatusChip tone="info" dot>
+                    With salary
+                  </StatusChip>
+                ) : (
+                  <StatusChip tone={row.payoutStatus === 'PAID' ? 'ok' : 'attention'} dot>
+                    Finance{row.payoutStatus === 'PAID' ? '' : ', not yet paid'}
+                  </StatusChip>
+                ),
+            },
+          ]}
+        />
+      </AdminSection>
+    </>
   );
 }
 
+/**
+ * DOCUMENTS — honest about a capability that does not exist.
+ *
+ * Kuwick stores no employee document files: there is no column and no file
+ * store behind this tab. An empty list would read as "nothing uploaded", which
+ * is a different claim and a false one. What IS on record is which identity
+ * and statutory documents have been sighted well enough to record a number
+ * from, so the tab shows that and says plainly where the line is.
+ */
 function DocumentsTab({ data }: { data: EmployeeRecord }) {
+  const onRecord = [
+    { label: 'IC or passport', present: Boolean(data.identity.dateOfBirth), detail: 'Date of birth recorded' },
+    { label: 'EPF / KWSP number', present: data.statutory.epfNumberOnFile, detail: 'Needed for the EPF return' },
+    { label: 'SOCSO / PERKESO number', present: data.statutory.socsoNumberOnFile, detail: 'Needed for the SOCSO return' },
+    { label: 'Income tax number', present: data.statutory.taxNumberOnFile, detail: 'Needed for the monthly-tax return' },
+    { label: 'Bank account', present: Boolean(data.pay?.bankAccountOnFile), detail: 'Needed before anybody can be paid' },
+  ];
+
   return (
-    <AdminNotice tone="warn">
-      <strong>Employee documents are not implemented.</strong> {data.documents.note} This tab says so rather than
-      showing an empty list, because an empty list reads as "nothing uploaded" and that is a different claim.
-    </AdminNotice>
+    <>
+      <AdminNotice tone="warn">
+        <strong>Document files are not stored in Kuwick.</strong> {data.documents.note} What is listed below is which
+        documents have been sighted well enough to record a number from — not copies of them.
+      </AdminNotice>
+
+      <AdminSection title="On record">
+        <ul className="kw-readiness">
+          {onRecord.map((row) => (
+            <li
+              key={row.label}
+              className={`kw-readinessItem kw-readinessItem--${row.present ? 'done' : 'advisory'}`}
+            >
+              <span className="kw-readinessItem__mark" aria-hidden>
+                {row.present ? '✓' : '!'}
+              </span>
+              <span className="kw-readinessItem__text">
+                <span className="kw-readinessItem__label">{row.label}</span>
+                <span className="kw-readinessItem__detail">{row.detail}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </AdminSection>
+    </>
   );
 }

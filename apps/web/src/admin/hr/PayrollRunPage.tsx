@@ -15,13 +15,17 @@ import {
 import { ProvisionalBanner } from './ProvisionalBanner';
 import { PayrollStepper, STEPS, normaliseStep, stepsWithProblems, type StepKey } from './PayrollStepper';
 import { PayrollGrid } from './PayrollGrid';
+import { PayrollEmployeeDrawer } from './PayrollEmployeeDrawer';
 import { PayrollExceptionCentre } from './PayrollExceptionCentre';
 import { PayrollInputsDrawer } from './PayrollInputsDrawer';
 import { PayslipsPanel } from './PayslipsPanel';
 import { PaymentPanel } from './PaymentPanel';
 import { StatutoryOutputsPanel } from './StatutoryOutputsPanel';
 import { useCan } from '../../core/hooks/useCan';
-import type { PayrollJourney } from '../types';
+import { PersonCell } from '../components/Person';
+import { StatusChip, humanise } from '../components/Chip';
+import { EmptyState } from '../components/Panel';
+import type { PayrollJourney, PayrollRunDetail } from '../types';
 
 const initials = (name: string) =>
   name
@@ -75,9 +79,25 @@ export function PayrollRunPage() {
       title={data ? `${stepMeta.heading} — ${data.run.periodLabel}` : 'Payroll run'}
       subtitle={stepMeta.blurb}
       actions={
-        <Link to="/admin/hr/payroll">
-          <Button size="small">Payroll home</Button>
-        </Link>
+        <>
+          {/* THE RUN'S OWN STATUS, beside its month. A stage strip says where
+              you are in the work; it does not say whether the month is a draft,
+              approved or paid, and those are different things to be looking at. */}
+          {data ? (
+            data.run.statutoryStatus !== 'CONFIGURED' ? (
+              <StatusChip tone="attention" dot>
+                {humanise(data.run.status)} · provisional
+              </StatusChip>
+            ) : (
+              <StatusChip tone={data.run.status === 'PAID' ? 'ok' : data.run.status === 'APPROVED' ? 'ok' : 'info'} dot>
+                {humanise(data.run.status)}
+              </StatusChip>
+            )
+          ) : null}
+          <Link to="/admin/hr/payroll">
+            <Button size="small">Payroll home</Button>
+          </Link>
+        </>
       }
     >
       <ProvisionalBanner statutoryStatus={data?.run.statutoryStatus} />
@@ -94,30 +114,33 @@ export function PayrollRunPage() {
 
       {data ? (
         <>
-          {/* PREPARE — the two screens that were about getting the month
-              straight, now one stage, because they are one job. */}
+          {/*
+            * PAYROLL DETAILS — the register, and under it who is being paid
+            * and what they worked.
+            *
+            * The register leads because it is the answer to the owner's actual
+            * question. What used to be four separate reading steps — Employees,
+            * Attendance, Earnings, Deductions — is one stage plus one drawer:
+            * the two context tables stay here because they carry facts the
+            * register cannot (who was left out and why, whose overtime is
+            * unapproved), and every money breakdown moved into the drawer,
+            * beside the figure it explains.
+            */}
           {step === 'prepare' ? (
             <>
+              <RunGridSection runId={id!} data={data} onFixInputs={onFixInputs} canEdit={mayRun && !locked} />
               <EmployeesStep data={data} />
               <AttendanceStep data={data} />
             </>
           ) : null}
 
-          {/* REVIEW — the register first, because it is the answer to the
-              owner's actual question. Everything that used to be the Earnings
-              and Deductions steps is under the rows, beside the figure it
-              explains; the attention list and the totals follow it. */}
+          {/* REVIEW — blockers, then warnings, then what the month adds up to. */}
           {step === 'review' ? (
-            <>
-              <RunGridSection runId={id!} period={data.run.period} />
-              <ReviewStep data={data} runId={id!} mayApprove={mayApprove} onFixInputs={onFixInputs} />
-              <EarningsStep data={data} />
-              <DeductionsStep data={data} />
-            </>
+            <ReviewStep data={data} runId={id!} mayApprove={mayApprove} onFixInputs={onFixInputs} onGoTo={goTo} />
           ) : null}
 
           {step === 'approve' ? <ApproveStep data={data} runId={id!} /> : null}
-          {step === 'complete' ? <ApproveStep data={data} runId={id!} /> : null}
+          {step === 'complete' ? <FinaliseStep data={data} runId={id!} /> : null}
           <StepFooter data={data} step={step} onChange={goTo} runId={id!} />
           <PayrollInputsDrawer
             open={inputsOpen}
@@ -328,404 +351,110 @@ function AttendanceStep({ data }: { data: PayrollJourney }) {
 }
 
 // ---------------------------------------------------------------------------
-// STEP 3 — Earnings
+// STAGE 2 — Review. The primary owner control screen.
 // ---------------------------------------------------------------------------
-
-/**
- * EVERY FIGURE ON THE TWO MONEY STEPS COMES FROM THE SERVER.
- *
- * Two versions of this table were wrong in the same way: columns that did not
- * reach their own row total. A third version fixed that with a residual — but
- * computed it, and every subtotal, IN THE BROWSER, from `Number()`-parsed
- * strings. That made this screen a second place payroll arithmetic lived, and
- * on the deductions step it summed a statutory figure that was never
- * calculated as zero.
- *
- * The journey payload now carries the grouping — `salaryEarned`,
- * `otherEarnings` (still a residual of the line's own gross, so a row cannot
- * fail to add up), and `pay.totals` with not-calculated COUNTS kept apart from
- * the sums. These components render those fields and compute nothing.
- */
-const EARNING_CODES = new Set([
-  'BASIC', 'ALLOWANCE', 'ATTENDANCE_ALLOWANCE', 'OVERTIME', 'INCENTIVE',
-  'COMMISSION', 'BONUS', 'MILEAGE', 'CLAIM_REIMBURSEMENT',
-]);
 
 type PayRow = PayrollJourney['pay']['rows'][number];
 
-/** A zero prints as a dash: a column of RM0.00 reads as figures that exist. */
-const dashZero = (value: string) =>
-  Number(value) !== 0 ? ringgit(value) : <span className="kw-muted">—</span>;
-
-function EarningsStep({ data }: { data: PayrollJourney }) {
-  const rows = data.pay.rows;
-  const totals = data.pay.totals;
-
-  // Each column carries a KEY of its own: without one, antd derives
-  // String(undefined) for every column built here, React sees duplicate
-  // keys, and hiding one column through the picker hides them all.
-  const amountColumn = (title: string, key: string, pick: (row: PayRow) => string) => ({
-    title,
-    key,
-    width: 125,
-    align: 'right' as const,
-    render: (_: unknown, row: PayRow) => dashZero(pick(row)),
-  });
-
-  return (
-    <>
-      <StatStrip
-        stats={[
-          { label: 'Total earnings', value: ringgit(totals.gross) },
-          { label: 'Salary earned', value: ringgit(totals.salaryEarned), hint: 'after unpaid leave' },
-          {
-            label: 'Additions',
-            value: ringgit(totals.additions),
-            hint: 'allowances, overtime, incentives, claims',
-          },
-          {
-            label: 'Unpaid leave',
-            value: `−${ringgit(totals.unpaidLeave)}`,
-            tone: Number(totals.unpaidLeave) > 0 ? 'warn' : 'neutral',
-          },
-        ]}
-      />
-
-      {!totals.addsUp && totals.discrepancy ? <AdminNotice tone="warn">{totals.discrepancy}</AdminNotice> : null}
-
-      <AdminSection
-        title="What each person earns this month"
-        description="Open a row to see where every figure came from. A figure that came from the timesheet, a leave record, an incentive run or a claim is corrected there, not here."
-      >
-        <DataTable<PayRow>
-          rowKey="staffId"
-          rows={rows}
-          emptyText="Nothing has been calculated yet."
-          expandable={{
-            expandedRowRender: (row: PayRow) => (
-              <ItemBreakdown items={row.items.filter((item) => EARNING_CODES.has(item.componentCode))} name={row.name} />
-            ),
-          }}
-          summary={(shown) => {
-            const s = shown as readonly PayRow[];
-            return (
-              <DataTableTotalRow
-                cells={[
-                  // The expand-icon column has no header but does have a cell,
-                  // so the totals row starts one to its left or every figure
-                  // lands under the wrong heading.
-                  { value: '', colSpan: 1, align: 'left' },
-                  { value: `${s.length} employee${s.length === 1 ? '' : 's'}`, align: 'left' },
-                  { value: ringgit(totals.salaryEarned) },
-                  { value: ringgit(totals.allowances) },
-                  { value: ringgit(totals.overtime) },
-                  { value: ringgit(totals.incentive) },
-                  { value: ringgit(totals.otherEarnings) },
-                  { value: ringgit(totals.gross), strong: true },
-                ]}
-              />
-            );
-          }}
-          columns={[
-            { title: 'Employee', dataIndex: 'name' },
-            {
-              title: 'Salary earned',
-              width: 165,
-              align: 'right' as const,
-              render: (_: unknown, row: PayRow) => (
-                <div>
-                  {ringgit(row.salaryEarned)}
-                  {Number(row.unpaidLeaveDeduction) > 0 ? (
-                    <div className="kw-provenance" style={{ color: '#b42318' }}>
-                      {ringgit(row.basicSalary)} less {ringgit(row.unpaidLeaveDeduction)} unpaid leave
-                    </div>
-                  ) : null}
-                </div>
-              ),
-            },
-            amountColumn('Allowances', 'allowances', (row) => row.allowances),
-            amountColumn('Overtime', 'overtime', (row) => row.overtimePay),
-            amountColumn('Incentive', 'incentive', (row) => row.incentive),
-            amountColumn('Claims & other', 'claims-other', (row) => row.otherEarnings),
-            {
-              title: 'Earnings',
-              width: 145,
-              align: 'right' as const,
-              render: (_: unknown, row: PayRow) => <strong>{ringgit(row.grossPay)}</strong>,
-            },
-          ]}
-        />
-      </AdminSection>
-    </>
-  );
-}
-
 /**
- * WHERE EVERY FIGURE CAME FROM.
+ * REVIEW — blockers, then warnings, then what the month adds up to.
  *
- * A derived figure shows the sentence the materialiser wrote when it carried
- * the upstream fact into this period, and is not editable here. Correcting it
- * means correcting the timesheet, the leave record or the claim — editing the
- * derived amount instead would make the payslip and its own source disagree.
+ * The reference sheet's hierarchy, and it is the correction this screen most
+ * needed. Every exception used to be rendered at the same weight in one list:
+ * a missing monthly-tax figure that stops the run and an unapproved hour of
+ * overtime that does not, drawn identically, sorted only by severity. A
+ * warning is not a blocker, and a screen that draws them the same way teaches
+ * people to skim both.
+ *
+ * BLOCKERS is a section with a count and a red edge; WARNINGS is amber and
+ * collapsible-by-eye; PAYROLL SUMMARY is where the money is. The last thing on
+ * the page is the one button that moves the month forward, and it says why it
+ * is disabled when it is.
  */
-function ItemBreakdown({ items, name }: { items: PayrollJourney['pay']['rows'][number]['items']; name: string }) {
-  if (items.length === 0) return <p className="kw-muted">Nothing beyond basic pay for {name} this month.</p>;
-  return (
-    <div className="kw-breakdown">
-      {items.map((item) => (
-        <div key={item.id} className="kw-breakdown__row">
-          <div className="kw-breakdown__label">
-            {item.label}
-            {item.provenance ? <div className="kw-provenance">{item.provenance}</div> : null}
-            {!item.editable ? (
-              <div className="kw-provenance">Corrected where it was recorded, not here.</div>
-            ) : null}
-          </div>
-          <div className="kw-breakdown__amount">{ringgit(item.amount)}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// STEP 4 — Deductions
-// ---------------------------------------------------------------------------
-
-function DeductionsStep({ data }: { data: PayrollJourney }) {
-  const rows = data.pay.rows;
-  const totals = data.pay.totals;
-  const pcbMissing = totals.pcbMissing;
-  // A LINDUNG column only where the scheme is in the month at all — a clinic
-  // with nobody participating should not carry an empty statutory column.
-  const showLindung = rows.some((row) => row.lindungEmployee === null || Number(row.lindungEmployee) > 0);
-
-  return (
-    <>
-      <StatStrip
-        stats={[
-          { label: 'Total deductions', value: ringgit(totals.deductions) },
-          {
-            label: 'Statutory',
-            value:
-              totals.statutoryNotCalculated > 0
-                ? `${totals.statutoryNotCalculated} not calculated`
-                : ringgit(totals.statutoryEmployee),
-            hint: showLindung ? 'EPF, SOCSO, EIS, LINDUNG' : 'EPF, SOCSO, EIS',
-            tone: totals.statutoryNotCalculated > 0 ? 'bad' : 'neutral',
-          },
-          {
-            label: 'Monthly tax (PCB)',
-            value: pcbMissing > 0 ? `${pcbMissing} missing` : ringgit(totals.pcb),
-            hint: 'calculated, or entered by hand',
-            tone: pcbMissing > 0 ? 'bad' : 'neutral',
-          },
-          {
-            label: 'Other',
-            value: ringgit(totals.otherDeductions),
-            hint: 'zakat, advances, uniforms',
-          },
-        ]}
-      />
-
-      {!totals.addsUp && totals.discrepancy ? <AdminNotice tone="warn">{totals.discrepancy}</AdminNotice> : null}
-
-      {pcbMissing > 0 ? (
-        <AdminNotice tone="warn">
-          <strong>
-            Monthly tax could not be worked out for {pcbMissing} {pcbMissing === 1 ? 'person' : 'people'}.
-          </strong>{' '}
-          Kuwick calculates PCB from the official specification when an employee's tax residence and MTD category are
-          recorded. For {pcbMissing === 1 ? 'this person' : 'these people'}, record those on their statutory standing —
-          or enter the month's figure by hand from your accountant or LHDN's calculator. The run cannot be finished
-          without one or the other.
-        </AdminNotice>
-      ) : null}
-
-      <AdminSection title="What comes off each person's pay">
-        <DataTable<PayRow>
-          rowKey="staffId"
-          rows={rows}
-          emptyText="Nothing has been calculated yet."
-          columns={[
-            { title: 'Employee', dataIndex: 'name' },
-            {
-              title: 'EPF · SOCSO · EIS',
-              width: 190,
-              align: 'right' as const,
-              render: (_: unknown, row: PayRow) =>
-                row.statutoryEmployee === null ? (
-                  <Tooltip title="No statutory rates are configured for this period, so these are blank rather than zero.">
-                    <span className="kw-muted">Not calculated</span>
-                  </Tooltip>
-                ) : (
-                  <div>
-                    {ringgit(row.statutoryEmployee)}
-                    {/*
-                      * THE SELECTED EPF BASIS, said in the row it changes.
-                      * Absent for the ordinary employee: no selection means
-                      * the assessment governs and there is nothing to add.
-                      * A selection that leaves assessed wages out is the
-                      * month's blocking discrepancy — red here, and named in
-                      * full in the exception centre.
-                      */}
-                    {row.epfBasis && row.epfBasis.mode !== 'ALL_APPLICABLE' ? (
-                      row.epfBasis.excluded.length > 0 ? (
-                        <Tooltip
-                          title={`Kuwick assesses EPF wages of RM${row.epfBasis.assessed}; the employer-selected basis is RM${row.epfBasis.applied}, leaving out ${row.epfBasis.excluded.map((x) => x.label).join(', ')}. The month can still be approved — see the advisory on the review step for who selected it and why.`}
-                        >
-                          {/*
-                            * AMBER, NOT RED. A deliberate employer selection is
-                            * not a fault in the month: it is a decision, and
-                            * the row states it with the assessed figure beside
-                            * it rather than dressing it as a blocker.
-                            */}
-                          <div className="kw-provenance" style={{ color: '#b45309' }}>
-                            EPF on {ringgit(row.epfBasis.applied)} — selected basis, RM{row.epfBasis.assessed} assessed
-                          </div>
-                        </Tooltip>
-                      ) : (
-                        <Tooltip
-                          title={`Employer-selected basis (${row.epfBasis.mode === 'BASIC_ONLY' ? 'basic salary only' : 'basic + selected income'}); it matches everything Kuwick assesses as EPF wages this month.`}
-                        >
-                          <div className="kw-provenance">EPF on {ringgit(row.epfBasis.applied)} — selected basis</div>
-                        </Tooltip>
-                      )
-                    ) : null}
-                  </div>
-                ),
-            },
-            ...(showLindung
-              ? [
-                  {
-                    title: 'LINDUNG',
-                    width: 120,
-                    align: 'right' as const,
-                    render: (_: unknown, row: PayRow) =>
-                      row.lindungEmployee === null ? (
-                        <Tooltip title="Whether this employee joined LINDUNG 24 JAM has not been recorded, so nothing can be worked out.">
-                          <span style={{ color: '#b45309', fontWeight: 600 }}>Not recorded</span>
-                        </Tooltip>
-                      ) : (
-                        dashZero(row.lindungEmployee)
-                      ),
-                  },
-                ]
-              : []),
-            {
-              title: 'Monthly tax',
-              width: 150,
-              align: 'right' as const,
-              render: (_: unknown, row: PayRow) =>
-                row.pcb === null ? (
-                  <span style={{ color: '#b45309', fontWeight: 600 }}>Not entered</span>
-                ) : (
-                  ringgit(row.pcb)
-                ),
-            },
-            {
-              title: 'Other deductions',
-              dataIndex: 'otherDeductions',
-              width: 150,
-              align: 'right' as const,
-              render: (value: string) => dashZero(value),
-            },
-            {
-              title: 'Take-home',
-              dataIndex: 'netPay',
-              width: 140,
-              align: 'right' as const,
-              render: (value: string) => <strong>{ringgit(value)}</strong>,
-            },
-          ]}
-        />
-      </AdminSection>
-
-      {rows.some((row) => Number(row.unpaidLeaveDeduction) > 0) ? (
-        <AdminSection
-          title="Unpaid leave is not a deduction"
-          description="An incomplete month's wages are smaller under s.18A — the reduction has already come off the earnings step's salary column, so it is not taken again here."
-        >
-          <DataTable<PayRow>
-            rowKey="staffId"
-            rows={rows.filter((row) => Number(row.unpaidLeaveDeduction) > 0)}
-            emptyText="Nobody took unpaid leave this month."
-            columns={[
-              { title: 'Employee', dataIndex: 'name' },
-              {
-                title: 'Wages reduced by',
-                dataIndex: 'unpaidLeaveDeduction',
-                width: 160,
-                align: 'right' as const,
-                render: (value: string) => ringgit(value),
-              },
-            ]}
-          />
-        </AdminSection>
-      ) : null}
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// STEP 5 — Review. The primary owner control screen.
-// ---------------------------------------------------------------------------
-
 function ReviewStep({
   data,
   runId,
   mayApprove,
   onFixInputs,
+  onGoTo,
 }: {
   data: PayrollJourney;
   runId: string;
   mayApprove: boolean;
   onFixInputs: (staffId: string, staffName: string | null) => void;
+  onGoTo: (key: StepKey) => void;
 }) {
   const variance = usePayrollVariance(runId);
-  const [whole, cents] = data.run.netTotal.split('.');
+  const totals = data.pay.totals;
+  const gate = data.review.gate;
 
   return (
     <>
-      <div className="kw-reviewFigures">
-        <div className="kw-reviewFigure">
-          <div className="kw-reviewFigure__label">TAKE-HOME PAY</div>
-          <div className="kw-reviewFigure__value">
-            RM{group(whole)}
-            <span className="kw-reviewFigure__cents">.{cents}</span>
-          </div>
-          <div className="kw-reviewFigure__hint">
-            What leaves the clinic to your staff
-            {data.run.paymentDate ? ` on ${dayjs(data.run.paymentDate).format('D MMMM')}` : ''}.
-          </div>
-        </div>
-        <div className="kw-reviewFigure">
-          <div className="kw-reviewFigure__label">EMPLOYEES</div>
-          <div className="kw-reviewFigure__value">{data.run.employeeCount}</div>
-          <div className="kw-reviewFigure__hint">
-            {data.employees.needsSetup > 0
-              ? `${data.employees.needsSetup} more not ready to be paid.`
-              : 'Everyone employed here this month.'}
-          </div>
-        </div>
-        <div className="kw-reviewFigure">
-          <div className="kw-reviewFigure__label">TOTAL COST TO THE CLINIC</div>
-          <div className="kw-reviewFigure__value">
-            RM{group(data.run.employerCostTotal.split('.')[0])}
-            <span className="kw-reviewFigure__cents">.{data.run.employerCostTotal.split('.')[1]}</span>
-          </div>
-          <div className="kw-reviewFigure__hint">Pay plus the clinic's own EPF, SOCSO, EIS and HRD levy.</div>
-        </div>
-      </div>
-
-      {/*
-        * THE EXCEPTION CENTRE, on the run it belongs to. The same
-        * `payroll_exceptions` rows every other surface reads — the stepper's
-        * markers, the gate, the approve button — with the two remedies the
-        * review used to lack: passing a warning with a recorded reason, and
-        * entering a missing PCB without leaving the run.
-        */}
       <PayrollExceptionCentre runId={runId} canOverride={mayApprove} onFixInputs={onFixInputs} />
+
+      <AdminSection title="Payroll summary" description={`${data.run.periodLabel} · ${data.run.clinicName}`}>
+        <div className="kw-reviewFigures">
+          <ReviewFigure
+            label="TAKE-HOME PAY"
+            amount={data.run.netTotal}
+            hint={`What leaves the clinic to your staff${
+              data.run.paymentDate ? ` on ${dayjs(data.run.paymentDate).format('D MMMM')}` : ''
+            }.`}
+          />
+          <div className="kw-reviewFigure">
+            <div className="kw-reviewFigure__label">EMPLOYEES</div>
+            <div className="kw-reviewFigure__value">{data.run.employeeCount}</div>
+            <div className="kw-reviewFigure__hint">
+              {data.employees.needsSetup > 0
+                ? `${data.employees.needsSetup} more not ready to be paid.`
+                : 'Everyone employed here this month.'}
+            </div>
+          </div>
+          <ReviewFigure
+            label="TOTAL COST TO THE CLINIC"
+            amount={data.run.employerCostTotal}
+            hint="Pay plus the clinic's own EPF, SOCSO, EIS and HRD levy."
+          />
+        </div>
+
+        {/*
+          * THE MONTH'S ARITHMETIC, from the server. Gross less deductions is
+          * net, and a scheme that was not calculated is a COUNT here rather
+          * than a zero folded into a total — which is how a clinic ends up
+          * reading "RM0.00 statutory" and believing it owes nothing.
+          */}
+        <div className="kw-summaryRows">
+          <SummaryRow label="Gross earnings" value={ringgit(totals.gross)} />
+          <SummaryRow label="Salary earned (after unpaid leave)" value={ringgit(totals.salaryEarned)} muted />
+          <SummaryRow label="Allowances, overtime, incentives and claims" value={ringgit(totals.additions)} muted />
+          <SummaryRow
+            label="Employee statutory (EPF, SOCSO, EIS, LINDUNG)"
+            value={
+              totals.statutoryNotCalculated > 0
+                ? `${totals.statutoryNotCalculated} not calculated`
+                : `−${ringgit(totals.statutoryEmployee)}`
+            }
+            tone={totals.statutoryNotCalculated > 0 ? 'bad' : 'deduct'}
+          />
+          <SummaryRow
+            label="Monthly tax (PCB)"
+            value={totals.pcbMissing > 0 ? `${totals.pcbMissing} missing` : `−${ringgit(totals.pcb)}`}
+            tone={totals.pcbMissing > 0 ? 'bad' : 'deduct'}
+          />
+          <SummaryRow label="Other deductions" value={`−${ringgit(totals.otherDeductions)}`} tone="deduct" />
+          <SummaryRow label="Total deductions" value={`−${ringgit(totals.deductions)}`} tone="deduct" muted />
+          <SummaryRow label="Take-home pay" value={ringgit(totals.net)} strong />
+        </div>
+
+        {!totals.addsUp && totals.discrepancy ? <AdminNotice tone="warn">{totals.discrepancy}</AdminNotice> : null}
+      </AdminSection>
+
+      {Number(totals.unpaidLeave) > 0 ? (
+        <AdminNotice tone="info">
+          <strong>Unpaid leave is not a deduction.</strong> An incomplete month's wages are smaller under s.18A, so the{' '}
+          {ringgit(totals.unpaidLeave)} has already come off the salary column and is not taken again below.
+        </AdminNotice>
+      ) : null}
 
       <AdminSection
         title="Take-home pay, person by person"
@@ -734,35 +463,57 @@ function ReviewStep({
             ? 'Compared with the previous period. A movement is the difference between the two, never a separately worked-out figure.'
             : undefined
         }
+        padded={false}
       >
-        <DataTable
+        <DataTable<PayRow>
           rowKey="staffId"
           rows={data.pay.rows}
           emptyText="Nothing has been calculated yet."
           columns={[
-            { title: 'Employee', dataIndex: 'name' },
+            {
+              title: 'Employee',
+              dataIndex: 'name',
+              width: 230,
+              render: (value: string) => <PersonCell name={value} />,
+            },
+            {
+              title: 'Gross',
+              dataIndex: 'grossPay',
+              width: 140,
+              align: 'right' as const,
+              render: (value: string) => ringgit(value),
+            },
+            {
+              title: 'Deductions',
+              dataIndex: 'deductionTotal',
+              width: 140,
+              align: 'right' as const,
+              render: (value: string) =>
+                Number(value) ? <span className="kw-bad">−{ringgit(value)}</span> : <span className="kw-muted">—</span>,
+            },
             {
               title: 'Take-home',
               dataIndex: 'netPay',
-              width: 160,
+              width: 150,
               align: 'right' as const,
               render: (value: string) => <strong>{ringgit(value)}</strong>,
             },
             {
               title: 'vs last period',
               key: 'vs-last-period',
-              width: 160,
+              width: 150,
               align: 'right' as const,
-              render: (_: unknown, row: PayrollJourney['pay']['rows'][number]) => {
+              render: (_: unknown, row: PayRow) => {
                 // THE MOVEMENT IS A SUBTRACTION the API already did. Recomputing
                 // it here from two numbers on screen is how a comparison month
                 // ends up carrying the current month's totals.
-                const line = variance.data?.rows?.find((v) => v.staffId === row.staffId);
+                const line = variance.data?.rows?.find((entry) => entry.staffId === row.staffId);
                 if (!line || line.deltaCents === null) return <span className="kw-muted">—</span>;
                 if (line.deltaCents === 0) return <span className="kw-muted">no change</span>;
                 return (
-                  <span style={{ color: line.deltaCents > 0 ? '#166534' : '#b42318' }}>
-                    {line.deltaCents > 0 ? '+' : '−'}{ringgit((Math.abs(line.deltaCents) / 100).toFixed(2))}
+                  <span className={line.deltaCents > 0 ? 'kw-good' : 'kw-bad'}>
+                    {line.deltaCents > 0 ? '+' : '−'}
+                    {ringgit((Math.abs(line.deltaCents) / 100).toFixed(2))}
                   </span>
                 );
               },
@@ -770,7 +521,58 @@ function ReviewStep({
           ]}
         />
       </AdminSection>
+
+      {/* THE ONE BUTTON THAT MOVES THE MONTH ON, and the reason when it will
+          not. A disabled control with no explanation is a dead end. */}
+      <div className="kw-proceed">
+        <div className="kw-proceed__text">
+          {gate.canApprove
+            ? 'Nothing is blocking this month.'
+            : `${gate.blocking} thing${gate.blocking === 1 ? '' : 's'} must be sorted before this run can be approved.`}
+        </div>
+        <Button type="primary" disabled={!gate.canApprove} onClick={() => onGoTo('approve')}>
+          Proceed to approval →
+        </Button>
+      </div>
     </>
+  );
+}
+
+/** A money figure in the summary strip, grouped and with its cents smaller. */
+function ReviewFigure({ label, amount, hint }: { label: string; amount: string; hint: string }) {
+  const [whole, cents] = amount.split('.');
+  return (
+    <div className="kw-reviewFigure">
+      <div className="kw-reviewFigure__label">{label}</div>
+      <div className="kw-reviewFigure__value">
+        RM{group(whole)}
+        <span className="kw-reviewFigure__cents">.{cents}</span>
+      </div>
+      <div className="kw-reviewFigure__hint">{hint}</div>
+    </div>
+  );
+}
+
+function SummaryRow({
+  label,
+  value,
+  tone,
+  strong,
+  muted,
+}: {
+  label: string;
+  value: string;
+  tone?: 'deduct' | 'bad';
+  strong?: boolean;
+  muted?: boolean;
+}) {
+  return (
+    <div className={`kw-summaryRow${strong ? ' kw-summaryRow--strong' : ''}${muted ? ' kw-summaryRow--muted' : ''}`}>
+      <span>{label}</span>
+      <span className={tone === 'bad' ? 'kw-bad' : tone === 'deduct' ? 'kw-summaryRow__deduct' : undefined}>
+        {value}
+      </span>
+    </div>
   );
 }
 
@@ -958,9 +760,7 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
         <AdminSection title="Finalise">
           {!canFinaliseHere && !alreadyApproved ? (
             <AdminNotice tone="info">
-              <strong>Finalising is done on a computer.</strong> Locking a month's pay for everybody needs the whole
-              run in front of you — the figures person by person, the comparison with last month, and everything
-              outstanding. You can review all of it here and clear what is blocking; finalise from a desktop.
+              <strong>Finalising is done on a computer.</strong> Locking a month's pay needs the whole run in front of you. Review and clear blockers here; finalise from a desktop.
             </AdminNotice>
           ) : alreadyApproved ? (
             <p style={{ margin: 0 }}>
@@ -1041,33 +841,81 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
         </AdminSection>
       </div>
 
-      {/*
-        * PAYSLIPS, the moment there is an approved record to issue them from.
-        * They come from the frozen snapshot — never from the lines this page
-        * shows, which a reopen would rewrite.
-        */}
       {alreadyApproved ? (
         <div style={{ gridColumn: '1 / -1' }}>
-          <PaymentPanel runId={runId} />
-          <PayslipsPanel runId={runId} />
-          <StatutoryOutputsPanel runId={runId} />
+          <AdminNotice tone="info">
+            This run is approved. Payslips, the payment listing and the statutory figures are on the{' '}
+            <strong>Finalise</strong> stage.
+          </AdminNotice>
         </div>
       ) : null}
     </div>
   );
 }
 
+/**
+ * FINALISE — what comes OUT of an approved month.
+ *
+ * These three panels used to hang off the bottom of the Approve screen, which
+ * meant the stage called "Complete" rendered the approve screen a second time
+ * and the outputs were something you scrolled to rather than a place you went.
+ * They are the fourth stage now because they are the fourth thing that
+ * happens: the month is approved, and then payslips are issued, staff are
+ * paid, and returns are filed.
+ *
+ * BEFORE APPROVAL THERE IS NOTHING HERE, and the screen says so rather than
+ * rendering three empty panels — an empty payslip list reads as "no payslips
+ * were produced", which is a different and alarming claim.
+ */
+function FinaliseStep({ data, runId }: { data: PayrollJourney; runId: string }) {
+  const approved = data.run.status === 'APPROVED' || data.run.status === 'PAID';
+
+  if (!approved) {
+    return (
+      <AdminSection title="Nothing to issue yet">
+        <EmptyState
+          title={`${data.run.periodLabel} has not been approved`}
+          hint="Payslips, the payment listing and the statutory figures are produced from an approved run's frozen snapshot, so they appear once the month is approved."
+        />
+      </AdminSection>
+    );
+  }
+
+  return (
+    <>
+      <PaymentPanel runId={runId} />
+      <PayslipsPanel runId={runId} />
+      <StatutoryOutputsPanel runId={runId} />
+    </>
+  );
+}
+
 // ---------------------------------------------------------------------------
 
 /**
- * THE REGISTER, on the Review stage.
+ * THE REGISTER, and the drawer it opens.
  *
  * Loaded separately from the journey read because it is the only thing on this
  * page that needs every line of every employee — the journey summarises, and
  * summarising is what made the owner reassemble the month in their head.
+ *
+ * The drawer's itemised detail comes from the journey's own `pay.rows`, so the
+ * register's columns and the drawer's lines are two renderings of one server
+ * answer rather than two calculations.
  */
-function RunGridSection({ runId, period }: { runId: string; period: string }) {
+function RunGridSection({
+  runId,
+  data,
+  onFixInputs,
+  canEdit,
+}: {
+  runId: string;
+  data: PayrollJourney;
+  onFixInputs: (staffId: string, staffName: string | null) => void;
+  canEdit: boolean;
+}) {
   const run = usePayrollRun(runId);
+  const [openLine, setOpenLine] = useState<PayrollRunDetail['lines'][number] | null>(null);
 
   if (run.isLoading) {
     return (
@@ -1089,13 +937,28 @@ function RunGridSection({ runId, period }: { runId: string; period: string }) {
   }
 
   return (
-    <AdminSection
-      title="The month, employee by employee"
-      description="Open a row to see where each amount came from."
-      padded={false}
-    >
-      <PayrollGrid run={run.data} period={`${period}-01`} />
-    </AdminSection>
+    <>
+      <AdminSection
+        title="Payroll register"
+        description="Open a row for one person's earnings, deductions and statutory detail."
+        padded={false}
+      >
+        <PayrollGrid
+          run={run.data}
+          selectedStaffId={openLine?.staffId}
+          onOpenEmployee={(line) => setOpenLine(line)}
+          otherEarnings={new Map(data.pay.rows.map((row) => [row.staffId, row.otherEarnings]))}
+        />
+      </AdminSection>
+      <PayrollEmployeeDrawer
+        open={openLine !== null}
+        onClose={() => setOpenLine(null)}
+        line={openLine}
+        payRow={data.pay.rows.find((row) => row.staffId === openLine?.staffId)}
+        onAddItem={(staffId, staffName) => onFixInputs(staffId, staffName)}
+        canEdit={canEdit}
+      />
+    </>
   );
 }
 

@@ -1,10 +1,13 @@
 import { useMemo, useState } from 'react';
-import { App, Button, DatePicker, Input, Modal, Radio, Segmented, Tag, Timeline } from 'antd';
+import { App, Button, Input, Modal, Radio, Select, Timeline } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { TIME_VIEWS, WorkAreaTabs } from '../components/WorkAreaTabs';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, ringgit } from '../components/DataTable';
+import { FilterBar, Filter } from '../components/FilterBar';
+import { PersonCell } from '../components/Person';
+import { StatusChip } from '../components/Chip';
 import {
   useDecideStaffClaim,
   useSettleStaffClaim,
@@ -24,29 +27,34 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 
 /**
- * STAFF CLAIMS.
+ * CLAIMS — the fourth Time & Leave view, and drawn like the other three.
  *
- * A reimbursement used to be a number somebody typed into a payroll run: no
- * category, no receipt, no approver, and nothing at all stopping the same
- * receipt being paid with September's salary and reimbursed again by Finance in
- * October.
+ * It used to be the odd one out: its own Segmented control in the page header
+ * rather than the shared filter bar, antd `Tag`s in five colours where the
+ * rest of HR uses one chip vocabulary, and a bare "Person" column of text
+ * where every other screen shows the person. Somebody moving from Leave to
+ * Claims arrived at a different product, which is the exact thing the brief
+ * says must not happen.
  *
- * The screen is built around the one decision that prevents that — WHERE the
- * money comes from — and says the answer in words on every row rather than
- * leaving it to be inferred from which module the reader happens to be in.
+ * WHAT DID NOT CHANGE is the reason the screen exists. A reimbursement used to
+ * be a number somebody typed into a payroll run — no category, no receipt, no
+ * approver, and nothing stopping the same receipt being paid with September's
+ * salary and reimbursed again by Finance in October. The screen is built
+ * around the one decision that prevents that: WHERE the money comes from, said
+ * in words on every row.
  */
 export function ClaimsPage() {
   const { message } = App.useApp();
-  const [tab, setTab] = useState<'SUBMITTED' | 'APPROVED' | 'ALL'>('SUBMITTED');
-  const claims = useStaffClaims(tab === 'ALL' ? {} : { status: tab });
+  const [status, setStatus] = useState<'SUBMITTED' | 'APPROVED' | 'ALL'>('SUBMITTED');
+  const [route, setRouteFilter] = useState<'ALL' | PaymentRoute>('ALL');
+  const claims = useStaffClaims(status === 'ALL' ? {} : { status });
   /**
    * THE COUNTS ARE NOT THE FILTER.
    *
    * These were computed from whatever the current tab had fetched, so opening
    * on "Awaiting decision" reported "being paid with salary: 0" while claims
    * were sitting on a payroll run. A count that reads zero because of a filter
-   * the reader did not apply is worse than no count: it answers a question
-   * nobody asked with a number they will believe.
+   * the reader did not apply is worse than no count.
    */
   const everyClaim = useStaffClaims({});
   const decide = useDecideStaffClaim();
@@ -54,20 +62,27 @@ export function ClaimsPage() {
 
   const [deciding, setDeciding] = useState<StaffClaimRow | null>(null);
   const [amount, setAmount] = useState('');
-  const [route, setRoute] = useState<PaymentRoute>('PAYROLL');
+  const [payRoute, setPayRoute] = useState<PaymentRoute>('PAYROLL');
   const [reason, setReason] = useState('');
   const [viewing, setViewing] = useState<StaffClaimRow | null>(null);
   const history = useStaffClaimHistory(viewing?.id);
 
-  const rows = claims.data ?? [];
+  const rows = useMemo(
+    () => (claims.data ?? []).filter((row) => route === 'ALL' || row.paymentRoute === route),
+    [claims.data, route],
+  );
+
   const counts = useMemo(() => {
     const all = everyClaim.data ?? [];
     return {
-      awaiting: all.filter((r) => r.status === 'SUBMITTED').length,
-      withSalary: all.filter((r) => r.status === 'APPROVED' && r.paymentRoute === 'PAYROLL').length,
+      awaiting: all.filter((row) => row.status === 'SUBMITTED').length,
+      withSalary: all.filter((row) => row.status === 'APPROVED' && row.paymentRoute === 'PAYROLL').length,
       owedByFinance: all.filter(
-        (r) => r.status === 'APPROVED' && r.paymentRoute === 'FINANCE' && r.payoutStatus !== 'PAID',
+        (row) => row.status === 'APPROVED' && row.paymentRoute === 'FINANCE' && row.payoutStatus !== 'PAID',
       ).length,
+      owedTotal: all
+        .filter((row) => row.status === 'APPROVED' && row.paymentRoute === 'FINANCE' && row.payoutStatus !== 'PAID')
+        .reduce((total, row) => total + Number(row.amountApproved ?? 0), 0),
     };
   }, [everyClaim.data]);
 
@@ -76,25 +91,8 @@ export function ClaimsPage() {
       error={firstError(claims, everyClaim)}
       title="Claims"
       subtitle="What staff spent that the clinic agreed to give back."
-      actions={
-        <Segmented
-          size="small"
-          value={tab}
-          onChange={(value) => setTab(value as typeof tab)}
-          options={[
-            { label: 'Awaiting decision', value: 'SUBMITTED' },
-            { label: 'Approved', value: 'APPROVED' },
-            { label: 'All', value: 'ALL' },
-          ]}
-        />
-      }
     >
       <WorkAreaTabs views={TIME_VIEWS} />
-      <AdminNotice tone="info">
-        Approving a claim chooses <strong>where it is paid from</strong>, and that choice cannot be changed once the
-        money has moved. A claim paid with salary will never also be reimbursed by Finance — Kuwick refuses the second
-        payment rather than relying on somebody noticing.
-      </AdminNotice>
 
       <StatStrip
         stats={[
@@ -104,67 +102,128 @@ export function ClaimsPage() {
             hint: 'Somebody is waiting to be paid back',
             tone: counts.awaiting > 0 ? 'warn' : 'good',
           },
-          {
-            label: 'Being paid with salary',
-            value: counts.withSalary,
-            hint: 'Approved to be paid with the next run for their period',
-          },
+          { label: 'Being paid with salary', value: counts.withSalary, hint: 'On the run for their period' },
           {
             label: 'Owed by Finance',
             value: counts.owedByFinance,
-            hint: 'Approved for separate reimbursement, not yet settled',
+            hint: counts.owedByFinance > 0 ? ringgit(counts.owedTotal.toFixed(2)) : 'Nothing outstanding',
             tone: counts.owedByFinance > 0 ? 'warn' : 'neutral',
           },
         ]}
       />
 
-      <AdminSection
-        title="Claims"
-        description="A claim is approved for an amount and a route. The approver may not be the claimant."
-      >
+      <FilterBar>
+        <Filter label="Status">
+          <Select
+            size="small"
+            style={{ width: 190 }}
+            value={status}
+            onChange={setStatus}
+            options={[
+              { value: 'SUBMITTED', label: 'Awaiting a decision' },
+              { value: 'APPROVED', label: 'Approved' },
+              { value: 'ALL', label: 'All claims' },
+            ]}
+          />
+        </Filter>
+        <Filter label="Payment route">
+          <Select
+            size="small"
+            style={{ width: 180 }}
+            value={route}
+            onChange={setRouteFilter}
+            options={[
+              { value: 'ALL', label: 'Any route' },
+              { value: 'PAYROLL', label: 'With salary' },
+              { value: 'FINANCE', label: 'By Finance' },
+            ]}
+          />
+        </Filter>
+      </FilterBar>
+
+      <AdminNotice tone="info">
+        Approving a claim chooses <strong>where it is paid from</strong>, and that cannot be changed once the money
+        has moved. Kuwick refuses a second payment rather than relying on somebody noticing.
+      </AdminNotice>
+
+      <AdminSection padded={false}>
         <DataTable<StaffClaimRow>
           rowKey="id"
           loading={claims.isLoading}
           rows={rows}
+          exportName="claims"
           searchFields={['staffName', 'description']}
           emptyText="No claims to show."
+          scrollY={520}
           columns={[
-            { title: 'Date', dataIndex: 'claimDate', width: 110 },
-            { title: 'Person', dataIndex: 'staffName', width: 180 },
             {
-              title: 'Category',
-              dataIndex: 'category',
-              width: 140,
-              render: (value: string) => CATEGORY_LABEL[value] ?? value,
+              title: 'Employee',
+              dataIndex: 'staffName',
+              width: 210,
+              render: (value: string, row) => (
+                <PersonCell name={value} meta={CATEGORY_LABEL[row.category] ?? row.category} />
+              ),
             },
-            { title: 'What for', dataIndex: 'description' },
             {
-              title: 'Claimed',
+              title: 'Claim',
+              dataIndex: 'description',
+              render: (value: string, row) => (
+                <span>
+                  {value}
+                  <span className="kw-cellMeta">Submitted by {row.submittedBy}</span>
+                </span>
+              ),
+            },
+            {
+              title: 'Date',
+              dataIndex: 'claimDate',
+              width: 120,
+              render: (value: string) => dayjs(value).format('D MMM YYYY'),
+            },
+            {
+              title: 'Amount',
               dataIndex: 'amountClaimed',
-              width: 110,
+              width: 130,
               align: 'right' as const,
-              render: (value: string) => ringgit(value),
+              render: (value: string, row) => (
+                <span className="kw-balanceCell">
+                  <strong>{ringgit(row.amountApproved ?? value)}</strong>
+                  {row.amountApproved && row.amountApproved !== value ? (
+                    <span className="kw-cellMeta">of {ringgit(value)} claimed</span>
+                  ) : null}
+                </span>
+              ),
             },
             {
-              title: 'Approved',
-              dataIndex: 'amountApproved',
-              width: 110,
-              align: 'right' as const,
-              render: (value: string | null) =>
-                value ? <strong>{ringgit(value)}</strong> : <span className="kw-muted">—</span>,
+              title: 'Payment route',
+              width: 210,
+              render: (_: unknown, row: StaffClaimRow) => <RouteChip row={row} />,
             },
             {
-              title: 'Paid from',
-              width: 230,
-              render: (_: unknown, row: StaffClaimRow) => <RouteTag row={row} />,
+              title: 'Status',
+              width: 140,
+              render: (_: unknown, row: StaffClaimRow) =>
+                row.status === 'SUBMITTED' ? (
+                  <StatusChip tone="attention" dot>
+                    Waiting
+                  </StatusChip>
+                ) : row.status === 'APPROVED' ? (
+                  <StatusChip tone="ok" dot>
+                    Approved
+                  </StatusChip>
+                ) : (
+                  <StatusChip tone="neutral" dot>
+                    {row.status === 'CANCELLED' ? 'Withdrawn' : 'Rejected'}
+                  </StatusChip>
+                ),
             },
             {
               title: '',
-              width: 200,
+              width: 190,
               noExport: true,
               render: (_: unknown, row: StaffClaimRow) => (
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <Button size="small" onClick={() => setViewing(row)}>
+                  <Button size="small" type="text" className="kw-rowAction" onClick={() => setViewing(row)}>
                     History
                   </Button>
                   {row.status === 'SUBMITTED' ? (
@@ -174,7 +233,7 @@ export function ClaimsPage() {
                       onClick={() => {
                         setDeciding(row);
                         setAmount(row.amountClaimed);
-                        setRoute('PAYROLL');
+                        setPayRoute('PAYROLL');
                         setReason('');
                       }}
                     >
@@ -182,48 +241,7 @@ export function ClaimsPage() {
                     </Button>
                   ) : null}
                   {row.status === 'APPROVED' && row.paymentRoute === 'FINANCE' && row.payoutStatus !== 'PAID' ? (
-                    <Button
-                      size="small"
-                      onClick={() => {
-                        let reference = '';
-                        Modal.confirm({
-                          title: 'Record the reimbursement',
-                          content: (
-                            <div>
-                              <p style={{ marginTop: 0 }}>Finance's own reference for this payment.</p>
-                              <Input
-                                placeholder="e.g. PV-2026-0043"
-                                onChange={(event) => {
-                                  reference = event.target.value;
-                                }}
-                              />
-                            </div>
-                          ),
-                          okText: 'Record as reimbursed',
-                          onOk: () =>
-                            new Promise<void>((resolve, reject) => {
-                              if (!reference.trim()) {
-                                message.error('A reference is required.');
-                                reject();
-                                return;
-                              }
-                              settle.mutate(
-                                { id: row.id, financeReference: reference.trim() },
-                                {
-                                  onSuccess: () => {
-                                    message.success('Recorded');
-                                    resolve();
-                                  },
-                                  onError: (error: Error) => {
-                                    message.error(error.message);
-                                    reject();
-                                  },
-                                },
-                              );
-                            }),
-                        });
-                      }}
-                    >
+                    <Button size="small" onClick={() => recordPayment(row)}>
                       Record payment
                     </Button>
                   ) : null}
@@ -237,7 +255,6 @@ export function ClaimsPage() {
       <Modal
         open={deciding !== null}
         title={`${deciding?.staffName ?? ''} — ${CATEGORY_LABEL[deciding?.category ?? ''] ?? ''} claim`}
-        okText="Approve"
         confirmLoading={decide.isPending}
         onCancel={() => setDeciding(null)}
         footer={[
@@ -271,7 +288,7 @@ export function ClaimsPage() {
             onClick={() => {
               if (!deciding) return;
               decide.mutate(
-                { id: deciding.id, decision: 'APPROVED', amountApproved: amount, paymentRoute: route, reason },
+                { id: deciding.id, decision: 'APPROVED', amountApproved: amount, paymentRoute: payRoute, reason },
                 {
                   onSuccess: () => {
                     message.success('Approved');
@@ -288,7 +305,8 @@ export function ClaimsPage() {
       >
         <p style={{ marginTop: 0 }}>{deciding?.description}</p>
         <p className="kw-muted">
-          Claimed {ringgit(deciding?.amountClaimed)} for {deciding?.claimDate}, submitted by {deciding?.submittedBy}.
+          Claimed {ringgit(deciding?.amountClaimed)} for{' '}
+          {deciding ? dayjs(deciding.claimDate).format('D MMM YYYY') : ''}, submitted by {deciding?.submittedBy}.
         </p>
 
         <div style={{ marginTop: 16 }}>
@@ -301,13 +319,13 @@ export function ClaimsPage() {
 
         <div style={{ marginTop: 16 }}>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Paid from where?</div>
-          <Radio.Group value={route} onChange={(event) => setRoute(event.target.value)}>
+          <Radio.Group value={payRoute} onChange={(event) => setPayRoute(event.target.value)}>
             <Radio value="PAYROLL">With their salary</Radio>
             <Radio value="FINANCE">Separately, by Finance</Radio>
           </Radio.Group>
           <div className="kw-muted" style={{ marginTop: 6, fontSize: 12 }}>
-            {route === 'PAYROLL'
-              ? `This will appear on the payroll run for ${dayjs(deciding?.claimDate).format('MMMM YYYY')} and can never also be reimbursed by Finance.`
+            {payRoute === 'PAYROLL'
+              ? `Appears on the ${dayjs(deciding?.claimDate).format('MMMM YYYY')} payroll run and can never also be reimbursed by Finance.`
               : 'Finance reimburses this outside payroll. It will never reach a payslip.'}
           </div>
         </div>
@@ -343,6 +361,46 @@ export function ClaimsPage() {
       </Modal>
     </AdminShell>
   );
+
+  function recordPayment(row: StaffClaimRow) {
+    let reference = '';
+    Modal.confirm({
+      title: 'Record the reimbursement',
+      content: (
+        <div>
+          <p style={{ marginTop: 0 }}>Finance's own reference for this payment.</p>
+          <Input
+            placeholder="e.g. PV-2026-0043"
+            onChange={(event) => {
+              reference = event.target.value;
+            }}
+          />
+        </div>
+      ),
+      okText: 'Record as reimbursed',
+      onOk: () =>
+        new Promise<void>((resolve, reject) => {
+          if (!reference.trim()) {
+            message.error('A reference is required.');
+            reject();
+            return;
+          }
+          settle.mutate(
+            { id: row.id, financeReference: reference.trim() },
+            {
+              onSuccess: () => {
+                message.success('Recorded');
+                resolve();
+              },
+              onError: (error: Error) => {
+                message.error(error.message);
+                reject();
+              },
+            },
+          );
+        }),
+    });
+  }
 }
 
 /**
@@ -350,20 +408,26 @@ export function ClaimsPage() {
  * from" is the question a duplicate payment turns on, so it is never left to
  * the reader to work out from context.
  */
-function RouteTag({ row }: { row: StaffClaimRow }) {
-  if (row.status === 'REJECTED') return <Tag>Rejected</Tag>;
-  if (row.status === 'CANCELLED') return <Tag>Withdrawn</Tag>;
-  if (row.status !== 'APPROVED') return <Tag color="warning">Awaiting a decision</Tag>;
+function RouteChip({ row }: { row: StaffClaimRow }) {
+  if (row.status !== 'APPROVED') return <span className="kw-muted">Not decided</span>;
   if (row.paymentRoute === 'PAYROLL') {
     return row.payoutStatus === 'IN_PAYROLL' ? (
-      <Tag color="processing">On {dayjs(row.payrollPeriod ?? undefined).format('MMM YYYY')} payroll</Tag>
+      <StatusChip tone="info" dot>
+        On {dayjs(row.payrollPeriod ?? undefined).format('MMM YYYY')} payroll
+      </StatusChip>
     ) : (
-      <Tag color="processing">With salary</Tag>
+      <StatusChip tone="info" dot>
+        With salary
+      </StatusChip>
     );
   }
   return row.payoutStatus === 'PAID' ? (
-    <Tag color="success">Finance · {row.financeReference}</Tag>
+    <StatusChip tone="ok" dot title={row.financeReference ?? undefined}>
+      Finance · {row.financeReference}
+    </StatusChip>
   ) : (
-    <Tag color="warning">Finance, not yet paid</Tag>
+    <StatusChip tone="attention" dot>
+      Finance, not yet paid
+    </StatusChip>
   );
 }

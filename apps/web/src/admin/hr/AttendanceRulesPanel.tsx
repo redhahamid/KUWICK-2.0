@@ -159,9 +159,7 @@ export function AttendanceRulesPanel() {
         * notices for a year and then notices for every month of that year.
         */}
       <AdminNotice tone="warn">
-        <strong>The minimum is applied before the rounding.</strong> Twelve minutes over, on a fifteen-minute
-        minimum, is not overtime — rounding it up first and comparing afterwards would pay it. Extra time is
-        also never overtime until a manager approves it, and never their own.
+        <strong>The minimum is applied before the rounding.</strong> Twelve minutes over a fifteen-minute minimum is not overtime. Extra time is never overtime until a manager other than the claimant approves it.
       </AdminNotice>
 
       <Form form={form} layout="vertical" onFinish={onSave} disabled={isLoading || !canManage}>

@@ -23,6 +23,24 @@ export const TIME_VIEWS = [
   { path: '/admin/hr/time/claims', label: 'Claims' },
 ];
 
+/**
+ * PAYROLL'S OWN THREE VIEWS.
+ *
+ * Doctor incentives and locum sessions were top-level HR tabs, then routes
+ * with no way in: they light Payroll in the rail, and nothing on the payroll
+ * screen mentioned them. They are pay INPUTS — things that feed a payslip and
+ * a payable — so they belong to Payroll the way Roster and Claims belong to
+ * Time & Leave, and they get the same switcher.
+ *
+ * The RUN itself is deliberately not here: inside a run the stage strip is the
+ * navigation, and two switchers on one screen is how twelve tabs happened.
+ */
+export const PAYROLL_VIEWS = [
+  { path: '/admin/hr/payroll', label: 'Payroll' },
+  { path: '/admin/hr/incentives', label: 'Doctor incentives' },
+  { path: '/admin/hr/locum', label: 'Locum sessions' },
+];
+
 export function WorkAreaTabs({ views }: { views: { path: string; label: string }[] }) {
   const navigate = useNavigate();
   const location = useLocation();

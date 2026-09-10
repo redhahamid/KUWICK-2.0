@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { App, Button, DatePicker, Tag } from 'antd';
+import { App, Button, DatePicker } from 'antd';
 import dayjs from 'dayjs';
 import { AdminSection, AdminShell, firstError } from '../components/AdminShell';
+import { Panel } from '../components/Panel';
+import { PAYROLL_VIEWS, WorkAreaTabs } from '../components/WorkAreaTabs';
+import { StatusChip, humanise } from '../components/Chip';
 import { DataTable, ringgit } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useCreatePayrollRun, usePayrollHome } from '../hooks/useAdmin';
@@ -46,6 +49,7 @@ export function PayrollHomePage() {
         />
       }
     >
+      <WorkAreaTabs views={PAYROLL_VIEWS} />
       <ProvisionalBanner statutoryStatus={data?.run?.statutoryStatus ?? data?.periodStatutoryStatus} />
 
       {data ? (
@@ -100,9 +104,13 @@ export function PayrollHomePage() {
               width: 160,
               render: (_: unknown, row: PayrollHome['recent'][number]) =>
                 row.statutoryStatus !== 'CONFIGURED' ? (
-                  <Tag color="warning">{row.status === 'APPROVED' || row.status === 'PAID' ? 'Provisional' : row.status}</Tag>
+                  <StatusChip tone="attention" dot>
+                    {row.status === 'APPROVED' || row.status === 'PAID' ? 'Provisional' : humanise(row.status)}
+                  </StatusChip>
                 ) : (
-                  <Tag color={row.status === 'PAID' ? 'success' : 'processing'}>{row.status}</Tag>
+                  <StatusChip tone={row.status === 'PAID' ? 'ok' : 'info'} dot>
+                    {humanise(row.status)}
+                  </StatusChip>
                 ),
             },
             { title: 'Employees', dataIndex: 'employeeCount', width: 110, align: 'right' as const },
@@ -177,9 +185,18 @@ function PeriodHero({
       <div className="kw-periodHero__body">
         <div className="kw-periodHero__titleRow">
           <span className="kw-periodHero__title">{data.periodLabel}</span>
-          <Tag color={data.state === 'PAID' || data.state === 'APPROVED' ? 'success' : data.state === 'NOT_STARTED' ? undefined : 'processing'}>
+          <StatusChip
+            tone={
+              data.state === 'PAID' || data.state === 'APPROVED'
+                ? 'ok'
+                : data.state === 'NOT_STARTED'
+                  ? 'neutral'
+                  : 'info'
+            }
+            dot
+          >
             {stateLabel[data.state]}
-          </Tag>
+          </StatusChip>
         </div>
         <div className="kw-periodHero__sub">
           {data.employeesExpected} employee{data.employeesExpected === 1 ? '' : 's'} expected
@@ -242,26 +259,35 @@ function AttentionCard({ data }: { data: PayrollHome }) {
   const warnings = data.gate?.warnings ?? 0;
 
   return (
-    <div className="kw-homeCard">
-      <div className="kw-homeCard__head">
-        <span className="kw-homeCard__title">Needs attention</span>
-        {data.gate ? (
-          <span className={`kw-homeCard__count kw-homeCard__count--${blocking > 0 ? 'bad' : warnings > 0 ? 'warn' : 'good'}`}>
+    <Panel
+      title="Needs attention"
+      tone={blocking > 0 ? 'blocked' : warnings > 0 ? 'attention' : undefined}
+      action={
+        data.gate ? (
+          <StatusChip tone={blocking > 0 ? 'blocked' : warnings > 0 ? 'attention' : 'ok'}>
             {blocking + warnings}
-          </span>
-        ) : null}
-      </div>
+          </StatusChip>
+        ) : null
+      }
+      footer={
+        data.run ? (
+          <Link to={`/admin/hr/payroll/${data.run.id}?step=review`} className="kw-panel__link">
+            Open the review →
+          </Link>
+        ) : null
+      }
+    >
       {!data.run ? (
-        <p className="kw-homeCard__body">
+        <p className="kw-panelBody">
           Nothing has been worked out for {dayjs(`${data.period}-01`).format('MMMM')} yet. Start the run and Kuwick will
           tell you what is standing in the way.
         </p>
       ) : !gateKnown ? (
-        <p className="kw-homeCard__body">Whether anything is blocking this month has not been worked out yet — open the run to see.</p>
+        <p className="kw-panelBody">Whether anything is blocking this month has not been worked out yet — open the run to see.</p>
       ) : blocking === 0 && warnings === 0 ? (
-        <p className="kw-homeCard__body">Nothing is standing in the way of finishing this month.</p>
+        <p className="kw-panelBody">Nothing is standing in the way of finishing this month.</p>
       ) : (
-        <p className="kw-homeCard__body">
+        <p className="kw-panelBody">
           {blocking > 0 ? (
             <>
               <strong>
@@ -277,30 +303,28 @@ function AttentionCard({ data }: { data: PayrollHome }) {
           )}
         </p>
       )}
-      {data.run ? (
-        <Link to={`/admin/hr/payroll/${data.run.id}?step=review`} className="kw-homeCard__link">
-          Open the review
-        </Link>
-      ) : null}
-    </div>
+    </Panel>
   );
 }
 
 function SetupCard({ data }: { data: PayrollHome }) {
   const { setup } = data;
   return (
-    <div className="kw-homeCard">
-      <div className="kw-homeCard__head">
-        <span className="kw-homeCard__title">Employee setup</span>
-        <span className="kw-homeCard__count kw-homeCard__count--plain">
-          {setup.ready} <span className="kw-homeCard__countOf">/ {setup.total} ready</span>
-        </span>
-      </div>
-      <p className="kw-homeCard__body">
-        An employee is ready when their salary, bank account and date of birth are on file. Set once, and true until
-        somebody changes them.
-      </p>
-      <ul className="kw-checkList">
+    <Panel
+      title="Employee setup"
+      hint="Ready means salary, bank account and date of birth on file. Set once, and true until somebody changes them."
+      action={
+        <StatusChip tone={setup.ready === setup.total ? 'ok' : 'attention'}>
+          {setup.ready} of {setup.total} ready
+        </StatusChip>
+      }
+      footer={
+        <Link to="/admin/hr/payroll/readiness" className="kw-panel__link">
+          Get ready for payroll →
+        </Link>
+      }
+    >
+      <ul className="kw-readiness">
         <CheckRow label="Salary on record" done={setup.salaryOnRecord === setup.total} value={`${setup.salaryOnRecord} / ${setup.total}`} />
         <CheckRow label="Bank account" done={setup.bankAccount === setup.total} value={`${setup.bankAccount} / ${setup.total}`} />
         <CheckRow label="Date of birth" done={setup.dateOfBirth === setup.total} value={`${setup.dateOfBirth} / ${setup.total}`} />
@@ -314,16 +338,11 @@ function SetupCard({ data }: { data: PayrollHome }) {
         * employees whose figure can neither be calculated nor found entered.
         */}
       {setup.pcbMissing > 0 ? (
-        <p className="kw-homeCard__aside">
-          <strong>{setup.pcbMissing}</strong> {setup.pcbMissing === 1 ? 'employee has' : 'employees have'} no monthly
-          tax figure and no tax profile to calculate one from. Record their tax residence and MTD category, or enter
-          the month's PCB by hand — the run will not finish without one or the other.
+        <p className="kw-panelNote">
+          <strong>{setup.pcbMissing}</strong> {setup.pcbMissing === 1 ? 'employee has' : 'employees have'} no monthly tax figure and no profile to calculate one from. Record their tax residence and MTD category, or key the month's PCB by hand.
         </p>
       ) : null}
-      <Link to="/admin/hr/payroll/readiness" className="kw-homeCard__link">
-        Get ready for payroll
-      </Link>
-    </div>
+    </Panel>
   );
 }
 
@@ -337,14 +356,11 @@ function SetupCard({ data }: { data: PayrollHome }) {
 function FeedingCard({ data }: { data: PayrollHome }) {
   const { feeding } = data;
   return (
-    <div className="kw-homeCard">
-      <div className="kw-homeCard__head">
-        <span className="kw-homeCard__title">Feeding this month</span>
-      </div>
-      <p className="kw-homeCard__body">
-        Nothing here is typed into payroll twice — it comes from where the work was recorded.
-      </p>
-      <ul className="kw-checkList">
+    <Panel
+      title="Feeding this month"
+      hint="Nothing here is typed into payroll twice — it comes from where the work was recorded."
+    >
+      <ul className="kw-feedList">
         <FeedRow label="Attendance" value={`${feeding.attendanceDays} days`} hint="from the roster" />
         <FeedRow
           label="Overtime"
@@ -360,26 +376,31 @@ function FeedingCard({ data }: { data: PayrollHome }) {
         <FeedRow label="Claims" value={ringgit(feeding.claimTotal)} hint={`${feeding.claims} approved`} />
         <FeedRow label="Incentives" value={ringgit(feeding.incentiveTotal)} hint={`${feeding.incentives} approved`} />
       </ul>
-    </div>
+    </Panel>
   );
 }
 
+/** The same row the readiness checklist uses everywhere else in HR. */
 function CheckRow({ label, done, value }: { label: string; done: boolean; value: string }) {
   return (
-    <li className="kw-checkList__row">
-      <span className={`kw-checkList__mark kw-checkList__mark--${done ? 'done' : 'todo'}`}>{done ? '✓' : '!'}</span>
-      <span className="kw-checkList__label">{label}</span>
-      <span className={`kw-checkList__value${done ? '' : ' kw-checkList__value--warn'}`}>{value}</span>
+    <li className={`kw-readinessItem kw-readinessItem--${done ? 'done' : 'advisory'}`}>
+      <span className="kw-readinessItem__mark" aria-hidden>
+        {done ? '✓' : '!'}
+      </span>
+      <span className="kw-readinessItem__text">
+        <span className="kw-readinessItem__label">{label}</span>
+      </span>
+      <span className={`kw-feedList__value${done ? '' : ' kw-warn'}`}>{value}</span>
     </li>
   );
 }
 
 function FeedRow({ label, value, hint, warn }: { label: string; value: string; hint: string; warn?: boolean }) {
   return (
-    <li className="kw-checkList__row kw-checkList__row--feed">
-      <span className="kw-checkList__label">{label}</span>
-      <span className="kw-checkList__value">{value}</span>
-      <span className={`kw-checkList__hint${warn ? ' kw-checkList__hint--warn' : ''}`}>{hint}</span>
+    <li className="kw-feedList__row">
+      <span className="kw-feedList__label">{label}</span>
+      <span className="kw-feedList__value">{value}</span>
+      <span className={`kw-feedList__hint${warn ? ' kw-warn' : ''}`}>{hint}</span>
     </li>
   );
 }

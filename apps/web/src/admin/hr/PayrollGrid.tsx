@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
-import { Table, Tag } from 'antd';
+import { useMemo } from 'react';
+import { Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { usePayrollInputs } from '../hooks/useAdmin';
-import type { PayrollInputRow, PayrollRunDetail } from '../types';
+import { PersonCell } from '../components/Person';
+import type { PayrollRunDetail } from '../types';
 
 type Line = PayrollRunDetail['lines'][number];
 
@@ -17,8 +17,14 @@ type Line = PayrollRunDetail['lines'][number];
  * built. The screens simply never put them beside each other. An owner
  * assembled the register in their head from six separate steps.
  *
- * Rows are people, columns are money, and the answer to "what is this person
- * being paid, and why" is one row and one click.
+ * People down, money across, totals below — and the person and their net pay
+ * pinned, because those are the two columns you must not lose while reading
+ * sideways.
+ *
+ * A ROW OPENS A DRAWER, NOT AN EXPANSION. The detail used to open UNDER the
+ * row, which pushed every other row down the screen: the moment you opened
+ * one, you lost the register you were reading it against. See
+ * PayrollEmployeeDrawer.
  *
  * A BLANK IS NOT A ZERO. Statutory figures are nullable on purpose: null means
  * "not worked out" — no rates configured, or a fact missing — and rendering it
@@ -26,9 +32,30 @@ type Line = PayrollRunDetail['lines'][number];
  * gets acted on. Nulls render as "—" and the run's own statutory notice says
  * why.
  */
-export function PayrollGrid({ run, period }: { run: PayrollRunDetail; period: string }) {
-  const [expanded, setExpanded] = useState<string[]>([]);
-
+export function PayrollGrid({
+  run,
+  onOpenEmployee,
+  selectedStaffId,
+  otherEarnings,
+}: {
+  run: PayrollRunDetail;
+  onOpenEmployee: (line: Line) => void;
+  selectedStaffId?: string;
+  /**
+   * THE RESIDUAL, PER PERSON, FROM THE SERVER.
+   *
+   * Basic + allowances + overtime + incentives + bonus does NOT always reach
+   * gross: a reimbursed claim and a mileage payment are earnings that belong
+   * to none of those five. Without this column the register is a money table
+   * that visibly fails to add up across, which is the exact defect two earlier
+   * versions of the earnings table had.
+   *
+   * It is `pay.rows[].otherEarnings` — a residual of the line's OWN gross,
+   * worked out by the engine — and never a subtraction done here, because a
+   * screen that does payroll arithmetic is a second payroll implementation.
+   */
+  otherEarnings?: Map<string, string>;
+}) {
   const money = (value: number | null) =>
     value === null || value === undefined ? (
       <span className="kw-muted" title="Not worked out — see the statutory notice above">
@@ -44,19 +71,29 @@ export function PayrollGrid({ run, period }: { run: PayrollRunDetail; period: st
       dataIndex: 'name',
       key: 'name',
       fixed: 'left',
-      width: 210,
-      render: (value: string, row) => (
-        <div className="kw-payrollGrid__who">
-          <span className="kw-payrollGrid__name">{value}</span>
-          {row.snapshot?.position ? <span className="kw-muted">{row.snapshot.position}</span> : null}
-        </div>
-      ),
+      width: 216,
+      render: (value: string, row) => <PersonCell name={value} meta={row.snapshot?.position ?? undefined} size={26} />,
     },
     { title: 'Basic', dataIndex: 'basicSalary', key: 'basicSalary', align: 'right', width: 110, render: money },
     { title: 'Allowances', dataIndex: 'allowances', key: 'allowances', align: 'right', width: 115, render: money },
     { title: 'Overtime', dataIndex: 'overtimePay', key: 'overtimePay', align: 'right', width: 110, render: money },
     { title: 'Incentives', dataIndex: 'incentives', key: 'incentives', align: 'right', width: 110, render: money },
     { title: 'Bonus', dataIndex: 'bonus', key: 'bonus', align: 'right', width: 105, render: money },
+    {
+      title: 'Claims & other',
+      key: 'otherEarnings',
+      align: 'right',
+      width: 130,
+      render: (_: unknown, row) => {
+        const value = otherEarnings?.get(row.staffId);
+        if (value === undefined) return <span className="kw-muted">—</span>;
+        return Number(value) === 0 ? (
+          <span className="kw-num">0.00</span>
+        ) : (
+          <span className="kw-num">{value}</span>
+        );
+      },
+    },
     {
       title: 'Gross',
       dataIndex: 'grossPay',
@@ -106,6 +143,12 @@ export function PayrollGrid({ run, period }: { run: PayrollRunDetail; period: st
       overtimePay: sum((l) => l.overtimePay),
       incentives: sum((l) => l.incentives),
       bonus: sum((l) => l.bonus),
+      // The residual's total is the sum of the SERVER's per-person residuals,
+      // not a second derivation of the same idea.
+      otherEarnings: run.lines.reduce(
+        (acc, line) => acc + Number(otherEarnings?.get(line.staffId) ?? 0),
+        0,
+      ),
       grossPay: sum((l) => l.grossPay),
       unpaidLeaveDeduction: sum((l) => l.unpaidLeaveDeduction),
       otherDeductions: sum((l) => l.otherDeductions),
@@ -131,24 +174,24 @@ export function PayrollGrid({ run, period }: { run: PayrollRunDetail; period: st
         // never want to lose sight of while reading across.
         scroll={{ x: 'max-content', y: 560 }}
         sticky
-        expandable={{
-          expandedRowKeys: expanded,
-          onExpandedRowsChange: (keys) => setExpanded(keys as string[]),
-          expandedRowRender: (row) => <LineLineage staffId={row.staffId} period={period} line={row} />,
-          rowExpandable: () => true,
-        }}
+        onRow={(row) => ({ onClick: () => onOpenEmployee(row) })}
+        rowClassName={(row) =>
+          row.staffId === selectedStaffId
+            ? 'kw-dataTable__row--clickable kw-payrollGrid__row--selected'
+            : 'kw-dataTable__row--clickable'
+        }
         summary={() => (
           <Table.Summary fixed="bottom">
             <Table.Summary.Row className="kw-payrollGrid__totals">
               {/*
-                * THE EXPANDER IS A COLUMN, and the summary has to say so.
-                * Without this cell every total slid one place left: the figure
-                * under NET PAY was PCB's, and the month's net — the number the
-                * whole screen exists for — was off the end of the row. It
-                * looked plausible, which is the dangerous kind of wrong.
+                * POSITIONAL CELLS, and there is no expander column any more.
+                * When there WAS one, its cell had to be counted here or every
+                * total slid one place left: the figure under NET PAY was PCB's
+                * and the month's net was off the end of the row. It looked
+                * plausible, which is the dangerous kind of wrong — so the
+                * count is stated rather than assumed.
                 */}
-              <Table.Summary.Cell index={0} />
-              <Table.Summary.Cell index={1}>
+              <Table.Summary.Cell index={0}>
                 <strong>{run.lines.length} employees</strong>
               </Table.Summary.Cell>
               {(
@@ -158,6 +201,7 @@ export function PayrollGrid({ run, period }: { run: PayrollRunDetail; period: st
                   'overtimePay',
                   'incentives',
                   'bonus',
+                  'otherEarnings',
                   'grossPay',
                   'unpaidLeaveDeduction',
                   'otherDeductions',
@@ -169,7 +213,7 @@ export function PayrollGrid({ run, period }: { run: PayrollRunDetail; period: st
                   'netPay',
                 ] as const
               ).map((key, index) => (
-                <Table.Summary.Cell key={key} index={index + 2} align="right">
+                <Table.Summary.Cell key={key} index={index + 1} align="right">
                   <strong className="kw-num">{totals[key].toFixed(2)}</strong>
                 </Table.Summary.Cell>
               ))}
@@ -177,80 +221,6 @@ export function PayrollGrid({ run, period }: { run: PayrollRunDetail; period: st
           </Table.Summary>
         )}
       />
-    </div>
-  );
-}
-
-/**
- * WHERE EACH FIGURE ON THIS ROW CAME FROM.
- *
- * Every amount in the run traces to a `PayrollInputEntry` carrying its source
- * — ATTENDANCE, CLAIM, INCENTIVE, LEAVE, SALARY — and the provenance sentence
- * written when it was materialised. That has always been in the API and never
- * on a screen, so "why is this RM320?" meant asking somebody who knew the
- * system rather than reading the answer.
- */
-function LineLineage({ staffId, period, line }: { staffId: string; period: string; line: Line }) {
-  const { data, isLoading } = usePayrollInputs({ period, staffId });
-
-  const SOURCE_LABEL: Record<string, string> = {
-    ATTENDANCE: 'Attendance',
-    CLAIM: 'Approved claim',
-    INCENTIVE: 'Doctor incentives',
-    LEAVE: 'Leave',
-    SALARY: 'Employee salary',
-    MANUAL: 'Entered by hand',
-    RECURRING: 'Recurring item',
-  };
-
-  return (
-    <div className="kw-lineage">
-      <div className="kw-lineage__fixed">
-        <div className="kw-lineage__row">
-          <span className="kw-lineage__label">Basic salary</span>
-          <span className="kw-num">{line.basicSalary.toFixed(2)}</span>
-          <span className="kw-muted">Source: the salary in force this month</span>
-        </div>
-        {line.workedDays !== null || line.overtimeHours !== null || line.unpaidDays !== null ? (
-          <div className="kw-lineage__row kw-lineage__row--facts">
-            <span className="kw-lineage__label">This month</span>
-            <span className="kw-muted">
-              {line.workedDays !== null ? `${line.workedDays} days worked` : null}
-              {line.overtimeHours ? ` · ${line.overtimeHours}h overtime` : ''}
-              {line.unpaidDays ? ` · ${line.unpaidDays} unpaid days` : ''}
-            </span>
-          </div>
-        ) : null}
-      </div>
-
-      {isLoading ? (
-        <p className="kw-muted">Reading where these figures came from…</p>
-      ) : (data?.length ?? 0) === 0 ? (
-        <p className="kw-muted">
-          Nothing was added this month beyond the salary in force — no overtime, claims or incentives.
-        </p>
-      ) : (
-        <div className="kw-lineage__inputs">
-          {data?.map((input: PayrollInputRow) => (
-            <div className="kw-lineage__row" key={input.id}>
-              <span className="kw-lineage__label">{input.label ?? input.componentCode}</span>
-              <span className="kw-num">{Number(input.amount).toFixed(2)}</span>
-              <span className="kw-muted">
-                <Tag>{SOURCE_LABEL[input.source] ?? input.source}</Tag>
-                {input.reason ?? ''}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* The employer's own cost is not a deduction and never appears in the
-          columns above; it is stated here so nobody looks for it there. */}
-      <div className="kw-lineage__row kw-lineage__row--cost">
-        <span className="kw-lineage__label">Cost to the clinic</span>
-        <span className="kw-num">{line.employerCost.toFixed(2)}</span>
-        <span className="kw-muted">Pay plus the employer's share of EPF, SOCSO, EIS and the HRD levy.</span>
-      </div>
     </div>
   );
 }

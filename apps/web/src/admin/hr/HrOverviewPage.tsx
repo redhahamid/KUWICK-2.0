@@ -1,245 +1,382 @@
+import { useMemo } from 'react';
 import dayjs from 'dayjs';
+import { Button } from 'antd';
+import { Link, useNavigate } from 'react-router-dom';
 import { clinicDayjs, formatClinicTime } from '../../clinical/clinicTime';
-import { Tag } from 'antd';
-import { Link } from 'react-router-dom';
-import { AdminSection, AdminShell, firstError } from '../components/AdminShell';
-import { ExceptionTiles, StatStrip } from '../components/StatStrip';
-import { DataTable } from '../components/DataTable';
+import { AdminShell, firstError } from '../components/AdminShell';
+import { StatStrip } from '../components/StatStrip';
+import { Panel, PanelLink, PanelList, PanelRow, EmptyState } from '../components/Panel';
+import { PersonAvatar } from '../components/Person';
+import { StatusChip } from '../components/Chip';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
-import { useWorkforceToday, usePayrollReadiness } from '../hooks/useAdmin';
+import { useWorkforceToday, usePayrollReadiness, usePayrollHome, useEmployees } from '../hooks/useAdmin';
+import { useLeaveRequests } from '../../hr/hooks/useLeaveRequests';
 import { HrSetupJourney } from './HrSetupJourney';
-import { WORKFORCE_CATEGORY_LABELS, type WorkforceCategory } from '../../appointment/hooks/useRoster';
-import { useNavigate } from 'react-router-dom';
+import type { PayrollHomeState } from '../types';
 
 /**
- * HR — the module's first question, in the brief's own words:
+ * HR OVERVIEW — "what requires my attention today?"
  *
- *   "Who is working, absent, pending approval, and what needs payroll
- *    attention?"
+ * That question, and not "how is the clinic doing", is what the reference
+ * sheet's Overview is built around, and it decides the whole layout. Four
+ * numbers along the top answer where the workforce stands; four panels below
+ * are the work itself, each one a list of things somebody is waiting on rather
+ * than a counter.
  *
- * Four answers, on one screen, before anything else. The directory is a click
- * away; it is not what somebody opens HR to find out at nine in the morning.
+ * THE COUNTERS ARE GONE. This screen used to open with five attendance tiles
+ * and seven exception tiles — twelve numbers, none of which said what to do
+ * next. A tile reading "3" teaches a manager they have a problem and nothing
+ * about whose it is; the same three, named, are three decisions.
+ *
+ * WHAT SURVIVES FROM THE OLD SCREEN, because the brief is explicit that
+ * nothing important disappears: every exception count is still here, now as
+ * named rows inside Needs Attention, and each one still opens the work.
  */
+
+const PAYROLL_STATE: Record<PayrollHomeState, { label: string; tone: 'ok' | 'attention' | 'info' | 'neutral' }> = {
+  NOT_STARTED: { label: 'Not started', tone: 'neutral' },
+  STARTED: { label: 'In progress', tone: 'info' },
+  READY_TO_REVIEW: { label: 'Ready to review', tone: 'info' },
+  APPROVED: { label: 'Approved', tone: 'ok' },
+  PAID: { label: 'Paid', tone: 'ok' },
+};
+
 export function HrOverviewPage() {
   const navigate = useNavigate();
   const { clinicId } = useClinicFilter();
-  const { data, isLoading, isError, error } = useWorkforceToday(clinicId);
-  // Whose setup is unfinished, so the board can offer that as work rather than
-  // leaving it to be discovered on pay day.
   const period = dayjs().format('YYYY-MM');
+
+  const today = useWorkforceToday(clinicId);
   const readiness = usePayrollReadiness({ period, clinicId });
-  const needSetup = readiness.data?.summary.withBlockers ?? 0;
-  const employersMissing = (readiness.data?.employers ?? []).filter((row) => !row.ready).length;
-  // A clinic with nobody on the payroll has not started; a dashboard of zeros
-  // would tell them nothing is happening rather than nothing is configured.
+  const payroll = usePayrollHome({ period, clinicId });
+  const employees = useEmployees({ clinicId });
+  const leave = useLeaveRequests();
+
+  const data = today.data;
   const notSetUpYet = (readiness.data?.summary.total ?? 0) === 0;
+  const employersMissing = (readiness.data?.employers ?? []).filter((row) => !row.ready).length;
+  const payrollState = payroll.data ? PAYROLL_STATE[payroll.data.state] : null;
+
+  /*
+   * TODAY'S WORKFORCE — one list, not three.
+   *
+   * On duty, rostered-but-not-in, and on leave were three separate tables on
+   * this screen. They are three states of the same fact, and reading them
+   * apart meant scrolling to find out whether the person missing from the
+   * first list was late or on holiday.
+   */
+  const workforce = useMemo(() => {
+    const rows: { staffId: string; name: string; state: 'in' | 'due' | 'late' | 'leave'; detail: string }[] = [];
+    for (const person of data?.onDuty ?? []) {
+      rows.push({
+        staffId: person.staffId,
+        name: person.name,
+        state: 'in',
+        detail: `In since ${formatClinicTime(person.since)}`,
+      });
+    }
+    for (const person of data?.notClockedIn ?? []) {
+      rows.push({
+        staffId: person.staffId,
+        name: person.name,
+        state: person.overdue ? 'late' : 'due',
+        detail: person.overdue
+          ? `Shift started ${formatClinicTime(person.dueAt)}`
+          : `Due ${formatClinicTime(person.dueAt)}`,
+      });
+    }
+    for (const person of data?.onLeave ?? []) {
+      rows.push({ staffId: person.staffId, name: person.name, state: 'leave', detail: person.leaveType });
+    }
+    // Whoever is not where they should be, first.
+    const order = { late: 0, due: 1, in: 2, leave: 3 } as const;
+    return rows.sort((a, b) => order[a.state] - order[b.state] || a.name.localeCompare(b.name));
+  }, [data]);
+
+  /*
+   * NEEDS ATTENTION — every count that used to be a tile, as a row that names
+   * the work and goes to it. Clean rows are dropped rather than shown as a
+   * quiet zero: on a panel of eight, eight zeroes is what somebody scrolls
+   * past, and the empty state says the same thing in one line.
+   */
+  const attention = [
+    {
+      key: 'leave',
+      label: 'Leave requests waiting',
+      count: data?.pendingLeaveApprovals ?? 0,
+      tone: 'attention' as const,
+      to: '/admin/hr/time/leave',
+    },
+    {
+      key: 'punch',
+      label: 'Missing clock-in or clock-out',
+      count: data?.missingPunches ?? 0,
+      tone: 'blocked' as const,
+      to: '/admin/hr/time',
+    },
+    {
+      key: 'ot',
+      label: 'Overtime claimed, not approved',
+      count: data?.unapprovedOvertimeClaims ?? 0,
+      tone: 'attention' as const,
+      to: '/admin/hr/time',
+    },
+    {
+      key: 'corrections',
+      label: 'Attendance fixes requested',
+      count: data?.pendingAttendanceCorrections ?? 0,
+      tone: 'attention' as const,
+      to: '/admin/hr/time',
+    },
+    {
+      key: 'claims',
+      label: 'Claims waiting for a decision',
+      count: data?.pendingClaims ?? 0,
+      tone: 'attention' as const,
+      to: '/admin/hr/time/claims',
+    },
+    {
+      key: 'employer',
+      label: 'Company statutory details missing',
+      count: employersMissing,
+      tone: 'blocked' as const,
+      to: '/admin/hr/employers',
+    },
+  ].filter((row) => row.count > 0);
+
+  /*
+   * PAYROLL READINESS — a checklist, not a score.
+   *
+   * The brief's rule, in its own words: never show a user a cryptic 5/8
+   * without explaining what is missing. So this panel names each standing
+   * fact payroll needs and says how many people still lack it, which is the
+   * shape somebody can act on — "3 without a bank account" is an afternoon's
+   * work; "18/24 ready" is a mystery.
+   *
+   * The figures come from `payroll.setup`, the same read the payroll gate
+   * uses, so this panel cannot say ready while the gate refuses to start.
+   */
+  const setup = payroll.data?.setup;
+  const checklist = setup
+    ? [
+        { key: 'salary', label: 'Salary in force', outstanding: setup.total - setup.salaryOnRecord, blocking: true },
+        { key: 'bank', label: 'Bank account on file', outstanding: setup.total - setup.bankAccount, blocking: true },
+        { key: 'dob', label: 'Date of birth recorded', outstanding: setup.total - setup.dateOfBirth, blocking: true },
+        {
+          key: 'pcb',
+          // THIS MONTH'S WORK, not a gap in anybody's record — which is why it
+          // is advisory here and why the payroll gate counts it separately.
+          label: 'Monthly tax answered',
+          outstanding: setup.pcbMissing,
+          blocking: false,
+        },
+        { key: 'employer', label: 'Company statutory details', outstanding: employersMissing, blocking: true },
+      ]
+    : [];
+
+  /* LEAVE THIS WEEK — approved leave that lands in the next seven days. */
+  const weekLeave = useMemo(() => {
+    const from = dayjs().startOf('day');
+    const to = from.add(7, 'day');
+    return (leave.data ?? [])
+      .filter((row) => row.status === 'APPROVED' || row.status === 'PENDING')
+      .filter((row) => dayjs(row.endDate) >= from && dayjs(row.startDate) < to)
+      .sort((a, b) => a.startDate.localeCompare(b.startDate))
+      .slice(0, 6);
+  }, [leave.data]);
 
   return (
     <AdminShell
-      error={firstError({ isError, error })}
+      error={firstError(today, readiness, payroll)}
       title="HR Overview"
-      subtitle={`Who is working, who is absent, and what is waiting for a decision — ${clinicDayjs(`${data?.date ?? ''}T00:00:00`).format('dddd D MMMM')}.`}
+      subtitle={clinicDayjs(`${data?.date ?? ''}T00:00:00`).format('dddd D MMMM YYYY')}
+      actions={
+        <Button type="primary" onClick={() => navigate('/admin/hr/people/new')}>
+          + Add employee
+        </Button>
+      }
     >
       {notSetUpYet ? <HrSetupJourney period={period} clinicId={clinicId} /> : null}
 
       <StatStrip
         stats={[
-          { label: 'On duty now', value: data?.onDuty?.length ?? 0, tone: 'good' },
-          { label: 'Finished today', value: data?.completed ?? 0 },
-          { label: 'Late arrivals', value: data?.late ?? 0, tone: (data?.late ?? 0) > 0 ? 'warn' : 'neutral' },
-          { label: 'On leave', value: data?.onLeave?.length ?? 0 },
-          { label: 'Rostered today', value: data?.scheduled?.length ?? 0, explain: 'From the roster — the one scheduling domain. Attendance reads it and never writes to it.' },
+          { label: 'Total staff', value: employees.data?.length ?? 0 },
+          {
+            label: 'On duty now',
+            // A ZERO IS NOT GOOD NEWS. Painting "0 on duty" green is the same
+            // class of error as rendering an uncomputed statutory figure as
+            // 0.00 — it dresses an absence as a healthy result.
+            value: data?.onDuty?.length ?? 0,
+            tone: (data?.onDuty?.length ?? 0) > 0 ? 'good' : 'neutral',
+            hint: `${data?.scheduled?.length ?? 0} rostered today`,
+          },
+          {
+            label: 'On leave today',
+            value: data?.onLeave?.length ?? 0,
+            tone: (data?.onLeave?.length ?? 0) > 0 ? 'warn' : 'neutral',
+          },
+          {
+            // THE MONTH GOES IN THE HINT. "Payroll · September 2026" is 26
+            // characters and truncated to "PAYROLL · SEPTEMBE…" on a phone,
+            // which is the one word in it that had to survive.
+            label: 'Payroll status',
+            value: payrollState ? <span className="kw-stat__word">{payrollState.label}</span> : '—',
+            tone: payroll.data?.state === 'APPROVED' || payroll.data?.state === 'PAID' ? 'good' : 'neutral',
+            hint: `${payroll.data?.periodLabel ?? dayjs(period).format('MMMM YYYY')} · ${
+              (readiness.data?.summary.withBlockers ?? 0) > 0
+                ? `${readiness.data?.summary.withBlockers} would hold up approval`
+                : `${readiness.data?.summary.ready ?? 0} ready to pay`
+            }`,
+          },
         ]}
       />
 
-      <AdminSection
-        title="Waiting for a decision"
-        description="Each of these is somebody blocked until a manager acts. Every tile opens the work."
-      >
-        {/*
-          * EACH ONE GOES SOMEWHERE. A counter that leads nowhere tells a
-          * manager they have work and not where it is, which is most of the
-          * way to not doing it.
-          */}
-        <ExceptionTiles
-          tiles={[
-            {
-              key: 'leave',
-              label: 'Leave approvals pending',
-              count: data?.pendingLeaveApprovals ?? 0,
-              tone: 'warn',
-              onSelect: () => navigate('/admin/hr/time/leave'),
-            },
-            {
-              key: 'ot',
-              label: 'Overtime claimed, not approved',
-              count: data?.unapprovedOvertimeClaims ?? 0,
-              tone: 'warn',
-              hint: 'Unapproved overtime is NOT paid. A long day is not automatically overtime.',
-              onSelect: () => navigate('/admin/hr/time'),
-            },
-            {
-              key: 'punch',
-              label: 'Missing clock-in or clock-out',
-              count: data?.missingPunches ?? 0,
-              tone: 'bad',
-              hint: 'Somebody was here and the record is incomplete — not the same as absent.',
-              onSelect: () => navigate('/admin/hr/time'),
-            },
-            {
-              key: 'corrections',
-              label: 'Attendance fixes requested',
-              count: data?.pendingAttendanceCorrections ?? 0,
-              tone: 'warn',
-              hint: 'Somebody has asked for a punch to be put right. Nothing changes until you decide.',
-              onSelect: () => navigate('/admin/hr/time'),
-            },
-            {
-              key: 'claims',
-              label: 'Claims awaiting a decision',
-              count: data?.pendingClaims ?? 0,
-              tone: 'warn',
-              hint: 'Approving one also decides whether it is paid with salary or by Finance.',
-              onSelect: () => navigate('/admin/hr/time/claims'),
-            },
-            {
-              key: 'setup',
-              // PRECISELY WHAT THE NUMBER MEANS. "Not ready to be paid" would
-              // disagree with Payroll home's own "ready" count, which asks a
-              // narrower question — the standing facts on somebody's record,
-              // not this month's outstanding data entry. Both are right; only
-              // a vague label makes them look like a contradiction.
-              label: 'Employees who would hold up approval',
-              count: needSetup,
-              tone: 'warn',
-              hint: 'Mostly this month\'s monthly-tax entry rather than a gap in anybody\'s record.',
-              onSelect: () => navigate('/admin/hr/payroll/readiness'),
-            },
-            {
-              key: 'employer',
-              label: 'Company details missing',
-              count: employersMissing,
-              tone: 'bad',
-              hint: 'EPF, SOCSO and LHDN returns are filed by a company. Without its numbers, nothing can be filed.',
-              onSelect: () => navigate('/admin/hr/employers'),
-            },
-          ]}
-        />
-      </AdminSection>
-
-      {/*
-        * `data?.notClockedIn?.length`, not `data?.notClockedIn?.length`.
-        *
-        * Optional chaining stops at the first `?.`: the second form is only
-        * safe while the field is guaranteed present, and a web bundle can and
-        * does run against an API build that predates a field. It white-screened
-        * this page during development for exactly that reason, which is a far
-        * worse failure than a missing section.
-        */}
-      {(data?.notClockedIn?.length ?? 0) > 0 ? (
-        <AdminSection
-          title="Rostered, not clocked in"
-          description="On the roster today, not on leave, and no punch yet. Somebody early is not somebody missing, so this says which."
-          padded={false}
-        >
-          <DataTable
-            rows={data?.notClockedIn}
-            loading={isLoading}
-            rowKey="staffId"
-            emptyText="Everybody rostered has clocked in"
-            columns={[
-              { title: 'Name', dataIndex: 'name', key: 'name' },
-              {
-                title: 'Due',
-                dataIndex: 'dueAt',
-                key: 'dueAt',
-                render: (value: string) => formatClinicTime(value),
-              },
-              {
-                title: '',
-                key: 'state',
-                render: (_: unknown, row) =>
-                  row.overdue ? <Tag color="red">Shift has started</Tag> : <Tag>Not due yet</Tag>,
-              },
-            ]}
-          />
-        </AdminSection>
-      ) : null}
-
-      {Object.keys(data?.coverage ?? {}).length > 0 ? (
-        <AdminSection
+      <div className="kw-hrGrid">
+        <Panel
           title="Today's workforce"
-          description="Who is scheduled, by the kind of work they do. A clinic can be fully staffed and still have no doctor in it."
+          hint="Read from the provider roster — changing a shift happens there, not here."
+          action={<PanelLink to="/admin/hr/time">Attendance</PanelLink>}
         >
-          <div className="kw-coverage">
-            {Object.entries(data?.coverage ?? {}).map(([category, count]) => (
-              <div className="kw-coverage__cell" key={category}>
-                <span className="kw-coverage__count">{count}</span>
-                <span className="kw-coverage__label">
-                  {WORKFORCE_CATEGORY_LABELS[category as WorkforceCategory] ?? category}
-                </span>
-              </div>
-            ))}
-          </div>
-        </AdminSection>
-      ) : null}
+          {workforce.length === 0 ? (
+            <EmptyState
+              title="Nobody is rostered today"
+              hint="The roster is the one schedule; attendance reads it and never writes to it."
+              action={<Link to="/admin/hr/time/roster">Open the roster →</Link>}
+            />
+          ) : (
+            <PanelList>
+              {workforce.slice(0, 8).map((row) => (
+                <PanelRow
+                  key={`${row.staffId}-${row.state}`}
+                  to={`/admin/hr/employees/${row.staffId}`}
+                  lead={<PersonAvatar name={row.name} size={28} />}
+                  title={row.name}
+                  meta={row.detail}
+                  right={
+                    row.state === 'in' ? (
+                      <StatusChip tone="ok" dot>
+                        On duty
+                      </StatusChip>
+                    ) : row.state === 'late' ? (
+                      <StatusChip tone="blocked" dot>
+                        Not clocked in
+                      </StatusChip>
+                    ) : row.state === 'due' ? (
+                      <StatusChip tone="neutral" dot>
+                        Due later
+                      </StatusChip>
+                    ) : (
+                      <StatusChip tone="info" dot>
+                        On leave
+                      </StatusChip>
+                    )
+                  }
+                />
+              ))}
+            </PanelList>
+          )}
+        </Panel>
 
-      <div className="kw-adminGrid kw-adminGrid--2">
-        <AdminSection title="On duty" padded={false}>
-          <DataTable
-            rows={data?.onDuty}
-            loading={isLoading}
-            rowKey="staffId"
-            emptyText="Nobody is clocked in"
-            columns={[
-              { title: 'Name', dataIndex: 'name', key: 'name' },
-              {
-                title: 'Since',
-                dataIndex: 'since',
-                key: 'since',
-                render: (value: string) => `${formatClinicTime(value)} (${dayjs().diff(dayjs(value), 'hour')}h)`,
-              },
-            ]}
-          />
-        </AdminSection>
+        <Panel
+          title="Needs attention"
+          tone={attention.some((row) => row.tone === 'blocked') ? 'blocked' : attention.length ? 'attention' : undefined}
+        >
+          {attention.length === 0 ? (
+            <EmptyState title="Nothing is waiting on you" hint="No pending approvals, punches or company gaps." />
+          ) : (
+            <PanelList>
+              {attention.map((row) => (
+                <PanelRow
+                  key={row.key}
+                  to={row.to}
+                  title={row.label}
+                  right={<StatusChip tone={row.tone}>{row.count}</StatusChip>}
+                />
+              ))}
+            </PanelList>
+          )}
+        </Panel>
 
-        <AdminSection title="Away today" padded={false}>
-          <DataTable
-            rows={data?.onLeave}
-            loading={isLoading}
-            rowKey="staffId"
-            emptyText="Nobody is on leave"
-            columns={[
-              { title: 'Name', dataIndex: 'name', key: 'name' },
-              {
-                title: 'Leave',
-                dataIndex: 'leaveType',
-                key: 'leaveType',
-                render: (value: string) => <Tag>{value}</Tag>,
-              },
-            ]}
-          />
-        </AdminSection>
+        <Panel
+          title={`Payroll readiness · ${payroll.data?.periodLabel ?? dayjs(period).format('MMMM YYYY')}`}
+          hint={
+            (readiness.data?.summary.withBlockers ?? 0) > 0
+              ? `${readiness.data?.summary.ready ?? 0} of ${readiness.data?.summary.total ?? 0} can be paid today.`
+              : undefined
+          }
+          footer={
+            <Link to="/admin/hr/payroll">
+              <Button type="primary" size="small">
+                Continue payroll →
+              </Button>
+            </Link>
+          }
+        >
+          {checklist.length === 0 ? (
+            <EmptyState title="No payroll period is open" hint="Start the month from Payroll." />
+          ) : (
+            <ul className="kw-readiness">
+              {checklist.map((row) => {
+                const done = row.outstanding <= 0;
+                return (
+                  <li
+                    key={row.key}
+                    className={`kw-readinessItem kw-readinessItem--${done ? 'done' : row.blocking ? 'blocked' : 'advisory'}`}
+                  >
+                    <span className="kw-readinessItem__mark" aria-hidden>
+                      {done ? '✓' : row.blocking ? '✕' : '!'}
+                    </span>
+                    <span className="kw-readinessItem__text">
+                      <span className="kw-readinessItem__label">{row.label}</span>
+                      {!done ? (
+                        <span className="kw-readinessItem__detail">
+                          {row.outstanding} {row.key === 'employer' ? 'company' : 'employee'}
+                          {row.outstanding === 1 ? '' : row.key === 'employer' ? 'ies' : 's'} outstanding
+                        </span>
+                      ) : null}
+                    </span>
+                    {!done ? (
+                      <Link
+                        className="kw-readinessItem__fix"
+                        to={row.key === 'employer' ? '/admin/hr/employers' : '/admin/hr/payroll/readiness'}
+                      >
+                        Fix
+                      </Link>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Panel>
+
+        <Panel title="Leave this week" action={<PanelLink to="/admin/hr/time/leave">Leave</PanelLink>}>
+          {weekLeave.length === 0 ? (
+            <EmptyState title="No leave in the next seven days" />
+          ) : (
+            <PanelList>
+              {weekLeave.map((row) => (
+                <PanelRow
+                  key={row.id}
+                  to="/admin/hr/time/leave"
+                  lead={<PersonAvatar name={row.staff?.fullName ?? '?'} size={28} />}
+                  title={row.staff?.fullName ?? '—'}
+                  meta={`${dayjs(row.startDate).format('ddd D MMM')} – ${dayjs(row.endDate).format('ddd D MMM')} · ${row.leaveType.toLowerCase()}`}
+                  right={
+                    row.status === 'PENDING' ? (
+                      <StatusChip tone="attention">Waiting</StatusChip>
+                    ) : (
+                      <StatusChip tone="ok" dot>
+                        Approved
+                      </StatusChip>
+                    )
+                  }
+                />
+              ))}
+            </PanelList>
+          )}
+        </Panel>
       </div>
-
-      <AdminSection title="Rostered today" description="Read from the provider roster. Changing a shift happens there, not here." padded={false}>
-        <DataTable
-          rows={data?.scheduled}
-          loading={isLoading}
-          rowKey={(row) => `${row.staffId}-${row.startAt}`}
-          emptyText="Nobody is rostered"
-          columns={[
-            { title: 'Name', dataIndex: 'name', key: 'name' },
-            { title: 'From', dataIndex: 'startAt', key: 'startAt', render: (value: string) => formatClinicTime(value) },
-            { title: 'To', dataIndex: 'endAt', key: 'endAt', render: (value: string) => formatClinicTime(value) },
-          ]}
-        />
-      </AdminSection>
-
-      <p className="kw-adminSection__desc">
-        <Link to="/admin/hr/people">Employee directory →</Link> · <Link to="/admin/hr/attendance">Attendance →</Link>{' '}
-        · <Link to="/admin/hr/payroll">Payroll →</Link>
-      </p>
     </AdminShell>
   );
 }

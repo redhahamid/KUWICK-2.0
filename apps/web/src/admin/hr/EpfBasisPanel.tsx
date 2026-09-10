@@ -111,7 +111,7 @@ export function EpfBasisPanel({ staffId, canSeePay }: { staffId: string; canSeeP
   return (
     <AdminSection
       title="EPF contribution basis"
-      description="Which of this employee's wages EPF is contributed on. Kuwick's statutory assessment stays separate: choosing to leave assessed wages out is recorded as the employer's selection and raises an advisory on the month — payroll still runs, and Kuwick does not treat the selection as statutory compliance."
+      description="Which of this employee's wages EPF is contributed on. Leaving assessed wages out is the employer's recorded selection and raises an advisory; Kuwick does not treat it as statutory compliance."
       actions={
         mayManage ? (
           <Button size="small" onClick={openForm}>

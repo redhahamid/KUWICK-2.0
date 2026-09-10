@@ -3,6 +3,11 @@ import { describe, expect, it } from 'vitest';
 // Vite's ?raw import gives the file's SOURCE. Several of these guards are about
 // what the screens are WIRED to, which rendering alone cannot prove.
 import runSource from './PayrollRunPage.tsx?raw';
+// The per-person money detail moved out of the run page's two reading steps
+// and into the drawer the register opens, so the guards that pin "this screen
+// renders the engine and computes nothing" follow it there.
+import drawerSource from './PayrollEmployeeDrawer.tsx?raw';
+import gridSource from './PayrollGrid.tsx?raw';
 import homeSource from './PayrollHomePage.tsx?raw';
 import claimsSource from './ClaimsPage.tsx?raw';
 import locumSource from './LocumPage.tsx?raw';
@@ -77,10 +82,21 @@ describe('the money steps render the engine and compute nothing', () => {
    * as zero. The grouping now comes from the journey payload; these guards
    * assert the screens read it and no longer do arithmetic of their own.
    */
-  it('renders the residual and the salary-after-unpaid-leave the server derived', () => {
+  it('renders the residual the server derived rather than subtracting to find it', () => {
+    /*
+     * BASIC + ALLOWANCES + OVERTIME + INCENTIVES + BONUS DOES NOT ALWAYS REACH
+     * GROSS. A reimbursed claim and a mileage payment are earnings belonging to
+     * none of those five, so a register without the residual is a money table
+     * that visibly fails to add up across — the defect two earlier versions of
+     * the earnings table had.
+     *
+     * The register carries the column and the run page fills it from
+     * `pay.rows[].otherEarnings`, which the engine worked out from the line's
+     * own gross. Neither file subtracts anything to find it.
+     */
     expect(code(runSource)).toMatch(/row\.otherEarnings/);
-    expect(code(runSource)).toMatch(/row\.salaryEarned/);
-    expect(code(runSource)).toMatch(/totals\.otherEarnings/);
+    expect(code(gridSource)).toMatch(/otherEarnings/);
+    expect(code(gridSource)).toMatch(/Claims & other/);
   });
 
   it('takes every total from data.pay.totals, never from a sum over the rows on screen', () => {
@@ -99,8 +115,11 @@ describe('the money steps render the engine and compute nothing', () => {
   });
 
   it('shows unpaid leave as a reduction of salary, never as an invisible difference', () => {
-    expect(code(runSource)).toMatch(/less \{ringgit\(row\.unpaidLeaveDeduction\)\} unpaid leave/);
+    // The month-level statement is on the Review stage; the per-person one is
+    // in the drawer, beside the figure it explains.
     expect(code(runSource)).toMatch(/Unpaid leave is not a deduction/);
+    expect(code(drawerSource)).toMatch(/Unpaid leave/);
+    expect(code(drawerSource)).toMatch(/wages are smaller, not deducted twice/);
   });
 
   it('surfaces a run whose lines do not reach its own totals rather than tidying it up', () => {
@@ -242,12 +261,15 @@ describe('the locum screen never implies payroll', () => {
 });
 
 describe('derived figures are corrected upstream, never re-keyed in payroll', () => {
-  it('says so on the earnings drill-down', () => {
-    expect(code(runSource)).toMatch(/Corrected where it was recorded, not here/);
+  it('says so on the employee drawer, beside the figure it explains', () => {
+    expect(code(drawerSource)).toMatch(/Corrected where it was recorded, not here/);
+    // And the provenance the materialiser wrote travels with every derived
+    // amount, which is the whole reason the drawer replaced a row expansion.
+    expect(code(drawerSource)).toMatch(/item\.provenance/);
   });
 
   it('sends the owner to the timesheet and the leave record rather than offering an edit', () => {
-    expect(code(runSource)).toMatch(/\/admin\/hr\/attendance/);
+    expect(code(runSource)).toMatch(/\/admin\/hr\/(attendance|time)/);
     expect(code(runSource)).toMatch(/Open timesheet/);
   });
 });

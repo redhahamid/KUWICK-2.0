@@ -2466,7 +2466,13 @@ async function seedWorkforce(ids: Ids) {
     }
 
     // --- Attendance across the current month ------------------------------
-    const attendanceStaff = ['counter', 'counter2', 'stock', 'finance'];
+    //
+    // EVERYBODY WHO PUNCHES, not a sample of four. With four, the attendance
+    // sheet showed three rows out of eight employees and read as a clinic where
+    // most people never come in — which is not a state worth reviewing a design
+    // against. Doctors clock in too; the panel executive is office-based like
+    // Finance.
+    const attendanceStaff = ['counter', 'counter2', 'stock', 'finance', 'resident', 'panel', 'owner'];
     // Walk back only as far as the 1st. A fixed twenty-day lookback spends the
     // first three weeks of every month writing attendance into the PREVIOUS
     // one, where the timesheet's default window cannot see it.
@@ -2731,16 +2737,65 @@ async function seedWorkforce(ids: Ids) {
     });
 
     // --- Staff medical benefit ---------------------------------------------
+    //
+    // THREE ACCOUNTS IN THREE STATES, because one account with one use cannot
+    // show whether the screen distinguishes healthy from nearly-spent from
+    // overdrawn — and those are the three answers a clinic acts on. One
+    // dependant draws on the same pot as the member, which is the rule the
+    // balance exists to enforce.
     const benefitYear = new Date().getUTCFullYear();
-    const account = await tx.staffBenefitAccount.create({
-      data: { tenantId: tenant.id, staffId: staff.counter, benefitYear, allowance: 1500 },
-    });
-    await tx.staffBenefitMember.create({
-      data: { tenantId: tenant.id, accountId: account.id, name: 'Nurul Hidayah', relationship: 'SELF' },
-    });
-    await tx.staffBenefitUsage.create({
-      data: { tenantId: tenant.id, accountId: account.id, usedAt: day(-30), amount: 180, notes: 'Consultation and medication', recordedByStaffId: staff.finance },
-    });
+    const benefitAccounts: { key: 'counter' | 'stock' | 'finance'; who: string; allowance: number; uses: { offset: number; amount: number; note: string; forWhom?: string }[] }[] = [
+      {
+        key: 'counter',
+        who: 'Nurul Hidayah',
+        allowance: 1500,
+        uses: [{ offset: -30, amount: 180, note: 'Consultation and medication' }],
+      },
+      {
+        key: 'stock',
+        who: 'Hafiz Osman',
+        allowance: 1200,
+        uses: [
+          { offset: -180, amount: 420, note: 'Dental treatment' },
+          { offset: -95, amount: 360, note: 'Physiotherapy course' },
+          { offset: -21, amount: 260, note: 'Specialist referral', forWhom: 'Zara Osman' },
+        ],
+      },
+      {
+        key: 'finance',
+        who: 'Chandra Devi',
+        allowance: 900,
+        uses: [
+          { offset: -210, amount: 500, note: 'Minor day surgery' },
+          { offset: -60, amount: 470, note: 'Follow-up and imaging' },
+        ],
+      },
+    ];
+    for (const entry of benefitAccounts) {
+      const account = await tx.staffBenefitAccount.create({
+        data: { tenantId: tenant.id, staffId: staff[entry.key], benefitYear, allowance: entry.allowance },
+      });
+      await tx.staffBenefitMember.create({
+        data: { tenantId: tenant.id, accountId: account.id, name: entry.who, relationship: 'SELF' },
+      });
+      if (entry.key === 'stock') {
+        await tx.staffBenefitMember.create({
+          data: { tenantId: tenant.id, accountId: account.id, name: 'Zara Osman', relationship: 'CHILD' },
+        });
+      }
+      for (const use of entry.uses) {
+        await tx.staffBenefitUsage.create({
+          data: {
+            tenantId: tenant.id,
+            accountId: account.id,
+            usedAt: day(use.offset),
+            amount: use.amount,
+            notes: use.note,
+            recordedByStaffId: staff.finance,
+          },
+        });
+      }
+    }
 
     // --- Doctor incentives -------------------------------------------------
     const commission = await tx.incentiveRule.create({

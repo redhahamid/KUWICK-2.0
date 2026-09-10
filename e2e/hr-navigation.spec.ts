@@ -45,6 +45,12 @@ test.describe('the HR rail', () => {
       // Settings lit Overview until the active-path resolution learned that a
       // section list is not the whole set of destinations.
       ['/admin/hr/settings', 'Settings'],
+      // Settings is a landing with areas under it now, and each area is still
+      // Settings — not the section its subject happens to belong to.
+      ['/admin/hr/settings/payroll', 'Settings'],
+      ['/admin/hr/settings/attendance', 'Settings'],
+      // Hiring is a full page rather than a drawer, and it belongs to People.
+      ['/admin/hr/people/new', 'People'],
     ] as const) {
       await gotoAdmin(page, path);
       await expect(page.locator('.kw-hubRail__item.is-active'), `${path} should light ${section}`).toHaveText(section);
@@ -83,6 +89,29 @@ test.describe('every URL the six sections absorbed', () => {
     for (const path of ['/admin/hr/incentives', '/admin/hr/locum']) {
       await gotoAdmin(page, path);
       await expect(page.locator('.kw-hubRail__item.is-active'), `${path} belongs to Payroll`).toHaveText('Payroll');
+    }
+  });
+});
+
+test.describe('Settings is a landing, not a wall', () => {
+  test('opens on the setup checklist and the areas, with each area on its own page', async ({ page }) => {
+    await loginAdmin(page);
+    await gotoAdmin(page, '/admin/hr/settings');
+
+    // The checklist is the screen: a clinic that cannot see which of the six
+    // is outstanding discovers the answer on pay day.
+    await expect(page.locator('.kw-setupList__row')).toHaveCount(6);
+    // And the configuration itself is behind cards rather than stacked below.
+    await expect(page.locator('.kw-reportCard')).not.toHaveCount(0);
+
+    for (const [name, path, heading] of [
+      ['Payroll rules', '/admin/hr/settings/payroll', 'Payroll rules'],
+      ['Attendance rules', '/admin/hr/settings/attendance', 'Attendance rules'],
+    ] as const) {
+      await gotoAdmin(page, '/admin/hr/settings');
+      await page.locator('.kw-reportCard', { hasText: name }).first().click();
+      await expect(page).toHaveURL(new RegExp(`${path}$`));
+      await expect(page.locator('.kw-admin__title')).toHaveText(heading);
     }
   });
 });
