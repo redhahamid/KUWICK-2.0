@@ -118,8 +118,12 @@ describe('the money steps render the engine and compute nothing', () => {
     // The month-level statement is on the Review stage; the per-person one is
     // in the drawer, beside the figure it explains.
     expect(code(runSource)).toMatch(/Unpaid leave is not a deduction/);
-    expect(code(drawerSource)).toMatch(/Unpaid leave/);
+    // And in the drawer it sits with the EARNINGS it reduces, because gross
+    // has already absorbed it — listed under Deductions it was a total that
+    // never touches net pay.
+    expect(code(drawerSource)).toMatch(/Less unpaid leave/);
     expect(code(drawerSource)).toMatch(/wages are smaller, not deducted twice/);
+    expect(code(drawerSource)).toMatch(/const deductionTotal = line\.otherDeductions;/);
   });
 
   it('surfaces a run whose lines do not reach its own totals rather than tidying it up', () => {

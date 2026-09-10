@@ -126,6 +126,46 @@ describe('the payroll register', () => {
     expect(document.querySelectorAll('.ant-table-row-expand-icon')).toHaveLength(0);
   });
 
+  /*
+   * THE ROW HAS TO ADD UP LEFT TO RIGHT.
+   *
+   * `grossPay` is basic LESS unpaid leave plus the additions — s.18A makes an
+   * incomplete month's wages smaller, it does not take a deduction from them.
+   * The Unpaid leave column sat AFTER Gross, between it and Other deductions,
+   * which is where a deduction goes: basic plus the four additions came to
+   * RM41,094.88 against a printed gross of RM40,959.40, and the RM135.48 that
+   * explains the gap was on the wrong side of it. Nothing looked broken; a
+   * register that does not add up is simply a register somebody stops trusting.
+   */
+  it('puts every column that makes up gross to the LEFT of it, so a row adds up', () => {
+    render(
+      <PayrollGrid
+        run={run([line({ basicSalary: 4200, unpaidLeaveDeduction: 135.48, allowances: 0, overtimePay: 0, incentives: 0, bonus: 0, grossPay: 4064.52 })])}
+        onOpenEmployee={() => {}}
+        otherEarnings={new Map([['staff-1', '0.00']])}
+      />,
+    );
+
+    const header = screen.getAllByRole('columnheader').map((cell) => cell.textContent?.trim());
+    const at = (label: string) => header.indexOf(label);
+    for (const label of ['Basic', 'Unpaid leave', 'Allowances', 'Overtime', 'Incentives', 'Bonus', 'Claims & other']) {
+      expect(at(label), `${label} must come before Gross`).toBeGreaterThan(-1);
+      expect(at(label)).toBeLessThan(at('Gross'));
+    }
+    // And what genuinely does come off AFTER gross stays after it.
+    expect(at('Other deductions')).toBeGreaterThan(at('Gross'));
+
+    // The arithmetic the order promises: 4200 − 135.48 = 4064.52.
+    const cells = [...(document.querySelector('.kw-payrollGrid__totals')?.querySelectorAll('td') ?? [])]
+      .map((cell) => cell.textContent?.trim());
+    expect(cells).toHaveLength(header.length);
+    const money = (label: string) => Number(cells[at(label)]?.replace('-', '') ?? '0');
+    expect(
+      money('Basic') - money('Unpaid leave') + money('Allowances') + money('Overtime') +
+        money('Incentives') + money('Bonus') + money('Claims & other'),
+    ).toBeCloseTo(money('Gross'), 2);
+  });
+
   it('renders a statutory figure that was never worked out as a dash, never as 0.00', () => {
     // NULL means "not worked out" — no rates configured, or a fact missing.
     // Rendering it as 0.00 tells a clinic it owes nothing, which is the one

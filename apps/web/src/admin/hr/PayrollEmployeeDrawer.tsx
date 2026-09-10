@@ -106,7 +106,9 @@ export function PayrollEmployeeDrawer({
         (line.lindungEmployee ?? 0) +
         (line.pcb ?? 0);
 
-  const deductionTotal = line.unpaidLeaveDeduction + line.otherDeductions;
+  // Unpaid leave is NOT in here: it is already off the gross. See the earnings
+  // section above.
+  const deductionTotal = line.otherDeductions;
 
   return (
     <DetailDrawer
@@ -157,6 +159,26 @@ export function PayrollEmployeeDrawer({
           value={ringgit(line.basicSalary.toFixed(2))}
           source="The salary in force this month"
         />
+        {/*
+          * UNPAID LEAVE BELONGS TO THE EARNINGS, not the deductions.
+          *
+          * s.18A makes an incomplete month's WAGES smaller: `grossPay` is
+          * already basic less this figure. Listed under Deductions it was
+          * counted twice by the reader — a "Total deductions −RM135.48" that
+          * never touches net pay, over a gross that had already absorbed it.
+          */}
+        {line.unpaidLeaveDeduction ? (
+          <LineItem
+            label="Less unpaid leave"
+            value={`−${ringgit(line.unpaidLeaveDeduction.toFixed(2))}`}
+            tone="deduct"
+            source={
+              line.unpaidDays
+                ? `${line.unpaidDays} approved unpaid day${line.unpaidDays === 1 ? '' : 's'} — wages are smaller, not deducted twice`
+                : 'Wages are smaller, not deducted twice'
+            }
+          />
+        ) : null}
         <LineItem label="Fixed allowance" value={ringgit(line.allowances.toFixed(2))} tone={line.allowances ? undefined : 'muted'} />
         <LineItem
           label="Overtime"
@@ -199,16 +221,6 @@ export function PayrollEmployeeDrawer({
           ) : null
         }
       >
-        <LineItem
-          label="Unpaid leave"
-          value={line.unpaidLeaveDeduction ? `−${ringgit(line.unpaidLeaveDeduction.toFixed(2))}` : ringgit('0.00')}
-          tone={line.unpaidLeaveDeduction ? 'deduct' : 'muted'}
-          source={
-            line.unpaidDays
-              ? `${line.unpaidDays} approved unpaid day${line.unpaidDays === 1 ? '' : 's'} — wages are smaller, not deducted twice`
-              : undefined
-          }
-        />
         <LineItem
           label="Other deductions"
           value={line.otherDeductions ? `−${ringgit(line.otherDeductions.toFixed(2))}` : ringgit('0.00')}

@@ -27,7 +27,7 @@ Screenshots for each row are in `docs/screenshots/hr-premium-final/`.
 | 6 | Roster | month, branch, copy last month, add shift, people × days, clear states | **Matches.** The canonical roster component is unchanged; the permanent "One roster" banner is gone. |
 | 7 | Leave | Requests · Calendar · Balances, requests first, approvals obvious | **Matches.** Calendar and Balances are new; balances come from one new read that runs the same computation as the per-person one. |
 | 8 | Claims | employee, type, date, amount, payment route, status, action | **Matches.** It no longer looks like a separate application. |
-| 9 | Payroll register | month + status, four stages, people down, money across, totals below | **Matches.** Stage names are the reference's own: Payroll Details · Review · Approve · Finalise. |
+| 9 | Payroll register | month + status, four stages, people down, money across, totals below | **Matches, and now adds up.** Stage names are the reference's own: Payroll Details · Review · Approve · Finalise. The row reconciles left to right — see the defect below. |
 | 10 | Payroll employee detail | right drawer — Earnings, Deductions, Statutory, NET PAY, provenance | **Matches.** Row expansion is gone; a regression test pins that. Zakat appears only where somebody has one. |
 | 11 | Review & approval | Blockers, then Warnings, then summary; Fix / Review / Acknowledge / View; Proceed to Approval | **Matches.** |
 | 12 | Reports | categories and cards, not a dropdown; only what exists | **Matches.** Thirteen server-served reports as cards, four working views that are screens marked as such, and the named absences kept with their reasons. |
@@ -43,6 +43,26 @@ Screenshots for each row are in `docs/screenshots/hr-premium-final/`.
 | iPad landscape 1180 | Overview, People, register, Attendance, Reports | Rail present; workspace grid one column below 1080. |
 | iPad portrait 820 | Overview, People, register, Leave, Settings | Rail present. Money tables scroll sideways with the employee and net-pay columns pinned. |
 | Mobile 390 | Overview, People, Attendance, register | Rail becomes the hub's tab strip plus a section picker. Stat strips go two across; stages wrap two by two; the register keeps the person and their net pay and scrolls the rest. Type is never shrunk to fit. |
+
+## Two defects the visual pass found
+
+**The register did not add up across.** `grossPay` is basic LESS unpaid leave
+plus the additions — s.18A makes an incomplete month's wages smaller, it does
+not take a deduction from them. The Unpaid leave column sat AFTER Gross, where
+a deduction goes, so basic plus the four additions came to RM41,094.88 against
+a printed gross of RM40,959.40 and the RM135.48 that explains the gap was on
+the wrong side of it. Nothing looked broken; a register that does not add up is
+simply one somebody stops trusting. The column is before Gross now, and the
+employee drawer shows the same figure under Earnings rather than posting a
+"Total deductions" that never touches net pay. Pinned by
+`payrollGrid.test.tsx` → *"puts every column that makes up gross to the LEFT of
+it, so a row adds up"*.
+
+**A residual could hide off the register.** Basic plus allowances plus overtime
+plus incentives plus bonus does not reach gross when somebody has a reimbursed
+claim or a mileage payment. "Claims & other" is a column now, filled from the
+engine's own `pay.rows[].otherEarnings` — never a subtraction done in the
+browser.
 
 ## What is deliberately not there
 

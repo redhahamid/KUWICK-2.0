@@ -75,6 +75,24 @@ export function PayrollGrid({
       render: (value: string, row) => <PersonCell name={value} meta={row.snapshot?.position ?? undefined} size={26} />,
     },
     { title: 'Basic', dataIndex: 'basicSalary', key: 'basicSalary', align: 'right', width: 110, render: money },
+    {
+      /*
+       * BEFORE GROSS, NOT AFTER IT.
+       *
+       * `grossPay` is basic LESS unpaid leave plus the additions — s.18A makes
+       * an incomplete month's wages smaller, it does not take a deduction from
+       * them. Sitting between Gross and Other deductions, this column read as a
+       * second bite: basic plus the four additions came to RM41,094.88 against
+       * a printed gross of RM40,959.40, and the RM135.48 that explains the gap
+       * was on the wrong side of it. Here the row adds up left to right.
+       */
+      title: 'Unpaid leave',
+      dataIndex: 'unpaidLeaveDeduction',
+      key: 'unpaidLeaveDeduction',
+      align: 'right',
+      width: 125,
+      render: (value: number) => (value ? <span className="kw-num kw-bad">-{value.toFixed(2)}</span> : money(value)),
+    },
     { title: 'Allowances', dataIndex: 'allowances', key: 'allowances', align: 'right', width: 115, render: money },
     { title: 'Overtime', dataIndex: 'overtimePay', key: 'overtimePay', align: 'right', width: 110, render: money },
     { title: 'Incentives', dataIndex: 'incentives', key: 'incentives', align: 'right', width: 110, render: money },
@@ -101,14 +119,6 @@ export function PayrollGrid({
       align: 'right',
       width: 120,
       render: (value: number) => <strong className="kw-num">{value.toFixed(2)}</strong>,
-    },
-    {
-      title: 'Unpaid leave',
-      dataIndex: 'unpaidLeaveDeduction',
-      key: 'unpaidLeaveDeduction',
-      align: 'right',
-      width: 125,
-      render: (value: number) => (value ? <span className="kw-num kw-bad">-{value.toFixed(2)}</span> : money(value)),
     },
     {
       title: 'Other deductions',
@@ -197,13 +207,13 @@ export function PayrollGrid({
               {(
                 [
                   'basicSalary',
+                  'unpaidLeaveDeduction',
                   'allowances',
                   'overtimePay',
                   'incentives',
                   'bonus',
                   'otherEarnings',
                   'grossPay',
-                  'unpaidLeaveDeduction',
                   'otherDeductions',
                   'epfEmployee',
                   'socsoEmployee',
