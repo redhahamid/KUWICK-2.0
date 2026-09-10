@@ -87,59 +87,55 @@ const ADMIN_CATEGORIES: HubCategory[] = [
   {
     key: 'hr',
     label: 'HR',
+    // A workspace, not a set of pages: somebody spends a morning moving
+    // between attendance, leave and payroll and needs to know where they are
+    // the whole time.
+    layout: 'rail',
+    settings: { path: '/admin/hr/settings', label: 'Settings' },
     items: [
       /*
-       * SIX GROUPS, NOT TWELVE ITEMS.
+       * SIX DESTINATIONS, NAMED FOR THE WORK.
        *
        * This row read: Today · Employees · Timesheets · Leave · Claims ·
        * Roster · Payroll · Doctor incentives · Locum sessions · Staff
-       * benefits · Reports · Payroll settings.
+       * benefits · Reports · Payroll settings — twelve, and the owner who
+       * designed the system was still asking "why are there so many tabs?"
        *
-       * Twelve destinations, and the owner who designed the system was still
-       * asking "why are there so many tabs?" — a fair question, because the
-       * row was a map of the DOMAIN MODEL rather than of the work. Three of
-       * the twelve were configuration; two were one subject split in half
-       * (Roster and Timesheets are both "who was meant to work, and did
-       * they?"); two more were pay inputs standing in the nav as if they were
-       * places you go rather than things that feed payroll.
+       * It was a map of the DOMAIN MODEL. Three entries were configuration.
+       * Two were one subject cut in half: Roster and Attendance both answer
+       * "was somebody meant to work, and did they?". Two more — incentives and
+       * locum — are payroll INPUTS that stood in the navigation as if they
+       * were places you go.
        *
-       * These six are the tasks somebody actually has: see the day, manage
-       * people, plan and check the hours, decide requests, pay everybody,
-       * change how it all works.
+       * Settings is deliberately NOT one of the six. It is set up once and
+       * then rarely opened; giving it a permanent seat put configuration in
+       * front of somebody trying to run a Tuesday.
        *
-       * `covers` keeps every old URL lighting the right tab — nothing was
-       * deleted, and a bookmark that lands somewhere unlit teaches people the
+       * `covers` keeps every absorbed URL lighting the section that now owns
+       * it — a bookmark that lands somewhere unlit teaches people the
        * navigation is lying to them.
        */
       { path: '/admin/hr', label: 'Overview' },
+      { path: '/admin/hr/people', label: 'People', covers: ['/admin/hr/employees'] },
       {
-        path: '/admin/hr/people',
-        label: 'People',
-        covers: ['/admin/hr/employees'],
-      },
-      {
-        path: '/admin/hr/schedule',
-        label: 'Schedule & Attendance',
-        covers: ['/admin/hr/roster', '/admin/hr/attendance'],
-      },
-      {
-        path: '/admin/hr/requests',
-        label: 'Leave & Claims',
-        covers: ['/admin/hr/leave', '/admin/hr/claims'],
+        path: '/admin/hr/time',
+        label: 'Time & Leave',
+        covers: [
+          '/admin/hr/attendance',
+          '/admin/hr/roster',
+          '/admin/hr/schedule',
+          '/admin/hr/leave',
+          '/admin/hr/requests',
+          '/admin/hr/claims',
+        ],
       },
       {
         path: '/admin/hr/payroll',
         label: 'Payroll',
-        // Incentives and locum sessions are payroll INPUTS. They were
-        // top-level destinations, which is why an owner opening HR met two
-        // tabs whose relationship to being paid was left for them to infer.
-        covers: ['/admin/hr/incentives', '/admin/hr/locum', '/admin/hr/reports'],
+        covers: ['/admin/hr/incentives', '/admin/hr/locum'],
       },
-      {
-        path: '/admin/hr/settings',
-        label: 'Settings',
-        covers: ['/admin/hr/benefits', '/admin/hr/employers', '/admin/hr/access'],
-      },
+      { path: '/admin/hr/benefits', label: 'Medical Benefits' },
+      { path: '/admin/hr/reports', label: 'Reports' },
     ],
   },
   {

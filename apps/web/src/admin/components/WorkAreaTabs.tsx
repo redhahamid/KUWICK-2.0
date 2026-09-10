@@ -16,6 +16,13 @@ import { useLocation, useNavigate } from 'react-router-dom';
  *
  * Each view keeps its own URL, so a link to Attendance still opens Attendance.
  */
+export const TIME_VIEWS = [
+  { path: '/admin/hr/time', label: 'Attendance' },
+  { path: '/admin/hr/time/roster', label: 'Roster' },
+  { path: '/admin/hr/time/leave', label: 'Leave' },
+  { path: '/admin/hr/time/claims', label: 'Claims' },
+];
+
 export function WorkAreaTabs({ views }: { views: { path: string; label: string }[] }) {
   const navigate = useNavigate();
   const location = useLocation();

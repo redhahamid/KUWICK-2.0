@@ -304,22 +304,21 @@ export function App() {
                 a payroll exception without landing on a directory first. */}
             <Route path="/admin/hr/employees/:staffId" element={<EmployeeWorkspacePage />} />
 
-            {/* Schedule & Attendance — one subject that had been two tabs.
-                The Appointments roster, rendered in the Admin shell: there is
-                exactly one shift table and exactly one component that writes
-                it — see admin/hr/RosterPage.tsx. */}
-            <Route path="/admin/hr/schedule" element={<AdminRosterPage />} />
-            <Route path="/admin/hr/roster" element={<Navigate to="/admin/hr/schedule" replace />} />
-            <Route path="/admin/hr/attendance" element={<TimesheetPage />} />
+            {/* TIME & LEAVE — one section, four views. Attendance, roster,
+                leave and claims all answer "was somebody meant to work, did
+                they, and what have they asked me for?". They were four
+                top-level tabs. Every old URL still resolves. */}
+            <Route path="/admin/hr/time" element={<TimesheetPage />} />
+            <Route path="/admin/hr/time/roster" element={<AdminRosterPage />} />
+            <Route path="/admin/hr/time/leave" element={<LeavePage />} />
+            <Route path="/admin/hr/time/claims" element={<ClaimsPage />} />
+            <Route path="/admin/hr/attendance" element={<Navigate to="/admin/hr/time" replace />} />
+            <Route path="/admin/hr/schedule" element={<Navigate to="/admin/hr/time/roster" replace />} />
+            <Route path="/admin/hr/roster" element={<Navigate to="/admin/hr/time/roster" replace />} />
+            <Route path="/admin/hr/requests" element={<Navigate to="/admin/hr/time/leave" replace />} />
+            <Route path="/admin/hr/leave" element={<Navigate to="/admin/hr/time/leave" replace />} />
+            <Route path="/admin/hr/claims" element={<Navigate to="/admin/hr/time/claims" replace />} />
 
-            {/* Leave & Claims — one work area: what somebody has asked me to
-                decide. */}
-            <Route path="/admin/hr/requests" element={<LeavePage />} />
-            <Route path="/admin/hr/leave" element={<Navigate to="/admin/hr/requests" replace />} />
-            {/* PAYROLL IS TWO SCREENS NOW, not one dense page: home answers "is
-                this month done", and the run is the six-step journey. The old
-                combined page stays mounted at /admin/hr/payroll/all so an
-                existing bookmark still reaches the run table it expects. */}
             <Route path="/admin/hr/payroll" element={<PayrollHomePage />} />
             <Route path="/admin/hr/payroll/readiness" element={<PayrollReadinessPage />} />
             <Route path="/admin/hr/payroll/ytd-opening" element={<YtdOpeningImportPage />} />
@@ -328,7 +327,6 @@ export function App() {
             <Route path="/admin/hr/employers" element={<LegalEmployersPage />} />
             <Route path="/admin/hr/incentives" element={<IncentivesPage />} />
             <Route path="/admin/hr/benefits" element={<BenefitsPage />} />
-            <Route path="/admin/hr/claims" element={<ClaimsPage />} />
             <Route path="/admin/hr/locum" element={<LocumPage />} />
             <Route path="/admin/hr/reports" element={<PayrollReportsPage />} />
             <Route path="/admin/hr/settings" element={<PayrollSettingsPage />} />

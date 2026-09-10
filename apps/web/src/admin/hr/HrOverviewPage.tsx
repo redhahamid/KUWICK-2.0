@@ -37,7 +37,7 @@ export function HrOverviewPage() {
   return (
     <AdminShell
       error={firstError({ isError, error })}
-      title="Workforce"
+      title="HR Overview"
       subtitle={`Who is working, who is absent, and what is waiting for a decision — ${clinicDayjs(`${data?.date ?? ''}T00:00:00`).format('dddd D MMMM')}.`}
     >
       {notSetUpYet ? <HrSetupJourney period={period} clinicId={clinicId} /> : null}
@@ -68,7 +68,7 @@ export function HrOverviewPage() {
               label: 'Leave approvals pending',
               count: data?.pendingLeaveApprovals ?? 0,
               tone: 'warn',
-              onSelect: () => navigate('/admin/hr/requests'),
+              onSelect: () => navigate('/admin/hr/time/leave'),
             },
             {
               key: 'ot',
@@ -76,7 +76,7 @@ export function HrOverviewPage() {
               count: data?.unapprovedOvertimeClaims ?? 0,
               tone: 'warn',
               hint: 'Unapproved overtime is NOT paid. A long day is not automatically overtime.',
-              onSelect: () => navigate('/admin/hr/attendance'),
+              onSelect: () => navigate('/admin/hr/time'),
             },
             {
               key: 'punch',
@@ -84,7 +84,7 @@ export function HrOverviewPage() {
               count: data?.missingPunches ?? 0,
               tone: 'bad',
               hint: 'Somebody was here and the record is incomplete — not the same as absent.',
-              onSelect: () => navigate('/admin/hr/attendance'),
+              onSelect: () => navigate('/admin/hr/time'),
             },
             {
               key: 'corrections',
@@ -92,7 +92,7 @@ export function HrOverviewPage() {
               count: data?.pendingAttendanceCorrections ?? 0,
               tone: 'warn',
               hint: 'Somebody has asked for a punch to be put right. Nothing changes until you decide.',
-              onSelect: () => navigate('/admin/hr/attendance'),
+              onSelect: () => navigate('/admin/hr/time'),
             },
             {
               key: 'claims',
@@ -100,7 +100,7 @@ export function HrOverviewPage() {
               count: data?.pendingClaims ?? 0,
               tone: 'warn',
               hint: 'Approving one also decides whether it is paid with salary or by Finance.',
-              onSelect: () => navigate('/admin/hr/claims'),
+              onSelect: () => navigate('/admin/hr/time/claims'),
             },
             {
               key: 'setup',

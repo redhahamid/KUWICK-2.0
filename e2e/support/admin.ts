@@ -36,15 +36,17 @@ export const ADMIN_ROUTES = [
   { path: '/admin/stock/movements', module: 'Stock', heading: 'Movement Ledger' },
   { path: '/admin/panel', module: 'Panel', heading: 'Panel Claims' },
   { path: '/admin/panel/configuration', module: 'Panel', heading: 'Panel Configuration' },
-  { path: '/admin/hr', module: 'HR', heading: 'Workforce' },
-  // The canonical HR paths. `/admin/hr/employees`, `/roster` and `/leave` still
-  // resolve — they redirect here — but a walk should assert the URL somebody is
-  // actually given, not the one that bounces.
+  { path: '/admin/hr', module: 'HR', heading: 'HR Overview' },
+  // The canonical HR paths, under the six-section architecture. Everything
+  // they absorbed still resolves — those redirects are asserted in
+  // hr-navigation.spec.ts rather than here, so this walk tests SCREENS.
   { path: '/admin/hr/people', module: 'HR', heading: 'People' },
-  { path: '/admin/hr/schedule', module: 'HR', heading: 'Schedule' },
-  { path: '/admin/hr/attendance', module: 'HR', heading: 'Attendance' },
-  { path: '/admin/hr/requests', module: 'HR', heading: 'Leave' },
-  { path: '/admin/hr/claims', module: 'HR', heading: 'Claims' },
+  { path: '/admin/hr/time', module: 'HR', heading: 'Attendance' },
+  { path: '/admin/hr/time/roster', module: 'HR', heading: 'Roster' },
+  { path: '/admin/hr/time/leave', module: 'HR', heading: 'Leave' },
+  { path: '/admin/hr/time/claims', module: 'HR', heading: 'Claims' },
+  { path: '/admin/hr/benefits', module: 'HR', heading: 'Medical Benefits' },
+  { path: '/admin/hr/reports', module: 'HR', heading: 'Reports' },
   { path: '/admin/hr/payroll', module: 'HR', heading: 'Payroll' },
   { path: '/admin/hr/incentives', module: 'HR', heading: 'Doctor Incentives' },
   { path: '/admin/finance', module: 'Finance', heading: 'Finance' },
@@ -55,7 +57,6 @@ export const ADMIN_ROUTES = [
   // Added by the integration pass. These are Admin-native pages like the
   // twenty above — same `AdminShell`, same heading element.
   { path: '/admin/stock/value', module: 'Stock', heading: 'Stock Value' },
-  { path: '/admin/hr/benefits', module: 'HR', heading: 'Staff Benefits' },
   { path: '/admin/finance/tax', module: 'Finance', heading: 'Tax / SST' },
   { path: '/admin/finance/profitability', module: 'Finance', heading: 'Profitability' },
   { path: '/admin/finance/inter-company', module: 'Finance', heading: 'Inter-company' },

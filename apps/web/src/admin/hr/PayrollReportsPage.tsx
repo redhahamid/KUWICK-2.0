@@ -118,7 +118,7 @@ export function PayrollReportsPage() {
   return (
     <AdminShell
       error={firstError(catalogue, runs)}
-      title="Payroll reports"
+      title="Reports"
       subtitle="Read-only views of what payroll has already recorded. Every figure comes from the run itself."
     >
       <AdminSection title="Choose a report">

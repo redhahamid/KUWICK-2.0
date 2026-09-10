@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { App, Button, DatePicker, Input, Modal, Radio, Segmented, Tag, Timeline } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
-import { WorkAreaTabs } from '../components/WorkAreaTabs';
+import { TIME_VIEWS, WorkAreaTabs } from '../components/WorkAreaTabs';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, ringgit } from '../components/DataTable';
 import {
@@ -35,11 +35,6 @@ const CATEGORY_LABEL: Record<string, string> = {
  * money comes from — and says the answer in words on every row rather than
  * leaving it to be inferred from which module the reader happens to be in.
  */
-const REQUEST_VIEWS = [
-  { path: '/admin/hr/requests', label: 'Leave' },
-  { path: '/admin/hr/claims', label: 'Claims' },
-];
-
 export function ClaimsPage() {
   const { message } = App.useApp();
   const [tab, setTab] = useState<'SUBMITTED' | 'APPROVED' | 'ALL'>('SUBMITTED');
@@ -94,7 +89,7 @@ export function ClaimsPage() {
         />
       }
     >
-      <WorkAreaTabs views={REQUEST_VIEWS} />
+      <WorkAreaTabs views={TIME_VIEWS} />
       <AdminNotice tone="info">
         Approving a claim chooses <strong>where it is paid from</strong>, and that choice cannot be changed once the
         money has moved. A claim paid with salary will never also be reimbursed by Finance — Kuwick refuses the second

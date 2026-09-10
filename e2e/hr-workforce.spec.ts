@@ -49,8 +49,8 @@ test.describe('HR Today', () => {
     // A counter that goes nowhere tells a manager they have work and not where
     // it is, which is most of the way to not doing it.
     for (const [label, path] of [
-      ['Leave approvals pending', '/admin/hr/requests'],
-      ['Claims awaiting a decision', '/admin/hr/claims'],
+      ['Leave approvals pending', '/admin/hr/time/leave'],
+      ['Claims awaiting a decision', '/admin/hr/time/claims'],
     ] as const) {
       await gotoAdmin(page, '/admin/hr');
       const tile = page.locator('.kw-exceptionTile', { hasText: label });
@@ -65,9 +65,9 @@ test.describe('HR Today', () => {
     const errors = collectAdminConsoleErrors(page);
     await loginAdmin(page);
     await gotoAdmin(page, '/admin/hr');
-    await expect(page.locator('.kw-admin__title')).toHaveText('Workforce');
+    await expect(page.locator('.kw-admin__title')).toHaveText('HR Overview');
     await chooseBranch(page, 'Contoh Central');
-    await expect(page.locator('.kw-admin__title')).toHaveText('Workforce');
+    await expect(page.locator('.kw-admin__title')).toHaveText('HR Overview');
     // A page that white-screens because a response field is absent is a worse
     // failure than a missing section, and this caught exactly that once.
     await expect(page.locator('.kw-adminError')).toHaveCount(0);

@@ -78,7 +78,7 @@ test.describe('Admin shell', () => {
 
     await page.getByRole('tab', { name: 'HR', exact: true }).click();
     await expect(page).toHaveURL(/\/admin\/hr/);
-    await expect(page.locator('.kw-admin__title')).toHaveText('Workforce');
+    await expect(page.locator('.kw-admin__title')).toHaveText('HR Overview');
   });
 });
 

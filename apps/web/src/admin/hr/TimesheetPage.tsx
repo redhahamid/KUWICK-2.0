@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { App, Button, DatePicker, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
-import { WorkAreaTabs } from '../components/WorkAreaTabs';
+import { TIME_VIEWS, WorkAreaTabs } from '../components/WorkAreaTabs';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -21,11 +21,6 @@ function hhmm(minutes: number | null | undefined): string {
  * nobody has approved is NOT paid, and showing it in its own column beside the
  * approved one is what stops that being a surprise on payday.
  */
-const SCHEDULE_VIEWS = [
-  { path: '/admin/hr/schedule', label: 'Schedule' },
-  { path: '/admin/hr/attendance', label: 'Attendance' },
-];
-
 export function TimesheetPage() {
   const { message } = App.useApp();
   const { clinicId } = useClinicFilter();
@@ -60,7 +55,7 @@ export function TimesheetPage() {
         />
       }
     >
-      <WorkAreaTabs views={SCHEDULE_VIEWS} />
+      <WorkAreaTabs views={TIME_VIEWS} />
       {/*
         * WHAT STAFF HAVE ASKED TO HAVE PUT RIGHT.
         *

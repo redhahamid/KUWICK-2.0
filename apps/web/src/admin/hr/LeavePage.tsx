@@ -4,7 +4,7 @@ import dayjs, { Dayjs } from 'dayjs';
 import { AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable } from '../components/DataTable';
-import { WorkAreaTabs } from '../components/WorkAreaTabs';
+import { TIME_VIEWS, WorkAreaTabs } from '../components/WorkAreaTabs';
 import { useStaff } from '../../hr/hooks/useStaff';
 import {
   useApproveLeaveRequest,
@@ -15,11 +15,6 @@ import {
 import { CreateLeaveRequestDto, LeaveRequest, LeaveStatus, LeaveType } from '../../hr/types';
 import { ApiError } from '../../core/api-client';
 import { permissionHint, useCan } from '../../core/hooks/useCan';
-
-const REQUEST_VIEWS = [
-  { path: '/admin/hr/requests', label: 'Leave' },
-  { path: '/admin/hr/claims', label: 'Claims' },
-];
 
 const LEAVE_TYPE_OPTIONS: { value: LeaveType; label: string }[] = [
   { value: 'ANNUAL', label: 'Annual' },
@@ -128,7 +123,7 @@ export function LeavePage() {
         </Button>
       }
     >
-      <WorkAreaTabs views={REQUEST_VIEWS} />
+      <WorkAreaTabs views={TIME_VIEWS} />
 
       <StatStrip
         stats={[

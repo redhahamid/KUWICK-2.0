@@ -91,7 +91,7 @@ export function PayrollSettingsPage() {
       title: 'Your employees',
       done: true,
       detail: 'Salary, bank account and statutory details, per person. Their readiness is shown on the payroll run itself.',
-      action: { label: 'Open', to: '/admin/hr/employees' },
+      action: { label: 'Open', to: '/admin/hr/people' },
     },
     {
       key: 'rates',
@@ -116,7 +116,7 @@ export function PayrollSettingsPage() {
   return (
     <AdminShell
       error={firstError(employers, components, statutory, approval)}
-      title="Payroll settings"
+      title="Settings"
       subtitle="Set up once, then leave alone. Nothing here is part of running a monthly payroll."
     >
       {!verified ? (

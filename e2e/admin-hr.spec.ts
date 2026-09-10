@@ -23,7 +23,7 @@ test.describe('HR', () => {
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
     await gotoAdmin(page, '/admin/hr');
 
-    await expect(page.getByRole('heading', { name: 'Workforce', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'HR Overview', exact: true })).toBeVisible();
 
     // Somebody is actually on the floor, and the roster is read from the
     // canonical provider roster rather than a second HR-only schedule.
@@ -69,7 +69,7 @@ test.describe('HR', () => {
   test('unapproved overtime is shown separately and is not paid', async ({ page }) => {
     const errors = collectAdminConsoleErrors(page);
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
-    await gotoAdmin(page, '/admin/hr/attendance');
+    await gotoAdmin(page, '/admin/hr/time');
 
     await expect(page.getByRole('heading', { name: 'Attendance', exact: true })).toBeVisible();
     // The GUARANTEE, not one wording of it. The subtitle was shortened when

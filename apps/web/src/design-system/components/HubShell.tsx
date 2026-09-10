@@ -27,6 +27,27 @@ export interface HubCategory {
   // Where clicking the main tab lands. Defaults to the first item.
   landing?: string;
   items: HubItem[];
+  /**
+   * HOW THIS MODULE'S OWN NAVIGATION IS DRAWN.
+   *
+   * `tabs` (the default) is the horizontal row every module has always used.
+   * `rail` is a navy sidebar, for a module whose sections are places you WORK
+   * IN rather than pages you glance at — HR, where somebody spends a morning
+   * moving between attendance, leave and payroll, and needs to know where they
+   * are the whole time. A second horizontal menu says "more tabs"; a rail says
+   * "this is a workspace".
+   *
+   * Per module rather than globally, so the four modules that are fine as tabs
+   * are not disturbed to serve the one that is not.
+   */
+  layout?: 'tabs' | 'rail';
+  /**
+   * Configuration, kept OUT of the sections list.
+   *
+   * It is set up once and then rarely opened, so it sits apart on the rail
+   * rather than taking one of the six seats somebody uses every day.
+   */
+  settings?: HubItem;
 }
 
 interface HubShellProps {
@@ -82,8 +103,15 @@ export function HubShell({ title, categories, headerExtra, scopeClass }: HubShel
     // Each entry is matched on its own path AND on every route it absorbed, but
     // resolves back to its own path — the tab that lights is the one you can
     // click, not the old URL you arrived on.
+    // Settings is not one of the sections, but it IS a destination — leaving it
+    // out of this list meant `/admin/hr/settings` fell back to the longest
+    // matching prefix, `/admin/hr`, and lit Overview while you stood in
+    // Settings. A rail that highlights the wrong entry is worse than one that
+    // highlights nothing.
     const all = categories.flatMap((category) =>
-      category.items.flatMap((item) => [item.path, ...(item.covers ?? [])].map((path) => ({ path, owner: item.path }))),
+      [...category.items, ...(category.settings ? [category.settings] : [])].flatMap((item) =>
+        [item.path, ...(item.covers ?? [])].map((path) => ({ path, owner: item.path })),
+      ),
     );
     const exact = all.find((entry) => entry.path === location.pathname);
     if (exact) return exact.owner;
@@ -94,7 +122,11 @@ export function HubShell({ title, categories, headerExtra, scopeClass }: HubShel
   }, [categories, location.pathname]);
 
   const activeCategory = useMemo(
-    () => categories.find((category) => category.items.some((item) => item.path === activePath)),
+    () =>
+      categories.find(
+        (category) =>
+          category.items.some((item) => item.path === activePath) || category.settings?.path === activePath,
+      ),
     [categories, activePath],
   );
 
@@ -102,6 +134,9 @@ export function HubShell({ title, categories, headerExtra, scopeClass }: HubShel
 
   const secondaryItems = activeCategory?.items ?? [];
   const showSecondary = secondaryItems.length > 1;
+  // The rail needs real width to be a rail rather than a squeeze; below that
+  // the same entries render as the horizontal row, which wraps honestly.
+  const useRail = activeCategory?.layout === 'rail' && screens.md;
 
   return (
     <div
@@ -171,31 +206,71 @@ export function HubShell({ title, categories, headerExtra, scopeClass }: HubShel
         />
       </div>
 
-      {showSecondary && (
-        <div style={{ padding: screens.md ? '0 24px' : '8px 16px', borderBottom: '1px solid #f0f0f0', flexShrink: 0, background: '#fafafa' }}>
-          {screens.md ? (
-            <Tabs
-              activeKey={activePath}
-              onChange={(path) => navigate(path)}
-              items={secondaryItems.map((item) => ({ key: item.path, label: item.label }))}
-              size="small"
-              tabBarStyle={{ marginBottom: 0 }}
-              tabBarGutter={24}
-            />
-          ) : (
-            <Select
-              style={{ width: '100%' }}
-              value={secondaryItems.some((item) => item.path === activePath) ? activePath : undefined}
-              onChange={(path) => navigate(path)}
-              options={secondaryItems.map((item) => ({ value: item.path, label: item.label }))}
-            />
-          )}
+      {/* A RAIL MODULE draws its sections down the side and its content beside
+          them; everything else keeps the horizontal row it has always had. */}
+      {useRail ? (
+        <div className="kw-hubRail__frame">
+          <nav className="kw-hubRail" aria-label={`${activeCategory?.label ?? ''} sections`}>
+            <span className="kw-hubRail__heading">{activeCategory?.label}</span>
+            {secondaryItems.map((item) => (
+              <button
+                key={item.path}
+                type="button"
+                className={`kw-hubRail__item${item.path === activePath ? ' is-active' : ''}`}
+                aria-current={item.path === activePath ? 'page' : undefined}
+                onClick={() => navigate(item.path)}
+              >
+                {item.label}
+              </button>
+            ))}
+            {/* SET UP ONCE, THEN RARELY OPENED — so it sits apart from the
+                sections somebody uses every day rather than competing with
+                them for the same attention. */}
+            {activeCategory?.settings ? (
+              <button
+                type="button"
+                className={`kw-hubRail__item kw-hubRail__item--settings${
+                  activeCategory.settings.path === activePath ? ' is-active' : ''
+                }`}
+                onClick={() => navigate(activeCategory.settings!.path)}
+              >
+                {activeCategory.settings.label}
+              </button>
+            ) : null}
+          </nav>
+          <div className="kw-hubRail__content">
+            <Outlet />
+          </div>
         </div>
-      )}
+      ) : (
+        <>
+          {showSecondary && (
+            <div style={{ padding: screens.md ? '0 24px' : '8px 16px', borderBottom: '1px solid #f0f0f0', flexShrink: 0, background: '#fafafa' }}>
+              {screens.md ? (
+                <Tabs
+                  activeKey={activePath}
+                  onChange={(path) => navigate(path)}
+                  items={secondaryItems.map((item) => ({ key: item.path, label: item.label }))}
+                  size="small"
+                  tabBarStyle={{ marginBottom: 0 }}
+                  tabBarGutter={24}
+                />
+              ) : (
+                <Select
+                  style={{ width: '100%' }}
+                  value={secondaryItems.some((item) => item.path === activePath) ? activePath : undefined}
+                  onChange={(path) => navigate(path)}
+                  options={secondaryItems.map((item) => ({ value: item.path, label: item.label }))}
+                />
+              )}
+            </div>
+          )}
 
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: screens.md ? '16px 24px 24px' : '12px 16px 24px' }}>
-        <Outlet />
-      </div>
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: screens.md ? '16px 24px 24px' : '12px 16px 24px' }}>
+            <Outlet />
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -39,7 +39,7 @@ export function BenefitsPage() {
   return (
     <AdminShell
       error={firstError(benefits)}
-      title="Staff Benefits"
+      title="Medical Benefits"
       subtitle="The clinic’s own people, their dependants, and what is left of this year’s allowance."
       actions={
         <InputNumber

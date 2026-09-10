@@ -2,7 +2,7 @@ import { Alert, Button, Space, Spin } from 'antd';
 import { AdminNotice, AdminShell } from '../components/AdminShell';
 import { RosterPage as CanonicalRosterPage } from '../../appointment/roster/RosterPage';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
-import { WorkAreaTabs } from '../components/WorkAreaTabs';
+import { TIME_VIEWS, WorkAreaTabs } from '../components/WorkAreaTabs';
 
 /**
  * THE ROSTER, seen from HR — and it is the SAME roster.
@@ -17,11 +17,6 @@ import { WorkAreaTabs } from '../components/WorkAreaTabs';
  * branch the Admin hub is currently filtered to, and an Admin header so that
  * arriving here from HR ▸ Roster does not feel like leaving Admin.
  */
-const SCHEDULE_VIEWS = [
-  { path: '/admin/hr/schedule', label: 'Schedule' },
-  { path: '/admin/hr/attendance', label: 'Attendance' },
-];
-
 export function AdminRosterPage() {
   const { clinicId, setClinicId, clinics } = useClinicFilter();
 
@@ -42,10 +37,10 @@ export function AdminRosterPage() {
   if (!clinicId) {
     return (
       <AdminShell
-        title="Schedule"
+        title="Roster"
         subtitle="Who is working, by branch and month."
       >
-        <WorkAreaTabs views={SCHEDULE_VIEWS} />
+        <WorkAreaTabs views={TIME_VIEWS} />
         <AdminNotice tone="info">
           <strong>A roster belongs to one branch.</strong> Shifts are people against dates at a place, so this
           board shows one branch at a time rather than averaging two. Pick the one you are rostering:
@@ -69,10 +64,10 @@ export function AdminRosterPage() {
 
   return (
     <AdminShell
-      title="Schedule"
+      title="Roster"
       subtitle="Who is working, by branch and month."
     >
-      <WorkAreaTabs views={SCHEDULE_VIEWS} />
+      <WorkAreaTabs views={TIME_VIEWS} />
       <Alert
         type="info"
         showIcon
