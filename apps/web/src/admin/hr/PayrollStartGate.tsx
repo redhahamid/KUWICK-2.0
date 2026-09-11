@@ -116,10 +116,12 @@ function BlockedList({ rows }: { rows: PayrollReadiness['employees'] }) {
           </div>
         );
       })}
+      {/* No link on the overflow. Readiness used to have a page of its own; it
+          now sits on each person's register row, so there is nowhere further
+          to send somebody than the month itself — which is the screen they are
+          already on. */}
       {rows.length > 8 ? (
-        <p className="kw-adminSection__desc">
-          <Link to="/admin/hr/payroll/readiness">and {rows.length - 8} more →</Link>
-        </p>
+        <p className="kw-adminSection__desc kw-muted">and {rows.length - 8} more</p>
       ) : null}
     </div>
   );

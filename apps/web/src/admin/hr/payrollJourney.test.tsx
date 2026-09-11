@@ -8,7 +8,8 @@ import runSource from './PayrollRunPage.tsx?raw';
 // renders the engine and computes nothing" follow it there.
 import drawerSource from './PayrollEmployeeDrawer.tsx?raw';
 import gridSource from './PayrollGrid.tsx?raw';
-import homeSource from './PayrollHomePage.tsx?raw';
+import homeSource from './PayrollMonthPage.tsx?raw';
+import varianceSource from './PayrollVariancePanel.tsx?raw';
 import claimsSource from './ClaimsPage.tsx?raw';
 import locumSource from './LocumPage.tsx?raw';
 import { STEPS, normaliseStep, stepsWithProblems } from './PayrollStepper';
@@ -94,9 +95,13 @@ describe('the money steps render the engine and compute nothing', () => {
      * `pay.rows[].otherEarnings`, which the engine worked out from the line's
      * own gross. Neither file subtracts anything to find it.
      */
-    expect(code(runSource)).toMatch(/row\.otherEarnings/);
     expect(code(gridSource)).toMatch(/otherEarnings/);
     expect(code(gridSource)).toMatch(/Claims & other/);
+    // The residual reaches the screen as a FIELD on the row and as a totals
+    // key — never as a difference the register works out. `additionalEarnings`
+    // is the same money grouped with allowances, also summed by the server.
+    expect(code(gridSource)).toMatch(/total: 'otherEarnings'/);
+    expect(code(gridSource)).toMatch(/total: 'additionalEarnings'/);
   });
 
   it('takes every total from data.pay.totals, never from a sum over the rows on screen', () => {
@@ -111,19 +116,35 @@ describe('the money steps render the engine and compute nothing', () => {
 
   it('says how many statutory figures were NOT calculated instead of summing them as zero', () => {
     expect(code(runSource)).toMatch(/statutoryNotCalculated/);
-    expect(code(runSource)).toMatch(/not calculated/);
+    // "Not worked out" is the phrase this product uses everywhere a figure is
+    // unknown rather than nil, on the month header, the register cell and here.
+    expect(code(runSource)).toMatch(/not worked out/i);
   });
 
   it('shows unpaid leave as a reduction of salary, never as an invisible difference', () => {
-    // The month-level statement is on the Review stage; the per-person one is
-    // in the drawer, beside the figure it explains.
-    expect(code(runSource)).toMatch(/Unpaid leave is not a deduction/);
+    /*
+     * THE REGISTER SAYS IT BY ITS SHAPE, not by a paragraph.
+     *
+     * A sentence on the Review screen explaining that unpaid leave is not a
+     * deduction was the old answer, and it was needed because the column sat
+     * on the wrong side of Gross. The column is now declared before Gross in
+     * the one list the register builds itself from, so the row visibly adds
+     * up and the paragraph is not needed. Asserted on the source ORDER,
+     * because that is the property that makes the arithmetic work.
+     */
+    const grid = code(gridSource);
+    expect(grid.indexOf("field: 'unpaidLeaveDeduction'")).toBeGreaterThan(-1);
+    expect(grid.indexOf("field: 'unpaidLeaveDeduction'")).toBeLessThan(grid.indexOf("field: 'grossPay'"));
+
     // And in the drawer it sits with the EARNINGS it reduces, because gross
     // has already absorbed it — listed under Deductions it was a total that
     // never touches net pay.
     expect(code(drawerSource)).toMatch(/Less unpaid leave/);
     expect(code(drawerSource)).toMatch(/wages are smaller, not deducted twice/);
-    expect(code(drawerSource)).toMatch(/const deductionTotal = line\.otherDeductions;/);
+    // The deductions total is the line's OWN other-deductions figure. Anything
+    // that folded unpaid leave back in here would charge it twice.
+    expect(code(drawerSource)).toMatch(/label="Other deductions"/);
+    expect(code(drawerSource)).toMatch(/row\.otherDeductions/);
   });
 
   it('surfaces a run whose lines do not reach its own totals rather than tidying it up', () => {
@@ -143,10 +164,23 @@ describe('the exception centre is on the run itself', () => {
 });
 
 describe('the variance shown is a subtraction the API already did', () => {
+  /*
+   * WHERE THIS LIVES NOW. Review used to carry a second person-by-person table
+   * with a "vs last period" column, directly under the register that had just
+   * shown the same people with more detail. Review answers "is anything
+   * stopping me approving this?", so the comparison moved to the panel and the
+   * report that exist to answer "what changed?".
+   *
+   * The guarantee is unchanged and still worth pinning: the movement is a
+   * subtraction the API already did, never one worked out from two figures on
+   * screen.
+   */
   it('reads the API delta rather than recomputing it from two numbers on screen', () => {
-    expect(code(runSource)).toMatch(/line\.deltaCents/);
+    expect(code(varianceSource)).toMatch(/deltaCents/);
     // The mockup defect: a comparison month carrying the current month's totals.
-    expect(code(runSource)).not.toMatch(/currentCents\s*-\s*previousCents/);
+    expect(code(varianceSource)).not.toMatch(/currentCents\s*-\s*previousCents/);
+    // And Review no longer repeats the register at all.
+    expect(code(runSource)).not.toMatch(/vs last period/);
   });
 });
 
@@ -219,9 +253,12 @@ describe('the approval gate', () => {
     expect(code(runSource)).toMatch(/One more is needed/);
   });
 
-  it('refuses to finalise from a phone', () => {
+  it('refuses to approve a month from a phone', () => {
+    // Unchanged guarantee, renamed action: the stage is called Approve on the
+    // stage bar, so its copy calls it Approve too. Locking a month's pay needs
+    // the whole run in front of the person doing it.
     expect(code(runSource)).toMatch(/canFinaliseHere/);
-    expect(code(runSource)).toMatch(/Finalising is done on a computer/);
+    expect(code(runSource)).toMatch(/Approving is done on a computer/);
   });
 
   it('acknowledges the statutory gap explicitly rather than approving quietly', () => {
@@ -266,7 +303,12 @@ describe('the locum screen never implies payroll', () => {
 
 describe('derived figures are corrected upstream, never re-keyed in payroll', () => {
   it('says so on the employee drawer, beside the figure it explains', () => {
-    expect(code(drawerSource)).toMatch(/Corrected where it was recorded, not here/);
+    // A derived figure is not editable here, and the drawer says WHERE it is
+    // corrected rather than leaving the reader to guess — the upstream map
+    // turns "you cannot edit this" into "edit this in Attendance".
+    expect(code(drawerSource)).toMatch(/const UPSTREAM/);
+    expect(code(drawerSource)).toMatch(/Edit in \{upstream\.where\}/);
+    expect(code(drawerSource)).toMatch(/item\.editable \? null : UPSTREAM\[item\.source\]/);
     // And the provenance the materialiser wrote travels with every derived
     // amount, which is the whole reason the drawer replaced a row expansion.
     expect(code(drawerSource)).toMatch(/item\.provenance/);

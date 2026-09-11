@@ -475,9 +475,44 @@ export class PayrollJourneyService {
       incentive: 0, otherEarnings: 0, gross: 0,
       statutory: 0, pcb: 0, lindung: 0, otherDeductions: 0, deductions: 0, net: 0,
       statutoryNotCalculated: 0, pcbMissing: 0, lindungNotDetermined: 0,
+      // WHAT THE MONTH COSTS THE CLINIC, and the part of it that is not wages.
+      //
+      // The month header shows four figures: gross, employee deductions,
+      // EMPLOYER CONTRIBUTIONS and net. Three were already here. The fourth
+      // was being worked out in the browser as `employerCost - gross`, which
+      // is a payroll subtraction performed by a screen — the exact thing the
+      // rest of this service exists to prevent. It is one addition here and
+      // no arithmetic there.
+      employerCost: 0, employerContributions: 0,
+      additionalEarnings: 0, socsoEis: 0, socsoEisNotCalculated: 0,
+      // PER SCHEME, so the register's totals row foots the column it sits
+      // under. `statutory` above is EPF+SOCSO+EIS added together and is what
+      // the month header reads; a column headed EPF must foot on EPF.
+      epf: 0, socso: 0, eis: 0,
     };
+    /*
+     * WHO THIS PERSON IS, AND WHETHER THEY ARE READY — carried on the pay row.
+     *
+     * The register puts a status beside every name: green ready, amber worth a
+     * look, red cannot be paid safely, each with a Fix that goes straight to
+     * the remedy. That used to mean the browser joining three arrays — the pay
+     * rows, the employee rows and the exception rows — by staff id, on every
+     * render, and a join done in a screen is a join that can be got wrong
+     * quietly. The server already holds all three; it does the join once.
+     */
+    const standingByStaff = new Map(step1.map((row) => [row.staffId, row]));
     const paidRows = run.lines.map((line) => {
       const own = inputsByStaff.get(line.staffId) ?? [];
+      const standing = standingByStaff.get(line.staffId);
+      const ownExceptions = exceptionsByStaff.get(line.staffId) ?? [];
+      const blockers = ownExceptions.filter(
+        (e) => e.severity === 'BLOCKING' && !(e.overridable && e.overriddenByStaffId),
+      );
+      const warnings = ownExceptions.filter((e) => e.severity === 'WARNING');
+      // The remedy for the most serious thing wrong, not the first thing found:
+      // a Fix button that opens a warning while a blocker sits under it is a
+      // button that wastes the one click somebody gave it.
+      const fixLink = blockers.find((e) => e.deepLink)?.deepLink ?? warnings.find((e) => e.deepLink)?.deepLink ?? null;
       const basicCents = toCents(line.basicSalary);
       const unpaidCents = toCents(line.unpaidLeaveDeduction);
       const allowanceCents = toCents(line.allowances);
@@ -503,6 +538,11 @@ export class PayrollJourneyService {
       // What actually came off this person's pay — the gap between the line's
       // own gross and its own net, not a re-run of the engine.
       const deductionCents = grossCents - netCents;
+      // Cost to the clinic, and the part of it that is not the wage itself:
+      // the employer's statutory share plus any levy. Read off the line the
+      // engine wrote, never reassembled from the individual schemes here.
+      const employerCostCents = toCents(line.employerCost);
+      const employerContributionCents = employerCostCents - grossCents;
 
       sums.basic += basicCents;
       sums.unpaidLeave += unpaidCents;
@@ -515,6 +555,19 @@ export class PayrollJourneyService {
       sums.net += netCents;
       sums.deductions += deductionCents;
       sums.otherDeductions += otherDeductionCents;
+      sums.employerCost += employerCostCents;
+      sums.employerContributions += employerContributionCents;
+      sums.additionalEarnings += allowanceCents + otherEarningsCents;
+      // Same null rule as the row: one unknown scheme makes the pair unknown,
+      // and it is counted rather than summed as nil.
+      if (line.socsoEmployee === null || line.eisEmployee === null) sums.socsoEisNotCalculated += 1;
+      else sums.socsoEis += toCents(line.socsoEmployee) + toCents(line.eisEmployee);
+      // Each scheme over the rows where it was actually worked out. A null is
+      // skipped, never added as nil — the count beside the header says how
+      // many are missing.
+      if (line.epfEmployee !== null) sums.epf += toCents(line.epfEmployee);
+      if (line.socsoEmployee !== null) sums.socso += toCents(line.socsoEmployee);
+      if (line.eisEmployee !== null) sums.eis += toCents(line.eisEmployee);
       if (statutoryCents === null) sums.statutoryNotCalculated += 1;
       else sums.statutory += statutoryCents;
       if (pcbCents === null) sums.pcbMissing += 1;
@@ -525,6 +578,18 @@ export class PayrollJourneyService {
       return {
         staffId: line.staffId,
         name: line.staff.fullName,
+        /** For the register's person cell — the same position the directory shows. */
+        position: standing?.position ?? null,
+        /**
+         * READY / NEEDS_ATTENTION / NEEDS_SETUP, with the counts behind it and
+         * the deep link that fixes the most serious one. Joined server-side —
+         * see the note above `standingByStaff`.
+         */
+        state: standing?.state ?? ('READY' as const),
+        reason: standing?.reason ?? null,
+        blockers: blockers.length,
+        warnings: warnings.length,
+        fixLink,
         basicSalary: formatCents(basicCents),
         allowances: formatCents(allowanceCents),
         overtimePay: formatCents(overtimeCents),
@@ -539,6 +604,53 @@ export class PayrollJourneyService {
         pcb: pcbCents === null ? null : formatCents(pcbCents),
         /** SKBBK. Employee-borne, employer-remitted; null means participation is unrecorded. */
         lindungEmployee: lindungCents === null ? null : formatCents(lindungCents),
+        /*
+         * THE SCHEMES INDIVIDUALLY, so the register can carry an EPF column
+         * and a SOCSO/EIS column rather than one "statutory" lump.
+         *
+         * `statutoryEmployee` above is the three added together, and it is what
+         * the totals foot on. These are the same figures unsummed. They are
+         * passed through from the line the engine wrote — the alternative was
+         * for the register to read the run detail as a SECOND source beside
+         * this one and format its floats itself, which is how two surfaces
+         * showing the same person's EPF end up disagreeing by a sen.
+         *
+         * NULL IS NOT ZERO, at every level: a scheme that could not be worked
+         * out stays null all the way to the cell, which renders "—".
+         */
+        epfEmployee: line.epfEmployee === null ? null : formatCents(toCents(line.epfEmployee)),
+        epfEmployer: line.epfEmployer === null ? null : formatCents(toCents(line.epfEmployer)),
+        socsoEmployee: line.socsoEmployee === null ? null : formatCents(toCents(line.socsoEmployee)),
+        socsoEmployer: line.socsoEmployer === null ? null : formatCents(toCents(line.socsoEmployer)),
+        eisEmployee: line.eisEmployee === null ? null : formatCents(toCents(line.eisEmployee)),
+        eisEmployer: line.eisEmployer === null ? null : formatCents(toCents(line.eisEmployer)),
+        /** HRD Corp levy — an employer cost, never a deduction. */
+        hrdLevy: line.hrdLevy === null ? null : formatCents(toCents(line.hrdLevy)),
+        /** What the employer pays on top of this person's wage. */
+        employerContributions: formatCents(employerContributionCents),
+        /*
+         * THE TWO GROUPED COLUMNS THE REGISTER OPENS WITH.
+         *
+         * A clinic paying eight people does not want twenty columns, so the
+         * default register shows the components everybody has and folds the
+         * rest into one: "Additional" is allowances plus whatever else reached
+         * this person's gross — a reimbursed claim, mileage. "SOCSO/EIS" is
+         * the two schemes that always move together.
+         *
+         * Both are summed HERE rather than in the register, for the same
+         * reason as every other figure on this row: a column the browser adds
+         * up is a column that can disagree with the payslip. Opening the
+         * drawer shows the components individually.
+         *
+         * SOCSO/EIS is null if EITHER scheme is unknown. Showing SOCSO alone
+         * under a heading that claims to be both is a smaller number than the
+         * clinic owes, printed as though it were the whole answer.
+         */
+        additionalEarnings: formatCents(allowanceCents + otherEarningsCents),
+        socsoEis:
+          line.socsoEmployee === null || line.eisEmployee === null
+            ? null
+            : formatCents(toCents(line.socsoEmployee) + toCents(line.eisEmployee)),
         /*
          * THE EMPLOYER-SELECTED EPF BASIS as the calculation applied it —
          * read from the line's own breakdown, never re-derived. Null for the
@@ -614,6 +726,16 @@ export class PayrollJourneyService {
       otherDeductions: formatCents(sums.otherDeductions),
       deductions: formatCents(sums.deductions),
       net: formatCents(sums.net),
+      /** What the employer pays on top of wages, and the two added together. */
+      employerContributions: formatCents(sums.employerContributions),
+      employerCost: formatCents(sums.employerCost),
+      /** The register's two grouped columns foot on these, not on a browser sum. */
+      additionalEarnings: formatCents(sums.additionalEarnings),
+      socsoEis: formatCents(sums.socsoEis),
+      socsoEisNotCalculated: sums.socsoEisNotCalculated,
+      epfEmployee: formatCents(sums.epf),
+      socsoEmployee: formatCents(sums.socso),
+      eisEmployee: formatCents(sums.eis),
       addsUp: paysAddUp,
       discrepancy: paysAddUp
         ? null

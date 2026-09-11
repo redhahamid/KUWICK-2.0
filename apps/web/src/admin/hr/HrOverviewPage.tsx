@@ -338,7 +338,7 @@ export function HrOverviewPage() {
                     {!done ? (
                       <Link
                         className="kw-readinessItem__fix"
-                        to={row.key === 'employer' ? '/admin/hr/employers' : '/admin/hr/payroll/readiness'}
+                        to={row.key === 'employer' ? '/admin/hr/employers' : '/admin/hr/payroll'}
                       >
                         Fix
                       </Link>

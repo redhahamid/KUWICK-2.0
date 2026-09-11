@@ -134,25 +134,56 @@ export function PayrollStepper({
   current,
   onChange,
   problemSteps,
+  status,
+  canApprove,
 }: {
   current: StepKey;
   onChange: (key: StepKey) => void;
   /** Stages carrying something that blocks approval. Omitted = nothing known. */
   problemSteps?: Set<StepKey>;
+  /** The run's own status — what "approved" and "paid" actually mean. */
+  status?: string;
+  /** Whether the approval gate is open. */
+  canApprove?: boolean;
 }) {
-  const currentIndex = STEPS.findIndex((step) => step.key === current);
+  /*
+   * DONE MEANS THE STAGE'S WORK IS FINISHED — not that you have scrolled past
+   * it. The rule here was `index < currentIndex`, which is the very thing the
+   * note above says was fixed: standing on Finalise put a green tick on
+   * Approve for a run nobody had approved and four blockers would not let
+   * them. A tick is the strongest "this is fine" a screen has.
+   *
+   * Each stage now answers its own question:
+   *   Payroll Details  the month has been worked out and nothing here blocks
+   *   Review           nothing at all blocks approval
+   *   Approve          the run is actually approved
+   *   Finalise         it has been paid
+   */
+  const approved = status === 'APPROVED' || status === 'PAID';
+  const isDone = (key: StepKey, blocked: boolean): boolean => {
+    switch (key) {
+      case 'prepare':
+        return !blocked && status !== undefined && status !== 'DRAFT';
+      case 'review':
+        return canApprove === true;
+      case 'approve':
+        return approved;
+      case 'complete':
+        return status === 'PAID';
+    }
+  };
 
   return (
     <StageBar
       current={current}
-      stages={STEPS.map((step, index) => {
+      stages={STEPS.map((step) => {
         const blocked = problemSteps?.has(step.key) ?? false;
         return {
           key: step.key,
           label: step.label,
           hint: blocked ? 'Needs attention' : undefined,
           attention: blocked,
-          done: index < currentIndex && !blocked,
+          done: isDone(step.key, blocked),
           onSelect: () => onChange(step.key),
         };
       })}

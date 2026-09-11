@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Button, Input, Select, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
@@ -158,10 +158,20 @@ export function PayrollReportsPage() {
   const runs = usePayrollRuns({ clinicId });
   const employees = useEmployees({ clinicId, status: 'ACTIVE' });
   const employers = useLegalEmployers();
-  const [report, setReport] = useState<ReportKey | null>(null);
+  /*
+   * A REPORT IS LINKABLE.
+   *
+   * Finalise offers the month's outputs — the register export, the cost
+   * report — and "go to Reports, then find the report, then pick the month"
+   * is three steps for something the linking page already knows. `?report=` and
+   * `?run=` seed the picker; everything after that is ordinary local state, so
+   * browsing does not rewrite the URL on every click.
+   */
+  const [search] = useSearchParams();
+  const [report, setReport] = useState<ReportKey | null>((search.get('report') as ReportKey) ?? null);
   const [category, setCategory] = useState<ReportCategory | 'All'>('All');
   const [query, setQuery] = useState('');
-  const [runId, setRunId] = useState<string | undefined>();
+  const [runId, setRunId] = useState<string | undefined>(search.get('run') ?? undefined);
   const [staffId, setStaffId] = useState<string | undefined>();
   const [year, setYear] = useState<number>(dayjs().year());
   const [employerId, setEmployerId] = useState<string | undefined>();

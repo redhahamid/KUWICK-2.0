@@ -8,6 +8,7 @@ import { FilterBar, Filter } from '../components/FilterBar';
 import { PersonCell } from '../components/Person';
 import { StatusChip, employmentTone, humanise } from '../components/Chip';
 import { readinessSummary } from '../components/ReadinessList';
+import { PEOPLE_VIEWS, WorkAreaTabs } from '../components/WorkAreaTabs';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useEmployees, usePayrollReadiness, useWorkforceToday } from '../hooks/useAdmin';
@@ -90,7 +91,7 @@ export function EmployeesPage() {
   return (
     <AdminShell
       error={firstError({ isError, error })}
-      title="People"
+      title="Employees"
       subtitle="Everybody who works here, and whether payroll can pay them."
       actions={
         <Button type="primary" onClick={() => navigate('/admin/hr/people/new')}>
@@ -98,6 +99,7 @@ export function EmployeesPage() {
         </Button>
       }
     >
+      <WorkAreaTabs views={PEOPLE_VIEWS} />
       <CompleteProfileDrawer
         staffId={completing?.staffId ?? null}
         fullName={completing?.fullName ?? ''}

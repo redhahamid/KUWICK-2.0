@@ -106,7 +106,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     code: 'MISSING_PUNCH',
     severity: 'WARNING',
     overridable: true,
-    cause: (c) => `${c.days} day(s) have no clock-in or clock-out.`,
+    cause: (c) => `${c.days} ${Number(c.days) === 1 ? 'day has' : 'days have'} no clock-in or clock-out.`,
     consequence: 'Hours for those days are incomplete, so any overtime or attendance-based pay may be understated.',
     remediation: 'Correct those days on their timesheet.',
     deepLink: (c) => `/admin/hr/attendance?staffId=${c.staffId}`,

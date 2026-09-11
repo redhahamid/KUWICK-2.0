@@ -86,7 +86,6 @@ import { PanelConfigPage } from './admin/panel/PanelConfigPage';
 import { HrOverviewPage } from './admin/hr/HrOverviewPage';
 import { EmployeesPage } from './admin/hr/EmployeesPage';
 import { TimesheetPage } from './admin/hr/TimesheetPage';
-import { PayrollPage } from './admin/hr/PayrollPage';
 import { LegalEmployersPage } from './admin/hr/LegalEmployersPage';
 import { IncentivesPage } from './admin/hr/IncentivesPage';
 import { BenefitsPage } from './admin/hr/BenefitsPage';
@@ -98,8 +97,8 @@ import { PayrollReportsPage } from './admin/hr/PayrollReportsPage';
 import { PayrollSettingsPage } from './admin/hr/PayrollSettingsPage';
 import { HrSettingsPage } from './admin/hr/HrSettingsPage';
 import { AttendanceSettingsPage } from './admin/hr/AttendanceSettingsPage';
-import { PayrollHomePage } from './admin/hr/PayrollHomePage';
-import { PayrollReadinessPage } from './admin/hr/PayrollReadinessPage';
+import { PayrollMonthPage } from './admin/hr/PayrollMonthPage';
+import { PayrollHistoryPage } from './admin/hr/PayrollHistoryPage';
 import { YtdOpeningImportPage } from './admin/hr/YtdOpeningImportPage';
 import { PayrollRunPage } from './admin/hr/PayrollRunPage';
 import { EmployeeWorkspacePage } from './admin/hr/EmployeeWorkspacePage';
@@ -323,10 +322,18 @@ export function App() {
             <Route path="/admin/hr/leave" element={<Navigate to="/admin/hr/time/leave" replace />} />
             <Route path="/admin/hr/claims" element={<Navigate to="/admin/hr/time/claims" replace />} />
 
-            <Route path="/admin/hr/payroll" element={<PayrollHomePage />} />
-            <Route path="/admin/hr/payroll/readiness" element={<PayrollReadinessPage />} />
+            {/* PAYROLL OPENS ON THE MONTH, not on a page about payroll. The
+                landing dashboard this replaced put a hero, three explanatory
+                cards and a table of previous runs between an owner and the
+                register they came to read. */}
+            <Route path="/admin/hr/payroll" element={<PayrollMonthPage />} />
+            <Route path="/admin/hr/payroll/history" element={<PayrollHistoryPage />} />
+            {/* Readiness was a whole page listing who was not ready. It now sits
+                beside the person it is about, on their register row — so the URL
+                lands on the register rather than 404ing a bookmark. */}
+            <Route path="/admin/hr/payroll/readiness" element={<Navigate to="/admin/hr/payroll" replace />} />
+            <Route path="/admin/hr/payroll/all" element={<Navigate to="/admin/hr/payroll/history" replace />} />
             <Route path="/admin/hr/payroll/ytd-opening" element={<YtdOpeningImportPage />} />
-            <Route path="/admin/hr/payroll/all" element={<PayrollPage />} />
             <Route path="/admin/hr/payroll/:id" element={<PayrollRunPage />} />
             <Route path="/admin/hr/employers" element={<LegalEmployersPage />} />
             <Route path="/admin/hr/incentives" element={<IncentivesPage />} />

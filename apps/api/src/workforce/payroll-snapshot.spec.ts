@@ -353,7 +353,7 @@ describe('verifySnapshot', () => {
       code: 'MISSING_PUNCH',
       severity: 'WARNING',
       staffId: 's1',
-      cause: '2 day(s) have no clock-in or clock-out.',
+      cause: '2 days have no clock-in or clock-out.',
       overridden: false,
       overriddenByStaffId: null,
       overrideReason: null,

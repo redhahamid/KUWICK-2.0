@@ -6375,3 +6375,415 @@ button.kw-stage__button:hover { background: var(--kw-surface-2); }
 /* Buttons keep one radius and one weight across the module. */
 .kw-admin .ant-btn { border-radius: 6px; font-weight: 500; }
 .kw-admin .ant-btn-sm { font-size: 12.5px; }
+
+/* --- The payroll month header --------------------------------------------- */
+/*
+ * THE MONTH'S OWN FIGURES, ABOVE THE MONTH'S OWN WORK.
+ *
+ * A spreadsheet opens on totals. This product opened on a page about payroll,
+ * and the totals were a click further in — which is most of why the owner
+ * found their spreadsheet easier. The header is deliberately NOT a row of
+ * cards: cards cost about 180px to say five numbers, and the register has to
+ * be visible under it on a laptop.
+ *
+ * NET IS THE LOUD ONE. One figure at display size, the rest quiet beside it,
+ * because a strip where every number shouts has no hierarchy at all.
+ */
+
+.kw-payMonth {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--kw-s4) var(--kw-s6);
+  padding: 14px var(--kw-s4) 15px;
+  margin-bottom: var(--kw-s3);
+  background: var(--kw-card);
+  border: 1px solid var(--kw-border);
+  border-radius: 8px;
+}
+
+.kw-payMonth__id {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  margin-right: auto;
+}
+
+.kw-payMonth__title {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s2);
+  flex-wrap: wrap;
+}
+
+.kw-payMonth__month {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--kw-navy);
+}
+
+.kw-payMonth__count {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--kw-text-secondary);
+}
+
+/* Figures sit in their own row on narrow screens rather than wrapping one at a
+   time, which is what made the four totals read as three plus an orphan. */
+.kw-payMonth__figures {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--kw-s4) var(--kw-s6);
+}
+
+.kw-payMonth__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s2);
+  flex-wrap: wrap;
+}
+
+.kw-payFig {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.kw-payFig__label {
+  font-size: 10.5px;
+  font-weight: 550;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--kw-text-muted);
+  white-space: nowrap;
+}
+
+.kw-payFig__value {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--kw-text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.kw-payFig__note {
+  font-size: 11px;
+  color: #b45309;
+}
+
+/* The one number the month is judged by. */
+.kw-payFig--lead .kw-payFig__label { color: var(--kw-navy); }
+
+.kw-payFig--lead .kw-payFig__value {
+  font-size: 25px;
+  font-weight: 680;
+  letter-spacing: -0.02em;
+  color: var(--kw-navy);
+}
+
+@media (max-width: 640px) {
+  .kw-payMonth { gap: var(--kw-s3); padding: 12px var(--kw-s3) 13px; }
+  .kw-payMonth__figures { gap: var(--kw-s3) var(--kw-s4); width: 100%; }
+  /* Two per row at phone width — four in a line becomes four unreadable
+     columns, and shrinking the type to fit is the thing we are not doing. */
+  .kw-payFig { flex: 1 1 calc(50% - var(--kw-s4)); }
+  .kw-payFig--lead { flex-basis: 100%; }
+  .kw-payMonth__actions { width: 100%; }
+}
+
+/* --- The payroll register: bands, row status, phone cards ------------------ */
+/*
+ * The owner's verdict was that Excel was easier to understand. A register that
+ * draws every column identically is a wall of numbers; what a spreadsheet
+ * actually gives you is a shape — person, then what they earned, then what
+ * came off, then what they are paid. The grouped header is that shape.
+ */
+
+.kw-payrollGrid__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s3);
+  padding: 7px var(--kw-s3);
+  border-bottom: 1px solid var(--kw-border);
+}
+
+.kw-payrollGrid__hint {
+  font-size: 11.5px;
+  color: var(--kw-text-muted);
+  margin-right: auto;
+}
+
+/*
+ * The band row: quiet, small, and clearly a heading over headings.
+ *
+ * LEFT-ALIGNED, not centred. A centred label sits in the middle of its band,
+ * and the register is wider than any laptop — so with the table scrolled a few
+ * columns the DEDUCTIONS label was centred somewhere off the right edge and
+ * the visible columns sat under no heading at all. Left-aligned, a band names
+ * itself the moment its first column comes into view.
+ */
+.kw-payrollGrid .ant-table-thead > tr:first-child > th {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--kw-text-muted);
+  background: var(--kw-surface-3);
+  text-align: left;
+  /* The boundary between bands, so "where does Earnings end" is visible
+     rather than inferred from the labels. */
+  box-shadow: inset 1px 0 0 var(--kw-border-strong);
+}
+
+.kw-payrollGrid .ant-table-thead > tr:first-child > th:first-child {
+  box-shadow: none;
+}
+
+.kw-rowStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.kw-rowStatus__fix {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--kw-navy);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.kw-rowStatus__fix:hover { text-decoration: underline; }
+
+/* --- The employer's EPF basis beside Kuwick's assessment ------------------- */
+/* The clinic is choosing to contribute on less than the statutory assessment.
+   The figure they are choosing against belongs on the same screen as the
+   choice — advisory, not a blocker, per the product decision that stands. */
+
+.kw-epfBasis {
+  margin: 0 0 var(--kw-s2);
+  padding: 8px 10px;
+  border-radius: 6px;
+  border-left: 3px solid var(--kw-band-border);
+  background: var(--kw-band-bg);
+  font-size: 12px;
+}
+
+.kw-epfBasis--short {
+  border-left-color: #d9a441;
+  background: var(--kw-pending-bg);
+}
+
+.kw-epfBasis__row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--kw-s3);
+  line-height: 1.7;
+}
+
+.kw-epfBasis__note {
+  margin: 4px 0 0;
+  color: #7c4a03;
+  line-height: 1.5;
+}
+
+/* --- The compact add-an-earning editor ------------------------------------ */
+/* Four fields, inside the section it adds to. Adding an earning used to open a
+   second drawer over the first, carrying the whole payroll-inputs surface. */
+
+.kw-addItem {
+  margin: var(--kw-s2) 0;
+  padding: 10px;
+  border: 1px solid var(--kw-border);
+  border-radius: 6px;
+  background: var(--kw-surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s2);
+}
+
+.kw-addItem__fields {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: var(--kw-s2);
+}
+
+.kw-addItem__field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.kw-addItem__field > span {
+  font-size: 10.5px;
+  font-weight: 550;
+  text-transform: uppercase;
+  letter-spacing: 0.045em;
+  color: var(--kw-text-muted);
+}
+
+.kw-addItem__field .ant-select,
+.kw-addItem__field .ant-picker,
+.kw-addItem__field .ant-input-number { width: 100%; }
+
+.kw-addItem__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s2);
+}
+
+.kw-addItem__spacer { flex-grow: 1; }
+
+@media (max-width: 560px) {
+  .kw-addItem__fields { grid-template-columns: 1fr; }
+}
+
+/* --- One person per card, on a phone -------------------------------------- */
+/* Sixteen columns inside 390px can only be done by shrinking the type until
+   nobody can read it. That is not a responsive design, it is a smaller
+   unreadable one. */
+
+.kw-payCards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s2);
+  padding: var(--kw-s3);
+}
+
+.kw-payCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s2);
+  padding: 11px 12px;
+  border: 1px solid var(--kw-border);
+  border-radius: 8px;
+  background: var(--kw-card);
+}
+
+.kw-payCard__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kw-s2);
+  flex-wrap: wrap;
+}
+
+.kw-payCard__figures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--kw-s2);
+  margin: 0;
+}
+
+.kw-payCard__figures > div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+
+.kw-payCard__figures dt {
+  font-size: 10.5px;
+  font-weight: 550;
+  text-transform: uppercase;
+  letter-spacing: 0.045em;
+  color: var(--kw-text-muted);
+}
+
+.kw-payCard__figures dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--kw-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-payCard__net dd { color: var(--kw-navy); font-size: 16px; font-weight: 680; }
+
+.kw-payCard__more {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--kw-border);
+  padding: 7px 0 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--kw-navy);
+  text-align: left;
+  cursor: pointer;
+}
+
+.kw-payCard--total {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--kw-surface-3);
+  font-size: 13px;
+}
+
+.kw-payCard--total strong { font-size: 16px; color: var(--kw-navy); }
+
+/* --- Approve: the sentence, and Finalise's remaining outputs --------------- */
+
+.kw-approveStatement {
+  margin: 0 0 var(--kw-s3);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--kw-text);
+}
+
+.kw-outputLinks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--kw-s2);
+}
+
+.kw-outputLink {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 11px 13px;
+  border: 1px solid var(--kw-border);
+  border-radius: 7px;
+  background: var(--kw-card);
+  color: inherit;
+}
+
+.kw-outputLink:hover { border-color: var(--kw-navy); }
+.kw-outputLink strong { font-size: 13.5px; color: var(--kw-navy); }
+.kw-outputLink span { font-size: 12px; color: var(--kw-text-secondary); line-height: 1.45; }
+
+/* A provenance link, beside the figure it explains. */
+.kw-lineItem__link {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--kw-navy);
+  white-space: nowrap;
+}
+
+/* The register is its own surface now that no section heading wraps it. */
+.kw-payrollGrid--standalone {
+  background: var(--kw-card);
+  border: 1px solid var(--kw-border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: var(--kw-s3);
+}
+
+/* The Approve summary's figures: the month header's shape, one step quieter. */
+.kw-approveFigures {
+  padding: 11px 0 3px;
+  gap: var(--kw-s3) var(--kw-s6);
+}
+
+.kw-approveFigures .kw-payFig--lead .kw-payFig__value { font-size: 21px; }

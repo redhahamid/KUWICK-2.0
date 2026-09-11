@@ -2179,6 +2179,19 @@ export interface PayrollJourney {
     rows: {
       staffId: string;
       name: string;
+      /** The same position the directory shows, for the register's person cell. */
+      position: string | null;
+      /**
+       * WHETHER THIS PERSON IS READY, joined server-side from the employee
+       * record and the exception rows. The register renders a green / amber /
+       * red status beside every name from these; `fixLink` opens the remedy
+       * for the most serious thing wrong, not the first one found.
+       */
+      state: 'READY' | 'NEEDS_ATTENTION' | 'NEEDS_SETUP';
+      reason: string | null;
+      blockers: number;
+      warnings: number;
+      fixLink: string | null;
       basicSalary: string;
       allowances: string;
       overtimePay: string;
@@ -2193,6 +2206,30 @@ export interface PayrollJourney {
       pcb: string | null;
       /** SKBBK. Employee-borne, employer-remitted; null = participation unrecorded. */
       lindungEmployee: string | null;
+      /**
+       * The schemes unsummed, so the register can carry EPF and SOCSO/EIS as
+       * their own columns. Null stays null all the way to the cell: a scheme
+       * that could not be worked out renders "—", never 0.00.
+       */
+      epfEmployee: string | null;
+      epfEmployer: string | null;
+      socsoEmployee: string | null;
+      socsoEmployer: string | null;
+      eisEmployee: string | null;
+      eisEmployer: string | null;
+      /** HRD Corp levy — an employer cost, never a deduction. */
+      hrdLevy: string | null;
+      /** What the employer pays on top of this person's wage. */
+      employerContributions: string;
+      /**
+       * THE TWO GROUPED COLUMNS THE REGISTER OPENS WITH — summed by the
+       * server. "Additional" is allowances plus whatever else reached gross (a
+       * reimbursed claim, mileage); "SOCSO/EIS" is the pair that always moves
+       * together, null if EITHER scheme is unknown. The drawer shows the
+       * components individually.
+       */
+      additionalEarnings: string;
+      socsoEis: string | null;
       /**
        * The employer-selected EPF basis as APPLIED — null when no selection
        * is recorded and the statutory assessment governs alone. A non-empty
@@ -2239,6 +2276,25 @@ export interface PayrollJourney {
       otherDeductions: string;
       deductions: string;
       net: string;
+      /**
+       * What the employer pays ON TOP of wages — the employer's statutory
+       * share plus any levy — and gross plus that. Both summed by the server
+       * from the lines, because `employerCost - gross` performed in a browser
+       * is a payroll subtraction done by a screen.
+       */
+      employerContributions: string;
+      employerCost: string;
+      /** What the register's two grouped columns foot on. */
+      additionalEarnings: string;
+      socsoEis: string;
+      socsoEisNotCalculated: number;
+      /**
+       * PER SCHEME, so a column headed EPF foots on EPF. `statutoryEmployee`
+       * is the three added together and is what the month header reads.
+       */
+      epfEmployee: string;
+      socsoEmployee: string;
+      eisEmployee: string;
       addsUp: boolean;
       discrepancy: string | null;
     };

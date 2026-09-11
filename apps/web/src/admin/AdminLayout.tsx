@@ -116,10 +116,21 @@ const ADMIN_CATEGORIES: HubCategory[] = [
        * navigation is lying to them.
        */
       { path: '/admin/hr', label: 'Overview' },
-      { path: '/admin/hr/people', label: 'People', covers: ['/admin/hr/employees'] },
+      {
+        // "Employees" rather than "People": it is the word on the button that
+        // adds one, on the payroll register's first column, and in every
+        // sentence the product writes about them.
+        path: '/admin/hr/people',
+        label: 'Employees',
+        // Medical Benefits joins the section that owns the employee record.
+        // It is a benefits workflow opened when a claim comes up, not a place
+        // somebody goes weekly, and a permanent seat beside Payroll made it
+        // look like a sixth kind of monthly work.
+        covers: ['/admin/hr/employees', '/admin/hr/benefits'],
+      },
       {
         path: '/admin/hr/time',
-        label: 'Time & Leave',
+        label: 'Attendance & Leave',
         covers: [
           '/admin/hr/attendance',
           '/admin/hr/roster',
@@ -130,11 +141,13 @@ const ADMIN_CATEGORIES: HubCategory[] = [
         ],
       },
       {
+        // Doctor incentives and locum sessions are payroll INPUTS. They had
+        // seats in this rail as though they were places you go, which is how
+        // an owner ends up believing there are three payrolls.
         path: '/admin/hr/payroll',
         label: 'Payroll',
         covers: ['/admin/hr/incentives', '/admin/hr/locum'],
       },
-      { path: '/admin/hr/benefits', label: 'Medical Benefits' },
       { path: '/admin/hr/reports', label: 'Reports' },
     ],
   },

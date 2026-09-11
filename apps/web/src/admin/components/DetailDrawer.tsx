@@ -41,10 +41,13 @@ export function DetailDrawer({
   loading?: boolean;
 }) {
   return (
+    // antd 6 deprecated `width` in favour of `size`, and warned on every open.
+    // `styles.wrapper` sets the exact width the design asks for without the
+    // deprecation — `size` only offers default/large.
     <Drawer
       open={open}
       onClose={onClose}
-      width={width}
+      styles={{ wrapper: { width } }}
       className="kw-detailDrawer"
       closable={false}
       destroyOnClose

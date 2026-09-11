@@ -40,7 +40,7 @@ export const ADMIN_ROUTES = [
   // The canonical HR paths, under the six-section architecture. Everything
   // they absorbed still resolves — those redirects are asserted in
   // hr-navigation.spec.ts rather than here, so this walk tests SCREENS.
-  { path: '/admin/hr/people', module: 'HR', heading: 'People' },
+  { path: '/admin/hr/people', module: 'HR', heading: 'Employees' },
   { path: '/admin/hr/time', module: 'HR', heading: 'Attendance' },
   { path: '/admin/hr/time/roster', module: 'HR', heading: 'Roster' },
   { path: '/admin/hr/time/leave', module: 'HR', heading: 'Leave' },

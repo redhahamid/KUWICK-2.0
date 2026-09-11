@@ -349,7 +349,7 @@ export function YtdOpeningImportPage() {
           >
             Import {staged.length > 0 ? `${staged.length} month${staged.length === 1 ? '' : 's'}` : ''}
           </Button>
-          <Link to="/admin/hr/payroll/readiness" className="kw-muted">
+          <Link to="/admin/hr/payroll" className="kw-muted">
             Back to payroll readiness
           </Link>
         </div>

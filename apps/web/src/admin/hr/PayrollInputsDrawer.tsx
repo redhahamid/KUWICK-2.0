@@ -101,7 +101,8 @@ export function PayrollInputsDrawer({
     <Drawer
       open={open}
       onClose={onClose}
-      width={860}
+      // antd 6 deprecated `width`; `styles.wrapper` sets it without warning.
+      styles={{ wrapper: { width: 860 } }}
       title={staffName ? `Payroll inputs — ${staffName}` : 'Payroll inputs'}
       extra={
         canEdit && staffId ? (

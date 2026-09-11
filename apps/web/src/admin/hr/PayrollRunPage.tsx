@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { App, Button, Grid, Modal, Tag, Tooltip } from 'antd';
 import dayjs from 'dayjs';
@@ -9,11 +9,11 @@ import {
   useApprovePayroll,
   useCalculatePayroll,
   usePayrollJourney,
-  usePayrollRun,
   usePayrollVariance,
 } from '../hooks/useAdmin';
 import { ProvisionalBanner } from './ProvisionalBanner';
 import { PayrollStepper, STEPS, normaliseStep, stepsWithProblems, type StepKey } from './PayrollStepper';
+import { PayrollMonthHeader } from './PayrollMonthHeader';
 import { PayrollGrid } from './PayrollGrid';
 import { PayrollEmployeeDrawer } from './PayrollEmployeeDrawer';
 import { PayrollExceptionCentre } from './PayrollExceptionCentre';
@@ -24,8 +24,8 @@ import { StatutoryOutputsPanel } from './StatutoryOutputsPanel';
 import { useCan } from '../../core/hooks/useCan';
 import { PersonCell } from '../components/Person';
 import { StatusChip, humanise } from '../components/Chip';
-import { EmptyState } from '../components/Panel';
-import type { PayrollJourney, PayrollRunDetail } from '../types';
+import { Panel } from '../components/Panel';
+import type { PayrollJourney } from '../types';
 
 const initials = (name: string) =>
   name
@@ -36,24 +36,30 @@ const initials = (name: string) =>
     .join('');
 
 /**
- * THE MONTHLY PAYROLL RUN, in six steps.
+ * THE MONTH'S PAYROLL WORKSPACE.
  *
  * What this replaced was one dense page carrying every concept the payroll
  * engine has — exception codes, snapshot versions, verification states,
  * component liability — on the screen a clinic owner opens once a month to pay
  * five people.
  *
- * Each step answers ONE question and shows the figures that answer it. The
- * complexity has not gone anywhere; it is behind drill-downs, in Payroll
- * settings, and in the engine.
+ * MOUNTED BY TWO ROUTES, deliberately. `/admin/hr/payroll` resolves the
+ * current month and mounts this directly, so opening payroll opens the month's
+ * work rather than a page about payroll; `/admin/hr/payroll/:id` mounts the
+ * same thing by run id, so every existing link, exception remedy and bookmark
+ * still lands where it always did. One workspace, not two implementations that
+ * drift.
+ *
+ * `monthNav` is the month selector and History control, passed in by whichever
+ * route can meaningfully offer them — the month page can move between months,
+ * a direct run link cannot.
  */
-export function PayrollRunPage() {
-  const { id } = useParams<{ id: string }>();
+export function PayrollWorkspace({ runId, monthNav }: { runId: string; monthNav?: ReactNode }) {
+  const id = runId;
   const [search, setSearch] = useSearchParams();
   const journey = usePayrollJourney(id);
   // Old six-step links still resolve — see normaliseStep.
   const step = normaliseStep(search.get('step'));
-  const stepMeta = STEPS.find((s) => s.key === step) ?? STEPS[0];
   const data = journey.data;
   const mayApprove = useCan('hr.payroll.approve');
   const mayRun = useCan('hr.payroll.run');
@@ -74,32 +80,30 @@ export function PayrollRunPage() {
   };
 
   return (
-    <AdminShell
-      error={firstError(journey)}
-      title={data ? `${stepMeta.heading} — ${data.run.periodLabel}` : 'Payroll run'}
-      subtitle={stepMeta.blurb}
-      actions={
-        <>
-          {/* THE RUN'S OWN STATUS, beside its month. A stage strip says where
-              you are in the work; it does not say whether the month is a draft,
-              approved or paid, and those are different things to be looking at. */}
-          {data ? (
-            data.run.statutoryStatus !== 'CONFIGURED' ? (
-              <StatusChip tone="attention" dot>
-                {humanise(data.run.status)} · provisional
-              </StatusChip>
-            ) : (
-              <StatusChip tone={data.run.status === 'PAID' ? 'ok' : data.run.status === 'APPROVED' ? 'ok' : 'info'} dot>
-                {humanise(data.run.status)}
-              </StatusChip>
-            )
-          ) : null}
-          <Link to="/admin/hr/payroll">
-            <Button size="small">Payroll home</Button>
-          </Link>
-        </>
-      }
-    >
+    <AdminShell error={firstError(journey)} title="Payroll">
+      {/*
+        * THE MONTH FIRST, then how far through it you are.
+        *
+        * The page title used to be the STAGE ("What needs looking at —
+        * September 2026") with a sentence under it explaining the stage. Both
+        * are gone: the stage bar below already says which stage you are on,
+        * and an owner opening payroll wants the month's figures, not a
+        * paragraph about the screen they are on.
+        */}
+      {data ? (
+        <PayrollMonthHeader
+          periodLabel={data.run.periodLabel}
+          status={data.run.status}
+          provisional={data.run.statutoryStatus !== 'CONFIGURED'}
+          employees={data.run.employeeCount}
+          gross={data.pay.totals.gross}
+          deductions={data.pay.totals.deductions}
+          employerContributions={data.pay.totals.employerContributions}
+          net={data.pay.totals.net}
+          notCalculated={data.pay.totals.statutoryNotCalculated}
+          right={monthNav}
+        />
+      ) : null}
       <ProvisionalBanner statutoryStatus={data?.run.statutoryStatus} />
       {/*
         * A TICK MEANS SETTLED. The stepper reads the SAME exception rows the
@@ -110,6 +114,8 @@ export function PayrollRunPage() {
         current={step}
         onChange={goTo}
         problemSteps={data ? stepsWithProblems(data.review.attention) : undefined}
+        status={data?.run.status}
+        canApprove={data?.review.gate.canApprove}
       />
 
       {data ? (
@@ -128,7 +134,7 @@ export function PayrollRunPage() {
             */}
           {step === 'prepare' ? (
             <>
-              <RunGridSection runId={id!} data={data} onFixInputs={onFixInputs} canEdit={mayRun && !locked} />
+              <RunGridSection data={data} onFixInputs={onFixInputs} canEdit={mayRun && !locked} />
               <EmployeesStep data={data} />
               <AttendanceStep data={data} />
             </>
@@ -154,6 +160,19 @@ export function PayrollRunPage() {
       ) : null}
     </AdminShell>
   );
+}
+
+/**
+ * `/admin/hr/payroll/:id` — one run, by id.
+ *
+ * Kept because links to a specific run are everywhere: exception remedies, the
+ * history table, the guide, and whatever anybody has bookmarked. It offers no
+ * month selector, because a link to a run is a link to THAT run — moving month
+ * from here would silently take somebody somewhere they did not ask to go.
+ */
+export function PayrollRunPage() {
+  const { id } = useParams<{ id: string }>();
+  return <PayrollWorkspace runId={id!} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -384,142 +403,77 @@ function ReviewStep({
   onFixInputs: (staffId: string, staffName: string | null) => void;
   onGoTo: (key: StepKey) => void;
 }) {
-  const variance = usePayrollVariance(runId);
   const totals = data.pay.totals;
   const gate = data.review.gate;
 
+  /*
+   * COUNTS OF PEOPLE, AND THEY HAVE TO ADD UP.
+   *
+   * This read "10 employees · 7 ready · 4 blockers · 2 warnings", which
+   * invites the arithmetic 7 + 4 = 11 and does not resolve. Three different
+   * populations were in one strip: rows in the run, exception ROWS (one of
+   * them about somebody with no row at all), and people — and two of the
+   * warned employees were also blocked, so nothing partitioned anything.
+   *
+   * Ready and Blocked now partition the run exactly, and the person the run
+   * left out gets a count of their own instead of hiding inside a blocker
+   * tally. Warnings are named in their own section below, where the overlap
+   * with a blocker does not have to be resolved in a single number.
+   */
+  const blocked = data.pay.rows.filter((row) => row.blockers > 0).length;
+  const ready = data.pay.rows.length - blocked;
+  const leftOut = data.employees.needsSetup;
+
   return (
     <>
+      <StatStrip
+        stats={[
+          { label: 'In this run', value: data.pay.rows.length },
+          { label: 'Ready', value: ready, tone: ready === data.pay.rows.length ? 'good' : 'neutral' },
+          {
+            label: 'Blocked',
+            value: blocked,
+            tone: blocked > 0 ? 'bad' : 'good',
+          },
+          {
+            label: 'Not in this run',
+            value: leftOut,
+            tone: leftOut > 0 ? 'warn' : 'good',
+            hint: leftOut > 0 ? 'No salary on record' : undefined,
+          },
+        ]}
+      />
+
       <PayrollExceptionCentre runId={runId} canOverride={mayApprove} onFixInputs={onFixInputs} />
 
-      <AdminSection title="Payroll summary" description={`${data.run.periodLabel} · ${data.run.clinicName}`}>
-        <div className="kw-reviewFigures">
-          <ReviewFigure
-            label="TAKE-HOME PAY"
-            amount={data.run.netTotal}
-            hint={`What leaves the clinic to your staff${
-              data.run.paymentDate ? ` on ${dayjs(data.run.paymentDate).format('D MMMM')}` : ''
-            }.`}
-          />
-          <div className="kw-reviewFigure">
-            <div className="kw-reviewFigure__label">EMPLOYEES</div>
-            <div className="kw-reviewFigure__value">{data.run.employeeCount}</div>
-            <div className="kw-reviewFigure__hint">
-              {data.employees.needsSetup > 0
-                ? `${data.employees.needsSetup} more not ready to be paid.`
-                : 'Everyone employed here this month.'}
-            </div>
-          </div>
-          <ReviewFigure
-            label="TOTAL COST TO THE CLINIC"
-            amount={data.run.employerCostTotal}
-            hint="Pay plus the clinic's own EPF, SOCSO, EIS and HRD levy."
-          />
-        </div>
-
-        {/*
-          * THE MONTH'S ARITHMETIC, from the server. Gross less deductions is
-          * net, and a scheme that was not calculated is a COUNT here rather
-          * than a zero folded into a total — which is how a clinic ends up
-          * reading "RM0.00 statutory" and believing it owes nothing.
-          */}
+      {/*
+        * WHAT THE MONTH ADDS UP TO — and nothing else.
+        *
+        * This section used to carry a second person-by-person table: every
+        * employee's gross, deductions and take-home, with a movement column,
+        * directly under the register that had just shown the same figures with
+        * more detail. Review is where you decide whether to approve, not where
+        * you read the payroll a second time; the month-on-month comparison
+        * lives in Reports, which is where somebody goes to ask that question.
+        */}
+      <AdminSection title="What this month comes to">
         <div className="kw-summaryRows">
-          <SummaryRow label="Gross earnings" value={ringgit(totals.gross)} />
-          <SummaryRow label="Salary earned (after unpaid leave)" value={ringgit(totals.salaryEarned)} muted />
-          <SummaryRow label="Allowances, overtime, incentives and claims" value={ringgit(totals.additions)} muted />
+          <SummaryRow label="Gross pay" value={ringgit(totals.gross)} />
           <SummaryRow
-            label="Employee statutory (EPF, SOCSO, EIS, LINDUNG)"
+            label="Employee deductions"
             value={
               totals.statutoryNotCalculated > 0
-                ? `${totals.statutoryNotCalculated} not calculated`
-                : `−${ringgit(totals.statutoryEmployee)}`
+                ? `−${ringgit(totals.deductions)} · ${totals.statutoryNotCalculated} not worked out`
+                : `−${ringgit(totals.deductions)}`
             }
             tone={totals.statutoryNotCalculated > 0 ? 'bad' : 'deduct'}
           />
-          <SummaryRow
-            label="Monthly tax (PCB)"
-            value={totals.pcbMissing > 0 ? `${totals.pcbMissing} missing` : `−${ringgit(totals.pcb)}`}
-            tone={totals.pcbMissing > 0 ? 'bad' : 'deduct'}
-          />
-          <SummaryRow label="Other deductions" value={`−${ringgit(totals.otherDeductions)}`} tone="deduct" />
-          <SummaryRow label="Total deductions" value={`−${ringgit(totals.deductions)}`} tone="deduct" muted />
-          <SummaryRow label="Take-home pay" value={ringgit(totals.net)} strong />
+          <SummaryRow label="Net pay" value={ringgit(totals.net)} strong />
+          <SummaryRow label="Employer contributions" value={ringgit(totals.employerContributions)} muted />
+          <SummaryRow label="Cost to the clinic" value={ringgit(totals.employerCost)} strong />
         </div>
 
         {!totals.addsUp && totals.discrepancy ? <AdminNotice tone="warn">{totals.discrepancy}</AdminNotice> : null}
-      </AdminSection>
-
-      {Number(totals.unpaidLeave) > 0 ? (
-        <AdminNotice tone="info">
-          <strong>Unpaid leave is not a deduction.</strong> An incomplete month's wages are smaller under s.18A, so the{' '}
-          {ringgit(totals.unpaidLeave)} has already come off the salary column and is not taken again below.
-        </AdminNotice>
-      ) : null}
-
-      <AdminSection
-        title="Take-home pay, person by person"
-        description={
-          variance.data?.rows?.length
-            ? 'Compared with the previous period. A movement is the difference between the two, never a separately worked-out figure.'
-            : undefined
-        }
-        padded={false}
-      >
-        <DataTable<PayRow>
-          rowKey="staffId"
-          rows={data.pay.rows}
-          emptyText="Nothing has been calculated yet."
-          columns={[
-            {
-              title: 'Employee',
-              dataIndex: 'name',
-              width: 230,
-              render: (value: string) => <PersonCell name={value} />,
-            },
-            {
-              title: 'Gross',
-              dataIndex: 'grossPay',
-              width: 140,
-              align: 'right' as const,
-              render: (value: string) => ringgit(value),
-            },
-            {
-              title: 'Deductions',
-              dataIndex: 'deductionTotal',
-              width: 140,
-              align: 'right' as const,
-              render: (value: string) =>
-                Number(value) ? <span className="kw-bad">−{ringgit(value)}</span> : <span className="kw-muted">—</span>,
-            },
-            {
-              title: 'Take-home',
-              dataIndex: 'netPay',
-              width: 150,
-              align: 'right' as const,
-              render: (value: string) => <strong>{ringgit(value)}</strong>,
-            },
-            {
-              title: 'vs last period',
-              key: 'vs-last-period',
-              width: 150,
-              align: 'right' as const,
-              render: (_: unknown, row: PayRow) => {
-                // THE MOVEMENT IS A SUBTRACTION the API already did. Recomputing
-                // it here from two numbers on screen is how a comparison month
-                // ends up carrying the current month's totals.
-                const line = variance.data?.rows?.find((entry) => entry.staffId === row.staffId);
-                if (!line || line.deltaCents === null) return <span className="kw-muted">—</span>;
-                if (line.deltaCents === 0) return <span className="kw-muted">no change</span>;
-                return (
-                  <span className={line.deltaCents > 0 ? 'kw-good' : 'kw-bad'}>
-                    {line.deltaCents > 0 ? '+' : '−'}
-                    {ringgit((Math.abs(line.deltaCents) / 100).toFixed(2))}
-                  </span>
-                );
-              },
-            },
-          ]}
-        />
       </AdminSection>
 
       {/* THE ONE BUTTON THAT MOVES THE MONTH ON, and the reason when it will
@@ -530,11 +484,22 @@ function ReviewStep({
             ? 'Nothing is blocking this month.'
             : `${gate.blocking} thing${gate.blocking === 1 ? '' : 's'} must be sorted before this run can be approved.`}
         </div>
+        <Button onClick={() => onGoTo('prepare')}>← Back to the register</Button>
         <Button type="primary" disabled={!gate.canApprove} onClick={() => onGoTo('approve')}>
           Proceed to approval →
         </Button>
       </div>
     </>
+  );
+}
+
+/** One figure on the Approve summary, drawn like the month header's. */
+function ApproveFigure({ label, value, lead }: { label: string; value: string; lead?: boolean }) {
+  return (
+    <div className={`kw-payFig${lead ? ' kw-payFig--lead' : ''}`}>
+      <span className="kw-payFig__label">{label}</span>
+      <span className="kw-payFig__value">{ringgit(value)}</span>
+    </div>
   );
 }
 
@@ -577,7 +542,7 @@ function SummaryRow({
 }
 
 // ---------------------------------------------------------------------------
-// STEP 6 — Approve & finalise
+// STAGE 3 — Approve
 // ---------------------------------------------------------------------------
 
 function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
@@ -642,25 +607,36 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
   return (
     <div className="kw-approveGrid">
       <div>
-        <AdminSection title="You are about to finalise">
-          <div style={{ fontSize: 22, fontWeight: 650, letterSpacing: '-0.018em' }}>
-            {data.run.periodLabel} payroll
-          </div>
-          <div className="kw-muted" style={{ marginTop: 3 }}>
-            {data.run.clinicName} · {data.run.employeeCount} employee
-            {data.run.employeeCount === 1 ? '' : 's'}
-            {data.run.paymentDate ? ` · pay day ${dayjs(data.run.paymentDate).format('dddd D MMMM')}` : ''}
+        <AdminSection title={`Approve ${data.run.periodLabel} payroll`}>
+          {/*
+            * THE SENTENCE SOMEBODY IS AGREEING TO, in the words they would use
+            * saying it out loud. This screen called the action "finalise"
+            * throughout while the stage above it said Approve — two names for
+            * one irreversible thing, on the screen where being sure matters
+            * most. Approve is the word; Finalise is the stage that comes after.
+            */}
+          <p className="kw-approveStatement">
+            You are approving the {data.run.periodLabel} payroll for {data.run.employeeCount} employee
+            {data.run.employeeCount === 1 ? '' : 's'} at {data.run.clinicName}
+            {data.run.paymentDate ? `, to be paid on ${dayjs(data.run.paymentDate).format('dddd D MMMM')}` : ''}.
+          </p>
+
+          {/*
+            * THE SAME FIVE FIGURES AS THE MONTH HEADER, in the same order and
+            * the same shape. A grid of five cards inside this column wrapped
+            * four-and-one and left an empty cell beside the last figure, which
+            * reads as something failing to load; a flex row wraps evenly and
+            * makes Approve visually the same statement as the header above it.
+            */}
+          <div className="kw-payMonth__figures kw-approveFigures">
+            <ApproveFigure label="Gross pay" value={data.pay.totals.gross} />
+            <ApproveFigure label="Employee deductions" value={data.pay.totals.deductions} />
+            <ApproveFigure label="Employer contributions" value={data.pay.totals.employerContributions} />
+            <ApproveFigure label="Net pay" value={data.pay.totals.net} lead />
+            <ApproveFigure label="Cost to clinic" value={data.pay.totals.employerCost} />
           </div>
 
-          <StatStrip
-            stats={[
-              { label: 'Take-home pay', value: ringgit(data.run.netTotal) },
-              { label: 'Deductions', value: ringgit(data.run.deductionTotal) },
-              { label: 'Cost to clinic', value: ringgit(data.run.employerCostTotal) },
-            ]}
-          />
-
-          <div style={{ fontWeight: 650, fontSize: 12.5, marginTop: 12 }}>Before this can be finalised</div>
+          <div style={{ fontWeight: 650, fontSize: 12.5, marginTop: 12 }}>Before this can be approved</div>
           {checks.map((check) => (
             <div key={check.key} className="kw-approveCheck">
               <span
@@ -686,7 +662,7 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
           ))}
         </AdminSection>
 
-        <AdminSection title="What finalising does">
+        <AdminSection title="What approving does">
           <ul className="kw-plainList">
             <li>
               <strong>Locks the figures.</strong> A correction afterwards is a recorded adjustment, never a quiet edit.
@@ -757,10 +733,10 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
           </AdminSection>
         ) : null}
 
-        <AdminSection title="Finalise">
+        <AdminSection title="Approve">
           {!canFinaliseHere && !alreadyApproved ? (
             <AdminNotice tone="info">
-              <strong>Finalising is done on a computer.</strong> Locking a month's pay needs the whole run in front of you. Review and clear blockers here; finalise from a desktop.
+              <strong>Approving is done on a computer.</strong> Locking a month&apos;s pay needs the whole run in front of you. Review and clear blockers here; approve from a desktop.
             </AdminNotice>
           ) : alreadyApproved ? (
             <p style={{ margin: 0 }}>
@@ -786,7 +762,7 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
                     ? approval.completesTheRun
                       ? gate.reason
                       : 'Your approval will be recorded. The run stays open until a second person approves it.'
-                    : `${gate.blocking} thing${gate.blocking === 1 ? '' : 's'} must be sorted first. Kuwick will not finalise a run it cannot compute.`}
+                    : `${gate.blocking} thing${gate.blocking === 1 ? '' : 's'} must be sorted first. Kuwick will not approve a run it cannot compute.`}
               </p>
               <Button
                 type="primary"
@@ -796,14 +772,14 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
                 onClick={() =>
                   Modal.confirm({
                     title: approval.completesTheRun
-                      ? `Finalise ${data.run.periodLabel} payroll?`
+                      ? `Approve ${data.run.periodLabel} payroll?`
                       : `Record your approval of ${data.run.periodLabel} payroll?`,
                     content: !approval.completesTheRun
                       ? `This clinic requires ${approval.required} approvals. Nothing locks until a second person approves it.`
                       : provisional
                         ? 'The statutory rates behind these figures have not been verified. This run will be locked and marked PROVISIONAL — it must not be used to pay staff or file a return.'
                         : 'The figures will be locked. A correction afterwards is a recorded adjustment.',
-                    okText: approval.completesTheRun ? 'Finalise' : 'Approve',
+                    okText: 'Approve',
                     onOk: () =>
                       new Promise<void>((resolve, reject) => {
                         approve.mutate(
@@ -812,7 +788,7 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
                             onSuccess: () => {
                               message.success(
                                 approval.completesTheRun
-                                  ? 'Payroll finalised'
+                                  ? 'Payroll approved'
                                   : 'Your approval is recorded. One more is needed.',
                               );
                               resolve();
@@ -828,7 +804,7 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
                 }
               >
                 {approval.completesTheRun
-                  ? `Finalise ${data.run.periodLabel} payroll`
+                  ? `Approve ${data.run.periodLabel} payroll`
                   : `Approve ${data.run.periodLabel} payroll (1 of ${approval.required})`}
               </Button>
               {!gate.canApprove ? (
@@ -871,21 +847,56 @@ function FinaliseStep({ data, runId }: { data: PayrollJourney; runId: string }) 
   const approved = data.run.status === 'APPROVED' || data.run.status === 'PAID';
 
   if (!approved) {
+    /*
+     * COMPACT AND ACTIONABLE, not a screen of white to say nothing is here.
+     *
+     * This was a full section wrapping a centred empty state with three lines
+     * of prose about frozen snapshots — roughly a third of a laptop screen
+     * spent saying "not yet". One line, and the button that gets you there.
+     */
     return (
-      <AdminSection title="Nothing to issue yet">
-        <EmptyState
-          title={`${data.run.periodLabel} has not been approved`}
-          hint="Payslips, the payment listing and the statutory figures are produced from an approved run's frozen snapshot, so they appear once the month is approved."
-        />
-      </AdminSection>
+      <Panel
+        title={`${data.run.periodLabel} has not been approved`}
+        hint="Payslips and the payment listing are produced from the approved month."
+        action={
+          <Link to={`?step=${data.review.gate.canApprove ? 'approve' : 'review'}`}>
+            {data.review.gate.canApprove ? 'Approve this month' : 'See what is blocking it'}
+          </Link>
+        }
+        padded={false}
+      >
+        <span />
+      </Panel>
     );
   }
 
   return (
     <>
-      <PaymentPanel runId={runId} />
       <PayslipsPanel runId={runId} />
+      <PaymentPanel runId={runId} />
       <StatutoryOutputsPanel runId={runId} />
+
+      {/*
+        * THE TWO REMAINING OUTPUTS, WHERE SOMEBODY LOOKS FOR THEM.
+        *
+        * The register export and the cost report have always existed, in
+        * Reports — which meant finishing a month and then going somewhere else
+        * to get the two documents the month produces. These link straight to
+        * the report, already set to THIS run, rather than to a library where
+        * the reader picks both again.
+        */}
+      <AdminSection title="The rest of this month">
+        <div className="kw-outputLinks">
+          <Link to={`/admin/hr/reports?report=PAYROLL_REGISTER&run=${runId}`} className="kw-outputLink">
+            <strong>Payroll register</strong>
+            <span>Every employee, every component. Exports to CSV.</span>
+          </Link>
+          <Link to={`/admin/hr/reports?report=EMPLOYER_COST&run=${runId}`} className="kw-outputLink">
+            <strong>Cost to the clinic</strong>
+            <span>Wages plus the employer’s own contributions, by branch and legal employer.</span>
+          </Link>
+        </div>
+      </AdminSection>
     </>
   );
 }
@@ -895,37 +906,27 @@ function FinaliseStep({ data, runId }: { data: PayrollJourney; runId: string }) 
 /**
  * THE REGISTER, and the drawer it opens.
  *
- * Loaded separately from the journey read because it is the only thing on this
- * page that needs every line of every employee — the journey summarises, and
- * summarising is what made the owner reassemble the month in their head.
- *
- * The drawer's itemised detail comes from the journey's own `pay.rows`, so the
- * register's columns and the drawer's lines are two renderings of one server
- * answer rather than two calculations.
+ * ONE READ. This used to fetch the run detail SEPARATELY from the journey and
+ * render the register off it, while the drawer beside it rendered off the
+ * journey — two server answers about the same person's pay, formatted by two
+ * different bits of browser code. They agreed, until one of them was changed.
+ * The journey now carries every figure the register shows, so the register and
+ * the drawer are two renderings of ONE answer.
  */
 function RunGridSection({
-  runId,
   data,
   onFixInputs,
   canEdit,
 }: {
-  runId: string;
   data: PayrollJourney;
   onFixInputs: (staffId: string, staffName: string | null) => void;
   canEdit: boolean;
 }) {
-  const run = usePayrollRun(runId);
-  const [openLine, setOpenLine] = useState<PayrollRunDetail['lines'][number] | null>(null);
+  const [openStaffId, setOpenStaffId] = useState<string | null>(null);
+  const rows = data.pay.rows;
+  const open = rows.find((row) => row.staffId === openStaffId) ?? null;
 
-  if (run.isLoading) {
-    return (
-      <AdminSection title="The month, employee by employee">
-        <p className="kw-muted">Working out the register…</p>
-      </AdminSection>
-    );
-  }
-  if (!run.data) return null;
-  if (run.data.lines.length === 0) {
+  if (rows.length === 0) {
     return (
       <AdminSection
         title="Nothing has been worked out yet"
@@ -938,23 +939,25 @@ function RunGridSection({
 
   return (
     <>
-      <AdminSection
-        title="Payroll register"
-        description="Open a row for one person's earnings, deductions and statutory detail."
-        padded={false}
-      >
-        <PayrollGrid
-          run={run.data}
-          selectedStaffId={openLine?.staffId}
-          onOpenEmployee={(line) => setOpenLine(line)}
-          otherEarnings={new Map(data.pay.rows.map((row) => [row.staffId, row.otherEarnings]))}
-        />
-      </AdminSection>
+      {/*
+        * NO SECTION HEADING. The stage above already says "Payroll Details",
+        * and a panel titled "Payroll register" under it said the same thing a
+        * second time — for about 50px of the vertical space the totals row
+        * needs to stay above the fold on a laptop.
+        */}
+      <PayrollGrid
+        rows={rows}
+        totals={data.pay.totals}
+        selectedStaffId={open?.staffId}
+        onOpenEmployee={(row) => setOpenStaffId(row.staffId)}
+        onFix={canEdit ? (row) => onFixInputs(row.staffId, row.name) : undefined}
+      />
       <PayrollEmployeeDrawer
-        open={openLine !== null}
-        onClose={() => setOpenLine(null)}
-        line={openLine}
-        payRow={data.pay.rows.find((row) => row.staffId === openLine?.staffId)}
+        open={open !== null}
+        onClose={() => setOpenStaffId(null)}
+        row={open}
+        attendance={data.attendance.rows.find((r) => r.staffId === open?.staffId)}
+        period={data.run.period}
         onAddItem={(staffId, staffName) => onFixInputs(staffId, staffName)}
         canEdit={canEdit}
       />

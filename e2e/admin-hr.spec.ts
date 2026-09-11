@@ -62,7 +62,7 @@ test.describe('HR', () => {
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
     await gotoAdmin(page, '/admin/hr/people');
 
-    await expect(page.getByRole('heading', { name: 'People', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Employees', exact: true })).toBeVisible();
 
     /*
      * THE DISTINCTION IS SHOWN, NOT EXPLAINED.
@@ -117,9 +117,19 @@ test.describe('HR', () => {
   test('payroll is honest in both directions: computed where it can be, blocked where it cannot', async ({ page }) => {
     const errors = collectAdminConsoleErrors(page);
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
-    await gotoAdmin(page, '/admin/hr/payroll');
+    /*
+     * THE PERIOD IS EXPLICIT NOW. `/admin/hr/payroll` opens on the CURRENT
+     * month — which for a clinic that has not started it is an honest
+     * not-started screen, asserted separately below. The seeded month this
+     * test is about is August 2026, and a test that relied on "today happens
+     * to be the seeded month" was a test with a shelf life.
+     */
+    await gotoAdmin(page, '/admin/hr/payroll?period=2026-08');
 
     await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible();
+    // The month IS the landing screen — no dashboard between an owner and it.
+    await expect(page.locator('.kw-payMonth')).toBeVisible();
+    await expect(page.locator('.kw-payrollGrid')).toBeVisible();
 
     // The month in progress reads as a status, not a promise: Calculated. An
     // approved run on unchecked rates would read Provisional here instead of a
@@ -146,18 +156,15 @@ test.describe('HR', () => {
     await expect(page.getByText(/Payroll statutory setup is not yet production-ready/i)).toHaveCount(0);
     await expect(page.getByText(/must not be used to pay staff or file a return/i)).toHaveCount(0);
 
-    // --- THE MONTH, BLOCKED — the exception centre names people, not counts.
-    // The home page also links readiness and the archive under /payroll/, so
-    // the run is found by the shape of its id, not by position.
-    const hrefs = await page
-      .locator('a[href*="/admin/hr/payroll/"]')
-      .evaluateAll((anchors) => anchors.map((anchor) => anchor.getAttribute('href')));
-    const runId = hrefs
-      .map((href) => href?.match(/\/admin\/hr\/payroll\/([0-9a-f-]{36})/)?.[1])
-      .find(Boolean);
-    expect(runId).toBeTruthy();
-
-    await gotoAdmin(page, `/admin/hr/payroll/${runId}?step=review`);
+    /*
+     * THE MONTH IS ALREADY OPEN. `/admin/hr/payroll` used to be a landing
+     * dashboard whose recent-runs table carried a link to the month; the
+     * register is now the landing itself, so the way to Review is the stage
+     * bar rather than a link that has to be found by the shape of its id.
+     */
+    // The stage's accessible name carries its hint too ("Review · Needs
+    // attention"), so it is matched by the stage rather than by exact text.
+    await page.locator('.kw-stage', { hasText: 'Review' }).first().click();
     await expect(page.getByText(/blocking exception\(s\) must be resolved before this run can be approved/i)).toBeVisible();
 
     // The person who cannot be paid is NAMED, with the consequence and the
@@ -171,10 +178,20 @@ test.describe('HR', () => {
     // when the engine shipped — and stayed on this screen for a while after.
     await expect(page.getByText(/calculated from HASiL/i).first()).toBeVisible();
 
-    // The month's own totals are real computed figures beside the blockers —
-    // take-home and employer cost, not zeroes behind an honest-looking banner.
-    await expect(page.getByText('TAKE-HOME PAY', { exact: true })).toBeVisible();
-    await expect(page.getByText('TOTAL COST TO THE CLINIC', { exact: true })).toBeVisible();
+    /*
+     * The month's own totals are real computed figures beside the blockers —
+     * net pay and employer cost, not zeroes behind an honest-looking banner.
+     *
+     * The labels are the ones the month header uses, because Review, Approve
+     * and the header now read the SAME five server totals; they used to be
+     * "TAKE-HOME PAY" and "TOTAL COST TO THE CLINIC" here and something else
+     * two screens away.
+     */
+    const summary = page.locator('.kw-summaryRows');
+    await expect(summary.getByText('Net pay', { exact: true })).toBeVisible();
+    await expect(summary.getByText('Cost to the clinic', { exact: true })).toBeVisible();
+    // And the figure beside net pay is the month's, not a zero.
+    await expect(summary).toContainText(/RM[\d,]+\.\d\d/);
 
     expect(errors).toEqual([]);
   });

@@ -35,6 +35,20 @@ export const TIME_VIEWS = [
  * The RUN itself is deliberately not here: inside a run the stage strip is the
  * navigation, and two switchers on one screen is how twelve tabs happened.
  */
+/**
+ * THE EMPLOYEE RECORD'S TWO VIEWS.
+ *
+ * Medical Benefits had a permanent seat in the HR rail beside Payroll, which
+ * made it look like a sixth kind of monthly work. It is a benefits workflow
+ * opened when a claim or an entitlement question comes up — so it belongs to
+ * the section that owns the employee record, reached the same way Roster is
+ * reached from Attendance.
+ */
+export const PEOPLE_VIEWS = [
+  { path: '/admin/hr/people', label: 'Employees' },
+  { path: '/admin/hr/benefits', label: 'Medical benefits' },
+];
+
 export const PAYROLL_VIEWS = [
   { path: '/admin/hr/payroll', label: 'Payroll' },
   { path: '/admin/hr/incentives', label: 'Doctor incentives' },

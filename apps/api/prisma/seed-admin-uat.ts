@@ -186,6 +186,24 @@ async function main() {
       // null here put her in NO branch's payroll run, silently, every month.
       { key: 'finance', name: 'Chandra Devi', role: 'FINANCE_STAFF' as const, clinic: central.id, doctor: false },
       { key: 'panel', name: 'Wan Azman', role: 'PANEL_STAFF' as const, clinic: central.id, doctor: false },
+      /*
+       * FOUR MORE, SO THE REGISTER CAN BE JUDGED.
+       *
+       * Eight people with one allowance and one overtime row between them is
+       * not a payroll anybody can look at and say "yes, I understand this" —
+       * every column was empty for almost everybody, so the register proved
+       * nothing about whether it reads well when it is full. These four carry
+       * the earnings a real clinic has and Kuwick had never shown together:
+       * unpaid leave, a procedure incentive, a reimbursed claim, commission
+       * and a bonus.
+       *
+       * Synthetic, like everything else in this file: invented names,
+       * `.invalid` accounts, invented figures.
+       */
+      { key: 'manager', name: 'Rohana Yusof', role: 'HR_STAFF' as const, clinic: central.id, doctor: false },
+      { key: 'nurse', name: 'Puteri Balqis', role: 'FRONT_DESK_CLINICAL_STAFF' as const, clinic: central.id, doctor: false },
+      { key: 'pharm', name: 'Lim Wei Chen', role: 'STOCK_STAFF' as const, clinic: branch.id, doctor: false },
+      { key: 'accounts', name: 'Kavitha Menon', role: 'FINANCE_STAFF' as const, clinic: branch.id, doctor: false },
     ];
 
     const staff: Record<string, string> = {};
@@ -565,11 +583,71 @@ async function verify() {
       where: { tenantId: TENANT_ID },
       select: {
         id: true, period: true, status: true, statutoryStatus: true, exceptions: true,
-        lines: { select: { epfEmployee: true, socsoEmployee: true, eisEmployee: true, pcb: true } },
+        lines: {
+          select: {
+            epfEmployee: true, socsoEmployee: true, eisEmployee: true, pcb: true,
+            basicSalary: true, unpaidLeaveDeduction: true, allowances: true,
+            overtimePay: true, incentives: true, bonus: true, grossPay: true,
+            breakdown: true, staff: { select: { fullName: true } },
+          },
+        },
       },
     });
     for (const run of runs) {
       const label = run.period.toISOString().slice(0, 7);
+
+      /*
+       * 5z. EVERY COMPONENT IS IN A COLUMN, not only in gross.
+       *
+       * The run's stored totals reconciled perfectly while three employees'
+       * allowance, incentive and bonus sat in NO column: the seed wrote the
+       * columns from a hand-kept list of person keys while the payslip was
+       * priced from a `lines` array, and adding an employee to one and not
+       * the other lost the decomposition silently. Gross was right, so every
+       * total-level check passed — and the register showed the money as an
+       * unexplained residual under "Claims & other".
+       *
+       * This is the check that catches it: the components the payslip was
+       * priced from must equal the columns the line carries. Anything left
+       * over is genuinely "other" — a reimbursed claim, a locum fee — and is
+       * allowed, but it has to come from a component that belongs there.
+       */
+      const OTHER = new Set(['CLAIM_REIMBURSEMENT', 'LOCUM_FEE', 'DIRECTOR_FEE']);
+      for (const line of run.lines) {
+        const parts = ((line.breakdown as { components?: { code: string; amount: number }[] } | null)?.components) ?? [];
+        if (parts.length === 0) continue;
+        const priced = (codes: string[]) =>
+          Number(parts.filter((c) => codes.includes(c.code)).reduce((t, c) => t + Number(c.amount), 0).toFixed(2));
+        const columns: [string, number, number][] = [
+          ['allowances', Number(line.allowances), priced(['ALLOWANCE', 'ATTENDANCE_ALLOWANCE', 'MILEAGE'])],
+          ['overtime', Number(line.overtimePay), priced(['OVERTIME'])],
+          ['incentives', Number(line.incentives), priced(['INCENTIVE', 'COMMISSION'])],
+          ['bonus', Number(line.bonus), priced(['BONUS'])],
+          ['unpaid leave', Number(line.unpaidLeaveDeduction), priced(['UNPAID_LEAVE'])],
+        ];
+        for (const [name, column, component] of columns) {
+          if (Math.abs(column - component) > 0.005) {
+            problems.push(
+              `payroll ${label}: ${line.staff.fullName} was priced ${component.toFixed(2)} of ${name} but the ` +
+                `${name} column says ${column.toFixed(2)} — the difference is invisible on the register`,
+            );
+          }
+        }
+        const residual = Number(
+          (
+            Number(line.grossPay) -
+            (Number(line.basicSalary) - Number(line.unpaidLeaveDeduction) + Number(line.allowances) +
+              Number(line.overtimePay) + Number(line.incentives) + Number(line.bonus))
+          ).toFixed(2),
+        );
+        const other = priced([...OTHER]);
+        if (Math.abs(residual - other) > 0.005) {
+          problems.push(
+            `payroll ${label}: ${line.staff.fullName} leaves ${residual.toFixed(2)} unexplained after every column, ` +
+              `but only ${other.toFixed(2)} was priced as a claim or fee`,
+          );
+        }
+      }
 
       // 5a. EVERY BLOCKING EXCEPTION EXISTS AS A ROW, not only in the JSON blob.
       //
@@ -2179,10 +2257,27 @@ async function seedWorkforce(ids: Ids) {
       },
     });
 
-    const profiles: { key: string; position: string; salary: number | null; type: 'PERMANENT' | 'LOCUM' | 'CONTRACT'; born: [number, number, number] }[] = [
+    /*
+     * `contractor` IS THE FIELD THAT KEEPS SOMEBODY OUT OF PAYROLL.
+     *
+     * It did not exist here, so every profile took the schema default of
+     * EMPLOYEE — including the locum, whose whole purpose in this world is to
+     * demonstrate that a contractor is a Finance PAYABLE and never a payslip.
+     * The seeded world was quietly asserting the opposite of the rule the
+     * product enforces.
+     */
+    const profiles: {
+      key: string;
+      position: string;
+      salary: number | null;
+      type: 'PERMANENT' | 'LOCUM' | 'CONTRACT';
+      born: [number, number, number];
+      contractor?: true;
+    }[] = [
       { key: 'owner', position: 'Principal Doctor / Owner', salary: 18000, type: 'PERMANENT', born: [1981, 3, 14] },
       { key: 'resident', position: 'Resident Medical Officer', salary: 9500, type: 'PERMANENT', born: [1990, 8, 2] },
-      { key: 'locum', position: 'Locum Doctor', salary: null, type: 'LOCUM', born: [1988, 11, 30] },
+      // A CONTRACTOR. Paid per session through Finance, never through payroll.
+      { key: 'locum', position: 'Locum Doctor', salary: null, type: 'LOCUM', born: [1988, 11, 30], contractor: true },
       { key: 'counter', position: 'Senior Clinic Assistant', salary: 3200, type: 'PERMANENT', born: [1995, 5, 19] },
       { key: 'counter2', position: 'Clinic Assistant', salary: 2600, type: 'PERMANENT', born: [1999, 1, 7] },
       { key: 'stock', position: 'Stock Controller', salary: 2900, type: 'PERMANENT', born: [1964, 6, 11] },
@@ -2190,6 +2285,10 @@ async function seedWorkforce(ids: Ids) {
       // Deliberately WITHOUT a salary: the payroll run must surface this person
       // as an exception rather than paying them nothing.
       { key: 'panel', position: 'Panel Claims Executive', salary: null, type: 'CONTRACT', born: [1993, 2, 5] },
+      { key: 'manager', position: 'Clinic Manager', salary: 5600, type: 'PERMANENT', born: [1986, 4, 8] },
+      { key: 'nurse', position: 'Staff Nurse', salary: 3400, type: 'PERMANENT', born: [1993, 10, 21] },
+      { key: 'pharm', position: 'Pharmacy Assistant', salary: 2750, type: 'PERMANENT', born: [1997, 7, 3] },
+      { key: 'accounts', position: 'Accounts Assistant', salary: 3100, type: 'PERMANENT', born: [1994, 0, 16] },
     ];
 
     for (const [index, profile] of profiles.entries()) {
@@ -2198,8 +2297,19 @@ async function seedWorkforce(ids: Ids) {
           tenantId: tenant.id, staffId: staff[profile.key],
           employeeNo: `E-${String(1001 + index)}`,
           position: profile.position,
-          department: profile.key.startsWith('counter') ? 'Front Office' : profile.key === 'stock' ? 'Pharmacy' : profile.key === 'finance' ? 'Finance' : 'Clinical',
+          department:
+            profile.key.startsWith('counter')
+              ? 'Front Office'
+              : profile.key === 'stock' || profile.key === 'pharm'
+                ? 'Pharmacy'
+                : profile.key === 'finance' || profile.key === 'accounts'
+                  ? 'Finance'
+                  : profile.key === 'manager'
+                    ? 'Administration'
+                    : 'Clinical',
           employmentType: profile.type,
+          // The one field that decides payroll or payable. See `profiles`.
+          engagement: profile.contractor ? 'CONTRACTOR' : 'EMPLOYEE',
           employmentStatus: 'ACTIVE',
           // EMPLOYED BY the employer, WORKS AT the branch. The locum sits under
           // the second entity, so the group case is visible and so the
@@ -2895,6 +3005,31 @@ async function seedWorkforce(ids: Ids) {
       },
     });
 
+    /*
+     * THE ITEMISED DETAIL BEHIND THE NEW COLUMNS.
+     *
+     * The payslip lines above are what the ENGINE priced; these are the input
+     * rows the drawer lists under Earnings, each carrying where it came from.
+     * A figure with no input row shows in the register but has nothing to say
+     * for itself when somebody opens the person — which is the question the
+     * drawer exists to answer.
+     */
+    for (const entry of [
+      { key: 'manager', code: 'ALLOWANCE', label: 'Responsibility allowance', amount: 400, clinic: central.id },
+      { key: 'nurse', code: 'INCENTIVE', label: 'Procedure incentive', amount: 180, clinic: central.id },
+      { key: 'pharm', code: 'CLAIM_REIMBURSEMENT', label: 'Course fee reimbursement', amount: 145.6, clinic: branch.id },
+      { key: 'accounts', code: 'COMMISSION', label: 'Panel collections commission', amount: 420, clinic: branch.id },
+      { key: 'accounts', code: 'BONUS', label: 'Half-year bonus', amount: 500, clinic: branch.id },
+    ]) {
+      await tx.payrollInputEntry.create({
+        data: {
+          tenantId: tenant.id, clinicId: entry.clinic, staffId: staff[entry.key], period: payrollPeriod,
+          componentCode: entry.code, label: entry.label, amount: entry.amount,
+          createdByStaffId: staff.finance,
+        },
+      });
+    }
+
     // --- Payroll run, CALCULATED THROUGH THE REAL ENGINE -------------------
     //
     // Not hand-written figures. The seed calls the same code the service does,
@@ -2990,6 +3125,48 @@ async function seedWorkforce(ids: Ids) {
         // arithmetic check with "Does not add up" before anybody touched it.
         lines.push({ code: 'UNPAID_LEAVE', label: 'Unpaid leave (1 day)', kind: 'WAGE_REDUCTION', amount: rates.unpaidLeaveDailyCents / 100, liability: DEFAULT_COMPONENT_LIABILITY.UNPAID_LEAVE });
       }
+      /*
+       * THE EARNINGS THE REGISTER HAD NO DATA TO SHOW.
+       *
+       * Every column past Basic was empty for almost everybody, so a screen
+       * built to answer "how did this person get this net salary?" was being
+       * judged on a month where the answer was always "their salary". These
+       * four give the register a commission, a bonus, a reimbursed claim, a
+       * second incentive and a two-day wage reduction to draw.
+       */
+      if (profile.key === 'manager') {
+        lines.push({ code: 'UNPAID_LEAVE', label: 'Unpaid leave (2 days)', kind: 'WAGE_REDUCTION', amount: (rates.unpaidLeaveDailyCents * 2) / 100, liability: DEFAULT_COMPONENT_LIABILITY.UNPAID_LEAVE });
+        lines.push({ code: 'ALLOWANCE', label: 'Responsibility allowance', kind: 'EARNING', amount: 400, liability: DEFAULT_COMPONENT_LIABILITY.ALLOWANCE });
+      }
+      if (profile.key === 'nurse') {
+        lines.push({ code: 'INCENTIVE', label: 'Procedure incentive', kind: 'EARNING', amount: 180, liability: DEFAULT_COMPONENT_LIABILITY.INCENTIVE });
+        const ot = computeOvertime([{ label: 'Rest day (2.0x)', hours: 3, multiplier: 2 }], rates.overtimeHourlyCents);
+        lines.push({ code: 'OVERTIME', label: 'Overtime', kind: 'EARNING', amount: ot.totalCents / 100, liability: DEFAULT_COMPONENT_LIABILITY.OVERTIME });
+      }
+      if (profile.key === 'pharm') {
+        // A claim the clinic chose to reimburse WITH salary. It reaches gross
+        // once and only once — the materialiser's one-to-one constraint is
+        // what stops a claim being paid twice, and this is the row that
+        // demonstrates it on screen.
+        lines.push({ code: 'CLAIM_REIMBURSEMENT', label: 'Course fee reimbursement', kind: 'EARNING', amount: 145.6, liability: DEFAULT_COMPONENT_LIABILITY.CLAIM_REIMBURSEMENT });
+      }
+      if (profile.key === 'accounts') {
+        lines.push({ code: 'COMMISSION', label: 'Panel collections commission', kind: 'EARNING', amount: 420, liability: DEFAULT_COMPONENT_LIABILITY.COMMISSION });
+        lines.push({ code: 'BONUS', label: 'Half-year bonus', kind: 'EARNING', amount: 500, liability: DEFAULT_COMPONENT_LIABILITY.BONUS });
+      }
+
+      /**
+       * What the payslip lines say a component came to. See the note on the
+       * payroll line's columns below: this is what stops a column and its own
+       * component disagreeing.
+       */
+      const sumOf = (...codes: string[]) =>
+        Number(
+          lines
+            .filter((l) => codes.includes(l.code))
+            .reduce((total, l) => total + Number(l.amount), 0)
+            .toFixed(2),
+        );
 
       /*
        * THE SEED COMPUTES A PAYSLIP THE SAME WAY THE RUN DOES.
@@ -3050,17 +3227,36 @@ async function seedWorkforce(ids: Ids) {
           : null,
       );
 
+      /*
+       * PCB IS MISSING WHEN IT COULD NOT BE WORKED OUT — not when nobody
+       * typed it.
+       *
+       * This asked only "is there a hand-keyed figure for this person?", and
+       * so raised a BLOCKING exception for every employee the MTD engine had
+       * priced perfectly well. Seven of ten people in this clinic carried a
+       * red "Blocked" chip on the register for a monthly tax of RM0.00 —
+       * which is the correct answer at those salaries, not a missing one.
+       *
+       * The seeded world therefore contradicted the product: `payroll.service`
+       * raises PCB_MISSING only on `pcbCents === null`, so the first
+       * Recalculate on screen would have cleared seven blockers and told a
+       * different story from the one the fixture set up. It mirrors the
+       * service now — a hand-keyed figure completes a slip the engine could
+       * not price, and an engine that priced it needs no help.
+       */
       const pcb = pcbEntered[profile.key];
-      if (pcb === undefined) {
-        exceptions.push({
-          staffId, name, code: 'PCB_MISSING',
-          issue: 'Monthly tax (PCB) is missing. Record the tax profile and Kuwick calculates it, or enter the figure as a payroll input.',
-        });
-      } else {
-        slip.statutory.pcbCents = Math.round(pcb * 100);
-        slip.employeeDeductionCents += slip.statutory.pcbCents;
-        slip.netCents -= slip.statutory.pcbCents;
-        slip.incomplete = false;
+      if (slip.statutory.pcbCents === null) {
+        if (pcb === undefined) {
+          exceptions.push({
+            staffId, name, code: 'PCB_MISSING',
+            issue: 'Monthly tax (PCB) is missing. Record the tax profile and Kuwick calculates it, or enter the figure as a payroll input.',
+          });
+        } else {
+          slip.statutory.pcbCents = Math.round(pcb * 100);
+          slip.employeeDeductionCents += slip.statutory.pcbCents;
+          slip.netCents -= slip.statutory.pcbCents;
+          slip.incomplete = false;
+        }
       }
 
       await tx.payrollLine.create({
@@ -3104,11 +3300,26 @@ async function seedWorkforce(ids: Ids) {
             },
           } as never,
           basicSalary: profile.salary,
-          allowances: profile.key === 'counter' ? 250 : profile.key === 'counter2' ? 86.4 : 0,
-          overtimePay: Number(lines.find((l) => l.code === 'OVERTIME')?.amount ?? 0),
-          incentives: profile.key === 'resident' ? 260 : 0,
+          /*
+           * THE COLUMNS COME FROM THE LINES, not from a list of names.
+           *
+           * These were ternaries keyed by person — `profile.key === 'counter'
+           * ? 250 : ...` — restating figures that were already in `lines` two
+           * screens up. Adding an employee therefore put their allowance,
+           * incentive and bonus in NO column: the money still reached gross,
+           * so nothing failed, and it surfaced on the register as an
+           * unexplained residual in "Claims & other". Three of four new people
+           * were wrong that way before this was found.
+           *
+           * `lines` is the input the engine priced. Deriving from it means a
+           * component cannot be in the payslip and missing from its column.
+           */
+          allowances: sumOf('ALLOWANCE', 'ATTENDANCE_ALLOWANCE', 'MILEAGE'),
+          overtimePay: sumOf('OVERTIME'),
+          incentives: sumOf('INCENTIVE', 'COMMISSION'),
+          bonus: sumOf('BONUS'),
           grossPay: slip.grossCents / 100,
-          unpaidLeaveDeduction: profile.key === 'finance' ? rates.unpaidLeaveDailyCents / 100 : 0,
+          unpaidLeaveDeduction: sumOf('UNPAID_LEAVE'),
           epfEmployee: slip.statutory.epf.employeeCents === null ? null : slip.statutory.epf.employeeCents / 100,
           epfEmployer: slip.statutory.epf.employerCents === null ? null : slip.statutory.epf.employerCents / 100,
           socsoEmployee: slip.statutory.socso.employeeCents === null ? null : slip.statutory.socso.employeeCents / 100,
@@ -3124,8 +3335,13 @@ async function seedWorkforce(ids: Ids) {
           netPay: slip.netCents / 100,
           employerCost: slip.employerCostCents / 100,
           workedDays: 20,
-          unpaidDays: profile.key === 'finance' ? 1 : 0,
-          overtimeHours: profile.key === 'counter' ? 4 : 0,
+          // Derived the same way, from the same lines.
+          unpaidDays: rates.unpaidLeaveDailyCents > 0
+            ? Math.round((sumOf('UNPAID_LEAVE') * 100) / rates.unpaidLeaveDailyCents)
+            : 0,
+          overtimeHours: rates.overtimeHourlyCents > 0
+            ? Number(((sumOf('OVERTIME') * 100) / rates.overtimeHourlyCents).toFixed(2))
+            : 0,
           breakdown: {
             age,
             bases: { epf: slip.bases.epfCents / 100, socso: slip.bases.socsoCents / 100, eis: slip.bases.eisCents / 100 },
@@ -3238,7 +3454,7 @@ async function seedWorkforce(ids: Ids) {
       });
     }
 
-    console.log(`  workforce: 8 employees, 20 days attendance, leave, incentive run, payroll CALCULATED against corroborated MY statutory tables (${exceptions.length} exceptions)`);
+    console.log(`  workforce: ${profiles.filter((p) => !p.contractor).length} employees + ${profiles.filter((p) => p.contractor).length} contractor, 20 days attendance, leave, incentive run, payroll CALCULATED against corroborated MY statutory tables (${exceptions.length} exceptions)`);
 
   });
 }

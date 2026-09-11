@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { gotoAdmin, loginAdmin } from './support/admin';
 
 /**
- * THE SIX-SECTION HR ARCHITECTURE, AND EVERY URL IT ABSORBED.
+ * THE FIVE-SECTION HR ARCHITECTURE, AND EVERY URL IT ABSORBED.
  *
  * HR used to carry twelve top-level entries: Today, Employees, Timesheets,
  * Leave, Claims, Roster, Payroll, Doctor incentives, Locum sessions, Staff
@@ -10,15 +10,21 @@ import { gotoAdmin, loginAdmin } from './support/admin';
  * than of the work, and the owner who commissioned the system was still asking
  * why there were so many tabs.
  *
- * Six now, plus Settings kept apart because it is set up once and rarely
- * opened. Nothing was deleted — every old URL still resolves — and this spec
- * is the contract for both halves of that sentence.
+ * It went to six, and then to FIVE: Medical Benefits is a benefits workflow
+ * opened when a claim or an entitlement question comes up, not a place
+ * somebody goes weekly, and a permanent seat beside Payroll made it look like
+ * a sixth kind of monthly work. It moved under the section that owns the
+ * employee record — reached the same way Roster is reached from Attendance.
+ *
+ * Plus Settings, kept apart because it is set up once and rarely opened.
+ * Nothing was deleted — every old URL still resolves — and this spec is the
+ * contract for both halves of that sentence.
  */
 
-const SECTIONS = ['Overview', 'People', 'Time & Leave', 'Payroll', 'Medical Benefits', 'Reports'];
+const SECTIONS = ['Overview', 'Employees', 'Attendance & Leave', 'Payroll', 'Reports'];
 
 test.describe('the HR rail', () => {
-  test('offers six sections, with Settings apart from them', async ({ page }) => {
+  test('offers five sections, with Settings apart from them', async ({ page }) => {
     await loginAdmin(page);
     await gotoAdmin(page, '/admin/hr');
 
@@ -34,13 +40,14 @@ test.describe('the HR rail', () => {
     await loginAdmin(page);
     for (const [path, section] of [
       ['/admin/hr', 'Overview'],
-      ['/admin/hr/people', 'People'],
-      ['/admin/hr/time', 'Time & Leave'],
-      ['/admin/hr/time/roster', 'Time & Leave'],
-      ['/admin/hr/time/leave', 'Time & Leave'],
-      ['/admin/hr/time/claims', 'Time & Leave'],
+      ['/admin/hr/people', 'Employees'],
+      ['/admin/hr/time', 'Attendance & Leave'],
+      ['/admin/hr/time/roster', 'Attendance & Leave'],
+      ['/admin/hr/time/leave', 'Attendance & Leave'],
+      ['/admin/hr/time/claims', 'Attendance & Leave'],
       ['/admin/hr/payroll', 'Payroll'],
-      ['/admin/hr/benefits', 'Medical Benefits'],
+      // Benefits belongs to the employee record now, and lights it.
+      ['/admin/hr/benefits', 'Employees'],
       ['/admin/hr/reports', 'Reports'],
       // Settings lit Overview until the active-path resolution learned that a
       // section list is not the whole set of destinations.
@@ -50,7 +57,7 @@ test.describe('the HR rail', () => {
       ['/admin/hr/settings/payroll', 'Settings'],
       ['/admin/hr/settings/attendance', 'Settings'],
       // Hiring is a full page rather than a drawer, and it belongs to People.
-      ['/admin/hr/people/new', 'People'],
+      ['/admin/hr/people/new', 'Employees'],
     ] as const) {
       await gotoAdmin(page, path);
       await expect(page.locator('.kw-hubRail__item.is-active'), `${path} should light ${section}`).toHaveText(section);
@@ -65,13 +72,18 @@ test.describe('every URL the six sections absorbed', () => {
     // in people's bookmarks. A dead one teaches somebody the product moved on
     // without them.
     for (const [old, destination, heading] of [
-      ['/admin/hr/employees', '/admin/hr/people', 'People'],
+      ['/admin/hr/employees', '/admin/hr/people', 'Employees'],
       ['/admin/hr/attendance', '/admin/hr/time', 'Attendance'],
       ['/admin/hr/roster', '/admin/hr/time/roster', 'Roster'],
       ['/admin/hr/schedule', '/admin/hr/time/roster', 'Roster'],
       ['/admin/hr/leave', '/admin/hr/time/leave', 'Leave'],
       ['/admin/hr/requests', '/admin/hr/time/leave', 'Leave'],
       ['/admin/hr/claims', '/admin/hr/time/claims', 'Claims'],
+      // Readiness was a page listing who was not ready; it is now a status on
+      // each person's own register row, so the URL lands on the register.
+      ['/admin/hr/payroll/readiness', '/admin/hr/payroll', 'Payroll'],
+      // The all-runs archive is History, reached from beside the month picker.
+      ['/admin/hr/payroll/all', '/admin/hr/payroll/history', 'Payroll history'],
     ] as const) {
       await page.goto(old);
       await expect(page.locator('.kw-admin')).toBeVisible({ timeout: 30_000 });
@@ -116,7 +128,7 @@ test.describe('Settings is a landing, not a wall', () => {
   });
 });
 
-test.describe('Time & Leave is one section', () => {
+test.describe('Attendance & Leave is one section', () => {
   test('carries its four views, and each one is reachable from the others', async ({ page }) => {
     await loginAdmin(page);
     await gotoAdmin(page, '/admin/hr/time');
@@ -133,6 +145,6 @@ test.describe('Time & Leave is one section', () => {
     // was somebody meant to work, and did they?
     await views.filter({ hasText: 'Roster' }).click();
     await expect(page).toHaveURL(/\/admin\/hr\/time\/roster$/);
-    await expect(page.locator('.kw-hubRail__item.is-active')).toHaveText('Time & Leave');
+    await expect(page.locator('.kw-hubRail__item.is-active')).toHaveText('Attendance & Leave');
   });
 });
