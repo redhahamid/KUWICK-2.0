@@ -182,7 +182,22 @@ still resolves — the key and its links are untouched.
 
 `Overview` survives in Operation and Finance, where the ban does not reach.
 
-## 7. Not in this Piece
+## 7. Two inconsistencies left standing, deliberately
+
+Both are in Settings, which is Piece 2's subject. Neither is hidden by a test
+— the specs assert what the product actually does today.
+
+- **The card and the page it opens do not read alike.** "Payroll policies"
+  opens a page titled *Payroll rules*; "Attendance & leave policies" opens
+  *Attendance rules*; "Company & statutory" opens *Legal employers*. The card
+  names are the ones the restructure asked for; the page titles are older.
+- **Public Holidays is the one HR settings screen not built on `AdminShell`.**
+  It was written for Clinic Settings and draws `PageHeader`, so it has no
+  `.kw-admin` wrapper and its heading sits differently from the other five.
+  Its only live route is now `/admin/hr/settings/public-holidays`, so there is
+  nothing left to share it with.
+
+## 8. Not in this Piece
 
 `/admin/hr/incentives`, `/admin/hr/benefits` and `/admin/hr/locum` are still
 their own screens. They become tabs of Employees and Payroll in Pieces 3 and 4.
