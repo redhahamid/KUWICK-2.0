@@ -22,9 +22,17 @@ node apps/web/compose-side-by-side.mjs docs/design/hr-slate/kuwick-hr-settings-s
 
 ## What the container cannot show
 
-The kit's faces, Inter and Inter Tight, are loaded from Google Fonts by an
-`@import` at the top of `slate.css`. This container's outbound proxy resets
+The kit's faces, Inter and Inter Tight, are loaded from Google Fonts by a
+non-blocking preload in `index.html`. This container's outbound proxy resets
 that request (`net::ERR_CONNECTION_RESET`, verified with `document.fonts`), so
 every result here renders in Chromium's fallback sans. A browser with
 internet access loads the faces; the mockup PNGs were rendered by one that
 did, which is why their headings sit tighter than the results'.
+
+The load is non-blocking for a reason the browser gate found: the first
+version was an `@import` at the top of `slate.css`, which held first paint on
+EVERY page in the product — the stylesheet is imported app-wide — until the
+font server answered. On this network that was thirteen seconds a page, and
+four route walks timed out. Measured before and after the change:
+13,970 ms → 1,416 ms for the Settings landing, 13,953 ms → 1,001 ms for
+Operation.

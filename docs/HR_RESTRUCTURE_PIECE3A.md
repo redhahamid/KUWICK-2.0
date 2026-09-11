@@ -116,7 +116,7 @@ that was not cancelled; when there is none it is blank rather than a guess.
 | "checked … on 3 Sep 2026" | no date | `verifiedAt` is null in the UAT tenant; the code renders it when set |
 | Attendance & leave: "…annual and sick leave entitlement by years of service" | "…what counts as overtime" | there is no leave-policy screen; the card promises what the page delivers |
 | Payroll **2**, "**1** number missing", "EPF employer number" | 4, 2, "SOCSO, LHDN" | data — the UAT tenant's own figures |
-| Inter / Inter Tight | Chromium's fallback sans | this container's proxy resets the Google Fonts request; see the screenshot README |
+| Inter / Inter Tight | Chromium's fallback sans | this container's proxy resets the Google Fonts request; see the screenshot README, which also records why the load is non-blocking |
 
 ## 6. Copy
 
@@ -126,7 +126,20 @@ sets in uppercase at 11px with letter-spacing; the prompt and the kit disagree
 there and the kit wins on visuals. No "snapshot", "journey" or
 "materialisation" on the screen.
 
-## 7. Not in this piece
+## 7. What the browser gate caught
+
+The kit's faces were first loaded by an `@import` at the top of `slate.css`.
+That stylesheet is imported app-wide, and an `@import` holds the whole sheet
+— the layout with it — until the font server answers. On a network that
+resets the request, that was thirteen seconds on every page in the product,
+Operation included, and four route walks timed out at their three-minute
+limit. The load is now a non-blocking preload in `index.html` that swaps
+itself in when the file arrives and costs nothing when it does not: 13,970 ms
+became 1,416 ms for the Settings landing, and the walks pass again. A clinic
+whose internet is slow, or whose network blocks Google, gets the fallback
+face rather than a blank screen.
+
+## 8. Not in this piece
 
 Every other HR screen. The per-row switches on Payroll items. `DataTable`.
 Deleting the old HR components. Leave policies.

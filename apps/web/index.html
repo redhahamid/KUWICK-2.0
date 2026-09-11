@@ -5,6 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/kuwick-mark.png" />
     <title>Kuwick</title>
+      <!-- The HR module's faces (docs/design/hr-slate/kit.css), loaded WITHOUT
+         blocking the page. A plain stylesheet link — or an @import inside the
+         module's own CSS, which is where this started — holds first paint
+         until Google answers, and on a network that resets that request every
+         page in the product waited thirteen seconds before it could draw. The
+         preload swaps itself in once the file arrives; until then, and if it
+         never does, the fallback face is used. Only HR's CSS asks for these
+         families; other modules keep their own stack. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@600;700&family=Inter:wght@400;500;600&display=swap"
+      onload="this.onload=null;this.rel='stylesheet'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@600;700&family=Inter:wght@400;500;600&display=swap"
+      />
+    </noscript>
   </head>
   <body>
     <div id="root"></div>
