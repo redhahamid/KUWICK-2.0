@@ -1,0 +1,130 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Kuwick HR — Employees</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"><style>:root{--canvas:#F3F4F6;--surface:#FFFFFF;--line:#E4E7EB;--line2:#CBD1D8;--ink:#0F1A1E;--ink2:#4B5A63;--ink3:#8B979F;
+--slate:#16302B;--slate2:#1E3E37;--slate-txt:#B9CFC8;--teal:#0F8F7A;--teal-soft:#E0F4EF;--gold:#B7791F;--gold-soft:#FBF1DC;--red:#C2362E;--red-soft:#FCE6E4;--green:#1E7F45;--green-soft:#E1F3E7;--blue:#2D63B5;--blue-soft:#E4ECF9;
+--shadow:0 1px 2px rgba(15,26,30,.05),0 6px 20px -8px rgba(15,26,30,.12)}
+*{box-sizing:border-box}html,body{margin:0;background:var(--canvas);color:var(--ink);font:14px/1.5 Inter,system-ui,sans-serif;font-feature-settings:"tnum" 1,"cv11" 1}
+h1,h2,h3{font-family:"Inter Tight",Inter,sans-serif;margin:0}
+.top{height:56px;background:var(--slate);color:#fff;display:flex;align-items:center;padding:0 22px;gap:18px}
+.logo{font-family:"Inter Tight";font-weight:700;letter-spacing:.06em;font-size:15px}
+.top .crumbs{color:var(--slate-txt)}.top .crumbs b{color:#fff;font-weight:500}
+.top .right{margin-left:auto;display:flex;align-items:center;gap:14px;color:var(--slate-txt)}
+.clinic{border:1px solid rgba(255,255,255,.22);border-radius:20px;padding:4px 12px;color:#fff;font-weight:500}
+.avatar{width:32px;height:32px;border-radius:50%;background:var(--teal);color:#fff;display:grid;place-items:center;font-weight:600;font-size:12px}
+.shell{display:grid;grid-template-columns:232px 1fr;min-height:calc(100vh - 56px)}
+.side{background:var(--slate2);padding:18px 12px;display:flex;flex-direction:column;color:var(--slate-txt)}
+.side .module{font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:2px 12px 12px;color:#7FA59A;font-weight:600}
+.nav a{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:8px;color:var(--slate-txt);font-weight:500;text-decoration:none}
+.nav a svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.nav a.on{background:rgba(255,255,255,.12);color:#fff;box-shadow:inset 3px 0 0 var(--teal)}
+.nav .count{margin-left:auto;font-size:11px;background:var(--gold);color:#fff;border-radius:10px;padding:1px 7px;font-weight:600}
+.side .bottom{margin-top:auto;border-top:1px solid rgba(255,255,255,.1);padding-top:12px}
+.main{padding:28px 36px 56px;max-width:1260px}
+.page-head{display:flex;align-items:flex-end;gap:16px;margin-bottom:20px}
+.page-head .actions{margin-left:auto;display:flex;gap:8px}
+h1{font-size:26px;font-weight:700;letter-spacing:-.02em}.sub{color:var(--ink2)}
+.btn{border:1px solid var(--line2);background:var(--surface);color:var(--ink);border-radius:8px;padding:7px 13px;font:inherit;font-weight:500;cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--teal);border-color:var(--teal);color:#fff}.btn.sm{padding:5px 11px;font-size:13px}.btn.ghost{border-color:transparent;background:transparent;color:var(--teal)}
+.chip{display:inline-flex;align-items:center;gap:6px;border-radius:6px;padding:3px 9px;font-size:12px;font-weight:600;white-space:nowrap}
+.chip::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.chip.done,.chip.ok{background:var(--green-soft);color:var(--green)}.chip.attn{background:var(--gold-soft);color:var(--gold)}.chip.block{background:var(--red-soft);color:var(--red)}.chip.muted{background:var(--canvas);color:var(--ink2)}.chip.info{background:var(--blue-soft);color:var(--blue)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.panel-head{display:flex;align-items:center;gap:16px;padding:16px 22px;border-bottom:1px solid var(--line)}
+.panel-head h2{font-size:16px;font-weight:600}.panel-head .sub{font-size:13px}.panel-head .actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);padding:0 22px}
+.tabs a{padding:12px 14px;color:var(--ink2);font-weight:500;text-decoration:none;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs a.on{color:var(--ink);border-color:var(--teal)}.tabs a .n{margin-left:6px;font-size:11px;background:var(--canvas);border-radius:8px;padding:1px 6px;color:var(--ink2)}
+.toolbar{display:flex;gap:10px;align-items:center;padding:12px 22px;border-bottom:1px solid var(--line)}
+.search{display:flex;align-items:center;gap:8px;border:1px solid var(--line2);border-radius:8px;padding:6px 10px;width:280px;color:var(--ink3);font-size:13px}
+.seg{display:flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden}.seg span{padding:5px 11px;font-size:13px;color:var(--ink2)}.seg span.on{background:var(--slate);color:#fff}
+table{width:100%;border-collapse:collapse}th{text-align:left;font-size:12px;color:var(--ink3);font-weight:600;padding:10px 14px;border-bottom:1px solid var(--line);background:#FAFBFB}
+td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:middle}tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}td.strong{font-weight:600}
+.who{display:flex;align-items:center;gap:10px}.who .av{width:30px;height:30px;border-radius:50%;background:var(--teal-soft);color:var(--teal);display:grid;place-items:center;font-size:11px;font-weight:700}
+.who .n{font-weight:600}.who .r{font-size:12px;color:var(--ink2)}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 18px;box-shadow:var(--shadow)}
+.stat .l{font-size:12px;color:var(--ink2);font-weight:500}.stat .v{font-family:"Inter Tight";font-size:24px;font-weight:700;letter-spacing:-.02em;margin-top:2px}.stat .s{font-size:12px;color:var(--ink3)}
+.stat .v.gold{color:var(--gold)}.stat .v.red{color:var(--red)}.stat .v.teal{color:var(--teal)}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line)}
+.step{padding:12px 18px;display:flex;gap:10px;align-items:center;border-right:1px solid var(--line);color:var(--ink3)}.step:last-child{border-right:0}
+.step i{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--line2);display:grid;place-items:center;font-style:normal;font-size:11px;font-weight:700}
+.step.on{color:var(--ink);background:var(--teal-soft)}.step.on i{background:var(--teal);border-color:var(--teal);color:#fff}
+.step.done{color:var(--ink2)}.step.done i{background:var(--green);border-color:var(--green);color:#fff}
+.step b{display:block;font-weight:600}.step small{font-size:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px 14px;display:flex;flex-direction:column;gap:6px;box-shadow:var(--shadow);text-decoration:none;color:inherit;min-height:120px}
+.card h3{font-size:15px;font-weight:600}.card p{margin:0;color:var(--ink2);font-size:13px}.card .foot{margin-top:auto;display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--ink3)}
+.card .head{display:flex;align-items:center;gap:11px}.card .ic{width:34px;height:34px;border-radius:9px;background:var(--slate);color:#fff;display:grid;place-items:center}
+.card .ic svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+h2.sec{font-size:16px;font-weight:600;margin:22px 0 10px}
+.cal{display:grid;grid-template-columns:180px repeat(7,1fr);font-size:12px}
+.cal>div{padding:8px 10px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);min-height:40px}
+.cal .h{background:#FAFBFB;color:var(--ink3);font-weight:600}.cal .nm{font-weight:600;color:var(--ink)}
+.sh{display:inline-block;border-radius:4px;padding:2px 6px;font-weight:600;font-size:11px}
+.sh.am{background:var(--blue-soft);color:var(--blue)}.sh.pm{background:var(--teal-soft);color:var(--teal)}.sh.off{color:var(--ink3)}.sh.lv{background:var(--gold-soft);color:var(--gold)}.sh.ph{background:var(--canvas);color:var(--ink2)}
+.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden}.bar i{display:block;height:100%;background:var(--teal)}
+.amount{font-family:"Inter Tight";font-weight:700;font-size:15px}
+.i{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;vertical-align:-3px;margin-right:6px}
+.btn .i{margin-right:6px;width:14px;height:14px}.btn.icon{padding:6px 8px}.btn.icon .i{margin:0}
+.stat .l{display:flex;align-items:center;gap:6px}.stat .l .i{margin:0;color:var(--ink3)}
+.tabs a .i{margin-right:6px;width:14px;height:14px;vertical-align:-2px}
+.grid-tbl{width:100%;border-collapse:collapse}
+.grid-tbl th{position:sticky;top:0}
+.grid-tbl th.g,.grid-tbl td.g{background:#F5F6F7;color:var(--ink2)}
+.grid-tbl td.e{background:#fff}
+.grid-tbl td.auto{background:#F5F6F7;color:var(--ink)}
+.grid-tbl thead tr.grp th{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3);text-align:center;border-bottom:0;padding:8px 14px 2px;background:#FAFBFB}
+.grid-tbl thead tr.grp th.g{background:#F5F6F7}
+.inp{width:88px;border:1px solid var(--teal);border-radius:6px;padding:4px 6px;text-align:right;font:inherit;font-variant-numeric:tabular-nums;background:#fff;box-shadow:0 0 0 3px var(--teal-soft)}
+.inp.sm{width:60px}
+tr.editing td{background:#F4FBF9}
+.legend{display:flex;gap:18px;font-size:12px;color:var(--ink2);align-items:center}.legend i{display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid var(--line2);vertical-align:-2px;margin-right:6px}
+.legend i.e{background:#fff}.legend i.a{background:#F5F6F7}.legend i.ed{background:#F4FBF9;border-color:var(--teal)}
+.main{max-width:none}
+.grid-tbl{font-size:13px}.grid-tbl td,.grid-tbl th{padding:8px 9px;white-space:nowrap}
+.grid-tbl .who .r{display:none}.grid-tbl .who .av{width:26px;height:26px;font-size:10px}
+.grid-tbl .inp{width:78px;padding:3px 5px}.grid-tbl .inp.sm{width:52px}
+.grid-tbl .btn.sm{padding:4px 8px;font-size:12px}
+.page-head .sub{max-width:720px}
+.shell{grid-template-columns:232px minmax(0,1fr)}.main{min-width:0}
+.grid-tbl td:last-child,.grid-tbl th:last-child{}
+tr.editing td:last-child{background:#F4FBF9}
+.drawer{position:fixed;top:56px;right:0;bottom:0;width:440px;background:var(--surface);border-left:1px solid var(--line);box-shadow:-12px 0 30px -14px rgba(0,0,0,.25);display:flex;flex-direction:column;z-index:5}
+.drawer .dh{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}.drawer .dh h2{font-size:16px;font-weight:600}
+.drawer .db{padding:16px 20px;overflow:auto;flex:1}.drawer .df{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:8px;background:#FAFBFB}
+.kv2{display:grid;grid-template-columns:130px 1fr;gap:8px 12px;font-size:13px;margin-bottom:14px}.kv2 .k{color:var(--ink2)}.kv2 .v{font-weight:500}
+.rcpt{border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;gap:10px;align-items:center;margin-bottom:8px}
+.rcpt .th{width:52px;height:64px;border-radius:6px;background:repeating-linear-gradient(0deg,#EEF1F3 0 6px,#F8F9FA 6px 12px);border:1px solid var(--line2)}
+.rcpt b{display:block;font-size:13px}.rcpt span{font-size:12px;color:var(--ink3)}
+textarea.ta{width:100%;border:1px solid var(--line2);border-radius:8px;padding:8px 10px;font:inherit;min-height:70px;resize:vertical}
+.tl{border-left:2px solid var(--line);margin-left:6px;padding-left:14px;font-size:13px}.tl div{position:relative;margin-bottom:10px;color:var(--ink2)}.tl div::before{content:"";position:absolute;left:-19px;top:5px;width:8px;height:8px;border-radius:50%;background:var(--line2)}.tl div.on::before{background:var(--teal)}.tl b{color:var(--ink)}
+.menu{display:inline-flex;gap:2px}.menu .btn.sm{padding:4px 8px}
+.ts{color:var(--red);font-weight:600}.tg{color:var(--green);font-weight:600}.tn{color:var(--ink3)}
+.rate{display:grid;grid-template-columns:1fr auto auto auto;gap:0}.rate>div{padding:9px 14px;border-bottom:1px solid var(--line);font-size:13px}.rate .h{font-size:11px;color:var(--ink3);font-weight:600;background:#FAFBFB}.rate .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:500}
+.portal .side{display:none}.portal .shell{grid-template-columns:1fr}.portal .main{max-width:960px;margin:0 auto}
+.ptabs{display:flex;gap:6px;margin:-4px 0 22px}.ptabs a{padding:8px 14px;border-radius:20px;text-decoration:none;color:var(--ink2);font-weight:500;border:1px solid var(--line2);background:#fff}.ptabs a.on{background:var(--slate);color:#fff;border-color:var(--slate)}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px}.form label{font-size:12px;color:var(--ink2);font-weight:500;display:block;margin-bottom:4px}.form .f{border:1px solid var(--line2);border-radius:8px;padding:8px 10px;background:#fff;font-size:14px}.form .full{grid-column:1/-1}
+.drop{border:1.5px dashed var(--line2);border-radius:10px;padding:18px;text-align:center;color:var(--ink2);font-size:13px;background:#FAFBFB}
+.tabs2{display:flex;gap:4px;border-bottom:1px solid var(--line);padding:0 22px}.tabs2 a{padding:12px 14px;color:var(--ink2);font-weight:500;text-decoration:none;border-bottom:2px solid transparent;margin-bottom:-1px}.tabs2 a.on{color:var(--ink);border-color:var(--teal)}
+.fld{display:grid;grid-template-columns:200px 1fr;gap:10px 16px;padding:14px 22px;font-size:13px;border-bottom:1px solid var(--line)}.fld .k{color:var(--ink2);padding-top:7px}.fld .f{border:1px solid var(--line2);border-radius:8px;padding:7px 10px;background:#fff;max-width:340px}
+.eff{font-size:12px;color:var(--ink3)}
+.kv{display:grid;grid-template-columns:1fr auto;gap:6px 14px;padding:12px 22px;font-size:13px}.kv .k{color:var(--ink2)}.kv .v{font-weight:500;text-align:right;font-variant-numeric:tabular-nums}
+</style></head><body>
+<div class="top"><span class="logo">KUWICK</span><span class="crumbs">Administration <b>/ HR</b></span><div class="right"><span class="clinic">Klinik Contoh (UAT)</span><span>Dr Aisyah Rahman</span><span class="avatar">AR</span></div></div>
+<div class="shell"><aside class="side"><div class="module">HR &amp; payroll</div><nav class="nav"><a href="#" class="on"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>Employees</a><a href="#" class=""><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M8 15h4"/></svg>Payroll<span class=count>2</span></a><a href="#" class=""><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Attendance</a><a href="#" class=""><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Leave<span class=count>1</span></a><a href="#" class=""><svg viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5z"/><path d="M9 13h6M9 17h6"/></svg>Claims<span class=count>1</span></a><a href="#" class=""><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Reports</a></nav><div class="bottom nav"><a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>Settings</a></div></aside><main class="main"><div style="font-size:13px;color:var(--ink2);margin-bottom:10px"><a href="#" style="color:var(--teal);text-decoration:none;font-weight:500">← Employees</a> &nbsp;/&nbsp; Dr Meera Kaur</div>
+<div class="page-head"><div class="who" style="gap:14px"><span class="av" style="width:44px;height:44px;font-size:14px">MK</span><div><h1 style="font-size:22px">Dr Meera Kaur</h1><div class="sub">Resident medical officer · Permanent · KC-0003 · Joined 3 Mar 2022 · Contoh Central</div></div></div>
+<div class="actions"><span class="chip ok">Record complete</span><button class="btn"><svg class="i" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h4M9 13h6M9 17h6"/></svg>Payslips</button><button class="btn">⋯</button></div></div>
+<section class="panel"><div class="tabs2"><a href="#">Profile</a><a href="#" class="on">Employment &amp; salary</a><a href="#">Statutory</a><a href="#">Bank</a></div>
+<div class="panel-head"><div><h2>Salary</h2><div class="sub">Every change is dated. August payroll used the row in force on 1 Aug.</div></div><div class="actions"><button class="btn sm"><svg class="i" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5M12 8v4l3 2"/></svg>History</button><button class="btn sm primary"><svg class="i" viewBox="0 0 24 24"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M13 7l4 4"/></svg>Change salary</button></div></div>
+<table><thead><tr><th>In force from</th><th class="num">Basic (RM)</th><th>Reason</th><th>Changed by</th><th></th></tr></thead><tbody>
+<tr><td><b>1 Oct 2026</b> <span class="chip info">Upcoming</span></td><td class="num strong">10,000.00</td><td>Annual increment</td><td>Dr Aisyah Rahman · 9 Sep 2026</td><td><button class="btn sm"><svg class="i" viewBox="0 0 24 24"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M13 7l4 4"/></svg>Edit</button></td></tr>
+<tr><td><b>1 Mar 2025</b> <span class="chip ok">Current</span></td><td class="num strong">9,500.00</td><td>Confirmation</td><td>Rohana Yusof · 20 Feb 2025</td><td></td></tr>
+<tr><td>3 Mar 2022</td><td class="num">8,500.00</td><td>Joined</td><td>Rohana Yusof</td><td></td></tr></tbody></table>
+<div class="panel-head" style="border-top:1px solid var(--line)"><div><h2>Recurring items</h2><div class="sub">Paid every month automatically until an end date. One-off items go in the payroll grid instead.</div></div><div class="actions"><button class="btn sm primary"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add recurring item</button></div></div>
+<table><thead><tr><th>Item</th><th class="num">Amount (RM)</th><th>From</th><th>Until</th><th>EPF / SOCSO / PCB</th><th></th></tr></thead><tbody>
+<tr><td><b>Allowance</b> — housing</td><td class="num">800.00</td><td>1 Mar 2025</td><td>—</td><td><span class="chip ok" style="padding:3px 6px"></span> <span class="chip ok" style="padding:3px 6px"></span> <span class="chip ok" style="padding:3px 6px"></span></td><td><button class="btn sm"><svg class="i" viewBox="0 0 24 24"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M13 7l4 4"/></svg>Edit</button></td></tr>
+<tr><td><b>Allowance</b> — phone</td><td class="num">100.00</td><td>1 Jan 2026</td><td>—</td><td><span class="chip block" style="padding:3px 6px"></span> <span class="chip block" style="padding:3px 6px"></span> <span class="chip ok" style="padding:3px 6px"></span></td><td><button class="btn sm"><svg class="i" viewBox="0 0 24 24"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M13 7l4 4"/></svg>Edit</button></td></tr>
+<tr><td><b>Advance recovery</b></td><td class="num" style="color:var(--red)">−200.00</td><td>1 Sep 2026</td><td>1 Dec 2026</td><td>—</td><td><button class="btn sm"><svg class="i" viewBox="0 0 24 24"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M13 7l4 4"/></svg>Edit</button></td></tr></tbody></table>
+<div class="panel-head" style="border-top:1px solid var(--line)"><div><h2>Employment</h2></div><div class="actions"><button class="btn sm"><svg class="i" viewBox="0 0 24 24"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M13 7l4 4"/></svg>Edit</button></div></div>
+<div class="kv" style="grid-template-columns:1fr auto 1fr auto;padding-bottom:20px"><span class="k">Type</span><span class="v">Permanent</span><span class="k">Working days</span><span class="v">Mon – Sat, 26-day divisor</span><span class="k">Position</span><span class="v">Resident medical officer</span><span class="k">Annual leave</span><span class="v">16 days (4+ years)</span><span class="k">Branch</span><span class="v">Contoh Central</span><span class="k">Reports to</span><span class="v">Dr Aisyah Rahman</span><span class="k">Confirmed</span><span class="v">3 Jun 2022</span><span class="k">Status</span><span class="v">Active · <a href="#" style="color:var(--red);font-weight:500">Mark as resigned</a></span></div>
+</section></main></div></body></html>
