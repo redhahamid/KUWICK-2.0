@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Avatar, Dropdown, Layout, Menu, Space, Typography } from 'antd';
+import { Avatar, Dropdown, Layout, Menu, Space, Tabs, Typography } from 'antd';
 import {
   AppstoreOutlined,
   ArrowLeftOutlined,
@@ -9,6 +9,7 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { ADMIN_CATEGORIES } from '../../admin/adminNav';
 import { useAuthStore } from '../../core/auth-store';
 import { useClinicTimeZoneSync } from '../../core/hooks/useClinicTimeZone';
 import { canViewDispensary } from '../../clinical/dispensary/dispensaryAccess';
@@ -105,6 +106,17 @@ export function AppLayout() {
   // across to the other hubs rather than stranding somebody in it.
   const inAdmin = location.pathname.startsWith('/admin');
   const inHub = inManagement || inSettings || inAdmin;
+  /*
+   * HR WEARS SLATE, AND CARRIES THE MODULE TABS.
+   *
+   * One header serves the whole product, so it is not rebuilt for one module:
+   * on HR routes it takes a class and one extra element, and everywhere else
+   * it renders exactly as it did. The tabs are here rather than under the page
+   * title because the Slate mockups have no second row — and dropping them
+   * would mean you could not reach Finance from HR without going back to a
+   * hub, which every other screen promises you can.
+   */
+  const inAdminHr = location.pathname.startsWith('/admin/hr');
 
   const handleLogout = () => {
     clearAuth();
@@ -187,7 +199,7 @@ export function AppLayout() {
     <Layout style={{ height: '100vh', overflow: 'hidden' }}>
       <Header
         style={{ display: 'flex', alignItems: 'center', gap: 16, height: 54, lineHeight: '54px' }}
-        className="kw-app-header kw-app-header-navy"
+        className={`kw-app-header kw-app-header-navy${inAdminHr ? ' kw-hrSlateHeader' : ''}`}
       >
         <img src="/kuwick-logo.png" alt="Kuwick" style={{ height: 22, flexShrink: 0 }} />
 
@@ -202,13 +214,32 @@ export function AppLayout() {
             </Link>
             {/* minWidth 0 so this truncates instead of pushing the user menu
                 off the right edge of a phone, where it was unreachable. */}
-            <Text strong style={{ flex: 1, minWidth: 0 }} ellipsis>
-              {/* Each hub names itself. Administration read "Management" here,
-                  which is a different area with different screens — a header
-                  that mislabels where you are is how somebody reports a bug
-                  against the wrong module. */}
-              {inSettings ? 'Clinic Settings' : inAdmin ? 'Administration' : 'Management'}
-            </Text>
+            {inAdminHr ? (
+              <span className="kw-app-header-crumbs" style={{ flexShrink: 0 }}>
+                Administration <b>/ HR</b>
+              </span>
+            ) : (
+              <Text strong style={{ flex: 1, minWidth: 0 }} ellipsis>
+                {/* Each hub names itself. Administration read "Management" here,
+                    which is a different area with different screens — a header
+                    that mislabels where you are is how somebody reports a bug
+                    against the wrong module. */}
+                {inSettings ? 'Clinic Settings' : inAdmin ? 'Administration' : 'Management'}
+              </Text>
+            )}
+            {inAdminHr ? (
+              <Tabs
+                className="hr-modules"
+                activeKey="hr"
+                onChange={(key) => {
+                  const category = ADMIN_CATEGORIES.find((entry) => entry.key === key);
+                  if (category) navigate(category.landing ?? category.items[0].path);
+                }}
+                items={ADMIN_CATEGORIES.map((category) => ({ key: category.key, label: category.label }))}
+                size="small"
+                tabBarStyle={{ marginBottom: 0 }}
+              />
+            ) : null}
           </>
         )}
 

@@ -1694,6 +1694,8 @@ export interface ClaimImportBatchRow {
 // ===========================================================================
 
 export interface LegalEmployerRow {
+  /** Last edited, for the Settings card that says when. */
+  updatedAt: string;
   id: string;
   name: string;
   registrationNo: string | null;
@@ -1739,6 +1741,8 @@ export interface SalaryHistoryRow {
 }
 
 export interface PayComponentRow {
+  /** Last edited, for the Settings card that says when. */
+  updatedAt: string;
   id: string;
   code: string;
   name: string;

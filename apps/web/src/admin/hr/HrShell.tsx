@@ -1,0 +1,148 @@
+import { useMemo, type ReactElement } from 'react';
+import { ConfigProvider, Select } from 'antd';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import dayjs from 'dayjs';
+import { ADMIN_CATEGORIES } from '../adminNav';
+import { useClinicFilter } from '../../core/hooks/useClinicFilter';
+import { usePayrollReadiness, useWorkforceToday } from '../hooks/useAdmin';
+import {
+  IconCalendar,
+  IconClaims,
+  IconClock,
+  IconEmployees,
+  IconPayroll,
+  IconReports,
+  IconSettings,
+} from './ui/icons';
+import './ui/slate.css';
+
+/**
+ * THE HR MODULE'S OWN SHELL.
+ *
+ * Slate, because HR is where somebody spends a morning: a workspace reads as
+ * one place when its chrome stays put, and the four modules that are pages you
+ * glance at keep the shell they have (`HubShell`). Nothing here can reach them.
+ *
+ * The five module tabs are NOT here. They are in the app header, where the
+ * mockups put them, so this shell draws exactly one thing: which part of HR
+ * you are in.
+ */
+const ICONS: Record<string, () => ReactElement> = {
+  '/admin/hr/employees': IconEmployees,
+  '/admin/hr/payroll': IconPayroll,
+  '/admin/hr/attendance': IconClock,
+  '/admin/hr/leave': IconCalendar,
+  '/admin/hr/claims': IconClaims,
+  '/admin/hr/reports': IconReports,
+  '/admin/hr/settings': IconSettings,
+};
+
+export function HrShell() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
+
+  const hr = ADMIN_CATEGORIES.find((category) => category.key === 'hr');
+  const items = hr?.items ?? [];
+  const settings = hr?.settings;
+
+  /*
+   * WHICH ENTRY IS LIT.
+   *
+   * Exact first, because two entries can differ only by a query string. Then
+   * the LONGEST entry path that is a segment prefix of the route, so a payroll
+   * run at `/admin/hr/payroll/:id` lights Payroll rather than falling back to
+   * the first seat. Absorbed URLs light the entry that absorbed them.
+   */
+  const activePath = useMemo(() => {
+    const all = [...items, ...(settings ? [settings] : [])].flatMap((item) =>
+      [item.path, ...(item.covers ?? [])].map((path) => ({ path, owner: item.path })),
+    );
+    const exact = all.find((entry) => entry.path === location.pathname);
+    if (exact) return exact.owner;
+    return all
+      .filter((entry) => location.pathname === entry.path || location.pathname.startsWith(`${entry.path}/`))
+      .sort((a, b) => b.path.length - a.path.length)[0]?.owner;
+  }, [items, settings, location.pathname]);
+
+  /*
+   * A NUMBER IN THE RAIL MEANS SOMEBODY IS WAITING.
+   *
+   * Gold, and only for the three seats where a person has to decide something:
+   * a payroll row that would hold up approval, a leave request, a claim. No
+   * count on Employees or Reports — nothing there waits on a decision.
+   */
+  const period = dayjs().format('YYYY-MM');
+  const today = useWorkforceToday(clinicId);
+  const readiness = usePayrollReadiness({ period, clinicId });
+  const counts: Record<string, number> = {
+    '/admin/hr/payroll': readiness.data?.summary.withBlockers ?? 0,
+    '/admin/hr/leave': today.data?.pendingLeaveApprovals ?? 0,
+    '/admin/hr/claims': today.data?.pendingClaims ?? 0,
+  };
+
+  const railItem = (path: string, label: string, apart = false) => {
+    const Icon = ICONS[path];
+    const count = counts[path] ?? 0;
+    return (
+      <button
+        key={path}
+        type="button"
+        className={`kw-hubRail__item${apart ? ' kw-hubRail__item--settings' : ''}${path === activePath ? ' is-active' : ''}`}
+        aria-current={path === activePath ? 'page' : undefined}
+        onClick={() => navigate(path)}
+      >
+        {Icon ? <Icon /> : null}
+        {/* The label is its own element so a test can read the NAME of the
+            section without the waiting-count that sits beside it. */}
+        <span className="hr-side__label">{label}</span>
+        {count > 0 ? <span className="hr-side__count">{count}</span> : null}
+      </button>
+    );
+  };
+
+  return (
+    <ConfigProvider
+      theme={{
+        // antd inside HR follows the kit: teal is the action colour, and the
+        // radius and control height match the hand-drawn components beside it.
+        token: { colorPrimary: '#0F8F7A', colorLink: '#0F8F7A', borderRadius: 8, fontFamily: 'Inter, system-ui, sans-serif' },
+      }}
+    >
+      <div className="kw-hrSlate">
+        <div className="hr-shell">
+          <aside className="hr-side">
+            <span className="kw-hubRail__heading">HR &amp; payroll</span>
+            {showSelector ? (
+              /* A group-level person has no home clinic, and every branch-scoped
+                 screen answers with zeros until they pick one. The mockups have
+                 no picker because they are drawn for a single branch. */
+              <div style={{ padding: '0 12px 12px' }}>
+                <Select
+                  size="small"
+                  value={clinicId ?? ''}
+                  onChange={(value) => setClinicId(value || undefined)}
+                  style={{ width: '100%' }}
+                  aria-label="Branch"
+                  options={[
+                    { value: '', label: 'All branches' },
+                    ...(clinics ?? []).map((clinic) => ({ value: clinic.id, label: clinic.name })),
+                  ]}
+                />
+              </div>
+            ) : null}
+            <nav aria-label="HR sections">{items.map((item) => railItem(item.path, item.label))}</nav>
+            {settings ? (
+              <div className="hr-side__bottom">
+                <nav aria-label="HR settings">{railItem(settings.path, settings.label, true)}</nav>
+              </div>
+            ) : null}
+          </aside>
+          <main className="hr-main">
+            <Outlet />
+          </main>
+        </div>
+      </div>
+    </ConfigProvider>
+  );
+}

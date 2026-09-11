@@ -1,82 +1,116 @@
-import { Button } from 'antd';
+import type { ReactElement, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
-import { StatStrip } from '../components/StatStrip';
-import { StatusChip } from '../components/Chip';
+import dayjs from 'dayjs';
 import {
+  useEmployees,
   useLegalEmployers,
   usePayComponents,
   usePayrollApprovalPolicy,
+  usePayrollRuns,
   useStatutoryRuleSets,
 } from '../hooks/useAdmin';
+import { usePublicHolidays } from '../../hr/hooks/usePublicHolidays';
+import { useClinicFilter } from '../../core/hooks/useClinicFilter';
+import { HrPage, Panel, PanelHead, StatusChip, type ChipTone } from './ui';
+import {
+  IconCalendar,
+  IconClock,
+  IconCompany,
+  IconList,
+  IconOpeningBalances,
+  IconSliders,
+} from './ui/icons';
 
 /**
- * SETTINGS — a landing, not a wall.
+ * SETTINGS — set up once, then left alone.
  *
- * What was here was one page carrying the setup checklist, the company
- * registration table, the approval rule, the attendance rules and an
- * "Advanced" list of links — about two thousand pixels of configuration, all
- * of it presented at once to somebody who came to change one thing.
+ * Two questions, in the order a clinic asks them. "Can I run a live payroll
+ * yet?" is the checklist at the top, and it is five things, not six: the bank
+ * payment file is not this clinic's to settle — no bank format is on record —
+ * so it sits below the line as optional rather than in a denominator nobody
+ * can ever finish.
  *
- * Settings sits outside the six workflow sections deliberately: nothing in it
- * is part of paying somebody this month. So the landing answers the two
- * questions somebody actually arrives with — "is this clinic set up?" and
- * "where do I change X?" — and each configuration area keeps its own page.
- *
- * THE CHECKLIST IS THE SCREEN, not a decoration on it. A clinic that cannot
- * see which of the six is outstanding discovers the answer on pay day.
+ * "Where do I change X?" is the six cards. Each card opens a page that calls
+ * itself the same thing, and a unit guard fails the build if that ever stops
+ * being true.
  */
 export function HrSettingsPage() {
+  const { clinicId } = useClinicFilter();
   const employers = useLegalEmployers();
   const components = usePayComponents();
   const statutory = useStatutoryRuleSets();
   const approval = usePayrollApprovalPolicy();
+  const holidays = usePublicHolidays();
+  const runs = usePayrollRuns({ clinicId });
+  const employees = useEmployees({ clinicId });
 
   const employerRows = employers.data ?? [];
-  const componentCount = components.data?.components?.length ?? 0;
-  const verified = (statutory.data ?? []).some((set) => set.verified);
+  const componentRows = components.data?.components ?? [];
+  const componentCount = componentRows.length;
+  const employeeCount = (employees.data ?? []).filter((row) => row.active).length;
+  const rateSets = statutory.data ?? [];
+  const checked = rateSets.find((set) => set.verified) ?? null;
 
   // An employer that cannot file is an employer that cannot pay: EPF, SOCSO,
   // EIS and PCB submissions are all made by an entity, and one missing number
   // stops all four.
+  const missingNumbers = employerRows.flatMap((row) =>
+    [
+      !row.epfEmployerNo ? 'EPF' : null,
+      !row.socsoEmployerNo ? 'SOCSO' : null,
+      !row.lhdnEmployerNo ? 'LHDN' : null,
+    ].filter((value): value is string => Boolean(value)),
+  );
+  const presentNumbers = ['EPF', 'SOCSO', 'LHDN'].filter((scheme) => !missingNumbers.includes(scheme));
   const incompleteEmployers = employerRows.filter(
     (row) => !row.epfEmployerNo || !row.socsoEmployerNo || !row.lhdnEmployerNo,
   );
 
-  /*
-   * EVERY STEP OPENS SOMEWHERE, AND ONE OF THEM IS NOT A STEP.
-   *
-   * Three of the six had no button at all. "What you pay people" had nowhere
-   * to go because the pay components had no screen; they have one now. "Check
-   * the statutory rates" told a clinic that payroll stays in test mode until
-   * somebody checks the tables, without saying where the tables are. And
-   * "Bank payment file" is not something this clinic can do: no bank's format
-   * is on record, so it was an item nobody could ever tick, sitting in a
-   * denominator and making a finished setup read "5 of 6".
-   *
-   * It stays visible — a clinic asking "can Kuwick write my bank file?"
-   * deserves the answer — but as OPTIONAL, outside the count.
-   */
+  const thisYear = dayjs().year();
+  const holidaysThisYear = (holidays.data ?? []).filter((row) => dayjs(row.date).year() === thisYear).length;
+
+  /** The month Kuwick first paid anybody here — what "opening balances" is measured against. */
+  const firstRunPeriod = (runs.data ?? [])
+    .filter((row) => row.status !== 'CANCELLED')
+    .map((row) => row.period)
+    .sort()[0];
+
+  const changedOn = (dates: (string | undefined)[]) => {
+    const sorted = dates.filter((date): date is string => Boolean(date)).sort();
+    const latest = sorted.length > 0 ? sorted[sorted.length - 1] : undefined;
+    return latest ? `Changed ${dayjs(latest).format('D MMM')}` : null;
+  };
+
   type SetupStep = {
     key: string;
     title: string;
+    detail: ReactNode;
+    /** The word or two that is outstanding, shown beside the progress ring. */
+    outstanding?: string;
     done: boolean;
-    detail: string;
     to: string | null;
     optional?: true;
   };
+
   const steps: SetupStep[] = [
     {
       key: 'company',
-      title: 'Your company',
+      title: 'Company & statutory numbers',
       done: employerRows.length > 0 && incompleteEmployers.length === 0,
+      outstanding: missingNumbers.length > 0 ? `${missingNumbers[0]} employer number` : 'A legal employer',
       detail:
         employerRows.length === 0
           ? 'No legal employer is recorded. Nothing can be filed or paid without one.'
           : incompleteEmployers.length > 0
-            ? `${incompleteEmployers.map((row) => row.name).join(', ')} ${
-                incompleteEmployers.length === 1 ? 'is' : 'are'
-              } missing an EPF, SOCSO or LHDN number.`
+            ? (
+                <>
+                  {incompleteEmployers.map((row) => row.name).join(', ')} —{' '}
+                  <em>
+                    {missingNumbers.join(', ')} employer {missingNumbers.length === 1 ? 'number' : 'numbers'} missing.
+                  </em>
+                  {presentNumbers.length > 0 ? ` ${presentNumbers.join(' and ')} ${presentNumbers.length === 1 ? 'is' : 'are'} in.` : ''}
+                </>
+              )
             : `${employerRows.length} employer${employerRows.length === 1 ? '' : 's'} with registration, EPF, SOCSO and LHDN numbers.`,
       to: '/admin/hr/settings/company',
     },
@@ -85,32 +119,40 @@ export function HrSettingsPage() {
       title: 'How pay is worked out',
       done: true,
       detail:
-        'Overtime on a 26-day month, unpaid leave on calendar days. Frozen onto every run, so a later change cannot reprice a past month.',
+        'Overtime on a 26-day month. Unpaid leave on calendar days. Frozen into each run, so a later change cannot reprice a past month.',
       to: '/admin/hr/settings/payroll',
     },
     {
       key: 'components',
-      title: 'What you pay people',
+      title: 'Payroll items',
       done: componentCount > 0,
+      outstanding: 'Pay items',
       detail:
         componentCount > 0
-          ? `${componentCount} kinds of pay and deduction, from basic salary to mileage.`
-          : 'No pay components are configured, so payroll cannot classify anything it pays.',
+          ? `${componentCount} items, from basic salary to mileage. Each one says what it counts towards.`
+          : 'No pay items are set up, so payroll cannot classify anything it pays.',
       to: '/admin/hr/settings/payroll-items',
     },
     {
       key: 'employees',
-      title: 'Your employees',
-      done: true,
-      detail: 'Salary, bank account and statutory details, per person.',
+      title: 'Employees',
+      done: employeeCount > 0,
+      outstanding: 'Somebody to pay',
+      detail:
+        employeeCount > 0
+          ? `${employeeCount} employees with salary, bank account and statutory details.`
+          : 'Nobody is on the payroll yet.',
       to: '/admin/hr/employees',
     },
     {
       key: 'rates',
-      title: 'Check the statutory rates',
-      done: verified,
-      detail: verified
-        ? 'The EPF, SOCSO and EIS tables in force have been checked against KWSP and PERKESO.'
+      title: 'Statutory rates checked',
+      done: Boolean(checked),
+      outstanding: 'A check against KWSP and PERKESO',
+      detail: checked
+        ? `EPF, SOCSO and EIS tables in force, checked against KWSP and PERKESO${
+            checked.verifiedAt ? ` on ${dayjs(checked.verifiedAt).format('D MMM YYYY')}` : ''
+          }.`
         : 'EPF, SOCSO and EIS tables are loaded but unchecked against KWSP and PERKESO. Until somebody checks them, payroll stays in test mode and no run may be paid or filed.',
       to: '/admin/hr/settings/payroll',
     },
@@ -118,145 +160,162 @@ export function HrSettingsPage() {
       key: 'bank',
       title: 'Bank payment file',
       done: false,
-      detail:
-        'Not available. No bank’s format is on record, so what downloads is a listing for keying at the bank’s own portal.',
-      to: null,
       optional: true,
+      detail:
+        "No bank format on record. Payroll downloads a listing you key in at the bank's own portal.",
+      to: null,
     },
   ];
 
   const required = steps.filter((step) => !step.optional);
   const complete = required.filter((step) => step.done).length;
+  const outstanding = required.find((step) => !step.done);
+  const headline =
+    complete === required.length ? 'All done' : complete === required.length - 1 ? 'One to go' : `${required.length - complete} to go`;
 
-  /*
-   * SIX CARDS, IN THE ORDER A CLINIC SETS THEM UP.
-   *
-   * The set changed rather than merely being renamed. "Who can do what" left:
-   * roles are product-wide, not HR's, and having them in two places meant two
-   * screens could disagree about who may approve a payroll. "Leave policies"
-   * pointed at the Leave SCREEN, which is where leave is decided, not where
-   * its policy is written — it joins Attendance rules, because a clinic sets
-   * both on the same afternoon.
-   *
-   * "Payroll items" is new as a place. The seventeen pay components have
-   * existed since the engine was built and had no screen at all: Payroll rules
-   * printed the sentence "17 pay components are configured" and stopped.
-   */
-  const areas = [
+  const areas: { title: string; description: string; to: string; icon: ReactElement; tone: ChipTone; state: string; meta: string | null }[] = [
     {
       title: 'Company & statutory',
-      description: 'The entity that employs, files and pays. A branch is where the work happens; it files nothing.',
+      description: 'The entity that employs, files and pays. Its EPF, SOCSO, EIS and LHDN numbers.',
       to: '/admin/hr/settings/company',
-      state: incompleteEmployers.length > 0 ? ('attention' as const) : ('ok' as const),
+      icon: <IconCompany />,
+      tone: incompleteEmployers.length > 0 ? 'attn' : 'done',
+      state:
+        incompleteEmployers.length > 0
+          ? `${missingNumbers.length} number${missingNumbers.length === 1 ? '' : 's'} missing`
+          : 'All numbers on file',
+      meta: `${employerRows.length} employer${employerRows.length === 1 ? '' : 's'}`,
     },
     {
       title: 'Payroll items',
-      description: 'What the clinic can pay or deduct, and what each one counts towards.',
+      description: 'What the clinic can pay or deduct, and whether each counts for EPF, SOCSO, EIS, PCB and HRD.',
       to: '/admin/hr/settings/payroll-items',
-      state: 'ok' as const,
+      icon: <IconList />,
+      tone: componentCount > 0 ? 'done' : 'attn',
+      state: componentCount > 0 ? `${componentCount} in use` : 'None set up',
+      meta: changedOn(componentRows.map((row) => row.updatedAt)),
     },
     {
       title: 'Payroll policies',
-      description: 'Who may approve a run, what counts as pay, and how overtime and unpaid leave are priced.',
+      description: 'Who may approve a run, how overtime and unpaid leave are priced, cut-off day.',
       to: '/admin/hr/settings/payroll',
-      state: 'ok' as const,
+      icon: <IconSliders />,
+      tone: approval.data ? 'done' : 'muted',
+      state: approval.data ? 'Set' : 'Not set',
+      meta: null,
     },
     {
       title: 'Attendance & leave policies',
-      description: 'The grace period before somebody is late, and what counts as a full day.',
+      description: 'Grace period, what counts as a full day, and what counts as overtime.',
       to: '/admin/hr/settings/attendance-leave',
-      state: 'ok' as const,
+      icon: <IconClock />,
+      tone: 'done',
+      state: 'Set',
+      meta: null,
     },
     {
       title: 'Public holidays',
-      description: 'The days the clinic is closed, which attendance and leave both read.',
+      description: 'Days the clinic is closed. Attendance and leave both read from this list.',
       to: '/admin/hr/settings/public-holidays',
-      state: 'ok' as const,
+      icon: <IconCalendar />,
+      tone: holidaysThisYear > 0 ? 'done' : 'attn',
+      state: `${holidaysThisYear} for ${thisYear}`,
+      meta: holidaysThisYear > 0 ? null : 'Add the Malaysia list',
     },
     {
       title: 'Opening balances',
-      description: 'Year-to-date figures for a clinic joining Kuwick part-way through a tax year.',
+      description: 'Year-to-date pay and deductions for a clinic joining Kuwick part-way through the year.',
       to: '/admin/hr/settings/opening-balances',
-      state: 'ok' as const,
+      icon: <IconOpeningBalances />,
+      tone: 'muted',
+      state: firstRunPeriod && dayjs(firstRunPeriod).month() > 0 ? 'Check these' : 'Not needed',
+      // A clinic that started in January has nothing to carry in. Blank rather
+      // than a guess when Kuwick has not paid anybody here yet.
+      meta: firstRunPeriod ? `Started ${dayjs(firstRunPeriod).format('MMM YYYY')}` : null,
     },
   ];
 
+  const error = [employers, components, statutory, approval].find((query) => query.error)?.error;
+
   return (
-    <AdminShell
-      error={firstError(employers, components, statutory, approval)}
+    <HrPage
       title="Settings"
-      subtitle="Set up once, then leave alone. Nothing here is part of running a monthly payroll."
+      sub="Set up once. Come back when the clinic changes something, not every month."
+      error={error instanceof Error ? error.message : null}
     >
-      {!verified ? (
-        <AdminNotice tone="warn">
-          <strong>Statutory rates are loaded but unchecked</strong> against KWSP's and PERKESO's own schedules. The last thing between this clinic and live payroll.
-        </AdminNotice>
-      ) : null}
-
-      <StatStrip
-        stats={[
-          { label: 'Setup complete', value: `${complete} of ${required.length}`, tone: complete === required.length ? 'good' : 'warn' },
-          { label: 'Legal employers', value: employerRows.length, tone: incompleteEmployers.length > 0 ? 'warn' : 'good' },
-          { label: 'Pay components', value: componentCount },
-          {
-            label: 'Statutory rates',
-            value: <span className="kw-stat__word">{verified ? 'Checked' : 'Unchecked'}</span>,
-            tone: verified ? 'good' : 'warn',
-          },
-        ]}
-      />
-
-      <AdminSection
-        title={`One-time setup — ${complete} of ${required.length} complete`}
-        description="Five things to settle before Kuwick can run live payroll for this clinic, and one that is not this clinic’s to settle."
-      >
-        <div className="kw-setupList">
-          {steps.map((step) => (
-            <div key={step.key} className="kw-setupList__row">
-              {/* Numbered 1-5 by POSITION AMONG THE REQUIRED, so the optional
-                  row does not wear a "6" that nothing counts. */}
-              <span className={`kw-setupList__mark kw-setupList__mark--${step.done ? 'done' : 'todo'}`}>
-                {step.optional ? '·' : step.done ? '✓' : required.indexOf(step) + 1}
+      <Panel>
+        <PanelHead
+          title="Before the first live payroll"
+          sub={`${required.length} things to settle. Kuwick blocks a live run until all ${required.length} are done.`}
+          actions={
+            <div className="hr-progress">
+              <span
+                className="hr-ring"
+                style={{
+                  background: `conic-gradient(var(--hr-green) 0 ${(complete / required.length) * 360}deg, var(--hr-gold) ${
+                    (complete / required.length) * 360
+                  }deg 360deg)`,
+                }}
+              >
+                <i>
+                  {complete}/{required.length}
+                </i>
               </span>
-              <div className="kw-setupList__body">
-                <div className="kw-setupList__title">{step.title}</div>
-                <div className="kw-setupList__detail">{step.detail}</div>
-              </div>
-              <div className="kw-setupList__action">
-                {step.optional ? (
-                  <StatusChip tone="neutral">Optional</StatusChip>
-                ) : step.done ? (
-                  <StatusChip tone="ok" dot>
-                    Done
-                  </StatusChip>
-                ) : null}
-                {step.to ? (
-                  <Link to={step.to}>
-                    <Button size="small">Open</Button>
-                  </Link>
-                ) : null}
-              </div>
+              <span>
+                <b>{headline}</b>
+                {outstanding?.outstanding ?? ''}
+              </span>
             </div>
-          ))}
-        </div>
-      </AdminSection>
+          }
+        />
+        {steps.map((step) => (
+          <div key={step.key} className={`hr-setupRow${step.optional ? ' hr-setupRow--optional' : ''}`}>
+            <span
+              className={`hr-setupRow__num${
+                step.optional ? '' : step.done ? ' hr-setupRow__num--ok' : ' hr-setupRow__num--warn'
+              }`}
+            >
+              {step.optional ? '–' : step.done ? '✓' : required.indexOf(step) + 1}
+            </span>
+            <div>
+              <div className="hr-setupRow__title">
+                {step.title}
+                {step.optional ? <StatusChip tone="muted">Optional</StatusChip> : null}
+              </div>
+              <div className="hr-setupRow__detail">{step.detail}</div>
+            </div>
+            {step.optional ? <span /> : <StatusChip tone={step.done ? 'done' : 'attn'}>{step.done ? 'Done' : 'Needs attention'}</StatusChip>}
+            {step.to ? (
+              <Link className="hr-btn hr-btn--sm" to={step.to}>
+                Open
+              </Link>
+            ) : (
+              <span />
+            )}
+          </div>
+        ))}
+      </Panel>
 
-      <AdminSection title="Where things are configured">
-        <div className="kw-reportGrid">
-          {areas.map((area) => (
-            <Link key={area.title} className="kw-reportCard kw-reportCard--link" to={area.to}>
-              <span className="kw-reportCard__cat">{area.state === 'attention' ? 'Needs attention' : 'Settings'}</span>
-              <span className="kw-reportCard__title">{area.title}</span>
-              <span className="kw-reportCard__desc">{area.description}</span>
-              <span className="kw-reportCard__scope">Open →</span>
-            </Link>
-          ))}
-        </div>
-      </AdminSection>
+      <h2 className="hr-sec">Everything you can change</h2>
+      <div className="hr-grid3">
+        {areas.map((area) => (
+          <Link key={area.title} className={`hr-card${area.tone === 'attn' ? ' hr-card--attn' : ''}`} to={area.to}>
+            <div className="hr-card__head">
+              <span className="hr-card__icon">{area.icon}</span>
+              <h3 className="hr-card__title">{area.title}</h3>
+            </div>
+            <p>{area.description}</p>
+            <div className="hr-card__foot">
+              <StatusChip tone={area.tone}>{area.state}</StatusChip>
+              <span>{area.meta}</span>
+            </div>
+          </Link>
+        ))}
+      </div>
 
-      <p className="kw-adminSection__desc">
-        No bank payment file and no authority submission files. Filings happen at each authority's portal and are recorded here with their reference.
-      </p>
-    </AdminShell>
+      <div className="hr-note">
+        Roles and permissions live under Organisation settings, because they cover every module, not just HR.
+      </div>
+    </HrPage>
   );
 }

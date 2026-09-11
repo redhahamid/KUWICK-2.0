@@ -59,6 +59,8 @@ export class PayComponentService {
         id: row.id,
         code: row.code,
         name: row.name,
+        /** Settings says "Changed 2 Sep" per card; this is where that comes from. */
+        updatedAt: row.updatedAt.toISOString(),
         type: row.type,
         category: row.category,
         includeIn: row.includeIn,

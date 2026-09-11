@@ -1,0 +1,788 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@600;700&family=Inter:wght@400;500;600&display=swap');
+
+/*
+ * SLATE — the HR module's own surface.
+ *
+ * `docs/design/hr-slate/kit.css` is the source of truth for these values; this
+ * file is that kit expressed as Kuwick custom properties and scoped so it
+ * cannot reach anything else.
+ *
+ * WHY SCOPED RATHER THAN GLOBAL. `design-system/tokens.ts` is the one source
+ * for the whole product: it feeds antd's theme AND generates the `--kw-*`
+ * properties in `index.css`, and its palette is navy. Slate is a different
+ * palette. Repainting the tokens would repaint Operation, Stock, Panel and
+ * Finance along with HR, which this piece of work is explicitly not allowed to
+ * do — so the Slate values live under `.kw-hrSlate` and nowhere else, and a
+ * unit guard fails the build if any file outside `admin/hr/` reaches for them.
+ *
+ * Every class here is prefixed `hr-`, except the three the browser specs use
+ * to find a rail entry. Those keep their existing names deliberately: the test
+ * contract is "the rail lights the section you are standing in", and renaming
+ * the class would have meant rewriting a dozen assertions to prove the same
+ * thing about the same element.
+ */
+/* The palette is shared by the shell and by the app header above it, which is
+   a sibling in the DOM rather than a child — so both selectors carry it, and
+   neither of them is `:root`. */
+.kw-hrSlate,
+.kw-hrSlateHeader {
+  --hr-canvas: #f3f4f6;
+  --hr-surface: #ffffff;
+  --hr-line: #e4e7eb;
+  --hr-line2: #cbd1d8;
+  --hr-ink: #0f1a1e;
+  --hr-ink2: #4b5a63;
+  --hr-ink3: #8b979f;
+  --hr-slate: #16302b;
+  --hr-slate2: #1e3e37;
+  --hr-slate-txt: #b9cfc8;
+  --hr-slate-dim: #7fa59a;
+  /* Teal is ACTION. Gold is NEEDS A PERSON. Red BLOCKS payroll. Green is
+     DONE. Grey is from a record, or worked out. Nothing here is decoration. */
+  --hr-teal: #0f8f7a;
+  --hr-teal-soft: #e0f4ef;
+  --hr-gold: #b7791f;
+  --hr-gold-soft: #fbf1dc;
+  --hr-red: #c2362e;
+  --hr-red-soft: #fce6e4;
+  --hr-green: #1e7f45;
+  --hr-green-soft: #e1f3e7;
+  --hr-blue: #2d63b5;
+  --hr-blue-soft: #e4ecf9;
+  --hr-shadow: 0 1px 2px rgba(15, 26, 30, 0.05), 0 6px 20px -8px rgba(15, 26, 30, 0.12);
+}
+
+.kw-hrSlate {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--hr-canvas);
+  color: var(--hr-ink);
+  font: 14px/1.5 Inter, system-ui, sans-serif;
+  /* Tabular figures everywhere: a column of money that does not line up is a
+     column somebody adds by eye. */
+  font-feature-settings: 'tnum' 1, 'cv11' 1;
+}
+
+.kw-hrSlate h1,
+.kw-hrSlate h2,
+.kw-hrSlate h3 {
+  font-family: 'Inter Tight', Inter, sans-serif;
+  margin: 0;
+}
+
+/* ── Shell and sidebar ────────────────────────────────────────────────────── */
+.hr-shell {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+.hr-side {
+  background: var(--hr-slate2);
+  padding: 18px 12px;
+  display: flex;
+  flex-direction: column;
+  color: var(--hr-slate-txt);
+  overflow: auto;
+}
+/* The one all-caps label the kit keeps: it names the module, and at 11px with
+   letter-spacing it reads as a label rather than as shouting. */
+.kw-hrSlate .kw-hubRail__heading {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 12px 12px;
+  color: var(--hr-slate-dim);
+  font-weight: 600;
+  display: block;
+}
+.kw-hrSlate .kw-hubRail__item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--hr-slate-txt);
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.kw-hrSlate .kw-hubRail__item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+.kw-hrSlate .kw-hubRail__item.is-active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  box-shadow: inset 3px 0 0 var(--hr-teal);
+}
+.kw-hrSlate .kw-hubRail__item svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Gold, because a number here means a person is waiting for a decision. */
+.hr-side__count {
+  margin-left: auto;
+  font-size: 11px;
+  background: var(--hr-gold);
+  color: #fff;
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-weight: 600;
+}
+.hr-side__bottom {
+  margin-top: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 12px;
+}
+
+/* ── Page ─────────────────────────────────────────────────────────────────── */
+.hr-main {
+  padding: 28px 36px 56px;
+  min-width: 0;
+  overflow: auto;
+}
+.hr-pageHead {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.hr-pageHead__actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+.kw-hrSlate h1 {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.hr-sub {
+  color: var(--hr-ink2);
+}
+.hr-sec {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 30px 0 12px;
+}
+.hr-note {
+  margin-top: 22px;
+  font-size: 13px;
+  color: var(--hr-ink2);
+  border-left: 3px solid var(--hr-line2);
+  padding: 6px 12px;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+.hr-btn {
+  border: 1px solid var(--hr-line2);
+  background: var(--hr-surface);
+  color: var(--hr-ink);
+  border-radius: 8px;
+  padding: 7px 13px;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+}
+.hr-btn:hover {
+  border-color: var(--hr-ink3);
+}
+.hr-btn--primary {
+  background: var(--hr-teal);
+  border-color: var(--hr-teal);
+  color: #fff;
+}
+.hr-btn--primary:hover {
+  border-color: var(--hr-teal);
+  filter: brightness(1.06);
+}
+.hr-btn--ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--hr-teal);
+}
+.hr-btn--sm {
+  padding: 5px 11px;
+  font-size: 13px;
+}
+.hr-btn--icon {
+  padding: 6px 8px;
+}
+.hr-btn svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.hr-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Chips ────────────────────────────────────────────────────────────────── */
+.hr-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.hr-chip::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.hr-chip--done {
+  background: var(--hr-green-soft);
+  color: var(--hr-green);
+}
+.hr-chip--attn {
+  background: var(--hr-gold-soft);
+  color: var(--hr-gold);
+}
+.hr-chip--block {
+  background: var(--hr-red-soft);
+  color: var(--hr-red);
+}
+.hr-chip--muted {
+  background: var(--hr-canvas);
+  color: var(--hr-ink2);
+}
+.hr-chip--info {
+  background: var(--hr-blue-soft);
+  color: var(--hr-blue);
+}
+
+/* ── Panel ────────────────────────────────────────────────────────────────── */
+.hr-panel {
+  background: var(--hr-surface);
+  border: 1px solid var(--hr-line);
+  border-radius: 14px;
+  box-shadow: var(--hr-shadow);
+  overflow: hidden;
+}
+.hr-panelHead {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--hr-line);
+}
+.hr-panelHead h2 {
+  font-size: 17px;
+  font-weight: 600;
+}
+.hr-panelHead .hr-sub {
+  font-size: 13px;
+}
+.hr-panelHead__actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ── Stat card ────────────────────────────────────────────────────────────── */
+.hr-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.hr-stat {
+  background: var(--hr-surface);
+  border: 1px solid var(--hr-line);
+  border-radius: 14px;
+  padding: 14px 18px;
+  box-shadow: var(--hr-shadow);
+}
+.hr-stat__label {
+  font-size: 12px;
+  color: var(--hr-ink2);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hr-stat__label svg {
+  width: 15px;
+  height: 15px;
+  color: var(--hr-ink3);
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.hr-stat__value {
+  font-family: 'Inter Tight', Inter, sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-top: 2px;
+}
+.hr-stat__value--gold {
+  color: var(--hr-gold);
+}
+.hr-stat__value--red {
+  color: var(--hr-red);
+}
+.hr-stat__value--teal {
+  color: var(--hr-teal);
+}
+.hr-stat__sub {
+  font-size: 12px;
+  color: var(--hr-ink3);
+}
+
+/* ── Steps ────────────────────────────────────────────────────────────────── */
+.hr-steps {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  border-bottom: 1px solid var(--hr-line);
+}
+.hr-step {
+  padding: 12px 18px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  border-right: 1px solid var(--hr-line);
+  color: var(--hr-ink3);
+  background: transparent;
+  border-top: 0;
+  border-left: 0;
+  border-bottom: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.hr-step:last-child {
+  border-right: 0;
+}
+.hr-step__mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--hr-line2);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.hr-step.is-current {
+  color: var(--hr-ink);
+  background: var(--hr-teal-soft);
+}
+.hr-step.is-current .hr-step__mark {
+  background: var(--hr-teal);
+  border-color: var(--hr-teal);
+  color: #fff;
+}
+.hr-step.is-done {
+  color: var(--hr-ink2);
+}
+.hr-step.is-done .hr-step__mark {
+  background: var(--hr-green);
+  border-color: var(--hr-green);
+  color: #fff;
+}
+.hr-step b {
+  display: block;
+  font-weight: 600;
+}
+.hr-step small {
+  font-size: 12px;
+}
+
+/* ── Toolbar and segmented control ────────────────────────────────────────── */
+.hr-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 22px;
+  border-bottom: 1px solid var(--hr-line);
+  flex-wrap: wrap;
+}
+.hr-toolbar__right {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.hr-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--hr-line2);
+  border-radius: 8px;
+  padding: 6px 10px;
+  width: 280px;
+  max-width: 100%;
+  color: var(--hr-ink3);
+  font-size: 13px;
+  background: var(--hr-surface);
+}
+.hr-search input {
+  border: 0;
+  outline: 0;
+  font: inherit;
+  color: var(--hr-ink);
+  background: transparent;
+  width: 100%;
+}
+.hr-seg {
+  display: flex;
+  border: 1px solid var(--hr-line2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.hr-seg button {
+  padding: 5px 11px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--hr-ink2);
+  background: var(--hr-surface);
+  border: 0;
+  cursor: pointer;
+}
+.hr-seg button.is-active {
+  background: var(--hr-slate);
+  color: #fff;
+}
+
+/* ── Cards ────────────────────────────────────────────────────────────────── */
+.hr-grid3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+.hr-card {
+  background: var(--hr-surface);
+  border: 1px solid var(--hr-line);
+  border-radius: 14px;
+  padding: 16px 18px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 140px;
+  box-shadow: var(--hr-shadow);
+  text-decoration: none;
+  color: inherit;
+  position: relative;
+  overflow: hidden;
+}
+.hr-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(15, 26, 30, 0.06), 0 12px 28px -10px rgba(15, 26, 30, 0.18);
+}
+.hr-card--attn::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--hr-gold);
+}
+.hr-card__head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.hr-card__icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--hr-slate);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.hr-card__icon svg {
+  width: 17px;
+  height: 17px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.hr-card__title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.hr-card p {
+  margin: 0;
+  color: var(--hr-ink2);
+  font-size: 13px;
+}
+.hr-card__foot {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--hr-ink3);
+}
+
+/* ── The setup checklist ──────────────────────────────────────────────────── */
+.hr-progress {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--hr-ink2);
+}
+.hr-ring {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.hr-ring i {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--hr-ink);
+  font-family: 'Inter Tight', Inter, sans-serif;
+}
+.hr-progress b {
+  color: var(--hr-ink);
+  font-weight: 600;
+  display: block;
+}
+.hr-setupRow {
+  display: grid;
+  grid-template-columns: 30px 1fr auto auto;
+  gap: 14px;
+  align-items: center;
+  padding: 13px 22px;
+  border-bottom: 1px solid var(--hr-line);
+}
+.hr-setupRow:last-child {
+  border-bottom: 0;
+}
+.hr-setupRow__num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1.5px solid var(--hr-line2);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--hr-ink2);
+}
+.hr-setupRow__num--ok {
+  background: var(--hr-green);
+  border-color: var(--hr-green);
+  color: #fff;
+}
+.hr-setupRow__num--warn {
+  background: var(--hr-gold);
+  border-color: var(--hr-gold);
+  color: #fff;
+}
+.hr-setupRow__title {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hr-setupRow__detail {
+  color: var(--hr-ink2);
+  font-size: 13px;
+}
+.hr-setupRow__detail em {
+  font-style: normal;
+  color: var(--hr-gold);
+  font-weight: 600;
+}
+.hr-setupRow--optional {
+  background: var(--hr-canvas);
+}
+
+/* ── Drawer ───────────────────────────────────────────────────────────────── */
+.hr-drawer {
+  position: fixed;
+  top: 56px;
+  right: 0;
+  bottom: 0;
+  width: 440px;
+  max-width: 100vw;
+  background: var(--hr-surface);
+  border-left: 1px solid var(--hr-line);
+  box-shadow: -12px 0 30px -14px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  z-index: 5;
+}
+.hr-drawer__head {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--hr-line);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.hr-drawer__head h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.hr-drawer__body {
+  padding: 16px 20px;
+  overflow: auto;
+  flex: 1;
+}
+.hr-drawer__foot {
+  padding: 14px 20px;
+  border-top: 1px solid var(--hr-line);
+  display: flex;
+  gap: 8px;
+  background: #fafbfb;
+}
+
+/* ── Narrow screens ───────────────────────────────────────────────────────── */
+@media (max-width: 991px) {
+  .hr-shell {
+    grid-template-columns: 1fr;
+  }
+  .hr-side {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 12px;
+  }
+  .kw-hrSlate .kw-hubRail__heading {
+    padding: 0 8px 0 4px;
+  }
+  .kw-hrSlate .kw-hubRail__item {
+    width: auto;
+  }
+  .hr-side__bottom {
+    margin-top: 0;
+    border-top: 0;
+    padding-top: 0;
+  }
+  .hr-main {
+    padding: 20px 16px 40px;
+  }
+  .hr-grid3 {
+    grid-template-columns: 1fr;
+  }
+  .hr-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .hr-setupRow {
+    grid-template-columns: 24px 1fr;
+    row-gap: 8px;
+  }
+}
+
+/* ── The app header, on HR routes only ───────────────────────────────────────
+ *
+ * `AppLayout` draws one header for the whole product and is shared by every
+ * area, so it is not restyled: it is given this class on HR routes and left
+ * alone everywhere else. The five module tabs live in it, because the Slate
+ * mockups have no second row and crossing from HR to Finance without going
+ * back to a hub is a thing the product promises on every screen.
+ */
+.kw-app-header.kw-hrSlateHeader {
+  background: var(--hr-slate);
+  height: 56px;
+  line-height: 56px;
+}
+.kw-hrSlateHeader .kw-app-clinic-pill {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: transparent;
+  border-radius: 20px;
+  padding: 4px 12px;
+  color: #fff;
+  font-weight: 500;
+}
+.kw-hrSlateHeader .kw-app-header-identity div {
+  color: #fff;
+}
+.kw-hrSlateHeader .kw-app-header-identity .ant-typography {
+  color: var(--hr-slate-txt);
+}
+.kw-hrSlateHeader .kw-app-header-back,
+.kw-hrSlateHeader .kw-app-header-crumbs {
+  color: var(--hr-slate-txt);
+}
+.kw-hrSlateHeader .kw-app-header-crumbs b {
+  color: #fff;
+  font-weight: 500;
+}
+.kw-hrSlateHeader .kw-app-header-back:hover,
+.kw-hrSlateHeader .kw-app-header-crumbs a:hover {
+  color: #fff;
+}
+.kw-hrSlateHeader .ant-avatar {
+  background: var(--hr-teal) !important;
+}
+.kw-hrSlateHeader .hr-modules {
+  min-width: 0;
+  flex: 1;
+}
+.kw-hrSlateHeader .hr-modules .ant-tabs-nav {
+  margin: 0;
+}
+.kw-hrSlateHeader .hr-modules .ant-tabs-nav::before {
+  border-bottom: 0;
+}
+.kw-hrSlateHeader .hr-modules .ant-tabs-tab {
+  padding: 17px 0;
+  margin: 0 0 0 22px;
+}
+.kw-hrSlateHeader .hr-modules .ant-tabs-tab:first-child {
+  margin-left: 0;
+}
+.kw-hrSlateHeader .hr-modules .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--hr-slate-txt);
+  font-weight: 500;
+}
+.kw-hrSlateHeader .hr-modules .ant-tabs-tab:hover .ant-tabs-tab-btn,
+.kw-hrSlateHeader .hr-modules .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #fff;
+}
+.kw-hrSlateHeader .hr-modules .ant-tabs-ink-bar {
+  background: var(--hr-teal);
+  height: 2px;
+}

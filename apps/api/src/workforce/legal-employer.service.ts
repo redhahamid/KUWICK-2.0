@@ -47,6 +47,14 @@ export class LegalEmployerService {
     return rows.map((row) => ({
       id: row.id,
       name: row.name,
+      /**
+       * WHEN SOMEBODY LAST CHANGED IT.
+       *
+       * Settings says "Changed 2 Sep" on each card, so a clinic can tell a
+       * thing that was set up once from a thing that was edited last week.
+       * The column has always been on the row; nothing read it.
+       */
+      updatedAt: row.updatedAt.toISOString(),
       registrationNo: row.registrationNo,
       epfEmployerNo: row.epfEmployerNo,
       socsoEmployerNo: row.socsoEmployerNo,
