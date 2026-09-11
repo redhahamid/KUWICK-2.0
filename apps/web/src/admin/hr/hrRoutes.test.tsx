@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 // a fact about the wiring between two files, which no rendered component can
 // show on its own.
 import appSource from '../../App.tsx?raw';
+import settingsSource from './HrSettingsPage.tsx?raw';
 
 /**
  * EVERY HR LINK LANDS ON A SCREEN, AND LANDS ON IT DIRECTLY.
@@ -165,5 +166,54 @@ describe('the HR labels', () => {
     const hr = ADMIN_CATEGORIES.find((category) => category.key === 'hr');
     const labels = [...(hr?.items ?? []).map((item) => item.label), hr?.settings?.label ?? ''];
     expect(labels).toEqual(['Employees', 'Payroll', 'Attendance', 'Leave', 'Claims', 'Reports', 'Settings']);
+  });
+});
+
+/**
+ * A CARD IS A PROMISE ABOUT WHERE IT GOES.
+ *
+ * The six Settings cards were renamed for the restructure and the pages they
+ * open were not: "Payroll policies" opened a page headed *Payroll rules*,
+ * "Company & statutory" opened *Legal employers*, "Attendance & leave
+ * policies" opened *Attendance rules*. Nobody is lost for long, but the card
+ * you clicked and the page you land on should agree on what the thing is
+ * called, and only a test keeps them agreeing after the next rename.
+ */
+describe('the Settings cards', () => {
+  const cards = [...code(settingsSource).matchAll(/title: '([^']+)',\s*\n\s*description: '[^']*',\s*\n\s*to: '([^']+)'/g)].map(
+    (match) => ({ title: match[1], to: match[2] }),
+  );
+
+  /** `/admin/hr/settings/payroll` → `PayrollSettingsPage` → its AdminShell title. */
+  const titleOf = (path: string) => {
+    const mounted = new RegExp(`path="${path}"\\s*element=\\{<([A-Za-z]+)\\s*/>\\}`).exec(
+      appSource.replace(/\s+/g, ' '),
+    );
+    if (!mounted) return { page: null, title: null };
+    const page = mounted[1];
+    const entry = Object.entries(SOURCES).find(([, source]) =>
+      new RegExp(`export function ${page}\\(`).test(source),
+    );
+    if (!entry) return { page, title: null };
+    const body = entry[1].slice(entry[1].indexOf('<AdminShell'));
+    return { page, title: /title="([^"]+)"/.exec(body)?.[1] ?? null };
+  };
+
+  it('are the six the restructure asked for', () => {
+    expect(cards.map((card) => card.title)).toEqual([
+      'Company & statutory',
+      'Payroll items',
+      'Payroll policies',
+      'Attendance & leave policies',
+      'Public holidays',
+      'Opening balances',
+    ]);
+  });
+
+  it('open a page that calls itself the same thing', () => {
+    const mismatched = cards
+      .map((card) => ({ card: card.title, ...titleOf(card.to) }))
+      .filter((row) => row.title !== row.card);
+    expect(mismatched).toEqual([]);
   });
 });

@@ -148,7 +148,7 @@ test.describe('What "late" means here', () => {
     // one of every two clinics' timesheets a fiction: a 24-hour clinic and a
     // nine-to-five practice do not agree about when 09:06 is late.
     await loginAdmin(page);
-    await gotoAdmin(page, '/admin/hr/settings/attendance');
+    await gotoAdmin(page, '/admin/hr/settings/attendance-leave');
 
     const panel = page.locator('.kw-adminSection', { hasText: 'Attendance rules' });
     await expect(panel).toBeVisible();
@@ -181,7 +181,7 @@ test.describe('What "late" means here', () => {
     // first and comparing second would pay it — the kind of difference nobody
     // notices for a year and then notices for every month of that year.
     await loginAdmin(page);
-    await gotoAdmin(page, '/admin/hr/settings/attendance');
+    await gotoAdmin(page, '/admin/hr/settings/attendance-leave');
     const panel = page.locator('.kw-adminSection', { hasText: 'Attendance rules' });
     await expect(panel).toContainText('The minimum is applied before the rounding');
   });

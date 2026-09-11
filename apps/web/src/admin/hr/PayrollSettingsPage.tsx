@@ -1,20 +1,16 @@
 import { Link } from 'react-router-dom';
-import { App, Button, Radio, Switch, Tag } from 'antd';
+import { App, Button, Radio, Switch } from 'antd';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
-import { DataTable } from '../components/DataTable';
 import {
-  useLegalEmployers,
   usePayComponents,
   usePayrollApprovalPolicy,
   useSeedPayComponents,
   useSetPayrollApprovalPolicy,
   useStatutoryRuleSets,
 } from '../hooks/useAdmin';
-import type { LegalEmployerRow } from '../types';
-import { AttendanceRulesPanel } from './AttendanceRulesPanel';
 
 /**
- * PAYROLL RULES — one settings area, reached from the Settings landing.
+ * PAYROLL POLICIES — one settings area, reached from the Settings landing.
  *
  * This page used to be Settings itself, and carried everything: the one-time
  * setup checklist, the company table, the approval rule, the attendance rules
@@ -28,30 +24,21 @@ import { AttendanceRulesPanel } from './AttendanceRulesPanel';
  */
 export function PayrollSettingsPage() {
   const { message } = App.useApp();
-  const employers = useLegalEmployers();
   const components = usePayComponents();
   const statutory = useStatutoryRuleSets();
   const seed = useSeedPayComponents();
   const approval = usePayrollApprovalPolicy();
   const setApproval = useSetPayrollApprovalPolicy();
 
-  const employerRows = employers.data ?? [];
   const componentCount = components.data?.components?.length ?? 0;
   const rateSets = statutory.data ?? [];
   const verified = rateSets.some((set) => set.verified);
 
-  // An employer that cannot file is an employer that cannot pay: EPF, SOCSO,
-  // EIS and PCB submissions are all made by an entity, and one missing number
-  // stops all four.
-  const incompleteEmployers = employerRows.filter(
-    (row) => !row.epfEmployerNo || !row.socsoEmployerNo || !row.lhdnEmployerNo,
-  );
-
 
   return (
     <AdminShell
-      error={firstError(employers, components, statutory, approval)}
-      title="Payroll rules"
+      error={firstError(components, statutory, approval)}
+      title="Payroll policies"
       subtitle="Who may approve a run, what counts as pay, and how attendance is judged."
       actions={
         <Link to="/admin/hr/settings">
@@ -59,47 +46,20 @@ export function PayrollSettingsPage() {
         </Link>
       }
     >
-      <AdminSection
-        title="Company & statutory registration"
-        description="The entity that employs, files and pays. A branch is where the work happens; it files nothing."
-      >
-        <DataTable<LegalEmployerRow>
-          rowKey="id"
-          loading={employers.isLoading}
-          rows={employerRows}
-          emptyText="No legal employer is recorded."
-          columns={[
-            { title: 'Employer', dataIndex: 'name' },
-            { title: 'Registration', dataIndex: 'registrationNo', width: 160 },
-            {
-              title: 'Can it file?',
-              width: 260,
-              render: (_: unknown, row: LegalEmployerRow) => {
-                const missing = [
-                  !row.epfEmployerNo ? 'EPF' : null,
-                  !row.socsoEmployerNo ? 'SOCSO' : null,
-                  !row.lhdnEmployerNo ? 'LHDN' : null,
-                ].filter(Boolean);
-                return missing.length === 0 ? (
-                  <Tag color="success">All numbers on file</Tag>
-                ) : (
-                  <Tag color="warning">Missing {missing.join(', ')}</Tag>
-                );
-              },
-            },
-            {
-              title: '',
-              width: 100,
-              noExport: true,
-              render: () => (
-                <Link to="/admin/hr/settings/company">
-                  <Button size="small">Open</Button>
-                </Link>
-              ),
-            },
-          ]}
-        />
-      </AdminSection>
+      {/*
+        * ONE PLACE FOR THE COMPANY'S NUMBERS.
+        *
+        * This page carried a second listing of every legal employer, with its
+        * own "can it file?" verdict and its own Open button beside each row.
+        * It edited nothing, but two screens showing one fact is how they come
+        * to disagree — and it is why the Settings card and the page it opened
+        * ended up with different names. A signpost, not a copy.
+        */}
+      <p className="kw-adminSection__desc">
+        The company's registration, EPF, SOCSO and LHDN numbers are on{' '}
+        <Link to="/admin/hr/settings/company">Company &amp; statutory</Link>. An employer missing one of them cannot
+        file, and an employer that cannot file cannot pay.
+      </p>
 
       {/*
         * WHO IS ALLOWED TO APPROVE PAYROLL.
@@ -225,18 +185,28 @@ export function PayrollSettingsPage() {
         ) : null}
       </AdminSection>
 
-      {/* BEFORE "Advanced", because it is not advanced: it is the answer to
-          "why does this say I was late", and somebody asks that in week one. */}
-      <AttendanceRulesPanel />
+      {/*
+        * THE ATTENDANCE RULES ARE NOT EDITED TWICE.
+        *
+        * The same editable panel was rendered here AND on Attendance & leave
+        * policies — one set of facts with two save buttons, which is the same
+        * defect as the employer table above and a worse one, because this one
+        * writes. It belongs to the card named after it.
+        */}
+      <p className="kw-adminSection__desc">
+        The grace period before somebody is late, what counts as a full day, and leave entitlement are on{' '}
+        <Link to="/admin/hr/settings/attendance-leave">Attendance &amp; leave policies</Link>. Payroll reads them; it
+        does not set them.
+      </p>
 
       <AdminSection
         title="Advanced"
         description="Detailed configuration for people who need it. Most clinics never open these after setup."
       >
         <p className="kw-muted" style={{ marginTop: 0, marginBottom: 0 }}>
-          {componentCount} pay components are configured, each carrying what it counts towards. Opening balances, roles
-          and permissions, and the company's statutory numbers are on the{' '}
-          <Link to="/admin/hr/settings">Settings landing</Link>.
+          {componentCount} pay components are configured, each carrying what it counts towards — see{' '}
+          <Link to="/admin/hr/settings/payroll-items">Payroll items</Link>. Opening balances, roles and permissions,
+          and everything else set up once are on the <Link to="/admin/hr/settings">Settings landing</Link>.
         </p>
       </AdminSection>
     </AdminShell>

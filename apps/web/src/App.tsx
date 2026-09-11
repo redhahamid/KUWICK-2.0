@@ -27,7 +27,7 @@ import { PublicBookingPage } from './appointment/public/PublicBookingPage';
 import { ManageBookingPage } from './appointment/public/ManageBookingPage';
 import { ClinicsPage } from './core/ClinicsPage';
 import { PatientsPage } from './core/PatientsPage';
-import { PublicHolidaysPage } from './hr/PublicHolidaysPage';
+import { PublicHolidaysPage } from './admin/hr/PublicHolidaysPage';
 import { ServicesPage } from './clinical/ServicesPage';
 import { ConsultationTariffsPage } from './clinical/ConsultationTariffsPage';
 import { PanelClinicsPage } from './clinical/PanelClinicsPage';

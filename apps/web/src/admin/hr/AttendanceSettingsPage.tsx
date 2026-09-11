@@ -4,7 +4,7 @@ import { AdminShell } from '../components/AdminShell';
 import { AttendanceRulesPanel } from './AttendanceRulesPanel';
 
 /**
- * ATTENDANCE RULES — its own settings area.
+ * ATTENDANCE & LEAVE POLICIES — its own settings area.
  *
  * It was a panel two-thirds of the way down the old Settings wall, which is
  * an odd place for the answer to "why does this say I was late" — a question
@@ -13,7 +13,7 @@ import { AttendanceRulesPanel } from './AttendanceRulesPanel';
 export function AttendanceSettingsPage() {
   return (
     <AdminShell
-      title="Attendance rules"
+      title="Attendance & leave policies"
       subtitle="What counts as late, and what counts as a full day."
       actions={
         <Link to="/admin/hr/settings">

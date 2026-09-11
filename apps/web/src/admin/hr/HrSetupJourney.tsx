@@ -113,14 +113,14 @@ export function HrSetupJourney({ period, clinicId }: { period: string; clinicId?
     },
     {
       key: 'attendance',
-      title: 'Attendance rules',
+      title: 'Attendance & leave policies',
       why: 'A 24-hour clinic and a nine-to-five practice do not agree about when 09:06 is late.',
       state: attendance.data.hasOwnPolicy || attendance.data.hasGroupDefault ? 'READY' : 'NOT_STARTED',
       detail:
         attendance.data.hasOwnPolicy || attendance.data.hasGroupDefault
           ? `Late after ${attendance.data.policy.lateGraceMinutes} min · overtime from ${attendance.data.policy.overtimeMinimumMinutes} min`
           : "Kuwick's defaults apply until you choose",
-      cta: { label: 'Set the rules', to: '/admin/hr/settings' },
+      cta: { label: 'Set the rules', to: '/admin/hr/settings/attendance-leave' },
     },
     {
       key: 'leave',

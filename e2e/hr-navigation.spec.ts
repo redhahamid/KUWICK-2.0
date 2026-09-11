@@ -1,18 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { gotoAdmin, loginAdmin } from './support/admin';
-
-/**
- * `gotoAdmin` waits for `.kw-admin`, the wrapper `AdminShell` draws. Public
- * Holidays was written for Clinic Settings and draws `PageHeader` instead, so
- * it has no `.kw-admin` even though it is an HR settings screen like the other
- * five. What IS true of every HR address, whichever shell the screen uses, is
- * the rail — and the rail is what this spec is about.
- */
-async function gotoHr(page: Page, path: string): Promise<void> {
-  await page.goto(path);
-  await expect(page.locator('.kw-hubRail__item').first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.locator('.ant-spin-spinning')).toHaveCount(0, { timeout: 30_000 });
-}
 
 /**
  * THE FIVE-SECTION HR ARCHITECTURE, AND EVERY URL IT ABSORBED.
@@ -75,14 +62,14 @@ test.describe('the HR rail', () => {
       // Hiring is a full page rather than a drawer, and it belongs to Employees.
       ['/admin/hr/employees/new', 'Employees'],
     ] as const) {
-      await gotoHr(page, path);
+      await gotoAdmin(page, path);
       await expect(page.locator('.kw-hubRail__item.is-active'), `${path} should light ${section}`).toHaveText(section);
     }
 
     // Today is inside HR but is not one of the seven, so the rail lights
     // NOTHING — while still being HR's rail. It used to render under
     // Operation's tabs entirely, because an unclaimed route had no module.
-    await gotoHr(page, '/admin/hr/today');
+    await gotoAdmin(page, '/admin/hr/today');
     await expect(page.locator('.kw-hubRail__heading')).toHaveText('HR');
     await expect(page.locator('.kw-hubRail__item.is-active')).toHaveCount(0);
   });
@@ -108,10 +95,10 @@ test.describe('every URL the six sections absorbed', () => {
       ['/admin/hr/time/claims', '/admin/hr/claims', 'Claims'],
       // Settings moved into one place under HR, and Roles left for the one
       // home it should always have had.
-      ['/admin/hr/employers', '/admin/hr/settings/company', 'Legal employers'],
-      ['/admin/hr/settings/attendance', '/admin/hr/settings/attendance-leave', 'Attendance rules'],
+      ['/admin/hr/employers', '/admin/hr/settings/company', 'Company & statutory'],
+      ['/admin/hr/settings/attendance', '/admin/hr/settings/attendance-leave', 'Attendance & leave policies'],
       ['/admin/hr/payroll/ytd-opening', '/admin/hr/settings/opening-balances', 'Opening balances'],
-      ['/settings/hr/public-holidays', '/admin/hr/settings/public-holidays', 'Public Holidays'],
+      ['/settings/hr/public-holidays', '/admin/hr/settings/public-holidays', 'Public holidays'],
       // Readiness was a page listing who was not ready; it is now a status on
       // each person's own register row, so the URL lands on the register.
       ['/admin/hr/payroll/readiness', '/admin/hr/payroll', 'Payroll'],
@@ -122,13 +109,11 @@ test.describe('every URL the six sections absorbed', () => {
       ['/management/hr/staff', '/admin/hr/employees', 'Employees'],
       ['/management/hr/attendance', '/admin/hr/attendance', 'Attendance'],
       ['/management/hr/leave-requests', '/admin/hr/leave', 'Leave'],
-      ['/management/hr/public-holidays', '/admin/hr/settings/public-holidays', 'Public Holidays'],
+      ['/management/hr/public-holidays', '/admin/hr/settings/public-holidays', 'Public holidays'],
     ] as const) {
-      await gotoHr(page, old);
+      await gotoAdmin(page, old);
       expect(new URL(page.url()).pathname, `${old} should land on ${destination}`).toBe(destination);
-      // By ROLE, not by the Admin shell's own class: Public Holidays was
-      // written for Clinic Settings and renders its title through PageHeader.
-      // Both shells emit a real heading, which is what a reader sees.
+      // By ROLE rather than by class: what a reader sees is a heading.
       await expect(page.getByRole('heading', { name: heading, exact: true }).first()).toBeVisible();
     }
   });
@@ -182,19 +167,19 @@ test.describe('Settings is a landing, not a wall', () => {
       'Opening balances',
     ]);
 
-    // Each card opens its own page. The destination's own title is asserted
-    // rather than the card's label: the two do not read identically yet, and a
-    // test that hid that would be hiding it from the next piece of work too.
-    for (const [name, path, heading] of [
-      ['Payroll items', '/admin/hr/settings/payroll-items', 'Payroll items'],
-      ['Payroll policies', '/admin/hr/settings/payroll', 'Payroll rules'],
-      ['Attendance & leave policies', '/admin/hr/settings/attendance-leave', 'Attendance rules'],
-      ['Public holidays', '/admin/hr/settings/public-holidays', 'Public Holidays'],
+    // Each card opens its own page, and the page calls itself what the card
+    // called it — so the card's label IS the heading to look for. They used to
+    // disagree: "Payroll policies" opened a page headed "Payroll rules".
+    for (const [name, path] of [
+      ['Payroll items', '/admin/hr/settings/payroll-items'],
+      ['Payroll policies', '/admin/hr/settings/payroll'],
+      ['Attendance & leave policies', '/admin/hr/settings/attendance-leave'],
+      ['Public holidays', '/admin/hr/settings/public-holidays'],
     ] as const) {
-      await gotoHr(page, '/admin/hr/settings');
+      await gotoAdmin(page, '/admin/hr/settings');
       await page.locator('.kw-reportCard', { hasText: name }).first().click();
       await expect(page).toHaveURL(new RegExp(`${path}$`));
-      await expect(page.getByRole('heading', { name: heading, exact: true }).first()).toBeVisible();
+      await expect(page.getByRole('heading', { name, exact: true }).first()).toBeVisible();
       // And you are still in Settings, not in the section the subject belongs to.
       await expect(page.locator('.kw-hubRail__item.is-active')).toHaveText('Settings');
     }
@@ -223,7 +208,7 @@ test.describe('Attendance carries the roster', () => {
       ['/admin/hr/leave', 'Leave'],
       ['/admin/hr/claims', 'Claims'],
     ] as const) {
-      await gotoHr(page, path);
+      await gotoAdmin(page, path);
       await expect(page.locator('.kw-hubRail__item.is-active')).toHaveText(section);
       // Neither is a VIEW of Attendance any more. Both still carry a switcher
       // of their own — Requests / Calendar / Balances on Leave — which is an

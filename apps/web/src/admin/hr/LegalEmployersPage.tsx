@@ -1,16 +1,15 @@
 import { useState } from 'react';
 import { App, Button, DatePicker, Input, Modal, Select, Table, Tag } from 'antd';
+import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import {
   useLegalEmployers,
-  usePayComponents,
   useRecordEmployerHrd,
-  useSeedPayComponents,
   useUpsertLegalEmployer,
 } from '../hooks/useAdmin';
 import { useCan } from '../../core/hooks/useCan';
-import type { LegalEmployerRow, PayComponentRow } from '../types';
+import type { LegalEmployerRow } from '../types';
 
 /** The Act's own words for each class, and the rate the Act fixes for it. */
 const HRD_LABELS: Record<string, string> = {
@@ -20,7 +19,7 @@ const HRD_LABELS: Record<string, string> = {
 };
 
 /**
- * THE EMPLOYER, AND THE COMPONENTS IT PAYS.
+ * THE EMPLOYER THAT FILES AND PAYS.
  *
  * Payroll runs were scoped to a BRANCH. A branch employs nobody and files
  * nothing — EPF, SOCSO, EIS and PCB submissions are all made by an employer,
@@ -33,9 +32,7 @@ const HRD_LABELS: Record<string, string> = {
 export function LegalEmployersPage() {
   const { message } = App.useApp();
   const employers = useLegalEmployers();
-  const components = usePayComponents();
   const upsert = useUpsertLegalEmployer();
-  const seed = useSeedPayComponents();
   const recordHrd = useRecordEmployerHrd();
   const mayManage = useCan('hr.statutory.manage');
   // The HRD class is recorded under the same permission as an employee's
@@ -78,13 +75,12 @@ export function LegalEmployersPage() {
     setOpen(true);
   }
 
-  const componentList = components.data?.components ?? [];
 
   return (
     <AdminShell
-      title="Legal employers"
+      title="Company & statutory"
       subtitle="The entity that employs, files and pays. A branch is where work happens; it files nothing."
-      error={firstError(employers, components)}
+      error={firstError(employers)}
       actions={
         mayManage ? (
           <Button size="small" type="primary" onClick={() => edit(null)}>
@@ -174,62 +170,20 @@ export function LegalEmployersPage() {
         />
       </AdminSection>
 
-      <AdminSection
-        title="Pay components"
-        description="What each kind of money is liable to. Twelve independent attributes, because an allowance can be EPF wages and PCB-exempt at the same time."
-        padded={false}
-        actions={
-          mayManage && componentList.length === 0 ? (
-            <Button
-              size="small"
-              loading={seed.isPending}
-              onClick={() =>
-                seed.mutate(undefined, {
-                  onSuccess: () => message.success('Catalogue seeded — every flag UNVERIFIED'),
-                  onError: (e: Error) => message.error(e.message),
-                })
-              }
-            >
-              Seed the catalogue
-            </Button>
-          ) : null
-        }
-      >
-        {components.data ? (
-          <AdminNotice tone="warn">{components.data.verificationNotice.statement}</AdminNotice>
-        ) : null}
-        <Table<PayComponentRow>
-          rowKey="id"
-          size="small"
-          pagination={false}
-          loading={components.isLoading}
-          dataSource={componentList}
-          locale={{ emptyText: 'No pay components yet.' }}
-          columns={[
-            { title: 'Component', dataIndex: 'name', render: (n: string, r) => `${n} (${r.code})` },
-            { title: 'Type', dataIndex: 'type', width: 100 },
-            { title: 'PCB', dataIndex: 'pcbLiable', width: 60, render: (v: boolean) => (v ? '✓' : '—') },
-            { title: 'EPF', dataIndex: 'epfLiable', width: 60, render: (v: boolean) => (v ? '✓' : '—') },
-            { title: 'SOCSO', dataIndex: 'socsoLiable', width: 70, render: (v: boolean) => (v ? '✓' : '—') },
-            { title: 'EIS', dataIndex: 'eisLiable', width: 60, render: (v: boolean) => (v ? '✓' : '—') },
-            // The three the audited competitor has no equivalent for.
-            { title: 'HRD', dataIndex: 'hrdLiable', width: 60, render: (v: boolean) => (v ? '✓' : '—') },
-            { title: 'OT base', dataIndex: 'includeInOrpBase', width: 80, render: (v: boolean) => (v ? '✓' : '—') },
-            {
-              title: 'UPL base',
-              dataIndex: 'includeInUnpaidLeaveBase',
-              width: 85,
-              render: (v: boolean) => (v ? '✓' : '—'),
-            },
-            {
-              title: 'Verified?',
-              dataIndex: 'verificationStatus',
-              width: 100,
-              render: (v: string) => <Tag color={v === 'VERIFIED' ? 'green' : 'orange'}>{v}</Tag>,
-            },
-          ]}
-        />
-      </AdminSection>
+      {/*
+        * THE PAY COMPONENTS ARE NOT LISTED TWICE.
+        *
+        * The full seventeen-row table used to sit here, under the company's
+        * EPF and SOCSO numbers — which is where it landed when this page was
+        * the only settings page there was, and nowhere anybody looking for an
+        * allowance would think to look. It has a card of its own now, and the
+        * notice about unchecked flags went with it.
+        */}
+      <p className="kw-adminSection__desc">
+        What the clinic can pay or deduct, and what each item counts towards, is on{' '}
+        <Link to="/admin/hr/settings/payroll-items">Payroll items</Link>. The flags there decide what this employer
+        files; the numbers above decide whether it can file at all.
+      </p>
 
       <Modal
         open={open}

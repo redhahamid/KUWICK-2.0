@@ -1,4 +1,4 @@
-import { App, Button } from 'antd';
+import { Button } from 'antd';
 import { Link } from 'react-router-dom';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
@@ -7,7 +7,6 @@ import {
   useLegalEmployers,
   usePayComponents,
   usePayrollApprovalPolicy,
-  useSeedPayComponents,
   useStatutoryRuleSets,
 } from '../hooks/useAdmin';
 
@@ -28,11 +27,9 @@ import {
  * see which of the six is outstanding discovers the answer on pay day.
  */
 export function HrSettingsPage() {
-  const { message } = App.useApp();
   const employers = useLegalEmployers();
   const components = usePayComponents();
   const statutory = useStatutoryRuleSets();
-  const seed = useSeedPayComponents();
   const approval = usePayrollApprovalPolicy();
 
   const employerRows = employers.data ?? [];
@@ -46,8 +43,29 @@ export function HrSettingsPage() {
     (row) => !row.epfEmployerNo || !row.socsoEmployerNo || !row.lhdnEmployerNo,
   );
 
-  type SetupAction = { label: string; to: string } | { label: string; seed: true } | null;
-  const steps: { key: string; title: string; done: boolean; detail: string; action: SetupAction }[] = [
+  /*
+   * EVERY STEP OPENS SOMEWHERE, AND ONE OF THEM IS NOT A STEP.
+   *
+   * Three of the six had no button at all. "What you pay people" had nowhere
+   * to go because the pay components had no screen; they have one now. "Check
+   * the statutory rates" told a clinic that payroll stays in test mode until
+   * somebody checks the tables, without saying where the tables are. And
+   * "Bank payment file" is not something this clinic can do: no bank's format
+   * is on record, so it was an item nobody could ever tick, sitting in a
+   * denominator and making a finished setup read "5 of 6".
+   *
+   * It stays visible — a clinic asking "can Kuwick write my bank file?"
+   * deserves the answer — but as OPTIONAL, outside the count.
+   */
+  type SetupStep = {
+    key: string;
+    title: string;
+    done: boolean;
+    detail: string;
+    to: string | null;
+    optional?: true;
+  };
+  const steps: SetupStep[] = [
     {
       key: 'company',
       title: 'Your company',
@@ -60,7 +78,7 @@ export function HrSettingsPage() {
                 incompleteEmployers.length === 1 ? 'is' : 'are'
               } missing an EPF, SOCSO or LHDN number.`
             : `${employerRows.length} employer${employerRows.length === 1 ? '' : 's'} with registration, EPF, SOCSO and LHDN numbers.`,
-      action: { label: 'Open', to: '/admin/hr/settings/company' },
+      to: '/admin/hr/settings/company',
     },
     {
       key: 'policy',
@@ -68,7 +86,7 @@ export function HrSettingsPage() {
       done: true,
       detail:
         'Overtime on a 26-day month, unpaid leave on calendar days. Frozen onto every run, so a later change cannot reprice a past month.',
-      action: { label: 'Open', to: '/admin/hr/settings/payroll' },
+      to: '/admin/hr/settings/payroll',
     },
     {
       key: 'components',
@@ -78,14 +96,14 @@ export function HrSettingsPage() {
         componentCount > 0
           ? `${componentCount} kinds of pay and deduction, from basic salary to mileage.`
           : 'No pay components are configured, so payroll cannot classify anything it pays.',
-      action: componentCount > 0 ? null : { label: 'Set up', seed: true },
+      to: '/admin/hr/settings/payroll-items',
     },
     {
       key: 'employees',
       title: 'Your employees',
       done: true,
       detail: 'Salary, bank account and statutory details, per person.',
-      action: { label: 'Open', to: '/admin/hr/employees' },
+      to: '/admin/hr/employees',
     },
     {
       key: 'rates',
@@ -94,7 +112,7 @@ export function HrSettingsPage() {
       detail: verified
         ? 'The EPF, SOCSO and EIS tables in force have been checked against KWSP and PERKESO.'
         : 'EPF, SOCSO and EIS tables are loaded but unchecked against KWSP and PERKESO. Until somebody checks them, payroll stays in test mode and no run may be paid or filed.',
-      action: null,
+      to: '/admin/hr/settings/payroll',
     },
     {
       key: 'bank',
@@ -102,11 +120,13 @@ export function HrSettingsPage() {
       done: false,
       detail:
         'Not available. No bank’s format is on record, so what downloads is a listing for keying at the bank’s own portal.',
-      action: null,
+      to: null,
+      optional: true,
     },
   ];
 
-  const complete = steps.filter((step) => step.done).length;
+  const required = steps.filter((step) => !step.optional);
+  const complete = required.filter((step) => step.done).length;
 
   /*
    * SIX CARDS, IN THE ORDER A CLINIC SETS THEM UP.
@@ -143,7 +163,7 @@ export function HrSettingsPage() {
     },
     {
       title: 'Attendance & leave policies',
-      description: 'The grace period before somebody is late, what counts as a full day, and leave entitlement.',
+      description: 'The grace period before somebody is late, and what counts as a full day.',
       to: '/admin/hr/settings/attendance-leave',
       state: 'ok' as const,
     },
@@ -175,7 +195,7 @@ export function HrSettingsPage() {
 
       <StatStrip
         stats={[
-          { label: 'Setup complete', value: `${complete} of ${steps.length}`, tone: complete === steps.length ? 'good' : 'warn' },
+          { label: 'Setup complete', value: `${complete} of ${required.length}`, tone: complete === required.length ? 'good' : 'warn' },
           { label: 'Legal employers', value: employerRows.length, tone: incompleteEmployers.length > 0 ? 'warn' : 'good' },
           { label: 'Pay components', value: componentCount },
           {
@@ -187,43 +207,33 @@ export function HrSettingsPage() {
       />
 
       <AdminSection
-        title={`One-time setup — ${complete} of ${steps.length} complete`}
-        description="Six things to settle before Kuwick can run live payroll for this clinic."
+        title={`One-time setup — ${complete} of ${required.length} complete`}
+        description="Five things to settle before Kuwick can run live payroll for this clinic, and one that is not this clinic’s to settle."
       >
         <div className="kw-setupList">
-          {steps.map((step, index) => (
+          {steps.map((step) => (
             <div key={step.key} className="kw-setupList__row">
+              {/* Numbered 1-5 by POSITION AMONG THE REQUIRED, so the optional
+                  row does not wear a "6" that nothing counts. */}
               <span className={`kw-setupList__mark kw-setupList__mark--${step.done ? 'done' : 'todo'}`}>
-                {step.done ? '✓' : index + 1}
+                {step.optional ? '·' : step.done ? '✓' : required.indexOf(step) + 1}
               </span>
               <div className="kw-setupList__body">
                 <div className="kw-setupList__title">{step.title}</div>
                 <div className="kw-setupList__detail">{step.detail}</div>
               </div>
               <div className="kw-setupList__action">
-                {step.done ? (
+                {step.optional ? (
+                  <StatusChip tone="neutral">Optional</StatusChip>
+                ) : step.done ? (
                   <StatusChip tone="ok" dot>
                     Done
                   </StatusChip>
                 ) : null}
-                {step.action && 'to' in step.action ? (
-                  <Link to={step.action.to}>
-                    <Button size="small">{step.action.label}</Button>
+                {step.to ? (
+                  <Link to={step.to}>
+                    <Button size="small">Open</Button>
                   </Link>
-                ) : step.action && 'seed' in step.action ? (
-                  <Button
-                    size="small"
-                    type="primary"
-                    loading={seed.isPending}
-                    onClick={() =>
-                      seed.mutate(undefined, {
-                        onSuccess: () => message.success('Components created'),
-                        onError: (error: Error) => message.error(error.message),
-                      })
-                    }
-                  >
-                    {step.action.label}
-                  </Button>
                 ) : null}
               </div>
             </div>

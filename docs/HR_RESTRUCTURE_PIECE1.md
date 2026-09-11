@@ -182,10 +182,11 @@ still resolves — the key and its links are untouched.
 
 `Overview` survives in Operation and Finance, where the ban does not reach.
 
-## 7. Two inconsistencies left standing, deliberately
+## 7. Two inconsistencies left standing, deliberately — both closed in Piece 2
 
-Both are in Settings, which is Piece 2's subject. Neither is hidden by a test
-— the specs assert what the product actually does today.
+Both were in Settings, which is Piece 2's subject, and both are fixed there —
+see `docs/HR_RESTRUCTURE_PIECE2.md`. Neither was ever hidden by a test: the
+specs asserted what the product actually did.
 
 - **The card and the page it opens do not read alike.** "Payroll policies"
   opens a page titled *Payroll rules*; "Attendance & leave policies" opens
