@@ -54,6 +54,11 @@ const PAGES = [
   ['13-settings-public-holidays', '/admin/hr/settings/public-holidays'],
   ['14-settings-opening-balances', '/admin/hr/settings/opening-balances'],
   ['15-today-off-rail', '/admin/hr/today'],
+  // THE OTHER HALF OF THAT FIX. `/admin/hr/today` used to render under
+  // Operation's chrome, so this pack has to show that Operation's own Overview
+  // is still Operation's own Overview — clinic performance, not an HR screen
+  // wearing the wrong tabs.
+  ['16-operation-overview', '/admin/operation'],
 ];
 
 for (const [name, path, mode] of PAGES) {

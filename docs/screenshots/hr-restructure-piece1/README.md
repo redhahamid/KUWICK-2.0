@@ -1,7 +1,9 @@
 # HR restructure, Piece 1 — navigation, routes, Settings
 
 Desktop, 1440×900 at 2× device pixel ratio, against the synthetic
-`admin-uat` tenant. Demo employees only — no real staff, patient or payroll
+`admin-uat` tenant. Every shot here was taken AFTER the shell fix described
+in `docs/HR_RESTRUCTURE_PIECE1.md` §1 — the pack was recaptured whole rather
+than patched, so no two shots come from different builds. Demo employees only — no real staff, patient or payroll
 data appears anywhere in this pack.
 
 Regenerate with the dev servers running:
@@ -27,3 +29,4 @@ OUT=docs/screenshots/hr-restructure-piece1 node apps/web/shot-hr-nav.mjs
 | 13 | `13-settings-public-holidays.png` | Public holidays — empty in this tenant; nothing has been entered for 2026. |
 | 14 | `14-settings-opening-balances.png` | Opening balances. |
 | 15 | `15-today-off-rail.png` | Today at `/admin/hr/today` — off the rail, still inside HR's own chrome. |
+| 16 | `16-operation-overview.png` | Operation → Overview, the other half of that fix: still clinic performance, with none of HR on it. |
