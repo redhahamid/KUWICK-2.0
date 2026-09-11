@@ -60,7 +60,7 @@ export function HrSettingsPage() {
                 incompleteEmployers.length === 1 ? 'is' : 'are'
               } missing an EPF, SOCSO or LHDN number.`
             : `${employerRows.length} employer${employerRows.length === 1 ? '' : 's'} with registration, EPF, SOCSO and LHDN numbers.`,
-      action: { label: 'Open', to: '/admin/hr/employers' },
+      action: { label: 'Open', to: '/admin/hr/settings/company' },
     },
     {
       key: 'policy',
@@ -85,7 +85,7 @@ export function HrSettingsPage() {
       title: 'Your employees',
       done: true,
       detail: 'Salary, bank account and statutory details, per person.',
-      action: { label: 'Open', to: '/admin/hr/people' },
+      action: { label: 'Open', to: '/admin/hr/employees' },
     },
     {
       key: 'rates',
@@ -108,41 +108,55 @@ export function HrSettingsPage() {
 
   const complete = steps.filter((step) => step.done).length;
 
+  /*
+   * SIX CARDS, IN THE ORDER A CLINIC SETS THEM UP.
+   *
+   * The set changed rather than merely being renamed. "Who can do what" left:
+   * roles are product-wide, not HR's, and having them in two places meant two
+   * screens could disagree about who may approve a payroll. "Leave policies"
+   * pointed at the Leave SCREEN, which is where leave is decided, not where
+   * its policy is written — it joins Attendance rules, because a clinic sets
+   * both on the same afternoon.
+   *
+   * "Payroll items" is new as a place. The seventeen pay components have
+   * existed since the engine was built and had no screen at all: Payroll rules
+   * printed the sentence "17 pay components are configured" and stopped.
+   */
   const areas = [
     {
-      title: 'Company & statutory registration',
+      title: 'Company & statutory',
       description: 'The entity that employs, files and pays. A branch is where the work happens; it files nothing.',
-      to: '/admin/hr/employers',
+      to: '/admin/hr/settings/company',
       state: incompleteEmployers.length > 0 ? ('attention' as const) : ('ok' as const),
     },
     {
-      title: 'Payroll rules',
+      title: 'Payroll items',
+      description: 'What the clinic can pay or deduct, and what each one counts towards.',
+      to: '/admin/hr/settings/payroll-items',
+      state: 'ok' as const,
+    },
+    {
+      title: 'Payroll policies',
       description: 'Who may approve a run, what counts as pay, and how overtime and unpaid leave are priced.',
       to: '/admin/hr/settings/payroll',
       state: 'ok' as const,
     },
     {
-      title: 'Attendance rules',
-      description: 'The grace period before somebody is late, and what counts as a full day.',
-      to: '/admin/hr/settings/attendance',
+      title: 'Attendance & leave policies',
+      description: 'The grace period before somebody is late, what counts as a full day, and leave entitlement.',
+      to: '/admin/hr/settings/attendance-leave',
       state: 'ok' as const,
     },
     {
-      title: 'Who can do what',
-      description: 'Roles and permissions across the whole product, not only HR.',
-      to: '/admin/hr/access',
+      title: 'Public holidays',
+      description: 'The days the clinic is closed, which attendance and leave both read.',
+      to: '/admin/hr/settings/public-holidays',
       state: 'ok' as const,
     },
     {
       title: 'Opening balances',
       description: 'Year-to-date figures for a clinic joining Kuwick part-way through a tax year.',
-      to: '/admin/hr/payroll/ytd-opening',
-      state: 'ok' as const,
-    },
-    {
-      title: 'Leave policies',
-      description: 'Entitlement per leave type, and whether it is pro-rated for somebody who joined mid-year.',
-      to: '/admin/hr/time/leave',
+      to: '/admin/hr/settings/opening-balances',
       state: 'ok' as const,
     },
   ];

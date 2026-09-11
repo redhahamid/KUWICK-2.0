@@ -30,6 +30,15 @@ test.describe('Admin shell', () => {
         await expect(page.getByRole('tab', { name: module, exact: true })).toBeVisible();
       }
 
+      // AND THE RIGHT ONE IS LIT. `route.module` sat in this table unasserted,
+      // and an HR screen reached by link rather than by a nav entry rendered
+      // under Operation's tabs — the module telling you where you are, wrongly,
+      // on a page whose own title said otherwise.
+      await expect(
+        page.getByRole('tab', { name: route.module, exact: true }),
+        `${route.path} should show ${route.module} as the active module`,
+      ).toHaveAttribute('aria-selected', 'true');
+
       // Nothing renders an antd error boundary or an empty white page.
       await expect(page.locator('.kw-adminError')).toHaveCount(0);
     }
@@ -76,9 +85,11 @@ test.describe('Admin shell', () => {
     await expect(page).toHaveURL(/\/admin\/stock/);
     await expect(page.locator('.kw-admin__title')).toHaveText('Stock');
 
+    // HR opens where the work is, not on a summary of it: the module tab and
+    // the bare /admin/hr URL both land on the month being paid.
     await page.getByRole('tab', { name: 'HR', exact: true }).click();
-    await expect(page).toHaveURL(/\/admin\/hr/);
-    await expect(page.locator('.kw-admin__title')).toHaveText('HR Overview');
+    await expect(page).toHaveURL(/\/admin\/hr\/payroll/);
+    await expect(page.locator('.kw-admin__title')).toHaveText('Payroll');
   });
 });
 

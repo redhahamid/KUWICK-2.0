@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { Select } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
-import { PEOPLE_VIEWS, WorkAreaTabs } from '../components/WorkAreaTabs';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, money } from '../components/DataTable';
 import { FilterBar, Filter } from '../components/FilterBar';
@@ -81,7 +80,6 @@ export function BenefitsPage() {
       title="Medical Benefits"
       subtitle="The clinic's own people, their dependants, and what is left of this year's allowance."
     >
-      <WorkAreaTabs views={PEOPLE_VIEWS} />
       <StatStrip
         stats={[
           { label: 'Accounts', value: accounts.length, hint: `benefit year ${year}` },

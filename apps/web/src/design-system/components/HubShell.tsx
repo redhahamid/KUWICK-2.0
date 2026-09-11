@@ -14,9 +14,8 @@ export interface HubItem {
    * A nav entry that absorbed screens keeps their URLs working — links to them
    * exist in the user guide, in payroll exception remedies, and in people's
    * bookmarks — but a URL that lights no tab tells somebody they are nowhere.
-   * Listing them here means "Schedule & Attendance" stays lit at
-   * `/admin/hr/attendance` even though the entry's own path is
-   * `/admin/hr/schedule`.
+   * Listing them here means "Payroll" stays lit at `/admin/hr/incentives`
+   * even though the entry's own path is `/admin/hr/payroll`.
    */
   covers?: string[];
 }
@@ -121,14 +120,50 @@ export function HubShell({ title, categories, headerExtra, scopeClass }: HubShel
     return prefixes.sort((a, b) => b.path.length - a.path.length)[0]?.owner;
   }, [categories, location.pathname]);
 
-  const activeCategory = useMemo(
-    () =>
-      categories.find(
-        (category) =>
-          category.items.some((item) => item.path === activePath) || category.settings?.path === activePath,
-      ),
-    [categories, activePath],
-  );
+  /**
+   * WHICH MODULE THIS SCREEN BELONGS TO.
+   *
+   * An entry match is the first answer and the precise one. The second answer
+   * exists because a module can own a screen that is deliberately NOT in its
+   * rail: `/admin/hr/today` is reached by link rather than by a nav entry, so
+   * no entry claimed it, so the module tabs fell back to their first tab and
+   * an HR screen rendered under Operation's chrome. A route is inside HR
+   * because of its address, whether or not a rail entry points at it — so the
+   * module's own path prefix decides, and the rail simply lights nothing.
+   */
+  const activeCategory = useMemo(() => {
+    // `activePath` is undefined when no entry claimed the route, and
+    // `category.settings?.path` is undefined for a category that has no
+    // Settings button. Comparing the two said TRUE, so the first such category
+    // — Operation — "owned" every unclaimed route in the product. That is the
+    // whole reason an HR screen rendered under Operation's tabs.
+    const owned = activePath
+      ? categories.find(
+          (category) =>
+            category.items.some((item) => item.path === activePath) || category.settings?.path === activePath,
+        )
+      : undefined;
+    if (owned) return owned;
+    // The module's prefix is the segments every one of its entries agrees on:
+    // `/admin/hr` for HR, `/admin/finance` for Finance.
+    const prefixOf = (category: HubCategory) => {
+      const paths = [...category.items, ...(category.settings ? [category.settings] : [])].map(
+        (item) => item.path.split('/'),
+      );
+      const first = paths[0] ?? [];
+      let shared = first.length;
+      for (const segments of paths) {
+        let index = 0;
+        while (index < shared && segments[index] === first[index]) index += 1;
+        shared = index;
+      }
+      return first.slice(0, shared).join('/');
+    };
+    return categories
+      .map((category) => ({ category, prefix: prefixOf(category) }))
+      .filter(({ prefix }) => prefix.length > 1 && location.pathname.startsWith(`${prefix}/`))
+      .sort((a, b) => b.prefix.length - a.prefix.length)[0]?.category;
+  }, [categories, activePath, location.pathname]);
 
   const scopeName = clinicId ? (clinics?.find((clinic) => clinic.id === clinicId)?.name ?? null) : null;
 

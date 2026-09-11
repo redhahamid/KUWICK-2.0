@@ -38,7 +38,9 @@ import type { EmployeeRecord } from '../types';
 type TabKey = 'overview' | 'employment' | 'pay' | 'attendance' | 'leaveClaims' | 'documents';
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'overview', label: 'Overview' },
+  // "Overview" is a word for a screen, not for work — the same reason it left
+  // the HR rail. The key and the `?tab=overview` links are untouched.
+  { key: 'overview', label: 'Summary' },
   { key: 'employment', label: 'Employment' },
   { key: 'pay', label: 'Pay' },
   { key: 'attendance', label: 'Attendance' },
@@ -83,7 +85,7 @@ export function EmployeeWorkspacePage() {
           : undefined
       }
       actions={
-        <Link to="/admin/hr/people">
+        <Link to="/admin/hr/employees">
           <Button size="small">← All people</Button>
         </Link>
       }
@@ -257,7 +259,7 @@ function OverviewTab({ data, onOpen }: { data: EmployeeRecord; onOpen: (tab: Tab
           <EmptyState
             title="Engaged as a contractor"
             hint="Their sessions are paid as professional fees."
-            action={<Link to="/admin/hr/payroll/locum">Open locum sessions →</Link>}
+            action={<Link to="/admin/hr/locum">Open locum sessions →</Link>}
           />
         )}
       </Panel>
@@ -587,7 +589,7 @@ function AttendanceTab({ data }: { data: EmployeeRecord }) {
       title={`Attendance — ${data.year}`}
       description="From the timesheet. Corrections are made there; payroll never holds a second copy of somebody's hours."
       actions={
-        <Link to={`/admin/hr/time?staffId=${data.staffId}`}>
+        <Link to={`/admin/hr/attendance?staffId=${data.staffId}`}>
           <Button size="small">Open timesheet</Button>
         </Link>
       }
@@ -659,7 +661,7 @@ function LeaveClaimsTab({ data }: { data: EmployeeRecord }) {
         title="Leave"
         description="Entitlement comes from the leave policy this employee is on. Requests and approvals live on the leave screen."
         actions={
-          <Link to="/admin/hr/time/leave">
+          <Link to="/admin/hr/leave">
             <Button size="small">Open leave</Button>
           </Link>
         }
@@ -677,7 +679,7 @@ function LeaveClaimsTab({ data }: { data: EmployeeRecord }) {
         title="Claims"
         description="Every approved claim is paid once, by one route."
         actions={
-          <Link to={`/admin/hr/time/claims?staffId=${data.staffId}`}>
+          <Link to={`/admin/hr/claims?staffId=${data.staffId}`}>
             <Button size="small">Open claims</Button>
           </Link>
         }

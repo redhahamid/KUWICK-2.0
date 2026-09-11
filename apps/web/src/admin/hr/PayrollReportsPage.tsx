@@ -122,13 +122,13 @@ const ELSEWHERE: { title: string; description: string; to: string; category: Rep
   {
     title: 'Attendance sheet',
     description: 'Days, hours, lateness and overtime for any period. Exports to CSV.',
-    to: '/admin/hr/time',
+    to: '/admin/hr/attendance',
     category: 'Time & leave',
   },
   {
     title: 'Leave balances',
     description: 'Entitlement, taken and remaining, per person per leave type.',
-    to: '/admin/hr/time/leave',
+    to: '/admin/hr/leave',
     category: 'Time & leave',
   },
   {
@@ -708,7 +708,7 @@ function StatutoryReport({ runId }: { runId: string }) {
               ]
                 .filter(Boolean)
                 .join(', ')}
-              . <Link to="/admin/hr/employers">Add the missing numbers</Link>.
+              . <Link to="/admin/hr/settings/company">Add the missing numbers</Link>.
             </AdminNotice>
           ) : null}
         </AdminSection>

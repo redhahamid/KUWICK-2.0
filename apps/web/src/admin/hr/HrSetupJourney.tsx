@@ -75,7 +75,7 @@ export function HrSetupJourney({ period, clinicId }: { period: string; clinicId?
           : incompleteEmployers.length > 0
             ? `${incompleteEmployers.length} missing an EPF, SOCSO or LHDN number`
             : `${employerRows.length} on file`,
-      cta: { label: employerRows.length === 0 ? 'Set up employer' : 'Open', to: '/admin/hr/employers' },
+      cta: { label: employerRows.length === 0 ? 'Set up employer' : 'Open', to: '/admin/hr/settings/company' },
     },
     {
       key: 'people',
@@ -83,7 +83,7 @@ export function HrSetupJourney({ period, clinicId }: { period: string; clinicId?
       why: 'Somebody with no employment record is left out of payroll rather than refused.',
       state: people.summary.total === 0 ? 'NOT_STARTED' : 'READY',
       detail: people.summary.total === 0 ? null : `${people.summary.total} on the payroll`,
-      cta: { label: people.summary.total === 0 ? 'Add employees' : 'Open', to: '/admin/hr/people' },
+      cta: { label: people.summary.total === 0 ? 'Add employees' : 'Open', to: '/admin/hr/employees' },
     },
     {
       key: 'pay',
@@ -99,17 +99,17 @@ export function HrSetupJourney({ period, clinicId }: { period: string; clinicId?
         withoutSalary.length > 0
           ? `${withoutSalary.length} without a salary on record`
           : `${components.data.components?.length ?? 0} pay components set up`,
-      cta: { label: withoutSalary.length > 0 ? 'Set salaries' : 'Open', to: '/admin/hr/people' },
+      cta: { label: withoutSalary.length > 0 ? 'Set salaries' : 'Open', to: '/admin/hr/employees' },
     },
     {
       key: 'schedule',
-      title: 'The schedule',
+      title: 'The roster',
       why: 'Attendance is judged against the roster, and reads it rather than guessing.',
       // A roster is per branch and per month, so "ready" is not a global fact.
       // The step points at the board rather than claiming to know.
       state: 'INCOMPLETE',
       detail: 'Weekly pattern or shift roster, per branch',
-      cta: { label: 'Open the schedule', to: '/admin/hr/schedule' },
+      cta: { label: 'Open the roster', to: '/admin/hr/attendance/roster' },
     },
     {
       key: 'attendance',

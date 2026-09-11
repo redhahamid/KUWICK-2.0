@@ -9,7 +9,9 @@ import runSource from './PayrollRunPage.tsx?raw';
 import drawerSource from './PayrollEmployeeDrawer.tsx?raw';
 import gridSource from './PayrollGrid.tsx?raw';
 import homeSource from './PayrollMonthPage.tsx?raw';
-import varianceSource from './PayrollVariancePanel.tsx?raw';
+import centreSource from './PayrollExceptionCentre.tsx?raw';
+import reportsSource from './PayrollReportsPage.tsx?raw';
+import typesSource from '../types.ts?raw';
 import claimsSource from './ClaimsPage.tsx?raw';
 import locumSource from './LocumPage.tsx?raw';
 import { STEPS, normaliseStep, stepsWithProblems } from './PayrollStepper';
@@ -153,6 +155,57 @@ describe('the money steps render the engine and compute nothing', () => {
   });
 });
 
+/*
+ * EXCEPTION STATE HAS EXACTLY ONE SOURCE.
+ *
+ * Moved here from `payrollExceptionSource.test.tsx`, which drove the old
+ * `PayrollPage` — a screen no route reaches any more. The guarantee is not
+ * about that screen: it is that the run detail carries no exception field for
+ * a UI to read, and that every surface asking "what is wrong with this month?"
+ * asks the SAME query. Two stores is how a banner said five and a table said
+ * three, and the Approve button believed whichever it had read last.
+ */
+describe('the second store cannot come back', () => {
+  it('the run detail payload carries no exception field for the UI to read', () => {
+    // A compile-time guarantee as well as a runtime one: `PayrollRunDetail` has
+    // no `exceptions` member, so a component that tried to read one would not
+    // typecheck. Asserted on the type declaration, which is where it is true.
+    const detail = code(typesSource).slice(
+      code(typesSource).indexOf('interface PayrollRunDetail'),
+      code(typesSource).indexOf('interface PayrollRunDetail') + 1800,
+    );
+    expect(detail).not.toMatch(/^\s*exceptions\??:/m);
+  });
+
+  it('no payroll screen reads exception state off the run detail', () => {
+    // The exact expressions that made the two stores disagree. If any of them
+    // reappears, exception state has a second source again.
+    for (const source of [runSource, gridSource, drawerSource]) {
+      expect(code(source)).not.toMatch(/run[?]?\.exceptions/);
+      expect(code(source)).not.toMatch(/hasExceptions/);
+    }
+  });
+
+  it('the workspace and the exception centre read the same query key', () => {
+    // Same hook, so the same TanStack cache entry — not two fetches that could
+    // land at different times and show different numbers. The workspace passes
+    // the run id straight to the centre, which owns the read.
+    expect(code(runSource)).toMatch(/<PayrollExceptionCentre[^>]*runId=/);
+    expect(code(centreSource)).toMatch(/usePayrollExceptions\(/);
+  });
+
+  /*
+   * AND THE GATE NEVER FAILS OPEN. An unknown gate means "do not let this be
+   * approved yet", never "approve away". The old page spelled this
+   * `gate ? !gate.canApprove : true`; the workspace reads the server's own
+   * `review.gate`, which is never undefined once the journey has loaded, and
+   * the button is disabled on `!gate.canApprove`.
+   */
+  it('disables approval on the gate rather than on the absence of a problem', () => {
+    expect(code(runSource)).toMatch(/disabled=\{!gate\.canApprove/);
+  });
+});
+
 describe('the exception centre is on the run itself', () => {
   it('the review step renders the centre, wired to the same rows as the stepper and the gate', () => {
     expect(code(runSource)).toMatch(/<PayrollExceptionCentre/);
@@ -176,9 +229,13 @@ describe('the variance shown is a subtraction the API already did', () => {
    * screen.
    */
   it('reads the API delta rather than recomputing it from two numbers on screen', () => {
-    expect(code(varianceSource)).toMatch(/deltaCents/);
+    // The month-on-month comparison lives in Reports, which is where somebody
+    // goes to ask "what changed?". It was briefly pinned to a panel no route
+    // reached — a guarantee guarding code nobody could open.
+    const reports = code(reportsSource);
+    expect(reports).toMatch(/movement/);
     // The mockup defect: a comparison month carrying the current month's totals.
-    expect(code(varianceSource)).not.toMatch(/currentCents\s*-\s*previousCents/);
+    expect(reports).not.toMatch(/currentCents\s*-\s*previousCents/);
     // And Review no longer repeats the register at all.
     expect(code(runSource)).not.toMatch(/vs last period/);
   });

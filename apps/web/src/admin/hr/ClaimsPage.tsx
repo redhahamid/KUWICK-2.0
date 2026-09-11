@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { App, Button, Input, Modal, Radio, Select, Timeline } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
-import { TIME_VIEWS, WorkAreaTabs } from '../components/WorkAreaTabs';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, ringgit } from '../components/DataTable';
 import { FilterBar, Filter } from '../components/FilterBar';
@@ -92,7 +91,6 @@ export function ClaimsPage() {
       title="Claims"
       subtitle="What staff spent that the clinic agreed to give back."
     >
-      <WorkAreaTabs views={TIME_VIEWS} />
 
       <StatStrip
         stats={[

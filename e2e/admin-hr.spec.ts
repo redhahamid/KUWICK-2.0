@@ -21,9 +21,9 @@ test.describe('HR', () => {
   test('the landing page says who is here and what is blocked on a manager', async ({ page }) => {
     const errors = collectAdminConsoleErrors(page);
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
-    await gotoAdmin(page, '/admin/hr');
+    await gotoAdmin(page, '/admin/hr/today');
 
-    await expect(page.getByRole('heading', { name: 'HR Overview', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
 
     // Somebody is actually on the floor, and the roster is read from the
     // canonical provider roster rather than a second HR-only schedule.
@@ -60,7 +60,7 @@ test.describe('HR', () => {
   test('account, employment and clinical credential stay three separate facts', async ({ page }) => {
     const errors = collectAdminConsoleErrors(page);
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
-    await gotoAdmin(page, '/admin/hr/people');
+    await gotoAdmin(page, '/admin/hr/employees');
 
     await expect(page.getByRole('heading', { name: 'Employees', exact: true })).toBeVisible();
 
@@ -86,7 +86,7 @@ test.describe('HR', () => {
   test('unapproved overtime is shown separately and is not paid', async ({ page }) => {
     const errors = collectAdminConsoleErrors(page);
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
-    await gotoAdmin(page, '/admin/hr/time');
+    await gotoAdmin(page, '/admin/hr/attendance');
 
     await expect(page.getByRole('heading', { name: 'Attendance', exact: true })).toBeVisible();
     // The GUARANTEE, not one wording of it. The subtitle was shortened when

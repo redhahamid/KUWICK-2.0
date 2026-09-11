@@ -16,43 +16,29 @@ import { useLocation, useNavigate } from 'react-router-dom';
  *
  * Each view keeps its own URL, so a link to Attendance still opens Attendance.
  */
-export const TIME_VIEWS = [
-  { path: '/admin/hr/time', label: 'Attendance' },
-  { path: '/admin/hr/time/roster', label: 'Roster' },
-  { path: '/admin/hr/time/leave', label: 'Leave' },
-  { path: '/admin/hr/time/claims', label: 'Claims' },
-];
-
 /**
- * PAYROLL'S OWN THREE VIEWS.
+ * ATTENDANCE'S TWO VIEWS.
  *
- * Doctor incentives and locum sessions were top-level HR tabs, then routes
- * with no way in: they light Payroll in the rail, and nothing on the payroll
- * screen mentioned them. They are pay INPUTS — things that feed a payslip and
- * a payable — so they belong to Payroll the way Roster and Claims belong to
- * Time & Leave, and they get the same switcher.
+ * Roster and the timesheet are two halves of one question — was somebody
+ * meant to work, and did they? — so they are tabs inside Attendance rather
+ * than two entries in the rail.
  *
- * The RUN itself is deliberately not here: inside a run the stage strip is the
- * navigation, and two switchers on one screen is how twelve tabs happened.
+ * Leave and Claims used to be tabs here too. They are not views of
+ * attendance; they are two different decisions a manager makes ("may somebody
+ * be away", "do we owe somebody money back"), and hiding them behind a third
+ * label meant two of the three were invisible until you clicked the third.
+ * They have their own rail entries now.
+ *
+ * PEOPLE_VIEWS and PAYROLL_VIEWS are gone. They carried Medical benefits,
+ * Doctor incentives and Locum sessions — supporting workflows that do not
+ * belong in navigation, and whose tabs were the last back door into the rail.
+ * Their URLs still resolve; incentives and locum are reached from the payroll
+ * figure they produce, which is where the question about them is actually
+ * asked.
  */
-/**
- * THE EMPLOYEE RECORD'S TWO VIEWS.
- *
- * Medical Benefits had a permanent seat in the HR rail beside Payroll, which
- * made it look like a sixth kind of monthly work. It is a benefits workflow
- * opened when a claim or an entitlement question comes up — so it belongs to
- * the section that owns the employee record, reached the same way Roster is
- * reached from Attendance.
- */
-export const PEOPLE_VIEWS = [
-  { path: '/admin/hr/people', label: 'Employees' },
-  { path: '/admin/hr/benefits', label: 'Medical benefits' },
-];
-
-export const PAYROLL_VIEWS = [
-  { path: '/admin/hr/payroll', label: 'Payroll' },
-  { path: '/admin/hr/incentives', label: 'Doctor incentives' },
-  { path: '/admin/hr/locum', label: 'Locum sessions' },
+export const ATTENDANCE_VIEWS = [
+  { path: '/admin/hr/attendance', label: 'Timesheet' },
+  { path: '/admin/hr/attendance/roster', label: 'Roster' },
 ];
 
 export function WorkAreaTabs({ views }: { views: { path: string; label: string }[] }) {

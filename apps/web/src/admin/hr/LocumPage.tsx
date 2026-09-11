@@ -3,7 +3,6 @@ import { App, Button, DatePicker, Input, Modal, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
-import { PAYROLL_VIEWS, WorkAreaTabs } from '../components/WorkAreaTabs';
 import { DataTable, ringgit } from '../components/DataTable';
 import {
   useApproveLocumSession,
@@ -60,7 +59,6 @@ export function LocumPage() {
         />
       }
     >
-      <WorkAreaTabs views={PAYROLL_VIEWS} />
       <AdminNotice tone="info">
         A locum is a <strong>contractor</strong>: a payable, never a payslip, and no statutory contribution. Payroll
         follows the engagement on somebody&apos;s employment record, not the word &quot;locum&quot;.

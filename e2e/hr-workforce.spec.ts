@@ -22,7 +22,7 @@ test.describe('HR navigation', () => {
     test(`no HR tab label is cut in half at ${viewport.name}`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await loginAdmin(page);
-      await gotoAdmin(page, '/admin/hr');
+      await gotoAdmin(page, '/admin/hr/today');
 
       // "Locum sessi…" is the failure this exists for. A label whose content
       // is wider than its box has been truncated by CSS, and a person cannot
@@ -44,15 +44,15 @@ test.describe('HR navigation', () => {
 test.describe('HR Today', () => {
   test('the counters lead to the work rather than merely counting it', async ({ page }) => {
     await loginAdmin(page);
-    await gotoAdmin(page, '/admin/hr');
+    await gotoAdmin(page, '/admin/hr/today');
 
     // A counter that goes nowhere tells a manager they have work and not where
     // it is, which is most of the way to not doing it.
     for (const [label, path] of [
-      ['Leave requests waiting', '/admin/hr/time/leave'],
-      ['Claims waiting for a decision', '/admin/hr/time/claims'],
+      ['Leave requests waiting', '/admin/hr/leave'],
+      ['Claims waiting for a decision', '/admin/hr/claims'],
     ] as const) {
-      await gotoAdmin(page, '/admin/hr');
+      await gotoAdmin(page, '/admin/hr/today');
       // A named row rather than a counter tile — see admin-hr.spec.ts for why.
       const tile = page.locator('.kw-panelRow', { hasText: label });
       await expect(tile).toBeVisible();
@@ -64,10 +64,10 @@ test.describe('HR Today', () => {
   test('renders without a console error on a two-branch clinic', async ({ page }) => {
     const errors = collectAdminConsoleErrors(page);
     await loginAdmin(page);
-    await gotoAdmin(page, '/admin/hr');
-    await expect(page.locator('.kw-admin__title')).toHaveText('HR Overview');
+    await gotoAdmin(page, '/admin/hr/today');
+    await expect(page.locator('.kw-admin__title')).toHaveText('Today');
     await chooseBranch(page, 'Contoh Central');
-    await expect(page.locator('.kw-admin__title')).toHaveText('HR Overview');
+    await expect(page.locator('.kw-admin__title')).toHaveText('Today');
     // A page that white-screens because a response field is absent is a worse
     // failure than a missing section, and this caught exactly that once.
     await expect(page.locator('.kw-adminError')).toHaveCount(0);
@@ -78,7 +78,7 @@ test.describe('HR Today', () => {
 test.describe('The roster holds the whole clinic', () => {
   test('the workforce filter is on the board and counts everybody', async ({ page }) => {
     await loginAdmin(page);
-    await gotoAdmin(page, '/admin/hr/roster');
+    await gotoAdmin(page, '/admin/hr/attendance/roster');
     await chooseBranch(page, 'Contoh Central');
 
     const filters = page.locator('.kw-roster-filters');
@@ -96,7 +96,7 @@ test.describe('The roster holds the whole clinic', () => {
 
   test('opens with today fully visible, not tucked under the provider rail', async ({ page }) => {
     await loginAdmin(page);
-    await gotoAdmin(page, '/admin/hr/roster');
+    await gotoAdmin(page, '/admin/hr/attendance/roster');
     await chooseBranch(page, 'Contoh Central');
 
     const today = page.locator('th[data-today]');
@@ -128,7 +128,7 @@ test.describe('A roster belongs to one branch', () => {
     // control for answering it in the hub header above the tabs — where
     // somebody staring at an empty board is not looking.
     await page.evaluate(() => window.sessionStorage.removeItem('kuwick.selectedBranch'));
-    await gotoAdmin(page, '/admin/hr/roster');
+    await gotoAdmin(page, '/admin/hr/attendance/roster');
 
     const notice = page.locator('.kw-adminNotice', { hasText: 'A roster belongs to one branch' });
     await expect(notice).toBeVisible();

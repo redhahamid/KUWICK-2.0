@@ -3,7 +3,7 @@ import { AdminNotice, AdminShell } from '../components/AdminShell';
 import { RosterPage as CanonicalRosterPage } from '../../appointment/roster/RosterPage';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { FilterBar, Filter } from '../components/FilterBar';
-import { TIME_VIEWS, WorkAreaTabs } from '../components/WorkAreaTabs';
+import { ATTENDANCE_VIEWS, WorkAreaTabs } from '../components/WorkAreaTabs';
 
 /**
  * THE ROSTER, seen from HR — and it is the SAME roster.
@@ -37,7 +37,7 @@ export function AdminRosterPage() {
   if (!clinicId) {
     return (
       <AdminShell title="Roster" subtitle="Who is working, by branch and month.">
-        <WorkAreaTabs views={TIME_VIEWS} />
+        <WorkAreaTabs views={ATTENDANCE_VIEWS} />
         <AdminNotice tone="info">
           <strong>A roster belongs to one branch.</strong> Shifts are people against dates at a place, so this
           board shows one branch at a time rather than averaging two.
@@ -61,7 +61,7 @@ export function AdminRosterPage() {
 
   return (
     <AdminShell title="Roster" subtitle="Who is working, by branch and month.">
-      <WorkAreaTabs views={TIME_VIEWS} />
+      <WorkAreaTabs views={ATTENDANCE_VIEWS} />
       {(clinics?.length ?? 0) > 1 ? (
         <FilterBar>
           <Filter label="Branch">

@@ -27,7 +27,6 @@ import { PublicBookingPage } from './appointment/public/PublicBookingPage';
 import { ManageBookingPage } from './appointment/public/ManageBookingPage';
 import { ClinicsPage } from './core/ClinicsPage';
 import { PatientsPage } from './core/PatientsPage';
-import { StaffPage } from './hr/StaffPage';
 import { PublicHolidaysPage } from './hr/PublicHolidaysPage';
 import { ServicesPage } from './clinical/ServicesPage';
 import { ConsultationTariffsPage } from './clinical/ConsultationTariffsPage';
@@ -95,6 +94,7 @@ import { ClaimsPage } from './admin/hr/ClaimsPage';
 import { LocumPage } from './admin/hr/LocumPage';
 import { PayrollReportsPage } from './admin/hr/PayrollReportsPage';
 import { PayrollSettingsPage } from './admin/hr/PayrollSettingsPage';
+import { PayrollItemsPage } from './admin/hr/PayrollItemsPage';
 import { HrSettingsPage } from './admin/hr/HrSettingsPage';
 import { AttendanceSettingsPage } from './admin/hr/AttendanceSettingsPage';
 import { PayrollMonthPage } from './admin/hr/PayrollMonthPage';
@@ -208,7 +208,7 @@ export function App() {
             <Route path="/management/reports/drug-movement" element={<DrugMovementPage />} />
             <Route path="/management/reports/wait-times" element={<WaitTimesPage />} />
 
-            <Route path="/management/hr/staff" element={<StaffPage />} />
+            <Route path="/management/hr/staff" element={<Navigate to="/admin/hr/employees" replace />} />
             {/*
               * ONE ATTENDANCE. This used to render a SECOND attendance screen,
               * derived from `Visit.checkInAt` — patient traffic, not punches —
@@ -222,7 +222,7 @@ export function App() {
                 "Approving/Rejecting as" picker whose value the server wrote
                 down as the approver, unchecked. Its URL still resolves, to
                 the work area that replaced it. */}
-            <Route path="/management/hr/leave-requests" element={<Navigate to="/admin/hr/requests" replace />} />
+            <Route path="/management/hr/leave-requests" element={<Navigate to="/admin/hr/leave" replace />} />
 
             <Route path="/management/stock/health" element={<StockHealthPage />} />
             <Route path="/management/stock/items" element={<ItemsPage />} />
@@ -291,7 +291,14 @@ export function App() {
             <Route path="/admin/panel/batches" element={<PanelClaimsPage />} />
             <Route path="/admin/panel/companies" element={<PanelClinicsPage />} />
 
-            <Route path="/admin/hr" element={<HrOverviewPage />} />
+            {/*
+              * HR OPENS ON PAYROLL. Paying people is why this module is
+              * opened at all; a dashboard about HR is not a thing anybody
+              * arrives meaning to look at. The old landing keeps a URL of its
+              * own — it is a useful screen, just not the front door.
+              */}
+            <Route path="/admin/hr" element={<Navigate to="/admin/hr/payroll" replace />} />
+            <Route path="/admin/hr/today" element={<HrOverviewPage />} />
 
             {/* SIX GROUPS, AND THE URLS THAT USED TO BE TWELVE.
                 Each group has a canonical path; every route it absorbed still
@@ -299,9 +306,12 @@ export function App() {
                 payroll exception remedies, and in people's bookmarks. The old
                 top-level names redirect so there is ONE canonical URL per
                 screen; the detail routes under them are untouched. */}
-            <Route path="/admin/hr/people" element={<EmployeesPage />} />
-            <Route path="/admin/hr/people/new" element={<AddEmployeePage />} />
-            <Route path="/admin/hr/employees" element={<Navigate to="/admin/hr/people" replace />} />
+            {/* "Employees" is the word the product uses everywhere else, so it
+                is the word in the URL. `/people` was the odd one out. */}
+            <Route path="/admin/hr/employees" element={<EmployeesPage />} />
+            <Route path="/admin/hr/employees/new" element={<AddEmployeePage />} />
+            <Route path="/admin/hr/people" element={<Navigate to="/admin/hr/employees" replace />} />
+            <Route path="/admin/hr/people/new" element={<Navigate to="/admin/hr/employees/new" replace />} />
             {/* One employee, addressable. The record used to live only in a
                 drawer, so it could not be linked to, left open, or reached from
                 a payroll exception without landing on a directory first. */}
@@ -311,16 +321,23 @@ export function App() {
                 leave and claims all answer "was somebody meant to work, did
                 they, and what have they asked me for?". They were four
                 top-level tabs. Every old URL still resolves. */}
-            <Route path="/admin/hr/time" element={<TimesheetPage />} />
-            <Route path="/admin/hr/time/roster" element={<AdminRosterPage />} />
-            <Route path="/admin/hr/time/leave" element={<LeavePage />} />
-            <Route path="/admin/hr/time/claims" element={<ClaimsPage />} />
-            <Route path="/admin/hr/attendance" element={<Navigate to="/admin/hr/time" replace />} />
-            <Route path="/admin/hr/schedule" element={<Navigate to="/admin/hr/time/roster" replace />} />
-            <Route path="/admin/hr/roster" element={<Navigate to="/admin/hr/time/roster" replace />} />
-            <Route path="/admin/hr/requests" element={<Navigate to="/admin/hr/time/leave" replace />} />
-            <Route path="/admin/hr/leave" element={<Navigate to="/admin/hr/time/leave" replace />} />
-            <Route path="/admin/hr/claims" element={<Navigate to="/admin/hr/time/claims" replace />} />
+            {/*
+              * THREE SEPARATE DECISIONS, THREE ENTRIES. "Time & Leave" bundled
+              * "was somebody here", "may somebody be away" and "do we owe
+              * somebody money back" behind one label, so two of the three were
+              * invisible until you clicked the third.
+              */}
+            <Route path="/admin/hr/attendance" element={<TimesheetPage />} />
+            <Route path="/admin/hr/attendance/roster" element={<AdminRosterPage />} />
+            <Route path="/admin/hr/leave" element={<LeavePage />} />
+            <Route path="/admin/hr/claims" element={<ClaimsPage />} />
+            <Route path="/admin/hr/time" element={<Navigate to="/admin/hr/attendance" replace />} />
+            <Route path="/admin/hr/time/roster" element={<Navigate to="/admin/hr/attendance/roster" replace />} />
+            <Route path="/admin/hr/time/leave" element={<Navigate to="/admin/hr/leave" replace />} />
+            <Route path="/admin/hr/time/claims" element={<Navigate to="/admin/hr/claims" replace />} />
+            <Route path="/admin/hr/schedule" element={<Navigate to="/admin/hr/attendance/roster" replace />} />
+            <Route path="/admin/hr/roster" element={<Navigate to="/admin/hr/attendance/roster" replace />} />
+            <Route path="/admin/hr/requests" element={<Navigate to="/admin/hr/leave" replace />} />
 
             {/* PAYROLL OPENS ON THE MONTH, not on a page about payroll. The
                 landing dashboard this replaced put a hero, three explanatory
@@ -333,17 +350,37 @@ export function App() {
                 lands on the register rather than 404ing a bookmark. */}
             <Route path="/admin/hr/payroll/readiness" element={<Navigate to="/admin/hr/payroll" replace />} />
             <Route path="/admin/hr/payroll/all" element={<Navigate to="/admin/hr/payroll/history" replace />} />
-            <Route path="/admin/hr/payroll/ytd-opening" element={<YtdOpeningImportPage />} />
             <Route path="/admin/hr/payroll/:id" element={<PayrollRunPage />} />
-            <Route path="/admin/hr/employers" element={<LegalEmployersPage />} />
             <Route path="/admin/hr/incentives" element={<IncentivesPage />} />
             <Route path="/admin/hr/benefits" element={<BenefitsPage />} />
             <Route path="/admin/hr/locum" element={<LocumPage />} />
             <Route path="/admin/hr/reports" element={<PayrollReportsPage />} />
+            {/*
+              * SETTINGS IS ONE PLACE, UNDER HR. It used to be two: six cards
+              * here, and a near-empty "HR & Attendance" category in Clinic
+              * Settings holding Public Holidays alone. A manager looking for
+              * "HR settings" could land on either, and one of them was almost
+              * nothing.
+              */}
             <Route path="/admin/hr/settings" element={<HrSettingsPage />} />
+            <Route path="/admin/hr/settings/company" element={<LegalEmployersPage />} />
+            <Route path="/admin/hr/settings/payroll-items" element={<PayrollItemsPage />} />
             <Route path="/admin/hr/settings/payroll" element={<PayrollSettingsPage />} />
-            <Route path="/admin/hr/settings/attendance" element={<AttendanceSettingsPage />} />
-            <Route path="/admin/hr/access" element={<RolesSettingsPage />} />
+            <Route path="/admin/hr/settings/attendance-leave" element={<AttendanceSettingsPage />} />
+            <Route path="/admin/hr/settings/public-holidays" element={<PublicHolidaysPage />} />
+            <Route path="/admin/hr/settings/opening-balances" element={<YtdOpeningImportPage />} />
+            {/* Where each of those used to live. */}
+            <Route path="/admin/hr/employers" element={<Navigate to="/admin/hr/settings/company" replace />} />
+            <Route
+              path="/admin/hr/settings/attendance"
+              element={<Navigate to="/admin/hr/settings/attendance-leave" replace />}
+            />
+            <Route
+              path="/admin/hr/payroll/ytd-opening"
+              element={<Navigate to="/admin/hr/settings/opening-balances" replace />}
+            />
+            {/* Roles are product-wide, not HR's. One home, in Clinic Settings. */}
+            <Route path="/admin/hr/access" element={<Navigate to="/settings/organisation/roles" replace />} />
 
             <Route path="/admin/finance" element={<FinanceOverviewPage />} />
             <Route path="/admin/finance/sales" element={<SalesAnalysisPage />} />
@@ -383,7 +420,10 @@ export function App() {
               element={<PrescriptionVocabularyPage />}
             />
             <Route path="/settings/documents/templates" element={<DocumentTemplatesPage />} />
-            <Route path="/settings/hr/public-holidays" element={<PublicHolidaysPage />} />
+            <Route
+              path="/settings/hr/public-holidays"
+              element={<Navigate to="/admin/hr/settings/public-holidays" replace />}
+            />
           </Route>
 
           {/* Old-URL redirects (M1/M2) — bookmarks and deep links keep
@@ -412,7 +452,7 @@ export function App() {
           <Route path="/management/operation/rooms" element={<Navigate to="/settings/queue/rooms" replace />} />
           <Route path="/management/operation/queue-display" element={<Navigate to="/settings/queue/display" replace />} />
           <Route path="/management/operation/document-templates" element={<Navigate to="/settings/documents/templates" replace />} />
-          <Route path="/management/hr/public-holidays" element={<Navigate to="/settings/hr/public-holidays" replace />} />
+          <Route path="/management/hr/public-holidays" element={<Navigate to="/admin/hr/settings/public-holidays" replace />} />
           <Route path="/management/stock/levels" element={<Navigate to="/management/stock/health" replace />} />
           <Route path="/management/stock/low-stock" element={<Navigate to="/management/stock/health?tab=low" replace />} />
           <Route path="/management/stock/near-expiry" element={<Navigate to="/management/stock/health?tab=near-expiry" replace />} />

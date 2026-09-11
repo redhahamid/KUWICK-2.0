@@ -32,7 +32,7 @@ import { HubCategory, HubShell } from '../design-system/components/HubShell';
  * no second roster / item catalogue / claim record / employee record created.
  * A duplicated screen is a screen that drifts.
  */
-const ADMIN_CATEGORIES: HubCategory[] = [
+export const ADMIN_CATEGORIES: HubCategory[] = [
   {
     key: 'operation',
     label: 'Operation',
@@ -91,21 +91,33 @@ const ADMIN_CATEGORIES: HubCategory[] = [
     // between attendance, leave and payroll and needs to know where they are
     // the whole time.
     layout: 'rail',
+    // CLICKING "HR" AND TYPING /admin/hr HAVE TO LAND IN THE SAME PLACE.
+    // Without this the module tab went to the first rail entry, Employees,
+    // while the bare URL redirected to Payroll — the same gesture, two
+    // answers. Payroll is the answer: paying people is why this module is
+    // opened at all. Employees keeps its seat first in the rail because that
+    // is the order the work is set up in, not the order it is done in.
+    landing: '/admin/hr/payroll',
     settings: { path: '/admin/hr/settings', label: 'Settings' },
     items: [
       /*
-       * SIX DESTINATIONS, NAMED FOR THE WORK.
+       * SIX DESTINATIONS, PLUS SETTINGS. NAMED FOR THE WORK.
        *
        * This row read: Today · Employees · Timesheets · Leave · Claims ·
        * Roster · Payroll · Doctor incentives · Locum sessions · Staff
        * benefits · Reports · Payroll settings — twelve, and the owner who
        * designed the system was still asking "why are there so many tabs?"
        *
-       * It was a map of the DOMAIN MODEL. Three entries were configuration.
-       * Two were one subject cut in half: Roster and Attendance both answer
-       * "was somebody meant to work, and did they?". Two more — incentives and
-       * locum — are payroll INPUTS that stood in the navigation as if they
-       * were places you go.
+       * It went to six, and the six still had two problems. "Overview" is a
+       * word for a screen, not for work: nobody arrives at a clinic meaning to
+       * do an overview. And "Attendance & Leave" bundled three different
+       * decisions — was somebody here, may somebody be away, do we owe
+       * somebody money back — behind one label, so two of the three were
+       * invisible until you clicked the third.
+       *
+       * Six now, each the name of a thing a clinic manager comes here to do.
+       * Payroll is where HR opens, because paying people is why this module
+       * is opened at all.
        *
        * Settings is deliberately NOT one of the six. It is set up once and
        * then rarely opened; giving it a permanent seat put configuration in
@@ -115,30 +127,17 @@ const ADMIN_CATEGORIES: HubCategory[] = [
        * it — a bookmark that lands somewhere unlit teaches people the
        * navigation is lying to them.
        */
-      { path: '/admin/hr', label: 'Overview' },
       {
         // "Employees" rather than "People": it is the word on the button that
         // adds one, on the payroll register's first column, and in every
         // sentence the product writes about them.
-        path: '/admin/hr/people',
+        path: '/admin/hr/employees',
         label: 'Employees',
         // Medical Benefits joins the section that owns the employee record.
         // It is a benefits workflow opened when a claim comes up, not a place
         // somebody goes weekly, and a permanent seat beside Payroll made it
         // look like a sixth kind of monthly work.
-        covers: ['/admin/hr/employees', '/admin/hr/benefits'],
-      },
-      {
-        path: '/admin/hr/time',
-        label: 'Attendance & Leave',
-        covers: [
-          '/admin/hr/attendance',
-          '/admin/hr/roster',
-          '/admin/hr/schedule',
-          '/admin/hr/leave',
-          '/admin/hr/requests',
-          '/admin/hr/claims',
-        ],
+        covers: ['/admin/hr/benefits'],
       },
       {
         // Doctor incentives and locum sessions are payroll INPUTS. They had
@@ -148,6 +147,15 @@ const ADMIN_CATEGORIES: HubCategory[] = [
         label: 'Payroll',
         covers: ['/admin/hr/incentives', '/admin/hr/locum'],
       },
+      {
+        // Was somebody meant to work, and did they? Roster and the timesheet
+        // are two halves of that one question, so they are tabs inside this
+        // rather than two rail entries.
+        path: '/admin/hr/attendance',
+        label: 'Attendance',
+      },
+      { path: '/admin/hr/leave', label: 'Leave' },
+      { path: '/admin/hr/claims', label: 'Claims' },
       { path: '/admin/hr/reports', label: 'Reports' },
     ],
   },

@@ -105,42 +105,42 @@ export function HrOverviewPage() {
       label: 'Leave requests waiting',
       count: data?.pendingLeaveApprovals ?? 0,
       tone: 'attention' as const,
-      to: '/admin/hr/time/leave',
+      to: '/admin/hr/leave',
     },
     {
       key: 'punch',
       label: 'Missing clock-in or clock-out',
       count: data?.missingPunches ?? 0,
       tone: 'blocked' as const,
-      to: '/admin/hr/time',
+      to: '/admin/hr/attendance',
     },
     {
       key: 'ot',
       label: 'Overtime claimed, not approved',
       count: data?.unapprovedOvertimeClaims ?? 0,
       tone: 'attention' as const,
-      to: '/admin/hr/time',
+      to: '/admin/hr/attendance',
     },
     {
       key: 'corrections',
       label: 'Attendance fixes requested',
       count: data?.pendingAttendanceCorrections ?? 0,
       tone: 'attention' as const,
-      to: '/admin/hr/time',
+      to: '/admin/hr/attendance',
     },
     {
       key: 'claims',
       label: 'Claims waiting for a decision',
       count: data?.pendingClaims ?? 0,
       tone: 'attention' as const,
-      to: '/admin/hr/time/claims',
+      to: '/admin/hr/claims',
     },
     {
       key: 'employer',
       label: 'Company statutory details missing',
       count: employersMissing,
       tone: 'blocked' as const,
-      to: '/admin/hr/employers',
+      to: '/admin/hr/settings/company',
     },
   ].filter((row) => row.count > 0);
 
@@ -188,10 +188,10 @@ export function HrOverviewPage() {
   return (
     <AdminShell
       error={firstError(today, readiness, payroll)}
-      title="HR Overview"
+      title="Today"
       subtitle={clinicDayjs(`${data?.date ?? ''}T00:00:00`).format('dddd D MMMM YYYY')}
       actions={
-        <Button type="primary" onClick={() => navigate('/admin/hr/people/new')}>
+        <Button type="primary" onClick={() => navigate('/admin/hr/employees/new')}>
           + Add employee
         </Button>
       }
@@ -235,13 +235,13 @@ export function HrOverviewPage() {
         <Panel
           title="Today's workforce"
           hint="Read from the provider roster — changing a shift happens there, not here."
-          action={<PanelLink to="/admin/hr/time">Attendance</PanelLink>}
+          action={<PanelLink to="/admin/hr/attendance">Attendance</PanelLink>}
         >
           {workforce.length === 0 ? (
             <EmptyState
               title="Nobody is rostered today"
               hint="The roster is the one schedule; attendance reads it and never writes to it."
-              action={<Link to="/admin/hr/time/roster">Open the roster →</Link>}
+              action={<Link to="/admin/hr/attendance/roster">Open the roster →</Link>}
             />
           ) : (
             <PanelList>
@@ -338,7 +338,7 @@ export function HrOverviewPage() {
                     {!done ? (
                       <Link
                         className="kw-readinessItem__fix"
-                        to={row.key === 'employer' ? '/admin/hr/employers' : '/admin/hr/payroll'}
+                        to={row.key === 'employer' ? '/admin/hr/settings/company' : '/admin/hr/payroll'}
                       >
                         Fix
                       </Link>
@@ -350,7 +350,7 @@ export function HrOverviewPage() {
           )}
         </Panel>
 
-        <Panel title="Leave this week" action={<PanelLink to="/admin/hr/time/leave">Leave</PanelLink>}>
+        <Panel title="Leave this week" action={<PanelLink to="/admin/hr/leave">Leave</PanelLink>}>
           {weekLeave.length === 0 ? (
             <EmptyState title="No leave in the next seven days" />
           ) : (
@@ -358,7 +358,7 @@ export function HrOverviewPage() {
               {weekLeave.map((row) => (
                 <PanelRow
                   key={row.id}
-                  to="/admin/hr/time/leave"
+                  to="/admin/hr/leave"
                   lead={<PersonAvatar name={row.staff?.fullName ?? '?'} size={28} />}
                   title={row.staff?.fullName ?? '—'}
                   meta={`${dayjs(row.startDate).format('ddd D MMM')} – ${dayjs(row.endDate).format('ddd D MMM')} · ${row.leaveType.toLowerCase()}`}

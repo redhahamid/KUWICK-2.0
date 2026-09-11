@@ -62,10 +62,10 @@ const EARNING_CODES = new Set([
 
 /** Where a derived figure is corrected — the sentence, and the place. */
 const UPSTREAM: Record<string, { where: string; to: string }> = {
-  ATTENDANCE: { where: 'Attendance', to: '/admin/hr/time' },
-  TIMESHEET: { where: 'Attendance', to: '/admin/hr/time' },
-  LEAVE: { where: 'Leave', to: '/admin/hr/time/leave' },
-  CLAIM: { where: 'Claims', to: '/admin/hr/time/claims' },
+  ATTENDANCE: { where: 'Attendance', to: '/admin/hr/attendance' },
+  TIMESHEET: { where: 'Attendance', to: '/admin/hr/attendance' },
+  LEAVE: { where: 'Leave', to: '/admin/hr/leave' },
+  CLAIM: { where: 'Claims', to: '/admin/hr/claims' },
   INCENTIVE: { where: 'Doctor incentives', to: '/admin/hr/incentives' },
   LOCUM: { where: 'Locum sessions', to: '/admin/hr/locum' },
 };

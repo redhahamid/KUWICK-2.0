@@ -36,15 +36,16 @@ export const ADMIN_ROUTES = [
   { path: '/admin/stock/movements', module: 'Stock', heading: 'Movement Ledger' },
   { path: '/admin/panel', module: 'Panel', heading: 'Panel Claims' },
   { path: '/admin/panel/configuration', module: 'Panel', heading: 'Panel Configuration' },
-  { path: '/admin/hr', module: 'HR', heading: 'HR Overview' },
+  { path: '/admin/hr/today', module: 'HR', heading: 'Today' },
   // The canonical HR paths, under the six-section architecture. Everything
   // they absorbed still resolves — those redirects are asserted in
   // hr-navigation.spec.ts rather than here, so this walk tests SCREENS.
-  { path: '/admin/hr/people', module: 'HR', heading: 'Employees' },
-  { path: '/admin/hr/time', module: 'HR', heading: 'Attendance' },
-  { path: '/admin/hr/time/roster', module: 'HR', heading: 'Roster' },
-  { path: '/admin/hr/time/leave', module: 'HR', heading: 'Leave' },
-  { path: '/admin/hr/time/claims', module: 'HR', heading: 'Claims' },
+  { path: '/admin/hr/employees', module: 'HR', heading: 'Employees' },
+  { path: '/admin/hr/settings/payroll-items', module: 'HR', heading: 'Payroll items' },
+  { path: '/admin/hr/attendance', module: 'HR', heading: 'Attendance' },
+  { path: '/admin/hr/attendance/roster', module: 'HR', heading: 'Roster' },
+  { path: '/admin/hr/leave', module: 'HR', heading: 'Leave' },
+  { path: '/admin/hr/claims', module: 'HR', heading: 'Claims' },
   { path: '/admin/hr/benefits', module: 'HR', heading: 'Medical Benefits' },
   { path: '/admin/hr/reports', module: 'HR', heading: 'Reports' },
   { path: '/admin/hr/payroll', module: 'HR', heading: 'Payroll' },
@@ -103,22 +104,21 @@ export const ADMIN_MOUNTED_ROUTES = [
 /**
  * MOUNTED, BUT REACHED BY LINK RATHER THAN BY THE RAIL.
  *
- * `/admin/hr/access` used to sit in the HR rail between Payroll and Staff
- * benefits. It was taken out deliberately — see the comment in
- * `AdminLayout.tsx`: the HR rail is the monthly payroll walk, and making the
- * owner pass two configuration screens to reach the one they open every month
- * was turning it into an admin console. The screen is still mounted and still
- * reachable, from Payroll settings.
+ * Empty on purpose, and kept so the spec that walks it keeps its shape.
  *
- * So there is no sub-tab to light, and asserting one was this fixture
- * describing a rail that no longer exists. What still has to be true is
- * everything else: the route resolves, the Admin rail is intact, the right
- * MODULE is lit, and the screen draws. The sub-tab that lights is the module's
- * landing page, which is the honest answer for a leaf with no rail entry.
+ * It held `/admin/hr/access`, which rendered the product-wide Roles screen
+ * inside the HR hub. Roles are not HR's: having them at two addresses meant
+ * two screens could disagree about who may approve a payroll. There is one
+ * home now — `/settings/organisation/roles` — and the HR address redirects to
+ * it, so it is a redirect to assert rather than a screen to draw.
  */
-export const ADMIN_LINKED_ROUTES = [
-  { path: '/admin/hr/access', module: 'HR', marker: 'Roles & permissions', from: '/admin/hr/settings', owns: 'settings' },
-] as const;
+export const ADMIN_LINKED_ROUTES: {
+  path: string;
+  module: string;
+  marker: string;
+  from: string;
+  owns: string;
+}[] = [];
 
 /**
  * The two Admin routes that render an existing page with a PROP rather than a

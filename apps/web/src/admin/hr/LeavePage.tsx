@@ -8,7 +8,6 @@ import { FilterBar, Filter } from '../components/FilterBar';
 import { PersonCell } from '../components/Person';
 import { StatusChip, humanise } from '../components/Chip';
 import { EmptyState } from '../components/Panel';
-import { TIME_VIEWS, WorkAreaTabs } from '../components/WorkAreaTabs';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useLeaveBalances } from '../hooks/useAdmin';
 import { useStaff } from '../../hr/hooks/useStaff';
@@ -143,7 +142,6 @@ export function LeavePage() {
         </Button>
       }
     >
-      <WorkAreaTabs views={TIME_VIEWS} />
 
       <StatStrip
         stats={[

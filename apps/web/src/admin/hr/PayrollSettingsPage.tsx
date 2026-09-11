@@ -92,7 +92,7 @@ export function PayrollSettingsPage() {
               width: 100,
               noExport: true,
               render: () => (
-                <Link to="/admin/hr/employers">
+                <Link to="/admin/hr/settings/company">
                   <Button size="small">Open</Button>
                 </Link>
               ),

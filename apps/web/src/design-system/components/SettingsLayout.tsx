@@ -65,11 +65,14 @@ const SETTINGS_CATEGORIES: HubCategory[] = [
     label: 'Documents & Templates',
     items: [{ path: '/settings/documents/templates', label: 'Document Templates' }],
   },
-  {
-    key: 'hr',
-    label: 'HR & Attendance',
-    items: [{ path: '/settings/hr/public-holidays', label: 'Public Holidays' }],
-  },
+  /*
+   * NO "HR & ATTENDANCE" HERE.
+   *
+   * It held Public Holidays and nothing else, while HR carried its own six
+   * settings cards under `/admin/hr/settings`. Two places called HR settings,
+   * one of them a single link — a manager looking for one could land on the
+   * other. Public Holidays moved to where the rest of HR's settings are.
+   */
 ];
 
 export function SettingsLayout() {

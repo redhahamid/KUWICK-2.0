@@ -9,7 +9,6 @@ import {
   useApprovePayroll,
   useCalculatePayroll,
   usePayrollJourney,
-  usePayrollVariance,
 } from '../hooks/useAdmin';
 import { ProvisionalBanner } from './ProvisionalBanner';
 import { PayrollStepper, STEPS, normaliseStep, stepsWithProblems, type StepKey } from './PayrollStepper';

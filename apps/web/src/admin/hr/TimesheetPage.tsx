@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { App, Button, DatePicker, Select } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
-import { TIME_VIEWS, WorkAreaTabs } from '../components/WorkAreaTabs';
+import { ATTENDANCE_VIEWS, WorkAreaTabs } from '../components/WorkAreaTabs';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, exportRowsAsCsv } from '../components/DataTable';
 import { FilterBar, Filter } from '../components/FilterBar';
@@ -80,7 +80,7 @@ export function TimesheetPage() {
       title="Attendance"
       subtitle="What payroll will read. Overtime nobody has approved is not paid."
     >
-      <WorkAreaTabs views={TIME_VIEWS} />
+      <WorkAreaTabs views={ATTENDANCE_VIEWS} />
 
       <FilterBar
         right={

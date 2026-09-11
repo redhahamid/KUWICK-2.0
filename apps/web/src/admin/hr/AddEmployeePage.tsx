@@ -177,7 +177,7 @@ export function AddEmployeePage() {
       }
       // Straight to the person just created, which is where whatever is still
       // missing is named — rather than back to a directory to find them again.
-      navigate(staffId ? `/admin/hr/employees/${staffId}` : '/admin/hr/people');
+      navigate(staffId ? `/admin/hr/employees/${staffId}` : '/admin/hr/employees');
     } catch (error) {
       message.error(error instanceof ApiError ? error.message : 'Could not add this person.');
     } finally {
@@ -204,7 +204,7 @@ export function AddEmployeePage() {
       title="Add employee"
       subtitle="Only a name and a job are required. Everything else can be finished on their page."
       actions={
-        <Button onClick={() => navigate('/admin/hr/people')} disabled={saving}>
+        <Button onClick={() => navigate('/admin/hr/employees')} disabled={saving}>
           Cancel
         </Button>
       }

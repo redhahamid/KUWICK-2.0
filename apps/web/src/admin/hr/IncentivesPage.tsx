@@ -3,7 +3,6 @@ import { App, Button, DatePicker, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
-import { PAYROLL_VIEWS, WorkAreaTabs } from '../components/WorkAreaTabs';
 import { DataTable, money } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useCalculateIncentives, useIncentiveRules, useIncentiveRun, useIncentiveRuns } from '../hooks/useAdmin';
@@ -62,7 +61,6 @@ export function IncentivesPage() {
         </>
       }
     >
-      <WorkAreaTabs views={PAYROLL_VIEWS} />
       {(rules.data?.length ?? 0) === 0 ? (
         <AdminNotice tone="warn">
           No incentive rules are configured, so a calculation produces nothing. A rule is a threshold, a flat amount and a percentage of the excess — or a rate per qualifying procedure.
