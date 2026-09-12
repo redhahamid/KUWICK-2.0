@@ -796,6 +796,10 @@
 }
 
 /* ── Table ────────────────────────────────────────────────────────────────── */
+/* A wide table scrolls inside its own panel; the page never scrolls sideways. */
+.hr-table {
+  overflow-x: auto;
+}
 .hr-table .ant-table {
   font-size: 13.5px;
   background: transparent;

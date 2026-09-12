@@ -147,7 +147,11 @@ export async function loginAdmin(page: Page, email: string = ADMIN_ACCOUNTS.owne
  */
 export async function gotoAdmin(page: Page, path: string): Promise<void> {
   await page.goto(path);
-  await expect(page.locator('.kw-admin')).toBeVisible({ timeout: 30_000 });
+  // A page has mounted when its frame is on screen. Two frames exist while HR
+  // moves to Slate: `AdminShell` draws `.kw-admin` for the four modules and
+  // the HR screens not yet moved; `HrPage` draws `.hr-pageHead` for the ones
+  // that have. Either is the same promise — a titled page, not a spinner.
+  await expect(page.locator('.kw-admin, .hr-pageHead').first()).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('.ant-spin-spinning')).toHaveCount(0, { timeout: 30_000 });
 }
 
