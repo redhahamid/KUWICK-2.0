@@ -1,185 +1,342 @@
-import { useState } from 'react';
-import { App, Button, DatePicker, Drawer, Form, Input, InputNumber, Select, Tag, Upload } from 'antd';
-import { PaperClipOutlined } from '@ant-design/icons';
-import type { UploadFile } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
+import { App } from 'antd';
 import dayjs from 'dayjs';
 import { ApiError } from '../core/api-client';
-import { MyEmpty } from './MyKuwickLayout';
-import { useAttachReceipt, useMyClaims, useSubmitClaim } from './hooks/useMe';
-
-const CATEGORIES = [
-  { value: 'MEDICAL', label: 'Medical' },
-  { value: 'TRAVEL', label: 'Travel' },
-  { value: 'MEAL', label: 'Meals' },
-  { value: 'TRAINING', label: 'Training' },
-  { value: 'EQUIPMENT', label: 'Equipment' },
-  { value: 'PROFESSIONAL_FEE', label: 'Professional fee' },
-  { value: 'OTHER', label: 'Other' },
-];
-
-const STATUS_TAG: Record<string, string> = {
-  DRAFT: 'default',
-  SUBMITTED: 'blue',
-  APPROVED: 'green',
-  REJECTED: 'red',
-  CANCELLED: 'default',
-};
+import { Panel, PanelHead, StatusChip } from '../admin/hr/ui';
+import { IconDoc } from '../admin/hr/ui/icons';
+import { useAttachReceipt, useMyBenefits, useMyClaims, useSubmitClaim, type MyClaim } from './hooks/useMe';
+import { IconCheckCircle, PortalEmpty, monthShort, rm } from './portal';
 
 /**
- * MY CLAIMS — submit a receipt, and be told in plain words where the money is.
- *
- * The status an employee reads is a SENTENCE, not the internal routing. Nobody
- * photographing a receipt in a car park should have to learn the difference
- * between a payment route and a payout status; what they need to know is
- * "paid with your salary" or "the clinic will reimburse you separately".
- *
- * Which of those it is stays the manager's decision, and the double-payment
- * guard behind it is a unique constraint in the database rather than anything
- * this screen enforces.
+ * WHAT A CLAIM CAN BE FOR. Mileage is the API's TRAVEL category with the
+ * distance worked out here; the API stores one amount and one description,
+ * so the journey and the kilometres are written into the description where
+ * the manager reads them.
  */
+const TYPES = [
+  { value: 'MILEAGE', label: 'Mileage', category: 'TRAVEL' },
+  { value: 'MEDICAL', label: 'Medical', category: 'MEDICAL' },
+  { value: 'MEAL', label: 'Meals', category: 'MEAL' },
+  { value: 'TRAVEL', label: 'Travel (fares, parking, tolls)', category: 'TRAVEL' },
+  { value: 'TRAINING', label: 'Training', category: 'TRAINING' },
+  { value: 'EQUIPMENT', label: 'Equipment', category: 'EQUIPMENT' },
+  { value: 'PROFESSIONAL_FEE', label: 'Professional fee', category: 'PROFESSIONAL_FEE' },
+  { value: 'OTHER', label: 'Other', category: 'OTHER' },
+] as const;
+
+/**
+ * [A] RM per kilometre. The mockup prices 42 km at RM 25.20 — RM 0.60 a km —
+ * and nothing in the schema holds a mileage rate, so it is a placeholder here
+ * until the owner says where the clinic's rate should live (Settings › Claims
+ * would need a column). Reported in the 3g notes.
+ */
+export const MILEAGE_RATE_RM = 0.6;
+
+const CATEGORY_WORD: Record<string, string> = {
+  MEDICAL: 'Medical',
+  TRAVEL: 'Travel',
+  MEAL: 'Meals',
+  TRAINING: 'Training',
+  EQUIPMENT: 'Equipment',
+  PROFESSIONAL_FEE: 'Professional fee',
+  OTHER: 'Other',
+};
+
+/** The chip on a row: where the money is, in one word or two. */
+export function claimChip(claim: Pick<MyClaim, 'status' | 'whereTheMoneyIs' | 'payrollPeriod'>): {
+  tone: 'attn' | 'done' | 'block' | 'muted';
+  label: string;
+} {
+  if (claim.status === 'SUBMITTED') return { tone: 'attn', label: 'Waiting' };
+  if (claim.status === 'REJECTED') return { tone: 'block', label: 'Not approved' };
+  if (claim.status === 'CANCELLED') return { tone: 'muted', label: 'Withdrawn' };
+  if (claim.status === 'DRAFT') return { tone: 'muted', label: 'Draft' };
+  if (/^Paid|^Reimbursed/.test(claim.whereTheMoneyIs)) {
+    return { tone: 'muted', label: claim.payrollPeriod ? `Paid ${monthShort(claim.payrollPeriod)}` : 'Paid' };
+  }
+  return { tone: 'done', label: 'Approved' };
+}
+
+export function mileageAmount(km: number): number {
+  return Math.round(km * MILEAGE_RATE_RM * 100) / 100;
+}
+
 export function MyClaimsPage() {
   const { message } = App.useApp();
-  const { data, isLoading } = useMyClaims();
-  const [open, setOpen] = useState(false);
-  const [form] = Form.useForm();
+  const { data: claims, isLoading } = useMyClaims();
+  const { data: benefits } = useMyBenefits();
   const submit = useSubmitClaim();
   const attach = useAttachReceipt();
-  const [receipt, setReceipt] = useState<UploadFile | null>(null);
+
+  const [type, setType] = useState<(typeof TYPES)[number]['value']>('MILEAGE');
+  const [claimDate, setClaimDate] = useState(dayjs().format('YYYY-MM-DD'));
+  const [fromPlace, setFromPlace] = useState('');
+  const [toPlace, setToPlace] = useState('');
+  const [distance, setDistance] = useState('');
+  const [amount, setAmount] = useState('');
+  const [purpose, setPurpose] = useState('');
+  const [receipt, setReceipt] = useState<File | null>(null);
+  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
+
+  const mileage = type === 'MILEAGE';
+  const km = Number(distance);
+  const computed = mileage && Number.isFinite(km) && km > 0 ? mileageAmount(km) : null;
+
+  useEffect(() => {
+    if (!receipt || !receipt.type.startsWith('image/')) {
+      setReceiptUrl(null);
+      return undefined;
+    }
+    const url = URL.createObjectURL(receipt);
+    setReceiptUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [receipt]);
+
+  const reset = () => {
+    setType('MILEAGE');
+    setClaimDate(dayjs().format('YYYY-MM-DD'));
+    setFromPlace('');
+    setToPlace('');
+    setDistance('');
+    setAmount('');
+    setPurpose('');
+    setReceipt(null);
+  };
+
+  const finalAmount = computed ?? Number(amount);
+  const canSubmit =
+    Boolean(receipt) &&
+    purpose.trim().length >= 3 &&
+    Number.isFinite(finalAmount) &&
+    finalAmount > 0 &&
+    (!mileage || (fromPlace.trim() && toPlace.trim()));
 
   const send = async () => {
-    const values = await form.validateFields();
+    if (!canSubmit || !receipt) return;
+    const category = TYPES.find((row) => row.value === type)?.category ?? 'OTHER';
+    const description = mileage
+      ? `Mileage ${km} km, ${fromPlace.trim()} to ${toPlace.trim()}: ${purpose.trim()}`
+      : purpose.trim();
     try {
       const claim = await submit.mutateAsync({
-        category: values.category,
-        amountClaimed: Number(values.amount).toFixed(2),
-        claimDate: values.claimDate.format('YYYY-MM-DD'),
-        description: values.description,
+        category,
+        amountClaimed: finalAmount.toFixed(2),
+        claimDate,
+        description,
       });
-      // The receipt follows the claim, so a failed upload leaves a claim a
+      // The receipt follows the claim, so a failed attach leaves a claim a
       // manager can still see and ask about rather than nothing at all.
-      if (receipt?.originFileObj) {
-        await attach.mutateAsync({
-          claimId: claim.id,
-          fileName: receipt.name,
-          filePath: `claims/${claim.id}/${receipt.name}`,
-          mimeType: receipt.type ?? 'application/octet-stream',
-          fileSize: receipt.size ?? 1,
-        });
-      }
+      // [D] The API keeps the receipt's name, type and size against the
+      // claim; the bytes have no store yet.
+      await attach.mutateAsync({
+        claimId: claim.id,
+        fileName: receipt.name,
+        filePath: `claims/${claim.id}/${receipt.name}`,
+        mimeType: receipt.type || 'application/octet-stream',
+        fileSize: Math.max(1, receipt.size),
+      });
       message.success('Sent to your manager.');
-      setOpen(false);
-      form.resetFields();
-      setReceipt(null);
+      reset();
     } catch (error) {
       message.error(error instanceof ApiError ? error.message : 'Could not send that.');
     }
   };
 
+  const medical = benefits?.medical ?? null;
+  const usedShare = useMemo(() => {
+    if (!medical) return 0;
+    const allowance = Number(medical.allowance);
+    return allowance > 0 ? Math.min(100, Math.round((Number(medical.used) / allowance) * 100)) : 0;
+  }, [medical]);
+
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+      <div className="hr-pageHead">
         <div>
-          <h1 className="kw-my__title">My claims</h1>
-          <p className="kw-my__subtitle">Money you have spent that the clinic owes you back.</p>
+          <h1>Submit a claim</h1>
+          <div className="hr-sub">Attach the receipt. Approved claims are paid with your next payslip.</div>
         </div>
-        <Button type="primary" size="large" onClick={() => setOpen(true)}>
-          New claim
-        </Button>
       </div>
 
-      <div className="kw-my-card kw-my-card--flush">
-        {isLoading ? null : (data?.length ?? 0) === 0 ? (
-          <MyEmpty title="No claims yet">
-            Photograph a receipt and send it here. Nothing is wrong — you simply have not claimed anything.
-          </MyEmpty>
-        ) : (
-          data?.map((claim) => (
-            <div className="kw-my-row" key={claim.id}>
-              <div className="kw-my-row__main">
-                <span className="kw-my-row__title">{claim.description}</span>
-                <span className="kw-my-row__detail">
-                  {CATEGORIES.find((c) => c.value === claim.category)?.label ?? claim.category} ·{' '}
-                  {dayjs(claim.claimDate).format('D MMM YYYY')}
-                  {claim.attachments.length > 0 ? ` · ${claim.attachments.length} receipt` : ' · no receipt'}
-                </span>
-                {/* The sentence, not the routing. */}
-                <span className="kw-my-row__detail">{claim.whereTheMoneyIs}</span>
+      <div className="hr-grid2 hr-grid2--wide">
+        <Panel>
+          <div style={{ padding: '20px 22px' }}>
+            <div className="hr-pform">
+              <div>
+                <label htmlFor="claim-type">Type</label>
+                <select
+                  id="claim-type"
+                  className="hr-f"
+                  value={type}
+                  onChange={(event) => setType(event.target.value as (typeof TYPES)[number]['value'])}
+                >
+                  {TYPES.map((row) => (
+                    <option key={row.value} value={row.value}>
+                      {row.label}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <div className="kw-my-row__side">
-                <span className="kw-my-money">RM{Number(claim.amountClaimed).toFixed(2)}</span>
-                <Tag color={STATUS_TAG[claim.status] ?? 'default'}>{claim.status.toLowerCase()}</Tag>
-                {claim.amountApproved && claim.amountApproved !== claim.amountClaimed ? (
-                  <span className="kw-my-row__detail">approved RM{Number(claim.amountApproved).toFixed(2)}</span>
+              <div>
+                <label htmlFor="claim-date">Expense / travel date</label>
+                <input
+                  id="claim-date"
+                  type="date"
+                  className="hr-f"
+                  value={claimDate}
+                  max={dayjs().format('YYYY-MM-DD')}
+                  onChange={(event) => setClaimDate(event.target.value)}
+                />
+              </div>
+              {mileage ? (
+                <>
+                  <div>
+                    <label htmlFor="claim-from">From</label>
+                    <input id="claim-from" className="hr-f" value={fromPlace} onChange={(event) => setFromPlace(event.target.value)} />
+                  </div>
+                  <div>
+                    <label htmlFor="claim-to">To</label>
+                    <input id="claim-to" className="hr-f" value={toPlace} onChange={(event) => setToPlace(event.target.value)} />
+                  </div>
+                  <div>
+                    <label htmlFor="claim-km">Distance</label>
+                    <input
+                      id="claim-km"
+                      className="hr-f"
+                      inputMode="decimal"
+                      placeholder="km"
+                      value={distance}
+                      onChange={(event) => setDistance(event.target.value.replace(/[^\d.]/g, ''))}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="claim-amount">Amount</label>
+                    <div id="claim-amount" className="hr-f hr-f--auto" aria-live="polite">
+                      {computed !== null ? (
+                        <>
+                          {rm(computed)} <small>· {km} × RM {MILEAGE_RATE_RM.toFixed(2)}</small>
+                        </>
+                      ) : (
+                        <small>Worked out from the distance</small>
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <label htmlFor="claim-amount">Amount (RM)</label>
+                  <input
+                    id="claim-amount"
+                    className="hr-f"
+                    inputMode="decimal"
+                    placeholder="45.50"
+                    value={amount}
+                    onChange={(event) => setAmount(event.target.value.replace(/[^\d.]/g, ''))}
+                  />
+                </div>
+              )}
+              <div className="hr-pform__full">
+                <label htmlFor="claim-purpose">Purpose</label>
+                <input
+                  id="claim-purpose"
+                  className="hr-f"
+                  placeholder={mileage ? 'Deliver vaccine stock' : 'What it was for'}
+                  value={purpose}
+                  onChange={(event) => setPurpose(event.target.value)}
+                />
+              </div>
+              <div className="hr-pform__full">
+                <label htmlFor="claim-receipt">Receipts / photos</label>
+                <label className="hr-drop is-required" htmlFor="claim-receipt">
+                  <IconDoc />
+                  Drop receipt, invoice or odometer photo here — required
+                  <input
+                    id="claim-receipt"
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={(event) => setReceipt(event.target.files?.[0] ?? null)}
+                  />
+                </label>
+                {receipt ? (
+                  <div className="hr-rcpt">
+                    {receiptUrl ? (
+                      <img className="hr-rcpt__th" src={receiptUrl} alt="" />
+                    ) : (
+                      <span className="hr-rcpt__th" aria-hidden="true" />
+                    )}
+                    <div>
+                      <span className="hr-rcpt__name">{receipt.name}</span>
+                      <span className="hr-rcpt__meta">{(receipt.size / (1024 * 1024)).toFixed(1)} MB</span>
+                    </div>
+                    <button type="button" className="hr-btn hr-btn--sm hr-btn--ghost" style={{ marginLeft: 'auto' }} onClick={() => setReceipt(null)}>
+                      Remove
+                    </button>
+                  </div>
                 ) : null}
               </div>
             </div>
-          ))
-        )}
-      </div>
 
-      <Drawer
-        open={open}
-        onClose={() => setOpen(false)}
-        title="New claim"
-        placement="bottom"
-        height="auto"
-        destroyOnHidden
-      >
-        <Form form={form} layout="vertical" className="kw-my-form" initialValues={{ claimDate: dayjs() }}>
-          <Form.Item name="category" label="What is it for" rules={[{ required: true }]}>
-            <Select options={CATEGORIES} size="large" placeholder="Choose" />
-          </Form.Item>
-          <Form.Item
-            name="amount"
-            label="Amount (RM)"
-            rules={[{ required: true, message: 'How much?' }]}
-          >
-            {/* `decimal` so a phone shows the numeric keypad with a point. */}
-            <InputNumber
-              style={{ width: '100%' }}
-              size="large"
-              min={0.01}
-              step={0.05}
-              precision={2}
-              inputMode="decimal"
-              placeholder="45.50"
-            />
-          </Form.Item>
-          <Form.Item name="claimDate" label="Date on the receipt" rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} size="large" format="D MMM YYYY" />
-          </Form.Item>
-          <Form.Item
-            name="description"
-            label="What happened"
-            rules={[{ required: true, min: 3, message: 'A manager has to know what they are approving.' }]}
-          >
-            <Input.TextArea rows={3} placeholder="Taxi to the branch for the Saturday clinic." />
-          </Form.Item>
-          <Form.Item label="Receipt">
-            <Upload
-              // Held until the claim exists, then attached to it. `capture`
-              // opens the camera directly, which is how a receipt actually
-              // reaches this form.
-              accept="image/*,application/pdf"
-              maxCount={1}
-              beforeUpload={() => false}
-              fileList={receipt ? [receipt] : []}
-              onChange={({ fileList }) => setReceipt(fileList[0] ?? null)}
-              onRemove={() => setReceipt(null)}
-            >
-              <Button icon={<PaperClipOutlined />} size="large" block>
-                Take a photo or choose a file
-              </Button>
-            </Upload>
-          </Form.Item>
-          <div className="kw-my-form__footer">
-            <Button onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="primary" loading={submit.isPending || attach.isPending} onClick={send}>
-              Send claim
-            </Button>
+            <div className="hr-formFoot">
+              <button type="button" className="hr-btn" onClick={reset}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="hr-btn hr-btn--primary"
+                onClick={send}
+                disabled={!canSubmit || submit.isPending || attach.isPending}
+              >
+                <IconCheckCircle />
+                Submit claim
+              </button>
+            </div>
           </div>
-        </Form>
-      </Drawer>
+        </Panel>
+
+        <Panel>
+          <PanelHead title="My claims" />
+          {isLoading ? null : (claims?.length ?? 0) === 0 ? (
+            <PortalEmpty title="No claims yet">Photograph a receipt and send it here.</PortalEmpty>
+          ) : (
+            <table className="hr-table">
+              <tbody>
+                {claims?.map((claim) => {
+                  const chip = claimChip(claim);
+                  const [head, ...rest] = claim.description.split(/[:,]\s/);
+                  return (
+                    <tr key={claim.id}>
+                      <td>
+                        <b>{CATEGORY_WORD[claim.category] ?? claim.category}</b> · {rest.length ? rest.join(', ') : head}
+                        <div className="hr-tdSub">Submitted {dayjs(claim.submittedAt ?? claim.createdAt).format('D MMM')}</div>
+                      </td>
+                      <td className="hr-num hr-strong">{rm(claim.amountApproved ?? claim.amountClaimed)}</td>
+                      <td>
+                        <StatusChip tone={chip.tone}>{chip.label}</StatusChip>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+
+          <div className="hr-panelHead--top">
+            <PanelHead title="Medical benefit" />
+          </div>
+          <div className="hr-benefitNote">
+            {medical ? (
+              <>
+                {rm(medical.used)} of {rm(medical.allowance)} used this year
+                <div className="hr-bar" style={{ marginTop: 8 }}>
+                  <i style={{ width: `${usedShare}%` }} />
+                </div>
+              </>
+            ) : (
+              'No medical benefit account this year.'
+            )}
+          </div>
+        </Panel>
+      </div>
     </>
   );
 }

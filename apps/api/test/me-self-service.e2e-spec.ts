@@ -408,11 +408,8 @@ describe('My Kuwick: employee self-service (e2e)', () => {
       expect(slips.body).toHaveLength(0);
     });
 
-    it('shows an approved payslip to its owner and REFUSES it to anybody else', async () => {
+    it('shows a PAID payslip to its owner, hides an approved-but-unpaid one, and REFUSES it to anybody else', async () => {
       const runId = await withTenantContext(prisma, tenantId, async (tx) => {
-        // Built CALCULATED and approved afterwards, because an approved run
-        // is locked at the database — "correct it with a payroll adjustment,
-        // not by editing a payslip line". That refusal is the product working.
         const run = await tx.payrollRun.create({
           data: { tenantId, period: new Date('2026-08-01T00:00:00.000Z'), status: 'CALCULATED', createdByStaffId: ownerStaffId },
         });
@@ -431,6 +428,19 @@ describe('My Kuwick: employee self-service (e2e)', () => {
         return run.id;
       });
 
+      // Approved is not paid. A corrected revision can still follow an
+      // approval; the portal shows the month once the money has gone out.
+      const approvedOnly = await request(server()).get('/me/payslips').set('Authorization', nurseBearer).expect(200);
+      expect(approvedOnly.body).toHaveLength(0);
+      await request(server()).get(`/me/payslips/${runId}`).set('Authorization', nurseBearer).expect(404);
+
+      await withTenantContext(prisma, tenantId, (tx) =>
+        tx.payrollRun.update({
+          where: { id: runId },
+          data: { status: 'PAID', paymentDate: new Date('2026-08-28T00:00:00.000Z') },
+        }),
+      );
+
       const mine = await request(server()).get('/me/payslips').set('Authorization', nurseBearer).expect(200);
       expect(mine.body).toHaveLength(1);
 
@@ -441,19 +451,111 @@ describe('My Kuwick: employee self-service (e2e)', () => {
       expect(detail.body.netPay).toBe('2670');
       expect(detail.body.earnings.grossPay).toBe('3000');
 
-      // THE ONE THAT MATTERS. The colleague knows the run id — it is in a URL
-      // they could have seen — and still gets nothing.
+      const home = await request(server()).get('/me/home').set('Authorization', nurseBearer).expect(200);
+      expect(home.body.latestPayslip).toMatchObject({ runId, period: '2026-08', netPay: '2670', paymentDate: '2026-08-28' });
+      expect(home.body.payslips).toHaveLength(1);
+      expect(home.body.recent[0]).toMatchObject({ kind: 'payslip', title: 'Payslip August', state: 'ready', href: '/my/payslips' });
+
       const refused = await request(server())
         .get(`/me/payslips/${runId}`)
         .set('Authorization', colleagueBearer);
       expect(refused.status).toBe(404);
+      // The PDF route is identity-checked the same way. (Its happy path needs
+      // an approved snapshot, which a hand-made run has not got — see
+      // payroll-payslip.e2e-spec.ts for that.)
+      await request(server()).get(`/me/payslips/${runId}/pdf`).set('Authorization', colleagueBearer).expect(404);
 
       const theirList = await request(server()).get('/me/payslips').set('Authorization', colleagueBearer).expect(200);
       expect(theirList.body).toHaveLength(0);
     });
   });
 
-  // ===========================================================================
+  describe('leave balances and a preview of a request', () => {
+    it('shows balances by type and what a request would take, including who else is away', async () => {
+      await withTenantContext(prisma, tenantId, async (tx) => {
+        const policy = await tx.leavePolicy.create({
+          data: {
+            tenantId,
+            name: 'Standard (Synthetic)',
+            proRateOnJoin: false,
+            entitlements: {
+              create: [
+                { tenantId, leaveType: 'ANNUAL', daysPerYear: 16, paid: true, requiresAttachment: false },
+                { tenantId, leaveType: 'MEDICAL', daysPerYear: 14, paid: true, requiresAttachment: true },
+              ],
+            },
+          },
+        });
+        await tx.employeeProfile.update({ where: { staffId: nurse }, data: { leavePolicyId: policy.id } });
+        await tx.leaveRequest.create({
+          data: {
+            tenantId,
+            staffId: colleague,
+            leaveType: 'ANNUAL',
+            startDate: new Date('2026-09-21T00:00:00.000Z'),
+            endDate: new Date('2026-09-21T00:00:00.000Z'),
+            status: 'APPROVED',
+          },
+        });
+        await tx.publicHoliday.create({
+          data: { tenantId, date: new Date('2026-09-16T00:00:00.000Z'), name: 'Malaysia Day' },
+        });
+      });
+
+      const balances = await request(server()).get('/me/leave/balances').set('Authorization', nurseBearer).expect(200);
+      expect(balances.body.policyName).toBe('Standard (Synthetic)');
+      const annual = balances.body.balances.find((row: { leaveType: string }) => row.leaveType === 'ANNUAL');
+      expect(annual).toMatchObject({ available: 16, taken: 0, pending: 0, remaining: 16 });
+      expect(balances.body.unpaidTaken).toEqual({ days: 0, lastMonth: null });
+
+      const preview = await request(server())
+        .get('/me/leave/preview?leaveType=ANNUAL&startDate=2026-09-21&endDate=2026-09-23&halfDay=false')
+        .set('Authorization', nurseBearer)
+        .expect(200);
+      expect(preview.body.days).toBe(3);
+      expect(preview.body.balanceAfter).toEqual({ remaining: 13, available: 16, overdrawn: false });
+      expect(preview.body.clashes).toEqual([
+        expect.objectContaining({ name: 'Farid Ujian', firstDay: '2026-09-21', status: 'APPROVED' }),
+      ]);
+      expect(preview.body.ownClash).toBeNull();
+
+      const holiday = await request(server())
+        .get('/me/leave/preview?leaveType=ANNUAL&startDate=2026-09-14&endDate=2026-09-18')
+        .set('Authorization', nurseBearer)
+        .expect(200);
+      expect(holiday.body.publicHolidays).toEqual([{ date: '2026-09-16', name: 'Malaysia Day' }]);
+      expect(holiday.body.clashes).toEqual([]);
+
+      await request(server())
+        .get('/me/leave/preview?leaveType=ANNUAL&startDate=nonsense&endDate=2026-09-18')
+        .set('Authorization', nurseBearer)
+        .expect(400);
+    });
+  });
+
+  describe('medical benefit', () => {
+    it('says there is no account this year, then the allowance, used and left once there is one', async () => {
+      const none = await request(server()).get('/me/benefits').set('Authorization', nurseBearer).expect(200);
+      expect(none.body.medical).toBeNull();
+
+      const year = new Date().getUTCFullYear();
+      await withTenantContext(prisma, tenantId, async (tx) => {
+        const account = await tx.staffBenefitAccount.create({
+          data: { tenantId, staffId: nurse, benefitYear: year, allowance: '1000.00' },
+        });
+        await tx.staffBenefitUsage.create({
+          data: { tenantId, accountId: account.id, usedAt: new Date(), amount: '380.00', recordedByStaffId: ownerStaffId },
+        });
+      });
+
+      const mine = await request(server()).get('/me/benefits').set('Authorization', nurseBearer).expect(200);
+      expect(mine.body).toEqual({ year, medical: { allowance: '1000.00', used: '380.00', remaining: '620.00' } });
+
+      const theirs = await request(server()).get('/me/benefits').set('Authorization', colleagueBearer).expect(200);
+      expect(theirs.body.medical).toBeNull();
+    });
+  });
+
   it('refuses every self-service route to a request with no staff token', async () => {
     for (const path of ['/me', '/me/home', '/me/leave', '/me/claims', '/me/payslips']) {
       const refused = await request(server()).get(path);

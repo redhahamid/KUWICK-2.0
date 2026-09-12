@@ -1,4 +1,6 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
+import { renderPayslipPdf } from '../workforce/payroll-payslip-pdf';
 import { MeService } from './me.service';
 import {
   AttachReceiptDto,
@@ -95,6 +97,32 @@ export class MeController {
 
   // --- Payslips -------------------------------------------------------------
 
+  /** Balances by type for the year, and the unpaid days taken — the Leave tab's right-hand panel. */
+  @Get('leave/balances')
+  leaveBalances() {
+    return this.me.leaveBalances();
+  }
+
+  /**
+   * What a request would mean before it is sent: the days, the balance after,
+   * who else is away, the public holidays inside it. Read-only; nothing saved.
+   */
+  @Get('leave/preview')
+  leavePreview(
+    @Query('leaveType') leaveType?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('halfDay') halfDay?: string,
+  ) {
+    return this.me.leavePreview({ leaveType, startDate, endDate, halfDay });
+  }
+
+  /** The medical benefit: allowance, used, left — this year. */
+  @Get('benefits')
+  benefits() {
+    return this.me.benefits();
+  }
+
   @Get('payslips')
   payslips() {
     return this.me.payslips();
@@ -103,5 +131,15 @@ export class MeController {
   @Get('payslips/:runId')
   payslip(@Param('runId') runId: string) {
     return this.me.payslip(runId);
+  }
+
+  /** The PDF of a PAID month, for its own employee. */
+  @Get('payslips/:runId/pdf')
+  async payslipPdf(@Param('runId') runId: string, @Res() res: Response) {
+    const slip = await this.me.payslipPdf(runId);
+    const pdf = await renderPayslipPdf(slip);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="payslip-${slip.period}.pdf"`);
+    res.send(pdf);
   }
 }

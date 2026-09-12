@@ -328,13 +328,32 @@ export class PayrollPaymentService {
         },
       });
 
-      const run = await tx.payrollRun.findUniqueOrThrow({ where: { id: runId } });
+      const run = await tx.payrollRun.findUniqueOrThrow({
+        where: { id: runId },
+        include: { lines: { select: { staffId: true } } },
+      });
+      const paymentDate = new Date(`${body.paymentDate}T00:00:00.000Z`);
       if (run.status === PayrollRunStatus.APPROVED) {
         await tx.payrollRun.update({
           where: { id: runId },
-          data: { status: PayrollRunStatus.PAID, paidAt: new Date() },
+          // `paidAt` is when it was recorded; `paymentDate` is the day the
+          // money left, which is the date a payslip and the portal show.
+          data: { status: PayrollRunStatus.PAID, paidAt: new Date(), paymentDate },
         });
       }
+
+      // A claim that rode on this run's lines has now been paid with the
+      // salary. Say so on the claim, so the employee's portal and the claims
+      // queue stop calling it "approved, will be paid with your salary".
+      const paidClaims = await tx.staffClaim.updateMany({
+        where: {
+          payoutStatus: 'IN_PAYROLL',
+          paymentRoute: 'PAYROLL',
+          payrollPeriod: run.period,
+          staffId: { in: run.lines.map((line) => line.staffId) },
+        },
+        data: { payoutStatus: 'PAID', paidAt: paymentDate },
+      });
 
       await recordAudit(tx, actor, {
         action: 'payrollPayment.recordedPaid',
@@ -346,6 +365,7 @@ export class PayrollPaymentService {
           paymentDate: body.paymentDate,
           reference: body.reference.trim(),
           totalCents: batch.totalCents,
+          claimsPaidWithSalary: paidClaims.count,
         },
         source: 'hr.payroll',
       });

@@ -10,14 +10,18 @@ import { ADMIN_ACCOUNTS, ADMIN_PASSWORD, collectAdminConsoleErrors } from './sup
  * nothing but a real browser at a real width can see them.
  */
 
+/*
+ * The five tabs of the Slate portal (portal-*.html) plus the profile behind
+ * the avatar. `/my/schedule` lands on Attendance, where the roster now lives.
+ */
 const ROUTES = [
-  { path: '/my', marker: 'My Kuwick' },
-  { path: '/my/schedule', marker: 'My schedule' },
-  { path: '/my/attendance', marker: 'My attendance' },
-  { path: '/my/leave', marker: 'My leave' },
-  { path: '/my/claims', marker: 'My claims' },
-  { path: '/my/payslips', marker: 'My payslips' },
-  { path: '/my/profile', marker: 'My profile' },
+  { path: '/my', marker: 'Quick actions' },
+  { path: '/my/schedule', marker: 'Roster' },
+  { path: '/my/attendance', marker: 'Roster' },
+  { path: '/my/leave', marker: 'Apply for leave' },
+  { path: '/my/claims', marker: 'Submit a claim' },
+  { path: '/my/payslips', marker: 'Every paid month' },
+  { path: '/my/profile', marker: 'Bank account' },
 ] as const;
 
 const VIEWPORTS = [
@@ -93,18 +97,33 @@ test.describe('My Kuwick', () => {
     expect(box!.x + box!.width).toBeLessThanOrEqual(361);
   });
 
-  test('the bottom navigation reaches every daily destination on a phone', async ({ page }) => {
+  test('the five tabs reach every daily destination on a phone, thumb-sized', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await signIn(page);
     await goMy(page, '/my');
 
-    for (const label of ['Home', 'Schedule', 'Attendance', 'Leave', 'Claims']) {
-      const tab = page.locator('.kw-my__tab', { hasText: label });
+    for (const label of ['Home', 'Payslips', 'Leave', 'Claims', 'Attendance']) {
+      const tab = page.locator('.hr-ptabs a', { hasText: label });
       await expect(tab).toBeVisible();
       const box = await tab.boundingBox();
       // Truncated tabs — "Attendan…" — are the failure this checks for.
       expect(box!.height).toBeGreaterThanOrEqual(44);
     }
+  });
+
+  test('a leave request shows what it would take before it is sent', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await signIn(page);
+    await goMy(page, '/my/leave');
+
+    // The strip under the form is the server's preview: the days the balance
+    // engine deducts, and the balance after (or that this kind has none).
+    await page.getByLabel('From').fill('2026-09-21');
+    await page.getByLabel('To').fill('2026-09-23');
+    const strip = page.locator('.hr-preview');
+    await expect(strip).toBeVisible({ timeout: 20_000 });
+    await expect(strip).toContainText('3 days');
+    await expect(strip).toContainText(/Balance after: -?\d+(\.\d+)? of \d+|No balance/);
   });
 
   test('shift times are the CLINIC’s, not the browser’s', async ({ page }) => {
@@ -113,15 +132,14 @@ test.describe('My Kuwick', () => {
     // zone is the truth, and it comes from the server.
     await page.setViewportSize({ width: 390, height: 844 });
     await signIn(page);
-    await goMy(page, '/my/schedule');
+    await goMy(page, '/my/attendance');
 
-    const times = await page.locator('.kw-my-row__detail').allInnerTexts();
-    const shiftTimes = times.filter((text) => /^\d{2}:\d{2} – \d{2}:\d{2}/.test(text));
-    // Whatever the roster holds, nothing may render as a UTC-shifted small hour
-    // when the clinic runs office hours: a 00:00–08:00 or 01:00–09:00 row is
-    // the signature of the browser's zone winning.
+    // The roster rows read HH:MM–HH:MM in the clinic's zone; a 01:00–09:00 row
+    // would be a UTC rendering of a 09:00–17:00 day.
+    const cells = await page.locator('.hr-table td').allInnerTexts();
+    const shiftTimes = cells.filter((text) => /^\d{2}:\d{2}–\d{2}:\d{2}/.test(text.trim()));
     for (const text of shiftTimes) {
-      expect(text).not.toMatch(/^0[0-2]:\d{2} – 0[7-9]:\d{2}/);
+      expect(text.trim()).not.toMatch(/^0[0-2]:\d{2}–0[7-9]:\d{2}/);
     }
   });
 });

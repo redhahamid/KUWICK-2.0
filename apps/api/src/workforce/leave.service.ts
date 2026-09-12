@@ -161,6 +161,31 @@ export class LeaveService {
   }
 
   /**
+   * THE SAME ROW FOR THE PERSON THEMSELVES — no HR permission, because the
+   * caller (the portal) has already established that `staffId` is the actor.
+   * One computation behind two doors: the figure an employee sees can never
+   * disagree with the one HR sees on their record.
+   */
+  async balancesForSelf(staffId: string, year = new Date().getUTCFullYear()) {
+    const [profile, stored, requests] = await Promise.all([
+      this.prisma.employeeProfile.findUnique({
+        where: { staffId },
+        include: { leavePolicy: { include: { entitlements: true } } },
+      }),
+      this.prisma.leaveBalance.findMany({ where: { staffId, benefitYear: year } }),
+      this.prisma.leaveRequest.findMany({
+        where: {
+          staffId,
+          startDate: { lte: new Date(Date.UTC(year, 11, 31)) },
+          endDate: { gte: new Date(Date.UTC(year, 0, 1)) },
+        },
+      }),
+    ]);
+
+    return this.balanceRow({ staffId, year, profile, stored, requests });
+  }
+
+  /**
    * ONE PERSON'S BALANCES, from facts already read.
    *
    * Split out of `balancesFor` so the whole-clinic read below computes each

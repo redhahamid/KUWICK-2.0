@@ -7,7 +7,6 @@ import { LoginPage } from './auth/LoginPage';
 import { RequireAuth } from './auth/RequireAuth';
 import { MyKuwickLayout } from './me/MyKuwickLayout';
 import { MyHomePage } from './me/MyHomePage';
-import { MySchedulePage } from './me/MySchedulePage';
 import { MyAttendancePage } from './me/MyAttendancePage';
 import { MyLeavePage } from './me/MyLeavePage';
 import { MyClaimsPage } from './me/MyClaimsPage';
@@ -164,7 +163,8 @@ export function App() {
       <Route element={<RequireAuth />}>
         <Route element={<MyKuwickLayout />}>
           <Route path="/my" element={<MyHomePage />} />
-          <Route path="/my/schedule" element={<MySchedulePage />} />
+          {/* The portal mockups carry no Schedule tab: the roster is on Attendance. */}
+          <Route path="/my/schedule" element={<Navigate to="/my/attendance" replace />} />
           <Route path="/my/attendance" element={<MyAttendancePage />} />
           <Route path="/my/leave" element={<MyLeavePage />} />
           <Route path="/my/claims" element={<MyClaimsPage />} />

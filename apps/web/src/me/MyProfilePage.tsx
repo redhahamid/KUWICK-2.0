@@ -1,84 +1,97 @@
-import { Button, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../core/auth-store';
-import { MyEmpty } from './MyKuwickLayout';
+import { Panel, PanelHead, StatusChip } from '../admin/hr/ui';
 import { useMyProfile } from './hooks/useMe';
+import { PortalEmpty } from './portal';
 
 /**
- * MY PROFILE — who Kuwick thinks I am.
- *
- * Read-only, and short. There is no salary on it: pay is read from a payslip,
- * a document about one month with a total that can be checked, not from a
- * settings screen somebody might think they can edit. Corrections to any of
- * this go through HR, which is what the screen says.
+ * PROFILE — what the clinic holds about the person, read-only: the record is
+ * HR's to correct. The bank account is deliberately not editable here (there
+ * is no self-service endpoint for it): a payslip must never be paid to a
+ * number nobody checked.
  */
 export function MyProfilePage() {
   const { data } = useMyProfile();
   const navigate = useNavigate();
   const clearAuth = useAuthStore((state) => state.clearAuth);
 
-  const row = (label: string, value: string | null | undefined) => (
-    <div className="kw-my-shift" key={label}>
-      <span className="kw-my-shift__meta">{label}</span>
-      <span className="kw-my-shift__time">{value || '—'}</span>
-    </div>
+  const kv = (label: string, value: string | null | undefined) => (
+    <span key={label} style={{ display: 'contents' }}>
+      <span className="hr-kv__k">{label}</span>
+      <span className="hr-kv__v">{value || '—'}</span>
+    </span>
   );
 
   return (
     <>
-      <div>
-        <h1 className="kw-my__title">My profile</h1>
-        <p className="kw-my__subtitle">Anything wrong here is corrected by HR, not on this screen.</p>
+      <div className="hr-pageHead">
+        <div>
+          <h1>Profile</h1>
+          <div className="hr-sub">Anything wrong here is corrected by HR, not on this screen.</div>
+        </div>
+        <div className="hr-pageHead__actions">
+          <button
+            type="button"
+            className="hr-btn"
+            onClick={() => {
+              clearAuth();
+              navigate('/login');
+            }}
+          >
+            Sign out
+          </button>
+        </div>
       </div>
 
-      <div className="kw-my-card">
-        <div className="kw-my-card__label">You</div>
-        {row('Name', data?.fullName)}
-        {row('Branch', data?.branch?.name)}
-        {row('Kind of work', data?.category?.toLowerCase())}
-      </div>
-
-      {data?.hasEmploymentProfile ? (
-        <div className="kw-my-card">
-          <div className="kw-my-card__label">Employment</div>
-          {row('Employee number', data.employment?.employeeNo)}
-          {row('Position', data.employment?.position)}
-          {row('Department', data.employment?.department)}
-          {row('Type', data.employment?.employmentType?.toLowerCase())}
-          {row('Started', data.employment?.startDate ? dayjs(data.employment.startDate).format('D MMM YYYY') : null)}
-          <div className="kw-my-shift">
-            <span className="kw-my-shift__meta">Status</span>
-            <Tag color={data.employment?.employmentStatus === 'ACTIVE' ? 'green' : 'default'}>
-              {data.employment?.employmentStatus?.toLowerCase()}
-            </Tag>
+      <div className="hr-grid2">
+        <Panel>
+          <PanelHead title="You" />
+          <div className="hr-kv">
+            {kv('Name', data?.fullName)}
+            {kv('Branch', data?.branch?.name)}
+            {kv('Kind of work', data?.category?.toLowerCase())}
           </div>
-        </div>
-      ) : (
-        <div className="kw-my-card">
-          <MyEmpty title="Your employment record is not finished yet">
-            You can sign in and see your schedule, but payroll cannot include you until HR completes your
-            employment profile. Ask them to finish it.
-          </MyEmpty>
-        </div>
-      )}
+          <div className="hr-panelHead--top">
+            <PanelHead title="Contact" />
+          </div>
+          <div className="hr-kv">
+            {kv('Phone', data?.employment?.phone)}
+            {kv('Email', data?.employment?.email)}
+          </div>
+        </Panel>
 
-      <div className="kw-my-card">
-        <div className="kw-my-card__label">Contact</div>
-        {row('Phone', data?.employment?.phone)}
-        {row('Email', data?.employment?.email)}
+        <Panel>
+          <PanelHead title="Employment" />
+          {data?.hasEmploymentProfile ? (
+            <div className="hr-kv">
+              {kv('Employee number', data.employment?.employeeNo)}
+              {kv('Position', data.employment?.position)}
+              {kv('Department', data.employment?.department)}
+              {kv('Type', data.employment?.employmentType?.toLowerCase())}
+              {kv('Started', data.employment?.startDate ? dayjs(data.employment.startDate).format('D MMM YYYY') : null)}
+              <span className="hr-kv__k">Status</span>
+              <span className="hr-kv__v">
+                <StatusChip tone={data.employment?.employmentStatus === 'ACTIVE' ? 'done' : 'muted'}>
+                  {data.employment?.employmentStatus?.toLowerCase() ?? '—'}
+                </StatusChip>
+              </span>
+            </div>
+          ) : (
+            <PortalEmpty title="Your employment record is not finished yet">
+              You can sign in and see your roster, but payroll cannot include you until HR completes your employment
+              profile. Ask them to finish it.
+            </PortalEmpty>
+          )}
+          <div className="hr-panelHead--top">
+            <PanelHead title="Bank account" />
+          </div>
+          <PortalEmpty title="Changed through HR">
+            Tell your manager or HR the new account, with proof it is yours. Payroll is paid only to an account HR has
+            checked, so it cannot be changed from here.
+          </PortalEmpty>
+        </Panel>
       </div>
-
-      <Button
-        block
-        size="large"
-        onClick={() => {
-          clearAuth();
-          navigate('/login');
-        }}
-      >
-        Sign out
-      </Button>
     </>
   );
 }

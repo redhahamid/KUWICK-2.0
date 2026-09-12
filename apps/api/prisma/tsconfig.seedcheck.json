@@ -5,6 +5,7 @@
   },
   "include": [
     "seed-admin-uat.ts",
+    "seed-hr-uat.ts",
     "seed-e2e.ts",
     "admin-uat-shots.ts",
     "admin-uat-review-shots.ts",

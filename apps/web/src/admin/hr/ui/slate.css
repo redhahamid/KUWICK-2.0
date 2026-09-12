@@ -1634,3 +1634,395 @@ a.hr-who:hover .hr-who__name {
   text-decoration: none;
   font-weight: 500;
 }
+
+/* ── The employee portal (My Kuwick), after portal-*.html ─────────────────────
+ *
+ * The same kit, no sidebar: a slate top bar, pill tabs, and the content held
+ * to 960px in the middle of the canvas. Everything in here is prefixed
+ * `hr-portal` or `hr-p…` so the admin shell's rules are not disturbed.
+ */
+.hr-portal {
+  min-height: 100vh;
+  background: var(--hr-canvas);
+  color: var(--hr-ink);
+  font: 14px/1.5 Inter, system-ui, sans-serif;
+  font-feature-settings: 'tnum' 1, 'cv11' 1;
+}
+.hr-top {
+  height: 56px;
+  background: var(--hr-slate);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  padding: 0 22px;
+  gap: 18px;
+}
+.hr-top__logo {
+  font-family: 'Inter Tight', Inter, sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-size: 15px;
+  color: #fff;
+  text-decoration: none;
+}
+.hr-top__crumbs {
+  color: var(--hr-slate-txt);
+}
+.hr-top__right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--hr-slate-txt);
+  min-width: 0;
+}
+.hr-top__clinic {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 20px;
+  padding: 4px 12px;
+  color: #fff;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.hr-top__name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hr-top__avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--hr-teal);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+  font-size: 12px;
+  text-decoration: none;
+  flex: none;
+}
+.hr-portal__main {
+  padding: 28px 36px 56px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+.hr-ptabs {
+  display: flex;
+  gap: 6px;
+  margin: -4px 0 22px;
+  flex-wrap: wrap;
+}
+.hr-ptabs a {
+  padding: 8px 14px;
+  border-radius: 20px;
+  text-decoration: none;
+  color: var(--hr-ink2);
+  font-weight: 500;
+  border: 1px solid var(--hr-line2);
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+}
+.hr-ptabs a.is-active {
+  background: var(--hr-slate);
+  color: #fff;
+  border-color: var(--hr-slate);
+}
+.hr-ptabs__count {
+  font-size: 11px;
+  background: var(--hr-gold);
+  color: #fff;
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-weight: 600;
+  line-height: 16px;
+}
+.hr-stats--3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.hr-grid2--wide {
+  grid-template-columns: 1.2fr 1fr;
+}
+/* Native controls, drawn like the mockup's fields. */
+.hr-pform {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 14px;
+}
+.hr-pform label {
+  font-size: 12px;
+  color: var(--hr-ink2);
+  font-weight: 500;
+  display: block;
+  margin-bottom: 4px;
+}
+.hr-pform__full {
+  grid-column: 1 / -1;
+}
+.hr-f {
+  border: 1px solid var(--hr-line2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  font: inherit;
+  font-size: 14px;
+  width: 100%;
+  color: var(--hr-ink);
+  box-sizing: border-box;
+  min-height: 40px;
+}
+.hr-f:focus {
+  outline: none;
+  border-color: var(--hr-teal);
+  box-shadow: 0 0 0 3px var(--hr-teal-soft);
+}
+.hr-f--auto,
+.hr-f:disabled {
+  background: #f5f6f7;
+  color: var(--hr-ink);
+}
+.hr-f--auto small {
+  font-size: 12px;
+  color: var(--hr-ink3);
+}
+textarea.hr-f {
+  min-height: 60px;
+  resize: vertical;
+}
+.hr-drop {
+  border: 1.5px dashed var(--hr-line2);
+  border-radius: 10px;
+  padding: 18px;
+  text-align: center;
+  color: var(--hr-ink2);
+  font-size: 13px;
+  background: #fafbfb;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.hr-drop svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.hr-drop input {
+  display: none;
+}
+.hr-drop.is-required {
+  border-color: var(--hr-line2);
+}
+.hr-rcpt {
+  border: 1px solid var(--hr-line);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 8px;
+}
+.hr-rcpt__th {
+  width: 52px;
+  height: 64px;
+  border-radius: 6px;
+  background: repeating-linear-gradient(0deg, #eef1f3 0 6px, #f8f9fa 6px 12px);
+  border: 1px solid var(--hr-line2);
+  flex: none;
+  object-fit: cover;
+}
+.hr-rcpt__name {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+.hr-rcpt__meta {
+  font-size: 12px;
+  color: var(--hr-ink3);
+}
+.hr-preview {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: var(--hr-teal-soft);
+  border-radius: 10px;
+  font-size: 13px;
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.hr-preview--attn {
+  background: var(--hr-gold-soft);
+}
+.hr-preview__warn {
+  color: var(--hr-gold);
+}
+.hr-preview__block {
+  color: var(--hr-red);
+}
+.hr-formFoot {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.hr-tl {
+  border-left: 2px solid var(--hr-line);
+  margin-left: 6px;
+  padding-left: 14px;
+  font-size: 13px;
+}
+.hr-tl__row {
+  position: relative;
+  margin-bottom: 10px;
+  color: var(--hr-ink2);
+}
+.hr-tl__row::before {
+  content: '';
+  position: absolute;
+  left: -19px;
+  top: 5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--hr-line2);
+}
+.hr-tl__row.is-on::before {
+  background: var(--hr-teal);
+}
+.hr-tl__row b,
+.hr-tl__row a {
+  color: var(--hr-ink);
+  text-decoration: none;
+}
+.hr-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--hr-line);
+  overflow: hidden;
+}
+.hr-bar i {
+  display: block;
+  height: 100%;
+  background: var(--hr-teal);
+}
+.hr-quick {
+  padding: 14px 22px;
+  display: grid;
+  gap: 8px;
+}
+.hr-quick .hr-btn {
+  justify-content: center;
+}
+.hr-tdSub {
+  font-size: 12px;
+  color: var(--hr-ink3);
+}
+.hr-portal .hr-panelHead--top {
+  border-top: 1px solid var(--hr-line);
+}
+.hr-portal__empty {
+  padding: 18px 22px;
+  color: var(--hr-ink2);
+  font-size: 13px;
+}
+.hr-portal__empty b {
+  display: block;
+  color: var(--hr-ink);
+  margin-bottom: 2px;
+}
+.hr-clockState {
+  font-size: 13px;
+  color: var(--hr-ink2);
+  align-self: center;
+}
+.hr-benefitNote {
+  padding: 12px 22px 18px;
+  font-size: 13px;
+  color: var(--hr-ink2);
+}
+@media (max-width: 720px) {
+  .hr-top {
+    padding: 0 14px;
+    gap: 10px;
+  }
+  .hr-top__crumbs,
+  .hr-top__clinic {
+    display: none;
+  }
+  .hr-portal__main {
+    padding: 16px 14px 40px;
+  }
+  .hr-ptabs a {
+    min-height: 44px;
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .hr-stats--3,
+  .hr-portal .hr-grid2,
+  .hr-pform {
+    grid-template-columns: 1fr;
+  }
+  .hr-portal .hr-pageHead {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .hr-portal .hr-pageHead__actions {
+    margin-left: 0;
+    width: 100%;
+  }
+  .hr-portal .hr-pageHead__actions .hr-btn {
+    min-height: 48px;
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}
+/* Plain tables in the portal (the kit's `.hr-table` rules bind to antd's markup). */
+.hr-portal table.hr-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.hr-portal table.hr-table th {
+  text-align: left;
+  font-size: 12px;
+  color: var(--hr-ink3);
+  font-weight: 600;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--hr-line);
+  background: #fafbfb;
+}
+.hr-portal table.hr-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--hr-line);
+  vertical-align: middle;
+}
+.hr-portal table.hr-table tr:last-child td {
+  border-bottom: 0;
+}
+.hr-portal table.hr-table th.hr-num,
+.hr-portal table.hr-table td.hr-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.hr-portal table.hr-table td:first-child,
+.hr-portal table.hr-table th:first-child {
+  padding-left: 22px;
+}
+.hr-portal table.hr-table td:last-child,
+.hr-portal table.hr-table th:last-child {
+  padding-right: 22px;
+}
+.hr-portal .hr-kv {
+  padding: 12px 22px 16px;
+}
+.hr-portal .hr-drawer .hr-kv {
+  padding: 8px 22px 14px;
+}

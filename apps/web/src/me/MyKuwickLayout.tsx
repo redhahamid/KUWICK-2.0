@@ -1,105 +1,91 @@
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import { ConfigProvider } from 'antd';
 import { Link, NavLink, Outlet } from 'react-router-dom';
-import {
-  CalendarOutlined,
-  ClockCircleOutlined,
-  FileTextOutlined,
-  HomeOutlined,
-  UserOutlined,
-  WalletOutlined,
-} from '@ant-design/icons';
-import { useMyHome, useMyProfile } from './hooks/useMe';
+import { useAuthStore } from '../core/auth-store';
 import { setClinicTimeZone } from '../clinical/clinicTime';
-import './my-kuwick.css';
+import { initialsOf } from '../admin/hr/ui/who';
+import '../admin/hr/ui/slate.css';
+import { useMyHome, useMyProfile } from './hooks/useMe';
 
 /**
- * MY KUWICK — the shell an employee lives in.
+ * MY KUWICK — the employee's own portal, after `portal-*.html`.
  *
- * Deliberately NOT the Administration shell. A member of staff should never
- * see the module rail or the branch picker: a screen that shows controls it
- * then refuses is worse than one that never offered them, and every one of
- * those controls implies a management view they do not have.
+ * The same kit as HR, with no sidebar: a slate bar with the clinic and the
+ * person, five pill tabs, and the page held to 960px. Whoever signs in sees
+ * only what is theirs; the API enforces that by identity, not by this screen.
  *
- * Phone first. The navigation is a bottom bar under a thumb; at desktop width
- * the same five destinations move to the side and nothing else changes.
+ * Five tabs, not six: the mockups carry no Schedule tab, so the roster lives
+ * on Attendance (the shifts a month of punches was measured against) and
+ * `/my/schedule` lands there.
  */
-
-const TABS: { to: string; label: string; icon: ReactNode; end?: boolean }[] = [
-  { to: '/my', label: 'Home', icon: <HomeOutlined />, end: true },
-  { to: '/my/schedule', label: 'Schedule', icon: <CalendarOutlined /> },
-  { to: '/my/attendance', label: 'Attendance', icon: <ClockCircleOutlined /> },
-  { to: '/my/leave', label: 'Leave', icon: <FileTextOutlined /> },
-  { to: '/my/claims', label: 'Claims', icon: <WalletOutlined /> },
+const TABS: { to: string; label: string; end?: boolean }[] = [
+  { to: '/my', label: 'Home', end: true },
+  { to: '/my/payslips', label: 'Payslips' },
+  { to: '/my/leave', label: 'Leave' },
+  { to: '/my/claims', label: 'Claims' },
+  { to: '/my/attendance', label: 'Attendance' },
 ];
 
 export function MyKuwickLayout() {
   const { data: profile } = useMyProfile();
   const { data: home } = useMyHome();
+  const tenantName = useAuthStore((state) => state.tenant?.name ?? null);
 
-  // THE CLINIC'S ZONE, FROM THE SERVER, BEFORE ANY TIME IS DRAWN.
-  //
-  // `clinicTime` defaults to Asia/Kuala_Lumpur and its own comment says it is
-  // "called once, from the session, at app boot" — which nothing in the app
-  // actually did, so every screen has been running on that default. It happens
-  // to be right for a Malaysian clinic and wrong for anybody else's, and this
-  // area is the one people read on a phone in another country. `/me/home`
-  // knows the answer for THIS employee's branch, so it is set here.
   if (home?.timeZone) setClinicTimeZone(home.timeZone);
 
-  // The counts that put a dot on a tab. Only things waiting on somebody ELSE
-  // are counted — a badge for work the employee has already done is noise.
   const waiting: Record<string, number> = {
     '/my/leave': home?.waiting.leaveRequests ?? 0,
     '/my/claims': home?.waiting.claims ?? 0,
     '/my/attendance': home?.waiting.attendanceCorrections ?? 0,
   };
+  const name = profile?.fullName ?? home?.fullName ?? '';
 
   return (
-    <div className="kw-my" data-testid="my-kuwick">
-      <header className="kw-my__head">
-        <div className="kw-my__greeting">
-          <span className="kw-my__hello">My Kuwick</span>
-          <span className="kw-my__name">{profile?.fullName ?? '—'}</span>
-          {profile?.branch ? <span className="kw-my__branch">{profile.branch.name}</span> : null}
-        </div>
-        <Link to="/my/profile" aria-label="My profile" style={{ color: '#fff', fontSize: 20, lineHeight: 1 }}>
-          <UserOutlined />
-        </Link>
-      </header>
+    <ConfigProvider
+      theme={{
+        token: { colorPrimary: '#0F8F7A', colorLink: '#0F8F7A', borderRadius: 8, fontFamily: 'Inter, system-ui, sans-serif' },
+      }}
+    >
+      <div className="kw-hrSlate hr-portal" data-testid="my-kuwick">
+        <header className="hr-top">
+          <Link to="/my" className="hr-top__logo">
+            KUWICK
+          </Link>
+          <span className="hr-top__crumbs">My Kuwick</span>
+          <div className="hr-top__right">
+            {tenantName ? <span className="hr-top__clinic">{tenantName}</span> : null}
+            <span className="hr-top__name">{name || '—'}</span>
+            <Link to="/my/profile" className="hr-top__avatar" aria-label="My profile">
+              {name ? initialsOf(name) : '·'}
+            </Link>
+          </div>
+        </header>
 
-      <nav className="kw-my__tabs" aria-label="My Kuwick">
-        {TABS.map((tab) => (
-          <NavLink
-            key={tab.to}
-            to={tab.to}
-            end={tab.end}
-            className={({ isActive }) => `kw-my__tab${isActive ? ' kw-my__tab--active' : ''}`}
-          >
-            <span className="kw-my__tabWrap">
-              {tab.icon}
-              {waiting[tab.to] > 0 ? (
-                <span className="kw-my__tabDot" aria-label={`${waiting[tab.to]} waiting`}>
-                  {waiting[tab.to]}
-                </span>
-              ) : null}
-            </span>
-            {tab.label}
-          </NavLink>
-        ))}
-      </nav>
-
-      <main className="kw-my__body">
-        <Outlet />
-      </main>
-    </div>
+        <main className="hr-portal__main">
+          <nav className="hr-ptabs" aria-label="My Kuwick">
+            {TABS.map((tab) => (
+              <NavLink key={tab.to} to={tab.to} end={tab.end} className={({ isActive }) => (isActive ? 'is-active' : '')}>
+                {tab.label}
+                {waiting[tab.to] > 0 ? (
+                  <span className="hr-ptabs__count" aria-label={`${waiting[tab.to]} waiting`}>
+                    {waiting[tab.to]}
+                  </span>
+                ) : null}
+              </NavLink>
+            ))}
+          </nav>
+          <Outlet />
+        </main>
+      </div>
+    </ConfigProvider>
   );
 }
 
-/** The empty state this area uses everywhere: why, and what to do about it. */
+/** Kept for the pages that say "nothing here yet" — the kit's quiet empty state. */
 export function MyEmpty({ title, children }: { title: string; children?: ReactNode }) {
   return (
-    <div className="kw-my-empty">
-      <div className="kw-my-empty__title">{title}</div>
+    <div className="hr-portal__empty">
+      <b>{title}</b>
       {children}
     </div>
   );

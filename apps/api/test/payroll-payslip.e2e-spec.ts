@@ -271,6 +271,46 @@ describe('Payroll payslips (e2e)', () => {
     expect(((audit[0].after ?? {}) as { staffId?: string }).staffId).toBe(staffId);
   });
 
+  it('lets the employee download their own payslip once the run is PAID, and nobody else', async () => {
+    const employeeBearer = bearerFor(tenantId, staffId, Role.FRONT_DESK_CLINICAL_STAFF);
+    // Approved is not paid: the portal waits for the money to have gone out.
+    await request(app.getHttpServer()).get(`/me/payslips/${runId}/pdf`).set('Authorization', employeeBearer).expect(404);
+
+    await withTenantContext(prisma, tenantId, (tx) =>
+      tx.payrollRun.update({
+        where: { id: runId },
+        data: { status: 'PAID', paymentDate: new Date('2026-07-28T00:00:00.000Z') },
+      }),
+    );
+
+    const res = await request(app.getHttpServer())
+      .get(`/me/payslips/${runId}/pdf`)
+      .set('Authorization', employeeBearer)
+      .expect(200);
+    expect(res.headers['content-type']).toBe('application/pdf');
+    expect(res.headers['content-disposition']).toContain('payslip-2026-07');
+    expect(res.body.length ?? res.body.byteLength ?? 0).toBeGreaterThan(1000);
+
+    const list = await request(app.getHttpServer()).get('/me/payslips').set('Authorization', employeeBearer).expect(200);
+    expect(list.body).toEqual([expect.objectContaining({ runId, runStatus: 'PAID' })]);
+
+    const other = await withTenantContext(prisma, tenantId, (tx) =>
+      tx.staff.create({
+        data: { tenantId, role: Role.FRONT_DESK_CLINICAL_STAFF, fullName: 'Somebody Else', clinicId },
+      }),
+    );
+    await request(app.getHttpServer())
+      .get(`/me/payslips/${runId}/pdf`)
+      .set('Authorization', bearerFor(tenantId, other.id, Role.FRONT_DESK_CLINICAL_STAFF))
+      .expect(404);
+
+    const audit = await withTenantContext(prisma, tenantId, (tx) =>
+      tx.auditLog.findMany({ where: { tenantId, action: 'payrollPayslip.downloaded' }, orderBy: { createdAt: 'asc' } }),
+    );
+    expect(audit).toHaveLength(2);
+    expect(((audit[1].after ?? {}) as { self?: boolean }).self).toBe(true);
+  });
+
   it('refuses the payslip surface to an account without the payroll permission', async () => {
     const outsider = await withTenantContext(prisma, tenantId, (tx) =>
       tx.staff.create({

@@ -1,7 +1,8 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { requirePermission, withAdminTx } from '../finance/admin-actor';
+import { requireActor, withTenantTx } from '../clinical/clinical-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { ringgitInWords } from '../finance/money-words';
 import {
@@ -107,6 +108,34 @@ export class PayrollPayslipService {
       return composed;
     });
     return data;
+  }
+
+  /**
+   * THE EMPLOYEE'S OWN PAYSLIP, for the portal.
+   *
+   * No HR permission: the check is identity — the line must be theirs — and
+   * the run must be PAID, because the portal shows a payslip once the money
+   * has gone out, not while a corrected revision may still follow approval.
+   * Audited like every other download, with the employee as the actor.
+   */
+  async payslipForSelf(runId: string, staffId: string) {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      if (actor.id !== staffId) throw new ForbiddenException('That payslip is not yours.');
+      const run = await tx.payrollRun.findUnique({ where: { id: runId }, select: { status: true } });
+      if (!run || run.status !== 'PAID') throw new NotFoundException('No payslip of yours for that month.');
+      const line = await tx.payrollLine.findFirst({ where: { payrollRunId: runId, staffId }, select: { id: true } });
+      if (!line) throw new NotFoundException('No payslip of yours for that month.');
+      const composed = await this.compose(runId, staffId, undefined);
+      await recordAudit(tx, actor, {
+        action: 'payrollPayslip.downloaded',
+        entityType: 'PayrollRun',
+        entityId: runId,
+        after: { staffId, snapshotVersion: composed.revision.version, net: composed.figures.netCents, self: true },
+        source: 'me.payslips',
+      });
+      return composed;
+    });
   }
 
   // -------------------------------------------------------------------------

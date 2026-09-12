@@ -595,10 +595,13 @@ describe('Synthetic payroll month (e2e)', () => {
         tx.staffClaim.findMany({ where: { tenantId, staffId: farid, paymentRoute: route } }),
       );
 
-    it('the payroll-routed claim is bound to exactly one payroll input', async () => {
+    it('the payroll-routed claim is bound to exactly one payroll input, and reads PAID once the run is', async () => {
       const [claim] = await claimsOf('PAYROLL');
       expect(claim.payrollInputEntryId).toBeTruthy();
-      expect(claim.payoutStatus).toBe('IN_PAYROLL');
+      // The run was recorded paid above (Piece 3g): a claim that rode on its
+      // lines has been paid with the salary, and says so.
+      expect(claim.payoutStatus).toBe('PAID');
+      expect(claim.paidAt).not.toBeNull();
 
       const inputs = await withTenantContext(prisma, tenantId, (tx) =>
         tx.payrollInputEntry.findMany({ where: { tenantId, staffId: farid, source: 'CLAIM' } }),

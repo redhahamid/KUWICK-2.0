@@ -1,137 +1,210 @@
-import { App, Button, Tag } from 'antd';
+import { App } from 'antd';
 import dayjs from 'dayjs';
-import { clinicDayjs, formatClinicTime } from '../clinical/clinicTime';
 import { Link } from 'react-router-dom';
-import { ApiError } from '../core/api-client';
-import { MyEmpty } from './MyKuwickLayout';
-import { useClockSelf, useMyHome } from './hooks/useMe';
+import { clinicDayjs, formatClinicTime } from '../clinical/clinicTime';
+import { ApiError, downloadFile } from '../core/api-client';
+import { Panel, PanelHead, StatCard } from '../admin/hr/ui';
+import { IconCalendar, IconClaims, IconClock, IconDoc, IconEdit, IconPlus } from '../admin/hr/ui/icons';
+import { myPayslipPdfPath, useClockSelf, useMyHome, type MyPaidPayslip } from './hooks/useMe';
+import { IconCard, PortalEmpty, greetingName, monthLabel, monthShort, rm } from './portal';
 
 /**
- * THE SCREEN A MEMBER OF STAFF OPENS ON THEIR PHONE.
+ * HOME, after `portal-home.html`: the greeting with today's shift, the clock
+ * button, three figures (the last payslip, the leave left, the claims waiting
+ * to be paid), the last three payslips with their PDFs, the four things an
+ * employee comes here to do, and what happened lately.
  *
- * Not a grid of counters. It answers, in the order somebody actually asks:
- * am I clocked in, what am I meant to be doing today, what is waiting on
- * somebody else, and where is my last payslip.
+ * Every figure is the server's. The page adds nothing up.
  */
 export function MyHomePage() {
   const { message } = App.useApp();
   const { data, isLoading } = useMyHome();
   const clock = useClockSelf();
 
+  const onDuty = data?.clock.onDuty ?? false;
+  const time = (value: string | null | undefined) => (value ? formatClinicTime(value) : '—');
+
   const onClock = async () => {
     try {
       await clock.mutateAsync({});
-      message.success(data?.clock.onDuty ? 'Clocked out. Have a good evening.' : 'Clocked in.');
+      message.success(onDuty ? 'Clocked out.' : 'Clocked in.');
     } catch (error) {
       message.error(error instanceof ApiError ? error.message : 'Could not record that.');
     }
   };
 
-  // THE CLINIC'S ZONE, NOT THE PHONE'S. An 09:00 Malaysian shift rendered
-  // through a browser sitting in UTC reads as 01:00, and a member of staff
-  // checking their shift on holiday would see a different start time from the
-  // colleague standing in the clinic. `clinicTime` is the product's one answer
-  // to this and already carries the reasoning.
-  const time = (value: string | null | undefined) => (value ? formatClinicTime(value) : '—');
-  const onDuty = data?.clock.onDuty ?? false;
+  const download = (slip: MyPaidPayslip) =>
+    downloadFile(myPayslipPdfPath(slip.runId), `payslip-${slip.period}.pdf`).catch((error) =>
+      message.error(error instanceof ApiError ? error.message : 'Could not download the payslip.'),
+    );
+
+  const shift = data?.todayShifts[0];
+  const subLine = data
+    ? [
+        clinicDayjs(`${data.date}T00:00:00`).format('dddd D MMMM YYYY'),
+        data.clinicName,
+        shift
+          ? `shift ${time(shift.startsAt)}–${time(shift.endsAt)}`
+          : data.nextShift
+            ? `next shift ${clinicDayjs(`${data.nextShift.date}T00:00:00`).format('ddd D MMM')}, ${time(data.nextShift.startsAt)}–${time(data.nextShift.endsAt)}`
+            : 'no shift today',
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : '';
+
+  const latest = data?.latestPayslip ?? null;
+  const annual = data?.leave.annual ?? null;
+  const claims = data?.claims;
+  const recentCutoff = dayjs().subtract(14, 'day');
 
   return (
     <>
-      <div className="kw-my-card kw-my-clock">
+      <div className="hr-pageHead">
         <div>
-          <div className="kw-my-card__label">{onDuty ? 'On duty' : 'Not clocked in'}</div>
-          <div className="kw-my-clock__state">
-            <span className="kw-my-clock__now">{onDuty ? `Since ${time(data?.clock.since)}` : 'Ready'}</span>
-            {/*
-              * An overnight shift's clock-in belongs to the day it started, so
-              * a night nurse clocking out at 07:00 is closing YESTERDAY. Saying
-              * so is the difference between a clear screen and a support call.
-              */}
-            {onDuty && data?.clock.openSince && data.clock.openSince !== data.date ? (
-              <Tag color="blue">Shift started {clinicDayjs(`${data.clock.openSince}T00:00:00`).format('D MMM')}</Tag>
-            ) : null}
-          </div>
+          <h1>Hi, {greetingName(data?.fullName)}</h1>
+          <div className="hr-sub">{subLine}</div>
         </div>
-        <Button
-          type="primary"
-          className="kw-my-clock__button"
-          size="large"
-          block
-          loading={clock.isPending}
-          onClick={onClock}
-          danger={onDuty}
-        >
-          {onDuty ? 'Clock out' : 'Clock in'}
-        </Button>
+        <div className="hr-pageHead__actions">
+          {onDuty ? <span className="hr-clockState">On duty since {time(data?.clock.since)}</span> : null}
+          <button
+            type="button"
+            className={onDuty ? 'hr-btn' : 'hr-btn hr-btn--primary'}
+            onClick={onClock}
+            disabled={clock.isPending || isLoading}
+          >
+            <IconClock />
+            {onDuty ? 'Clock out' : 'Clock in'}
+          </button>
+        </div>
       </div>
 
-      <div className="kw-my-card">
-        <div className="kw-my-card__label">Today · {clinicDayjs(`${data?.date ?? ''}T00:00:00`).format('ddd D MMM')}</div>
-        {isLoading ? null : (data?.todayShifts?.length ?? 0) === 0 ? (
-          <MyEmpty title="Nothing scheduled for you today">
-            {data?.nextShift
-              ? `Your next shift is ${clinicDayjs(`${data.nextShift.date}T00:00:00`).format('ddd D MMM')}, ${time(data.nextShift.startsAt)}–${time(data.nextShift.endsAt)}.`
-              : 'When your manager publishes the roster, your shifts appear here.'}
-          </MyEmpty>
-        ) : (
-          data?.todayShifts.map((shift) => (
-            <div className="kw-my-shift" key={shift.id}>
-              <div>
-                <div className="kw-my-shift__time">
-                  {time(shift.startsAt)} – {time(shift.endsAt)}
+      <div className="hr-stats hr-stats--3">
+        <StatCard
+          icon={<IconCard />}
+          label="Latest payslip"
+          value={latest ? rm(latest.netPay) : '—'}
+          sub={
+            latest ? (
+              <>
+                {monthLabel(latest.period)}
+                {latest.paymentDate ? ` · paid ${dayjs(latest.paymentDate).format('D MMM')}` : ''} ·{' '}
+                <a
+                  className="hr-link"
+                  href={myPayslipPdfPath(latest.runId)}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void download(latest);
+                  }}
+                >
+                  Download PDF
+                </a>
+              </>
+            ) : (
+              'No paid month yet'
+            )
+          }
+        />
+        <StatCard
+          icon={<IconCalendar />}
+          label="Annual leave left"
+          value={annual ? `${annual.remaining} ${annual.remaining === 1 ? 'day' : 'days'}` : '—'}
+          sub={
+            annual
+              ? `of ${annual.available} · ${data?.leave.medicalUsed ?? 0} medical used`
+              : data?.leave.policyName
+                ? 'No annual leave on your policy'
+                : 'No leave policy assigned yet'
+          }
+        />
+        <StatCard
+          icon={<IconClaims />}
+          label="Claims"
+          value={claims ? rm(claims.awaitingTotal) : '—'}
+          sub={
+            claims && claims.awaitingCount > 0
+              ? `${claims.awaitingCount} approved, pays with ${claims.payrollPeriod ? monthShort(claims.payrollPeriod) : 'the next'} payroll`
+              : 'Nothing waiting to be paid'
+          }
+        />
+      </div>
+
+      <div className="hr-grid2">
+        <Panel>
+          <PanelHead
+            title="Payslips"
+            actions={
+              <Link className="hr-link" to="/my/payslips">
+                All
+              </Link>
+            }
+          />
+          {data && data.payslips.length === 0 ? (
+            <PortalEmpty title="No payslip yet">A payslip appears here once a month has been paid.</PortalEmpty>
+          ) : (
+            <table className="hr-table">
+              <tbody>
+                {(data?.payslips ?? []).map((slip) => (
+                  <tr key={slip.runId}>
+                    <td>
+                      <b>{monthLabel(slip.period)}</b>
+                      <div className="hr-tdSub">{slip.paymentDate ? `Paid ${dayjs(slip.paymentDate).format('D MMM')}` : 'Paid'}</div>
+                    </td>
+                    <td className="hr-num hr-strong">{rm(slip.netPay)}</td>
+                    <td className="hr-num">
+                      <button type="button" className="hr-btn hr-btn--sm" onClick={() => void download(slip)}>
+                        <IconDoc />
+                        PDF
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Panel>
+
+        <Panel>
+          <PanelHead title="Quick actions" />
+          <div className="hr-quick">
+            <Link className="hr-btn" to="/my/leave">
+              <IconCalendar />
+              Apply for leave
+            </Link>
+            <Link className="hr-btn" to="/my/claims">
+              <IconPlus />
+              Submit a claim
+            </Link>
+            <Link className="hr-btn" to="/my/attendance">
+              <IconClock />
+              Request attendance correction
+            </Link>
+            <Link className="hr-btn" to="/my/profile">
+              <IconEdit />
+              Update bank account
+            </Link>
+          </div>
+          <div className="hr-panelHead--top">
+            <PanelHead title="Recent" />
+          </div>
+          {data && data.recent.length === 0 ? (
+            <PortalEmpty title="Nothing yet">Decisions on your leave and claims, and paid months, show here.</PortalEmpty>
+          ) : (
+            <div className="hr-tl" style={{ padding: '12px 22px 6px' }}>
+              {(data?.recent ?? []).map((event) => (
+                <div
+                  key={`${event.kind}-${event.title}-${event.at}`}
+                  className={dayjs(event.at).isAfter(recentCutoff) ? 'hr-tl__row is-on' : 'hr-tl__row'}
+                >
+                  <Link to={event.href}>
+                    <b>{event.title}</b>
+                  </Link>{' '}
+                  {event.state} · {dayjs(event.at).format('D MMM')}
                 </div>
-                {shift.note ? <div className="kw-my-shift__meta">{shift.note}</div> : null}
-              </div>
-              {shift.shiftType !== 'WORKING' ? <Tag>{shift.shiftType}</Tag> : null}
+              ))}
             </div>
-          ))
-        )}
-        {data?.upcomingLeave ? (
-          <div className="kw-my-shift__meta" style={{ marginTop: 8 }}>
-            Approved leave: {data.upcomingLeave.leaveType.toLowerCase()},{' '}
-            {clinicDayjs(`${data.upcomingLeave.startDate}T00:00:00`).format('D MMM')} – {clinicDayjs(`${data.upcomingLeave.endDate}T00:00:00`).format('D MMM')}
-          </div>
-        ) : null}
-      </div>
-
-      <div>
-        <div className="kw-my-card__label" style={{ marginBottom: 6 }}>
-          Waiting on somebody else
-        </div>
-        <div className="kw-my-waiting">
-          {/* Each tile is a link, because a number that leads nowhere is a
-              number nobody can act on. */}
-          <Link className="kw-my-waiting__tile" to="/my/leave">
-            <span className="kw-my-waiting__count">{data?.waiting.leaveRequests ?? 0}</span>
-            <span className="kw-my-waiting__label">Leave requests</span>
-          </Link>
-          <Link className="kw-my-waiting__tile" to="/my/claims">
-            <span className="kw-my-waiting__count">{data?.waiting.claims ?? 0}</span>
-            <span className="kw-my-waiting__label">Claims</span>
-          </Link>
-          <Link className="kw-my-waiting__tile" to="/my/attendance">
-            <span className="kw-my-waiting__count">{data?.waiting.attendanceCorrections ?? 0}</span>
-            <span className="kw-my-waiting__label">Attendance fixes</span>
-          </Link>
-        </div>
-      </div>
-
-      <div className="kw-my-card">
-        <div className="kw-my-card__label">Latest payslip</div>
-        {data?.latestPayslip ? (
-          <div className="kw-my-shift">
-            <div>
-              <div className="kw-my-shift__time">{clinicDayjs(data.latestPayslip.period).format('MMMM YYYY')}</div>
-              <div className="kw-my-shift__meta">{data.latestPayslip.status === 'PAID' ? 'Paid' : 'Approved'}</div>
-            </div>
-            <Link to="/my/payslips">Open</Link>
-          </div>
-        ) : (
-          <MyEmpty title="No payslip yet">
-            A payslip appears here once a month's payroll has been approved. A month still being worked on is
-            not shown, because the figures in it can still change.
-          </MyEmpty>
-        )}
+          )}
+        </Panel>
       </div>
     </>
   );

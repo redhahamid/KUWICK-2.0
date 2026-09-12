@@ -1,135 +1,288 @@
-import { useState } from 'react';
-import { App, Button, DatePicker, Drawer, Form, Input, Select, Tag } from 'antd';
+import { useMemo, useState } from 'react';
+import { App } from 'antd';
 import dayjs from 'dayjs';
 import { ApiError } from '../core/api-client';
-import { MyEmpty } from './MyKuwickLayout';
-import { useMyLeave, useRequestLeave } from './hooks/useMe';
+import { Panel, PanelHead, StatusChip } from '../admin/hr/ui';
+import { IconDoc } from '../admin/hr/ui/icons';
+import { useMyLeave, useMyLeaveBalances, useMyLeavePreview, useRequestLeave } from './hooks/useMe';
+import { IconCheckCircle, PortalEmpty, dayRange } from './portal';
 
 const LEAVE_TYPES = [
   { value: 'ANNUAL', label: 'Annual leave' },
   { value: 'MEDICAL', label: 'Medical leave' },
   { value: 'EMERGENCY', label: 'Emergency leave' },
-  // UNPAID is on the list because it is the one an employee genuinely needs to
-  // be able to ask for. It is also the one that reaches payroll as a
-  // deduction, and the drawer says so before they send it.
   { value: 'UNPAID', label: 'Unpaid leave' },
   { value: 'OTHER', label: 'Other' },
 ];
 
-const STATUS_TAG: Record<string, { color: string; label: string }> = {
-  PENDING: { color: 'blue', label: 'Waiting for a decision' },
-  APPROVED: { color: 'green', label: 'Approved' },
-  REJECTED: { color: 'red', label: 'Not approved' },
+const TYPE_WORD: Record<string, string> = {
+  ANNUAL: 'Annual',
+  MEDICAL: 'Medical',
+  EMERGENCY: 'Emergency',
+  UNPAID: 'Unpaid',
+  OTHER: 'Other',
+};
+
+const STATUS: Record<string, { tone: 'attn' | 'done' | 'block' | 'muted'; label: string }> = {
+  PENDING: { tone: 'attn', label: 'Waiting' },
+  APPROVED: { tone: 'done', label: 'Approved' },
+  REJECTED: { tone: 'block', label: 'Not approved' },
 };
 
 /**
- * MY LEAVE — ask, and see what happened to what you asked for.
+ * LEAVE, after `portal-leave.html`: the form on the left with what the
+ * request would mean under it — the days, the balance after, who else is
+ * away, a public holiday inside the dates — and on the right the balances by
+ * type and every request with its decision.
  *
- * The request goes into the same `LeaveRequest` a manager approves from, which
- * the roster reads and payroll reads. There is no self-service leave table: a
- * second record of the same absence is how two screens come to disagree about
- * whether somebody was at work.
+ * The days shown are the days the balance engine deducts (calendar days over
+ * the range), so the figure here is the figure that comes off. A half day is
+ * recorded on the request and still counts as one day in the balance; the
+ * strip says so rather than pretending otherwise.
  */
 export function MyLeavePage() {
   const { message } = App.useApp();
-  const { data, isLoading } = useMyLeave();
-  const [open, setOpen] = useState(false);
-  const [form] = Form.useForm();
+  const { data: requests, isLoading } = useMyLeave();
+  const { data: balances } = useMyLeaveBalances();
   const request = useRequestLeave();
-  const type = Form.useWatch('leaveType', form);
+
+  const today = dayjs().format('YYYY-MM-DD');
+  const [leaveType, setLeaveType] = useState('ANNUAL');
+  const [halfDay, setHalfDay] = useState(false);
+  const [startDate, setStartDate] = useState(today);
+  const [endDate, setEndDate] = useState(today);
+  const [reason, setReason] = useState('');
+
+  const validRange = Boolean(startDate && endDate && endDate >= startDate);
+  const preview = useMyLeavePreview(validRange ? { leaveType, startDate, endDate, halfDay } : null);
+  const p = validRange ? preview.data : undefined;
+
+  const reset = () => {
+    setLeaveType('ANNUAL');
+    setHalfDay(false);
+    setStartDate(today);
+    setEndDate(today);
+    setReason('');
+  };
 
   const submit = async () => {
-    const values = await form.validateFields();
+    if (!validRange) {
+      message.error('Leave cannot end before it starts.');
+      return;
+    }
     try {
       await request.mutateAsync({
-        leaveType: values.leaveType,
-        startDate: values.dates[0].format('YYYY-MM-DD'),
-        endDate: values.dates[1].format('YYYY-MM-DD'),
-        reason: values.reason,
-        halfDay: values.halfDay,
+        leaveType,
+        startDate,
+        endDate,
+        reason: reason.trim() || undefined,
+        halfDay: halfDay || undefined,
       });
       message.success('Sent to your manager.');
-      setOpen(false);
-      form.resetFields();
+      reset();
     } catch (error) {
       message.error(error instanceof ApiError ? error.message : 'Could not send that.');
     }
   };
 
+  const balanceRows = useMemo(() => {
+    const rows = (balances?.balances ?? []).filter((row) => row.leaveType !== 'UNPAID');
+    return rows;
+  }, [balances]);
+
+  const needsAttachment = leaveType === 'MEDICAL';
+
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+      <div className="hr-pageHead">
         <div>
-          <h1 className="kw-my__title">My leave</h1>
-          <p className="kw-my__subtitle">Approved leave clears your roster automatically.</p>
+          <h1>Apply for leave</h1>
+          <div className="hr-sub">Your manager gets it straight away. You'll see the decision here and by email.</div>
         </div>
-        <Button type="primary" size="large" onClick={() => setOpen(true)}>
-          Request leave
-        </Button>
       </div>
 
-      <div className="kw-my-card kw-my-card--flush">
-        {isLoading ? null : (data?.length ?? 0) === 0 ? (
-          <MyEmpty title="You have not asked for any leave">
-            When you do, it appears here with its decision.
-          </MyEmpty>
-        ) : (
-          data?.map((row) => {
-            const tag = STATUS_TAG[row.status] ?? { color: 'default', label: row.status };
-            const days = dayjs(row.endDate).diff(dayjs(row.startDate), 'day') + 1;
-            return (
-              <div className="kw-my-row" key={row.id}>
-                <div className="kw-my-row__main">
-                  <span className="kw-my-row__title">
-                    {dayjs(row.startDate).format('D MMM')} – {dayjs(row.endDate).format('D MMM YYYY')}
-                  </span>
-                  <span className="kw-my-row__detail">
-                    {row.leaveType.toLowerCase()} · {days} day{days === 1 ? '' : 's'}
-                    {row.decidedBy ? ` · decided by ${row.decidedBy}` : ''}
-                  </span>
-                  {row.reason ? <span className="kw-my-row__detail">{row.reason}</span> : null}
-                </div>
-                <div className="kw-my-row__side">
-                  <Tag color={tag.color}>{tag.label}</Tag>
+      <div className="hr-grid2 hr-grid2--wide">
+        <Panel>
+          <div style={{ padding: '20px 22px' }}>
+            <div className="hr-pform">
+              <div>
+                <label htmlFor="leave-type">Type</label>
+                <select id="leave-type" className="hr-f" value={leaveType} onChange={(event) => setLeaveType(event.target.value)}>
+                  {LEAVE_TYPES.map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="leave-half">Half day?</label>
+                <select
+                  id="leave-half"
+                  className="hr-f"
+                  value={halfDay ? 'half' : 'full'}
+                  onChange={(event) => setHalfDay(event.target.value === 'half')}
+                >
+                  <option value="full">Full day</option>
+                  <option value="half">Half day</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="leave-from">From</label>
+                <input
+                  id="leave-from"
+                  type="date"
+                  className="hr-f"
+                  value={startDate}
+                  onChange={(event) => {
+                    setStartDate(event.target.value);
+                    if (endDate < event.target.value) setEndDate(event.target.value);
+                  }}
+                />
+              </div>
+              <div>
+                <label htmlFor="leave-to">To</label>
+                <input
+                  id="leave-to"
+                  type="date"
+                  className="hr-f"
+                  value={endDate}
+                  min={startDate}
+                  onChange={(event) => setEndDate(event.target.value)}
+                />
+              </div>
+              <div className="hr-pform__full">
+                <label htmlFor="leave-reason">Reason</label>
+                <textarea
+                  id="leave-reason"
+                  className="hr-f"
+                  placeholder="Optional"
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                />
+              </div>
+              <div className="hr-pform__full">
+                <label>Attachment (needed for medical leave)</label>
+                {/* [D] No attachment lives on a leave request in the schema
+                    yet, so nothing can be stored here; the field says so
+                    instead of pretending to take a file. */}
+                <div className="hr-drop" aria-disabled="true" style={{ cursor: 'default' }}>
+                  <IconDoc />
+                  {needsAttachment
+                    ? 'Bring the MC to your manager. Attaching it here is not available yet.'
+                    : 'Not needed for this kind of leave'}
                 </div>
               </div>
-            );
-          })
-        )}
-      </div>
+            </div>
 
-      <Drawer
-        open={open}
-        onClose={() => setOpen(false)}
-        title="Request leave"
-        placement="bottom"
-        height="auto"
-        destroyOnHidden
-      >
-        <Form form={form} layout="vertical" className="kw-my-form" initialValues={{ leaveType: 'ANNUAL' }}>
-          <Form.Item name="leaveType" label="Kind of leave" rules={[{ required: true }]}>
-            <Select options={LEAVE_TYPES} size="large" />
-          </Form.Item>
-          {type === 'UNPAID' ? (
-            <p className="kw-my__subtitle" style={{ marginTop: -6 }}>
-              Unpaid leave is deducted from your salary for the days approved. Your manager will see the same
-              note.
-            </p>
-          ) : null}
-          <Form.Item name="dates" label="Dates" rules={[{ required: true, message: 'Which days?' }]}>
-            <DatePicker.RangePicker style={{ width: '100%' }} size="large" format="D MMM YYYY" />
-          </Form.Item>
-          <Form.Item name="reason" label="Reason (optional)">
-            <Input.TextArea rows={3} placeholder="Family trip." />
-          </Form.Item>
-          <div className="kw-my-form__footer">
-            <Button onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="primary" loading={request.isPending} onClick={submit}>
-              Send request
-            </Button>
+            {p ? (
+              <div className={p.balanceAfter?.overdrawn || p.ownClash ? 'hr-preview hr-preview--attn' : 'hr-preview'}>
+                <span>
+                  <b>
+                    {p.days} {p.days === 1 ? 'day' : 'days'}
+                  </b>
+                  {p.halfDay ? ' (half day, counted as one)' : ''}
+                </span>
+                {p.balanceAfter ? (
+                  <span>
+                    Balance after:{' '}
+                    <b>
+                      {p.balanceAfter.remaining} of {p.balanceAfter.available}
+                    </b>
+                  </span>
+                ) : (
+                  <span>No balance for this kind of leave</span>
+                )}
+                {p.ownClash ? (
+                  <span className="hr-preview__block">
+                    You already have leave over {dayRange(p.ownClash.startDate, p.ownClash.endDate)}
+                  </span>
+                ) : null}
+                {p.clashes.map((clash) => (
+                  <span key={`${clash.name}-${clash.firstDay}`} className="hr-preview__warn">
+                    {clash.name} is also away on {dayjs(clash.firstDay).format('D MMM')}
+                  </span>
+                ))}
+                {p.publicHolidays.map((holiday) => (
+                  <span key={holiday.date}>
+                    {holiday.name} ({dayjs(holiday.date).format('D MMM')}) is a public holiday
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="hr-formFoot">
+              <button type="button" className="hr-btn" onClick={reset}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="hr-btn hr-btn--primary"
+                onClick={submit}
+                disabled={request.isPending || !validRange || Boolean(p?.ownClash)}
+              >
+                <IconCheckCircle />
+                Submit request
+              </button>
+            </div>
           </div>
-        </Form>
-      </Drawer>
+        </Panel>
+
+        <Panel>
+          <PanelHead title="Balances" />
+          {balances && balanceRows.length === 0 ? (
+            <PortalEmpty title="No leave policy yet">HR assigns your leave policy; the balances appear here once they have.</PortalEmpty>
+          ) : (
+            <div className="hr-kv">
+              {balanceRows.map((row) => (
+                <span key={row.leaveType} style={{ display: 'contents' }}>
+                  <span className="hr-kv__k">{TYPE_WORD[row.leaveType] ?? row.leaveType}</span>
+                  <span className="hr-kv__v">
+                    {row.remaining} of {row.available} left
+                  </span>
+                </span>
+              ))}
+              {balances ? (
+                <>
+                  <span className="hr-kv__k">Unpaid taken</span>
+                  <span className="hr-kv__v">
+                    {balances.unpaidTaken.days} {balances.unpaidTaken.days === 1 ? 'day' : 'days'}
+                    {balances.unpaidTaken.lastMonth ? ` (${balances.unpaidTaken.lastMonth})` : ''}
+                  </span>
+                </>
+              ) : null}
+            </div>
+          )}
+
+          <div className="hr-panelHead--top">
+            <PanelHead title="My requests" />
+          </div>
+          {isLoading ? null : (requests?.length ?? 0) === 0 ? (
+            <PortalEmpty title="You have not asked for any leave">When you do, it appears here with its decision.</PortalEmpty>
+          ) : (
+            <table className="hr-table">
+              <tbody>
+                {requests?.map((row) => {
+                  const days = dayjs(row.endDate).diff(dayjs(row.startDate), 'day') + 1;
+                  const status = STATUS[row.status] ?? { tone: 'muted' as const, label: row.status };
+                  return (
+                    <tr key={row.id}>
+                      <td>
+                        <b>{TYPE_WORD[row.leaveType] ?? row.leaveType}</b> · {dayRange(row.startDate, row.endDate)}
+                        {row.decidedBy ? <div className="hr-tdSub">Decided by {row.decidedBy}</div> : null}
+                      </td>
+                      <td className="hr-num">{days}</td>
+                      <td>
+                        <StatusChip tone={status.tone}>{status.label}</StatusChip>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </Panel>
+      </div>
     </>
   );
 }

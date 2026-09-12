@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Button, Drawer, Tag } from 'antd';
+import { App } from 'antd';
 import dayjs from 'dayjs';
-import { MyEmpty } from './MyKuwickLayout';
-import { useMyPayslip, useMyPayslips } from './hooks/useMe';
-
-const money = (value: string | null | undefined) =>
-  value === null || value === undefined ? '—' : `RM${Number(value).toFixed(2)}`;
+import { ApiError, downloadFile } from '../core/api-client';
+import { Drawer, Panel, PanelHead, StatusChip } from '../admin/hr/ui';
+import { IconDoc } from '../admin/hr/ui/icons';
+import { myPayslipPdfPath, useMyPayslip, useMyPayslips } from './hooks/useMe';
+import { PortalEmpty, monthLabel, rm } from './portal';
 
 const LABELS: Record<string, string> = {
   basicSalary: 'Basic salary',
@@ -14,121 +14,126 @@ const LABELS: Record<string, string> = {
   incentives: 'Incentives',
   bonus: 'Bonus',
   grossPay: 'Gross pay',
-  epfEmployee: 'EPF (you)',
-  socsoEmployee: 'SOCSO (you)',
-  eisEmployee: 'EIS (you)',
-  lindungEmployee: 'LINDUNG 24 Jam (you)',
-  pcb: 'Income tax (PCB)',
+  epfEmployee: 'EPF',
+  socsoEmployee: 'SOCSO',
+  eisEmployee: 'EIS',
+  lindungEmployee: 'LINDUNG 24 JAM',
+  pcb: 'PCB / MTD',
   unpaidLeaveDeduction: 'Unpaid leave',
   otherDeductions: 'Other deductions',
-  epfEmployer: 'EPF (clinic)',
-  socsoEmployer: 'SOCSO (clinic)',
-  eisEmployer: 'EIS (clinic)',
-  hrdLevy: 'HRD levy (clinic)',
+  epfEmployer: 'EPF',
+  socsoEmployer: 'SOCSO',
+  eisEmployer: 'EIS',
+  hrdLevy: 'HRD levy',
 };
 
 /**
- * MY PAYSLIPS — only mine, and only months that have been approved.
- *
- * A calculated run is a working draft whose figures can still change. Showing
- * it to the person being paid turns every rounding correction into a
- * conversation about why their pay went down, so this screen simply does not
- * have it.
- *
- * The employer's own contributions are shown because Malaysian staff are
- * entitled to see their EPF and SOCSO credited — clearly separated from the
- * deductions, so nobody reads the clinic's EPF share as money taken off them.
+ * PAYSLIPS — paid months only, newest first, each with the PDF HR issued and
+ * a quick look at the lines without leaving the page.
  */
 export function MyPayslipsPage() {
+  const { message } = App.useApp();
   const { data, isLoading } = useMyPayslips();
   const [openRun, setOpenRun] = useState<string | undefined>();
   const { data: slip } = useMyPayslip(openRun);
+
+  const download = (runId: string, period: string) =>
+    downloadFile(myPayslipPdfPath(runId), `payslip-${dayjs(period).format('YYYY-MM')}.pdf`).catch((error) =>
+      message.error(error instanceof ApiError ? error.message : 'Could not download the payslip.'),
+    );
 
   const lines = (source: Record<string, string | null> | undefined) =>
     Object.entries(source ?? {})
       .filter(([, value]) => value !== null && Number(value) !== 0)
       .map(([key, value]) => (
-        <div className="kw-my-shift" key={key}>
-          <span className="kw-my-shift__meta">{LABELS[key] ?? key}</span>
-          <span className="kw-my-money">{money(value)}</span>
-        </div>
+        <span key={key} style={{ display: 'contents' }}>
+          <span className="hr-kv__k">{LABELS[key] ?? key}</span>
+          <span className="hr-kv__v">{rm(value)}</span>
+        </span>
       ));
 
   return (
     <>
-      <div>
-        <h1 className="kw-my__title">My payslips</h1>
-        <p className="kw-my__subtitle">Only yours, and only months that have been approved.</p>
+      <div className="hr-pageHead">
+        <div>
+          <h1>Payslips</h1>
+          <div className="hr-sub">Paid months only. The PDF is the same document HR issues.</div>
+        </div>
       </div>
 
-      <div className="kw-my-card kw-my-card--flush">
+      <Panel>
+        <PanelHead title="Every paid month" />
         {isLoading ? null : (data?.length ?? 0) === 0 ? (
-          <MyEmpty title="No payslips yet">
-            A payslip appears here once a month's payroll has been approved. A month still being worked on is
-            not shown, because the figures in it can still change.
-          </MyEmpty>
+          <PortalEmpty title="No payslips yet">
+            A payslip appears here once a month's payroll has been paid. A month still being worked on is not
+            shown, because the figures in it can still change.
+          </PortalEmpty>
         ) : (
-          data?.map((row) => (
-            <div className="kw-my-row" key={row.runId}>
-              <div className="kw-my-row__main">
-                <span className="kw-my-row__title">{dayjs(row.period).format('MMMM YYYY')}</span>
-                <span className="kw-my-row__detail">
-                  Gross {money(row.grossPay)}
-                  {row.paymentDate ? ` · paid ${dayjs(row.paymentDate).format('D MMM')}` : ''}
-                </span>
-              </div>
-              <div className="kw-my-row__side">
-                <span className="kw-my-money">{money(row.netPay)}</span>
-                <Tag color={row.runStatus === 'PAID' ? 'green' : 'blue'}>
-                  {row.runStatus === 'PAID' ? 'Paid' : 'Approved'}
-                </Tag>
-                <Button size="small" onClick={() => setOpenRun(row.runId)}>
-                  Open
-                </Button>
-              </div>
-            </div>
-          ))
+          <table className="hr-table">
+            <thead>
+              <tr>
+                <th>Month</th>
+                <th className="hr-num">Gross</th>
+                <th className="hr-num">Net</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {data?.map((row) => (
+                <tr key={row.runId}>
+                  <td>
+                    <b>{monthLabel(dayjs(row.period).format('YYYY-MM'))}</b>
+                    <div className="hr-tdSub">
+                      {row.paymentDate ? `Paid ${dayjs(row.paymentDate).format('D MMM')}` : 'Paid'}
+                    </div>
+                  </td>
+                  <td className="hr-num">{rm(row.grossPay)}</td>
+                  <td className="hr-num hr-strong">{rm(row.netPay)}</td>
+                  <td className="hr-num">
+                    <span className="hr-dots">
+                      <button type="button" className="hr-btn hr-btn--sm" onClick={() => setOpenRun(row.runId)}>
+                        Lines
+                      </button>
+                      <button
+                        type="button"
+                        className="hr-btn hr-btn--sm"
+                        onClick={() => void download(row.runId, String(row.period))}
+                      >
+                        <IconDoc />
+                        PDF
+                      </button>
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
-      </div>
+      </Panel>
 
       <Drawer
         open={Boolean(openRun)}
         onClose={() => setOpenRun(undefined)}
-        title={slip ? dayjs(slip.period).format('MMMM YYYY') : 'Payslip'}
-        placement="bottom"
-        height="86%"
-        destroyOnHidden
+        title={slip ? monthLabel(dayjs(slip.period).format('YYYY-MM')) : 'Payslip'}
+        sub={slip ? `Take-home ${rm(slip.netPay)}` : undefined}
       >
         {slip ? (
-          <div className="kw-my-form">
-            <div className="kw-my-card">
-              <div className="kw-my-card__label">Take-home pay</div>
-              <div className="kw-my-clock__now">{money(slip.netPay)}</div>
-              <div className="kw-my-shift__meta">
-                {slip.fullName}
-                {slip.unpaidDays && Number(slip.unpaidDays) > 0 ? ` · ${slip.unpaidDays} unpaid day(s)` : ''}
-              </div>
+          <>
+            <PanelHead title="Earnings" />
+            <div className="hr-kv">{lines(slip.earnings)}</div>
+            <PanelHead title="Deductions" />
+            <div className="hr-kv">{lines(slip.deductions)}</div>
+            <PanelHead title="Paid by the clinic on top of your salary" />
+            <div className="hr-kv">{lines(slip.employer)}</div>
+            <div className="hr-portal__empty">
+              These are the clinic's own contributions, credited to your EPF, SOCSO and EIS accounts. They are not
+              taken from your pay.
+              {slip.unpaidDays && Number(slip.unpaidDays) > 0 ? ` ${slip.unpaidDays} unpaid day(s) this month.` : ''}
             </div>
-
-            <div className="kw-my-card">
-              <div className="kw-my-card__label">Earnings</div>
-              {lines(slip.earnings)}
-            </div>
-
-            <div className="kw-my-card">
-              <div className="kw-my-card__label">Taken off</div>
-              {lines(slip.deductions)}
-            </div>
-
-            <div className="kw-my-card">
-              <div className="kw-my-card__label">Paid by the clinic on top of your salary</div>
-              {lines(slip.employer)}
-              <p className="kw-my__subtitle" style={{ marginTop: 8 }}>
-                These are the clinic's own contributions. They are not taken from your pay — they are credited
-                to your EPF, SOCSO and EIS accounts on top of it.
-              </p>
-            </div>
-          </div>
+            <StatusChip tone={slip.runStatus === 'PAID' ? 'done' : 'info'}>
+              {slip.runStatus === 'PAID' ? 'Paid' : 'Approved'}
+            </StatusChip>
+          </>
         ) : null}
       </Drawer>
     </>

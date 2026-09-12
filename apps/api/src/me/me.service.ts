@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { AttendanceCorrectionStatus, LeaveStatus, PayrollRunStatus } from '@prisma/client';
+import { AttendanceCorrectionStatus, LeaveStatus, LeaveType, PayrollRunStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentStaffId, currentTenantId } from '../core/tenant-context';
@@ -7,6 +7,9 @@ import { requireActor, withTenantTx } from '../clinical/clinical-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { clinicDateKey } from '../appointment/time.util';
 import { AttendanceRecordService } from '../workforce/attendance-record.service';
+import { LeaveService } from '../workforce/leave.service';
+import { PayrollPayslipService } from '../workforce/payroll-payslip.service';
+import { leaveDays, leaveDaysInYear } from '../workforce/leave-balance';
 import { workforceCategoryOf } from '../workforce/workforce-category';
 import {
   AttachReceiptDto,
@@ -43,6 +46,8 @@ export class MeService {
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
     private readonly rawPrisma: PrismaService,
     private readonly attendance: AttendanceRecordService,
+    private readonly leaveService: LeaveService,
+    private readonly payslipService: PayrollPayslipService,
   ) {}
 
   /** The signed-in staff member, or a refusal. Never a staffId from a caller. */
@@ -135,46 +140,137 @@ export class MeService {
     const today = this.dateOnly(clinicDateKey(new Date(), timeZone));
     const tomorrow = new Date(today.getTime() + 86400000);
     const horizon = new Date(today.getTime() + 30 * 86400000);
+    const year = today.getUTCFullYear();
 
-    const [todayShifts, nextShift, todayRecord, openRecord, pendingLeave, upcomingLeave, pendingClaims, lastPayslipRun, corrections] =
-      await Promise.all([
-        this.prisma.providerShift.findMany({
-          where: { staffId: actor.id, shiftDate: today },
-          orderBy: { startsAt: 'asc' },
-        }),
-        this.prisma.providerShift.findFirst({
-          where: { staffId: actor.id, shiftDate: { gte: tomorrow, lte: horizon } },
-          orderBy: [{ shiftDate: 'asc' }, { startsAt: 'asc' }],
-        }),
-        this.prisma.attendanceRecord.findFirst({ where: { staffId: actor.id, workDate: today } }),
-        // The overnight case: yesterday's shift may still be running.
-        this.prisma.attendanceRecord.findFirst({
-          where: { staffId: actor.id, clockInAt: { not: null }, clockOutAt: null },
-          orderBy: { workDate: 'desc' },
-        }),
-        this.prisma.leaveRequest.count({ where: { staffId: actor.id, status: LeaveStatus.PENDING } }),
-        this.prisma.leaveRequest.findFirst({
-          where: { staffId: actor.id, status: LeaveStatus.APPROVED, endDate: { gte: today } },
-          orderBy: { startDate: 'asc' },
-        }),
-        this.prisma.staffClaim.count({
-          where: { staffId: actor.id, status: { in: ['DRAFT', 'SUBMITTED'] } },
-        }),
-        this.prisma.payrollRun.findFirst({
-          where: { status: { in: [PayrollRunStatus.APPROVED, PayrollRunStatus.PAID] }, lines: { some: { staffId: actor.id } } },
-          orderBy: { period: 'desc' },
-          select: { id: true, period: true, status: true },
-        }),
-        this.prisma.attendanceCorrectionRequest.count({
-          where: { staffId: actor.id, status: AttendanceCorrectionStatus.PENDING },
-        }),
-      ]);
+    const [
+      todayShifts,
+      nextShift,
+      todayRecord,
+      openRecord,
+      pendingLeave,
+      upcomingLeave,
+      pendingClaims,
+      corrections,
+      clinic,
+      paidLines,
+      awaitingClaims,
+      decidedClaims,
+      decidedLeave,
+      balances,
+    ] = await Promise.all([
+      this.prisma.providerShift.findMany({
+        where: { staffId: actor.id, shiftDate: today },
+        orderBy: { startsAt: 'asc' },
+      }),
+      this.prisma.providerShift.findFirst({
+        where: { staffId: actor.id, shiftDate: { gte: tomorrow, lte: horizon } },
+        orderBy: [{ shiftDate: 'asc' }, { startsAt: 'asc' }],
+      }),
+      this.prisma.attendanceRecord.findFirst({ where: { staffId: actor.id, workDate: today } }),
+      // The overnight case: yesterday's shift may still be running.
+      this.prisma.attendanceRecord.findFirst({
+        where: { staffId: actor.id, clockInAt: { not: null }, clockOutAt: null },
+        orderBy: { workDate: 'desc' },
+      }),
+      this.prisma.leaveRequest.count({ where: { staffId: actor.id, status: LeaveStatus.PENDING } }),
+      this.prisma.leaveRequest.findFirst({
+        where: { staffId: actor.id, status: LeaveStatus.APPROVED, endDate: { gte: today } },
+        orderBy: { startDate: 'asc' },
+      }),
+      this.prisma.staffClaim.count({
+        where: { staffId: actor.id, status: { in: ['DRAFT', 'SUBMITTED'] } },
+      }),
+      this.prisma.attendanceCorrectionRequest.count({
+        where: { staffId: actor.id, status: AttendanceCorrectionStatus.PENDING },
+      }),
+      actor.clinicId
+        ? this.prisma.clinic.findUnique({ where: { id: actor.clinicId }, select: { name: true } })
+        : Promise.resolve(null),
+      // PAID months only. An approved month can still be reopened and
+      // corrected; a paid one is what reached the bank, and that is the
+      // payslip an employee keeps (prompt §7: the PDF appears at Paid).
+      this.prisma.payrollLine.findMany({
+        where: { staffId: actor.id, payrollRun: { status: PayrollRunStatus.PAID } },
+        orderBy: { payrollRun: { period: 'desc' } },
+        take: 3,
+        select: {
+          netPay: true,
+          payrollRun: { select: { id: true, period: true, status: true, paymentDate: true, paidAt: true, approvedAt: true } },
+        },
+      }),
+      this.prisma.staffClaim.findMany({
+        where: { staffId: actor.id, status: 'APPROVED', payoutStatus: { in: ['PENDING', 'IN_PAYROLL'] } },
+        select: { amountApproved: true, amountClaimed: true, payrollPeriod: true, paymentRoute: true },
+      }),
+      this.prisma.staffClaim.findMany({
+        where: { staffId: actor.id, status: { in: ['APPROVED', 'REJECTED'] } },
+        orderBy: { decidedAt: 'desc' },
+        take: 5,
+        select: { id: true, status: true, amountApproved: true, amountClaimed: true, decidedAt: true, paidAt: true, payoutStatus: true },
+      }),
+      this.prisma.leaveRequest.findMany({
+        where: { staffId: actor.id, status: { in: [LeaveStatus.APPROVED, LeaveStatus.REJECTED] } },
+        orderBy: { updatedAt: 'desc' },
+        take: 5,
+        select: { id: true, leaveType: true, startDate: true, endDate: true, status: true, approvedAt: true, updatedAt: true },
+      }),
+      this.leaveService.balancesForSelf(actor.id, year),
+    ]);
 
     const onDuty = Boolean(openRecord);
+    const annual = balances.balances.find((row) => row.leaveType === LeaveType.ANNUAL) ?? null;
+    const medical = balances.balances.find((row) => row.leaveType === LeaveType.MEDICAL) ?? null;
+    const money = (value: unknown) => Number(value ?? 0);
+    const awaitingTotal = awaitingClaims.reduce((sum, row) => sum + money(row.amountApproved ?? row.amountClaimed), 0);
+    const awaitingPeriod =
+      awaitingClaims
+        .map((row) => row.payrollPeriod)
+        .filter((value): value is Date => Boolean(value))
+        .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
+
+    const paidPayslip = (line: (typeof paidLines)[number]) => ({
+      runId: line.payrollRun.id,
+      period: yearMonth(line.payrollRun.period),
+      status: line.payrollRun.status,
+      netPay: String(line.netPay),
+      paymentDate: line.payrollRun.paymentDate ? dateKey(line.payrollRun.paymentDate) : null,
+    });
+
+    // WHAT HAPPENED LATELY — decisions and money, newest first. Each row links
+    // to the tab where the whole story is, so the list is a door, not a log.
+    const recent = [
+      ...decidedClaims.map((row) => ({
+        kind: 'claim' as const,
+        title: `Claim RM ${money(row.amountApproved ?? row.amountClaimed).toFixed(2)}`,
+        state: row.payoutStatus === 'PAID' ? 'paid' : row.status === 'APPROVED' ? 'approved' : 'not approved',
+        at: row.paidAt ?? row.decidedAt,
+        href: '/my/claims',
+      })),
+      ...paidLines.map((line) => ({
+        kind: 'payslip' as const,
+        title: `Payslip ${monthName(line.payrollRun.period)}`,
+        state: 'ready',
+        at: line.payrollRun.paymentDate ?? line.payrollRun.paidAt ?? line.payrollRun.approvedAt,
+        href: '/my/payslips',
+      })),
+      ...decidedLeave.map((row) => ({
+        kind: 'leave' as const,
+        title: `Leave ${shortDate(row.startDate)}${row.endDate.getTime() !== row.startDate.getTime() ? ` to ${shortDate(row.endDate)}` : ''}`,
+        state: row.status === LeaveStatus.APPROVED ? 'approved' : 'declined',
+        at: row.approvedAt ?? row.updatedAt,
+        href: '/my/leave',
+      })),
+    ]
+      .filter((event): event is typeof event & { at: Date } => Boolean(event.at))
+      .sort((a, b) => b.at.getTime() - a.at.getTime())
+      .slice(0, 6)
+      .map((event) => ({ ...event, at: event.at.toISOString() }));
+
     return {
       date: today.toISOString().slice(0, 10),
       timeZone,
       fullName: actor.fullName,
+      clinicName: clinic?.name ?? null,
       // CLOCKED IN OR NOT is the first thing on the screen and the first thing
       // in this response, because it decides which button the page shows.
       clock: {
@@ -212,9 +308,20 @@ export class MeService {
         claims: pendingClaims,
         attendanceCorrections: corrections,
       },
-      latestPayslip: lastPayslipRun
-        ? { runId: lastPayslipRun.id, period: lastPayslipRun.period, status: lastPayslipRun.status }
-        : null,
+      latestPayslip: paidLines[0] ? paidPayslip(paidLines[0]) : null,
+      payslips: paidLines.map(paidPayslip),
+      leave: {
+        annual: annual ? { remaining: annual.remaining, available: annual.available } : null,
+        medicalUsed: medical?.taken ?? 0,
+        medicalAvailable: medical?.available ?? null,
+        policyName: balances.policyName,
+      },
+      claims: {
+        awaitingTotal: awaitingTotal.toFixed(2),
+        awaitingCount: awaitingClaims.length,
+        payrollPeriod: awaitingPeriod ? yearMonth(awaitingPeriod) : null,
+      },
+      recent,
     };
   }
 
@@ -490,7 +597,9 @@ export class MeService {
       description: row.description,
       status: row.status,
       whereTheMoneyIs: this.claimPlainEnglish(row),
+      payrollPeriod: row.payrollPeriod ? yearMonth(row.payrollPeriod) : null,
       attachments: row.attachments,
+      submittedAt: row.submittedAt ?? row.createdAt,
       createdAt: row.createdAt,
     }));
   }
@@ -607,7 +716,7 @@ export class MeService {
     const lines = await this.prisma.payrollLine.findMany({
       where: {
         staffId: actor.id,
-        payrollRun: { status: { in: [PayrollRunStatus.APPROVED, PayrollRunStatus.PAID] } },
+        payrollRun: { status: PayrollRunStatus.PAID },
       },
       orderBy: { payrollRun: { period: 'desc' } },
       include: { payrollRun: { select: { id: true, period: true, status: true, paymentDate: true } } },
@@ -637,7 +746,7 @@ export class MeService {
       where: {
         payrollRunId: runId,
         staffId: actor.id,
-        payrollRun: { status: { in: [PayrollRunStatus.APPROVED, PayrollRunStatus.PAID] } },
+        payrollRun: { status: PayrollRunStatus.PAID },
       },
       include: { payrollRun: { select: { id: true, period: true, status: true, paymentDate: true } } },
     });
@@ -682,4 +791,163 @@ export class MeService {
       unpaidDays: line.unpaidDays,
     };
   }
+
+  // ---------------------------------------------------------------------------
+  // LEAVE — balances and a preview, for the portal's Leave tab
+  // ---------------------------------------------------------------------------
+
+  /** Balances by type for this year, and the unpaid days already taken. */
+  async leaveBalances() {
+    const actor = await this.me();
+    const year = new Date().getUTCFullYear();
+    const [row, unpaid] = await Promise.all([
+      this.leaveService.balancesForSelf(actor.id, year),
+      this.prisma.leaveRequest.findMany({
+        where: {
+          staffId: actor.id,
+          leaveType: LeaveType.UNPAID,
+          status: LeaveStatus.APPROVED,
+          startDate: { lte: new Date(Date.UTC(year, 11, 31)) },
+          endDate: { gte: new Date(Date.UTC(year, 0, 1)) },
+        },
+        orderBy: { startDate: 'desc' },
+      }),
+    ]);
+    const unpaidDays = unpaid.reduce((sum, request) => sum + leaveDaysInYear(request, year), 0);
+    return {
+      year,
+      policyName: row.policyName,
+      balances: row.balances.map((balance) => ({
+        leaveType: balance.leaveType,
+        paid: balance.paid,
+        available: balance.available,
+        taken: balance.taken,
+        pending: balance.pending,
+        remaining: balance.remaining,
+      })),
+      unpaidTaken: { days: unpaidDays, lastMonth: unpaid[0] ? monthShort(unpaid[0].startDate) : null },
+    };
+  }
+
+  /**
+   * WHAT A REQUEST WOULD MEAN, before it is sent. Read-only.
+   *
+   * The days are the ones the balance engine will deduct — calendar days over
+   * the range, the same `leaveDays` the balances use — so the figure shown
+   * here is the figure that comes off. A half day is recorded on the request
+   * (see `requestLeave`) and still counts as one day in the balance; the
+   * response says so rather than pretending otherwise.
+   */
+  async leavePreview(query: { leaveType?: string; startDate?: string; endDate?: string; halfDay?: string }) {
+    const actor = await this.me();
+    const DATE = /^\d{4}-\d{2}-\d{2}$/;
+    if (!query.startDate || !DATE.test(query.startDate) || !query.endDate || !DATE.test(query.endDate)) {
+      throw new BadRequestException('Dates must be YYYY-MM-DD.');
+    }
+    const start = this.dateOnly(query.startDate);
+    const end = this.dateOnly(query.endDate);
+    if (end < start) throw new BadRequestException('Leave cannot end before it starts.');
+    const leaveType = (Object.values(LeaveType) as string[]).includes(query.leaveType ?? '')
+      ? (query.leaveType as LeaveType)
+      : null;
+    const halfDay = query.halfDay === 'true';
+    const days = leaveDays({ startDate: start, endDate: end });
+    const year = start.getUTCFullYear();
+
+    const [balances, own, colleagues, holidays] = await Promise.all([
+      this.leaveService.balancesForSelf(actor.id, year),
+      this.prisma.leaveRequest.findFirst({
+        where: {
+          staffId: actor.id,
+          status: { in: [LeaveStatus.PENDING, LeaveStatus.APPROVED] },
+          startDate: { lte: end },
+          endDate: { gte: start },
+        },
+      }),
+      this.prisma.leaveRequest.findMany({
+        where: {
+          staffId: { not: actor.id },
+          status: { in: [LeaveStatus.PENDING, LeaveStatus.APPROVED] },
+          startDate: { lte: end },
+          endDate: { gte: start },
+          staff: { active: true, ...(actor.clinicId ? { clinicId: actor.clinicId } : {}) },
+        },
+        include: { staff: { select: { fullName: true } } },
+        orderBy: { startDate: 'asc' },
+        take: 5,
+      }),
+      this.prisma.publicHoliday.findMany({ where: { date: { gte: start, lte: end } }, orderBy: { date: 'asc' } }),
+    ]);
+
+    const balance = leaveType ? (balances.balances.find((row) => row.leaveType === leaveType) ?? null) : null;
+    return {
+      days,
+      halfDay,
+      leaveType,
+      balanceAfter: balance
+        ? { remaining: balance.remaining - days, available: balance.available, overdrawn: balance.remaining - days < 0 }
+        : null,
+      ownClash: own ? { startDate: dateKey(own.startDate), endDate: dateKey(own.endDate), status: own.status } : null,
+      clashes: colleagues.map((row) => ({
+        name: row.staff.fullName,
+        startDate: dateKey(row.startDate),
+        endDate: dateKey(row.endDate),
+        status: row.status,
+        firstDay: dateKey(row.startDate > start ? row.startDate : start),
+      })),
+      publicHolidays: holidays.map((holiday) => ({ date: dateKey(holiday.date), name: holiday.name })),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // MEDICAL BENEFIT
+  // ---------------------------------------------------------------------------
+
+  /** This year's medical benefit account: allowance, used, left. Null when none. */
+  async benefits() {
+    const actor = await this.me();
+    const year = new Date().getUTCFullYear();
+    const account = await this.prisma.staffBenefitAccount.findFirst({
+      where: { staffId: actor.id, benefitYear: year },
+      include: { usages: { select: { amount: true } } },
+    });
+    if (!account) return { year, medical: null };
+    const allowance = Number(account.allowance);
+    const used = account.usages.reduce((sum, usage) => sum + Number(usage.amount), 0);
+    return {
+      year,
+      medical: { allowance: allowance.toFixed(2), used: used.toFixed(2), remaining: Math.max(0, allowance - used).toFixed(2) },
+    };
+  }
+
+  /** The composed payslip of a PAID month, for the PDF. Identity-checked in the payslip service. */
+  async payslipPdf(runId: string) {
+    const actor = await this.me();
+    return this.payslipService.payslipForSelf(runId, actor.id);
+  }
+}
+
+// --- date helpers, UTC because every date-only column is stored at UTC midnight ---
+
+function dateKey(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+function yearMonth(value: Date): string {
+  return value.toISOString().slice(0, 7);
+}
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+function monthName(value: Date): string {
+  return MONTHS[value.getUTCMonth()];
+}
+
+/** Three letters, always — Intl's British English writes "Sept". */
+function monthShort(value: Date): string {
+  return MONTHS[value.getUTCMonth()].slice(0, 3);
+}
+
+function shortDate(value: Date): string {
+  return `${value.getUTCDate()} ${monthShort(value)}`;
 }

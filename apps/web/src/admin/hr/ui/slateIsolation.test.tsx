@@ -54,7 +54,12 @@ const SOURCES = import.meta.glob('../../../**/*.{ts,tsx}', {
  * `admin/hr/ui`. So HR's own files come back as `./x` or `../x`, and
  * everything else in the app is at least two levels up.
  */
-const insideHr = (file: string) => !file.startsWith('../../');
+/*
+ * The kit's territory: the HR module, and — since Piece 3g — the employee
+ * portal (`src/me`), which the portal mockups draw on the same Slate kit.
+ * Everywhere else keeps the product-wide palette.
+ */
+const insideHr = (file: string) => !file.startsWith('../../') || file.startsWith('../../../me/');
 
 describe('the Slate kit', () => {
   it('was actually read, so the rest of this file means something', () => {

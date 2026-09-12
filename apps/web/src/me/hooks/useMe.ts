@@ -36,10 +36,29 @@ export interface MyShift {
   note: string | null;
 }
 
+export interface MyPaidPayslip {
+  runId: string;
+  /** YYYY-MM. */
+  period: string;
+  status: string;
+  netPay: string;
+  /** YYYY-MM-DD, when the run records it. */
+  paymentDate: string | null;
+}
+
+export interface MyRecentEvent {
+  kind: 'claim' | 'payslip' | 'leave';
+  title: string;
+  state: string;
+  at: string;
+  href: string;
+}
+
 export interface MyHome {
   date: string;
   timeZone: string;
   fullName: string;
+  clinicName: string | null;
   clock: {
     onDuty: boolean;
     since: string | null;
@@ -50,7 +69,48 @@ export interface MyHome {
   nextShift: { date: string; startsAt: string; endsAt: string; shiftType: string } | null;
   upcomingLeave: { leaveType: string; startDate: string; endDate: string } | null;
   waiting: { leaveRequests: number; claims: number; attendanceCorrections: number };
-  latestPayslip: { runId: string; period: string; status: string } | null;
+  /** PAID months only — the payslip an employee keeps. */
+  latestPayslip: MyPaidPayslip | null;
+  payslips: MyPaidPayslip[];
+  leave: {
+    annual: { remaining: number; available: number } | null;
+    medicalUsed: number;
+    medicalAvailable: number | null;
+    policyName: string | null;
+  };
+  claims: { awaitingTotal: string; awaitingCount: number; payrollPeriod: string | null };
+  recent: MyRecentEvent[];
+}
+
+export interface MyLeaveBalance {
+  leaveType: string;
+  paid: boolean;
+  available: number;
+  taken: number;
+  pending: number;
+  remaining: number;
+}
+
+export interface MyLeaveBalances {
+  year: number;
+  policyName: string | null;
+  balances: MyLeaveBalance[];
+  unpaidTaken: { days: number; lastMonth: string | null };
+}
+
+export interface MyLeavePreview {
+  days: number;
+  halfDay: boolean;
+  leaveType: string | null;
+  balanceAfter: { remaining: number; available: number; overdrawn: boolean } | null;
+  ownClash: { startDate: string; endDate: string; status: string } | null;
+  clashes: { name: string; startDate: string; endDate: string; status: string; firstDay: string }[];
+  publicHolidays: { date: string; name: string }[];
+}
+
+export interface MyBenefits {
+  year: number;
+  medical: { allowance: string; used: string; remaining: string } | null;
 }
 
 export interface MySchedule {
@@ -105,7 +165,10 @@ export interface MyClaim {
   status: string;
   /** The sentence an employee reads instead of paymentRoute + payoutStatus. */
   whereTheMoneyIs: string;
+  /** YYYY-MM of the payroll it is (or was) paid with, when routed to payroll. */
+  payrollPeriod: string | null;
   attachments: { id: string; fileName: string; mimeType: string; fileSize: number }[];
+  submittedAt: string;
   createdAt: string;
 }
 
@@ -182,6 +245,35 @@ export function useMyPayslip(runId: string | undefined) {
 }
 
 /** Everything under /me shares a cache key, so one write refreshes the lot. */
+export function useMyLeaveBalances() {
+  return useQuery({
+    queryKey: [...MY, 'leave-balances'],
+    queryFn: () => apiClient.get<MyLeaveBalances>('/me/leave/balances'),
+  });
+}
+
+/** What a request would take, as the dates are typed. Nothing is saved. */
+export function useMyLeavePreview(params: { leaveType: string; startDate: string; endDate: string; halfDay: boolean } | null) {
+  const query = params
+    ? `leaveType=${encodeURIComponent(params.leaveType)}&startDate=${params.startDate}&endDate=${params.endDate}&halfDay=${params.halfDay}`
+    : '';
+  return useQuery({
+    queryKey: [...MY, 'leave-preview', query],
+    queryFn: () => apiClient.get<MyLeavePreview>(`/me/leave/preview?${query}`),
+    enabled: Boolean(params),
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useMyBenefits() {
+  return useQuery({ queryKey: [...MY, 'benefits'], queryFn: () => apiClient.get<MyBenefits>('/me/benefits') });
+}
+
+/** The PDF of one PAID month — the same document HR issues, fetched with the employee's own token. */
+export function myPayslipPdfPath(runId: string): string {
+  return `/me/payslips/${runId}/pdf`;
+}
+
 function useMyMutation<TBody, TResult>(fn: (body: TBody) => Promise<TResult>) {
   const queryClient = useQueryClient();
   return useMutation({
