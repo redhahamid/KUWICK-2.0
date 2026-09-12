@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { App, Button, Form, Input, InputNumber, Select, Switch, Tag, Tooltip } from 'antd';
-import { AdminNotice, AdminSection } from '../components/AdminShell';
+import { App, Button, Form, Input, InputNumber, Select, Switch, Tooltip } from 'antd';
+import { Panel, PanelHead, StatusChip } from './ui';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useAttendancePolicy, useSaveAttendancePolicy } from '../hooks/useAdmin';
 import { permissionHint, useCan } from '../../core/hooks/useCan';
@@ -123,13 +123,21 @@ export function AttendanceRulesPanel() {
     }
   };
 
+  /*
+   * ONE PANEL, TWO HOMES. This is drawn on Attendance & leave policies and on
+   * the employee record, and it is restyled once rather than forked: a fork
+   * is two save buttons for one set of facts, which is the defect Settings
+   * has just finished removing.
+   */
   return (
-    <AdminSection
-      title="Attendance rules"
-      description="How this clinic measures lateness, overtime and breaks. These decide what every timesheet and every payroll month says."
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-        <span className="kw-muted">Rules for</span>
+    <Panel>
+      <PanelHead
+        title="Attendance rules"
+        sub="How this clinic measures lateness, overtime and breaks. These decide what every timesheet and every payroll month says."
+      />
+      <div className="hr-fld">
+        <span className="hr-fld__k">Rules for</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <Select
           style={{ minWidth: 240 }}
           value={editing ?? ''}
@@ -139,31 +147,32 @@ export function AttendanceRulesPanel() {
             ...(clinics ?? []).map((clinic) => ({ value: clinic.id, label: clinic.name })),
           ]}
         />
-        {data ? (
-          <Tag color={data.source === 'CLINIC' ? 'blue' : data.source === 'GROUP_DEFAULT' ? 'gold' : 'default'}>
-            In force: {SOURCE_LABEL[data.source]}
-          </Tag>
-        ) : null}
+          {data ? (
+            <StatusChip tone={data.source === 'CLINIC' ? 'info' : data.source === 'GROUP_DEFAULT' ? 'attn' : 'muted'}>
+              In force: {SOURCE_LABEL[data.source]}
+            </StatusChip>
+          ) : null}
+        </span>
       </div>
 
       {data && editing && !data.hasOwnPolicy ? (
-        <AdminNotice tone="info">
+        <div className="hr-notice hr-notice--info">
           This branch has no rules of its own and follows {SOURCE_LABEL[data.source]}. Saving here creates an
           override for this branch alone — every field you leave as it is stays inherited in meaning, but is
           written as this branch's own answer.
-        </AdminNotice>
+        </div>
       ) : null}
 
       {/*
         * THE ORDER MATTERS AND IS STATED, because it is the difference nobody
         * notices for a year and then notices for every month of that year.
         */}
-      <AdminNotice tone="warn">
+      <div className="hr-notice hr-notice--attn">
         <strong>The minimum is applied before the rounding.</strong> Twelve minutes over a fifteen-minute minimum is not overtime. Extra time is never overtime until a manager other than the claimant approves it.
-      </AdminNotice>
+      </div>
 
-      <Form form={form} layout="vertical" onFinish={onSave} disabled={isLoading || !canManage}>
-        <div className="kw-adminGrid kw-adminGrid--3">
+      <Form form={form} layout="vertical" onFinish={onSave} disabled={isLoading || !canManage} style={{ padding: '4px 22px 18px' }}>
+        <div className="hr-grid3">
           {FIELDS.map((field) => (
             <Form.Item
               key={field.name}
@@ -209,6 +218,6 @@ export function AttendanceRulesPanel() {
           </Button>
         </Tooltip>
       </Form>
-    </AdminSection>
+    </Panel>
   );
 }

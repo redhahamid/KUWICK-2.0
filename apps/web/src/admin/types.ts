@@ -2806,6 +2806,8 @@ export interface YtdOpeningMonthBody {
 /** Who is allowed to approve payroll in this clinic. Payroll settings. */
 export interface PayrollApprovalPolicy {
   mode: 'STANDARD' | 'MAKER_CHECKER' | 'DUAL_APPROVAL';
+  /** When the rule was last changed; absent on the built-in default. */
+  updatedAt?: string;
   allowOwnerSelfApproval: boolean;
   approvalsRequired: number;
   description: string;
@@ -2841,4 +2843,84 @@ export interface EffectiveAttendancePolicy {
   defaults: AttendancePolicy;
   hasOwnPolicy: boolean;
   hasGroupDefault: boolean;
+  /** When the row in force was last changed; null while the built-in default applies. */
+  updatedAt: string | null;
+}
+
+/**
+ * THE STATUTORY TABLES, AS THE CALCULATION READS THEM.
+ *
+ * Read-only by construction. Every figure here is transcribed from the
+ * authority's own document in `apps/api/src/statutory`; a clinic looks, and
+ * records that it looked.
+ */
+export interface StatutoryScheduleStamp {
+  id: string;
+  effectiveFrom: string;
+  authority: string;
+  document: string;
+  section: string;
+  verification: string;
+  /** Whether Kuwick's transcription meets the approval bar. Not the clinic's check. */
+  verified: boolean;
+  evidence: string;
+  contentHash: string;
+}
+export interface StatutoryCheck {
+  checkedAt: string;
+  checkedBy: string | null;
+  /** False when the registry has changed since the clinic last looked. */
+  current: boolean;
+}
+export interface StatutoryRates {
+  epf: {
+    schedule: StatutoryScheduleStamp | null;
+    tableCeilingCents: number;
+    parts: {
+      part: 'A' | 'C' | 'E' | 'F';
+      appliesTo: string;
+      employeePercent: number;
+      employerPercent: number;
+      employerPercentUpTo5000: number | null;
+      bandCount: number;
+    }[];
+  };
+  socso: {
+    schedule: StatutoryScheduleStamp | null;
+    wageCeilingCents: number;
+    bands: {
+      fromCents: number;
+      toCents: number | null;
+      cat1EmployerCents: number;
+      cat1EmployeeCents: number;
+      cat1EmployeeNonInjuryCents: number;
+      cat2EmployerCents: number;
+      cat2EmployeeNonInjuryCents: number;
+    }[];
+  };
+  eis: {
+    schedule: StatutoryScheduleStamp | null;
+    wageCeilingCents: number;
+    bands: { fromCents: number; toCents: number | null; employerCents: number; employeeCents: number }[];
+  };
+  pcb: { schedule: StatutoryScheduleStamp | null; nonResidentRatePercent: number };
+  hrd: { schedule: StatutoryScheduleStamp | null; mandatoryPercent: number; optionalPercent: number };
+  registryHash: string;
+  wageCeilingLabel: string;
+  check: StatutoryCheck | null;
+}
+
+/** One of the clinic's pay-rule sets ("How pay is worked out"). */
+export interface PayrollPolicyRow {
+  id: string;
+  name: string;
+  legalEmployerId: string | null;
+  salaryProration: { basis: string; days: number | null };
+  overtime: { basis: string; days: number | null; hoursPerDay: number };
+  unpaidLeave: { basis: string; days: number | null };
+  leavePay: { basis: string; days: number | null };
+  termination: { basis: string; days: number | null };
+  isDefault: boolean;
+  employeeCount: number;
+  updatedAt: string;
 }

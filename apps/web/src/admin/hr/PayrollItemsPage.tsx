@@ -1,137 +1,283 @@
-import { App, Button } from 'antd';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AdminNotice, AdminShell, firstError } from '../components/AdminShell';
-import { DataTable } from '../components/DataTable';
-import { StatusChip } from '../components/Chip';
-import { usePayComponents, useSeedPayComponents } from '../hooks/useAdmin';
+import { App, DatePicker, Input, Switch } from 'antd';
+import dayjs, { type Dayjs } from 'dayjs';
 import { useCan } from '../../core/hooks/useCan';
+import { usePayComponents, useSeedPayComponents, useUpsertPayComponent } from '../hooks/useAdmin';
+import { HrPage, Panel, StatusChip } from './ui';
+import { Table } from './ui/Table';
 import type { PayComponentRow } from '../types';
 
 /**
  * PAYROLL ITEMS — what a clinic can pay or deduct, and what each one counts
- * towards.
+ * towards. Now with the switches on the row.
  *
- * These seventeen components have existed since the engine was built and had
- * no screen of their own: Payroll rules printed the SENTENCE "17 pay
- * components are configured" and stopped there, while the full table sat on
- * the LEGAL EMPLOYERS page, under the company's EPF and SOCSO numbers, where
- * nobody looking for an allowance would think to look. A clinic could not see
- * which of its allowances were EPF-liable without reading a seed file or
- * finding that table by accident.
+ * Eight of them, one per column, each backed by a real field on the
+ * component: EPF · SOCSO · EIS · PCB · HRD · Prorate · OT base · Unpaid-leave
+ * base. Flipping one is NOT an edit. The calculation resolves this catalogue
+ * by period, so overwriting the row would reprice every month not yet
+ * approved — the server refuses a treatment change without a date it takes
+ * effect from, and this screen asks for that date in place rather than in a
+ * drawer: which month, and why.
  *
- * One table now, on the card named after it, carrying everything the employer
- * page carried: the scheme flags, the two bases, and whether a human has
- * checked the flag against the authority's own schedule.
+ * TWO THINGS THE PROMPT ASKED FOR AS SWITCHES ARE NOT SWITCHES, because there
+ * is nothing on the component for them to switch. "Recurring" is a fact about
+ * an EMPLOYEE — a monthly allowance is set on their record — and "Reimbursement"
+ * is what a component IS (paid to net, outside wages), not a flag on it. Both
+ * are shown as read-only chips derived from the row.
  *
- * Each scheme is its own column, deliberately. An allowance may be EPF-liable
- * and PCB-exempt, and a single `taxable` boolean cannot say that.
- *
- * The per-row switches — EPF · SOCSO · EIS · PCB · HRD · Prorate · OT base ·
- * Unpaid-leave base · Recurring · Reimbursement, editable without opening a
- * drawer — are their own piece of work, after the design kit lands.
+ * A system component (basic pay, overtime, the statutory deductions) may be
+ * switched on or off, never re-treated. Its switches are drawn disabled, and
+ * the row says why.
  */
+type Flag = 'epfLiable' | 'socsoLiable' | 'eisLiable' | 'pcbLiable' | 'hrdLiable' | 'prorated' | 'includeInOrpBase' | 'includeInUnpaidLeaveBase';
+
+const FLAGS: { key: Flag; title: string; width: number }[] = [
+  { key: 'epfLiable', title: 'EPF', width: 70 },
+  { key: 'socsoLiable', title: 'SOCSO', width: 78 },
+  { key: 'eisLiable', title: 'EIS', width: 70 },
+  { key: 'pcbLiable', title: 'PCB', width: 70 },
+  { key: 'hrdLiable', title: 'HRD', width: 70 },
+  { key: 'prorated', title: 'Prorate', width: 84 },
+  { key: 'includeInOrpBase', title: 'OT base', width: 84 },
+  { key: 'includeInUnpaidLeaveBase', title: 'Unpaid-leave base', width: 130 },
+];
+
+/** Everything the server needs to save the row whole; a partial body resets the flags it does not name. */
+const whole = (row: PayComponentRow) => ({
+  id: row.id,
+  code: row.code,
+  name: row.name,
+  type: row.type,
+  category: row.category,
+  includeIn: row.includeIn,
+  pcbLiable: row.pcbLiable,
+  epfLiable: row.epfLiable,
+  socsoLiable: row.socsoLiable,
+  eisLiable: row.eisLiable,
+  hrdLiable: row.hrdLiable,
+  includeInOrpBase: row.includeInOrpBase,
+  includeInUnpaidLeaveBase: row.includeInUnpaidLeaveBase,
+  additionalRemuneration: row.additionalRemuneration,
+  prorated: row.prorated,
+  employerSide: row.employerSide,
+  active: row.active,
+});
+
 export function PayrollItemsPage() {
   const { message } = App.useApp();
   const components = usePayComponents();
   const seed = useSeedPayComponents();
+  const upsert = useUpsertPayComponent();
   const mayManage = useCan('hr.statutory.manage');
   const rows = components.data?.components ?? [];
 
-  const yesNo = (on: boolean) =>
-    on ? <StatusChip tone="ok">Yes</StatusChip> : <span className="kw-muted">—</span>;
+  /** The one switch that is waiting for a date and a reason. */
+  const [pending, setPending] = useState<{ row: PayComponentRow; flag: Flag; next: boolean } | null>(null);
+  const [from, setFrom] = useState<Dayjs>(dayjs().add(1, 'month').startOf('month'));
+  const [reason, setReason] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const cancel = () => {
+    setPending(null);
+    setReason('');
+    setProblem(null);
+  };
+
+  const save = () => {
+    if (!pending) return;
+    if (!reason.trim()) {
+      setProblem('Say why — it is recorded with the change.');
+      return;
+    }
+    upsert.mutate(
+      { ...whole(pending.row), [pending.flag]: pending.next, effectiveFrom: from.format('YYYY-MM-DD'), reason: reason.trim() },
+      {
+        onSuccess: () => {
+          message.success(`${pending.row.name}: ${FLAGS.find((f) => f.key === pending.flag)?.title} ${pending.next ? 'on' : 'off'} from ${from.format('MMM YYYY')}.`);
+          cancel();
+        },
+        onError: (error: Error) => setProblem(error.message),
+      },
+    );
+  };
+
+  /** On/off is an edit, not a version — no date needed, for system rows too. */
+  const toggleActive = (row: PayComponentRow, active: boolean) =>
+    upsert.mutate(
+      { ...whole(row), active },
+      {
+        onSuccess: () => message.success(`${row.name} ${active ? 'in use' : 'switched off'}.`),
+        onError: (error: Error) => message.error(error.message),
+      },
+    );
+
+  const derived = (row: PayComponentRow) => {
+    const chips = [];
+    if (row.type === 'ADDITION' && row.includeIn === 'NET_ONLY') chips.push(<StatusChip key="r" tone="info">Reimbursement</StatusChip>);
+    if (row.type === 'DEDUCTION') chips.push(<StatusChip key="d" tone="muted">Deduction</StatusChip>);
+    return chips.length > 0 ? <span style={{ display: 'inline-flex', gap: 4 }}>{chips}</span> : <span className="hr-faint">—</span>;
+  };
 
   return (
-    <AdminShell
-      error={firstError(components)}
+    <HrPage
+      crumb={
+        <>
+          <Link to="/admin/hr/settings">Settings</Link> &nbsp;/&nbsp; Payroll items
+        </>
+      }
       title="Payroll items"
-      subtitle="What the clinic can pay or deduct, and what each one counts towards."
+      sub="What the clinic can pay or deduct, and what each one counts towards."
+      error={components.error instanceof Error ? components.error.message : null}
       actions={
         mayManage && rows.length === 0 ? (
-          <Button
-            size="small"
-            loading={seed.isPending}
+          <button
+            type="button"
+            className="hr-btn hr-btn--primary"
+            disabled={seed.isPending}
             onClick={() =>
               seed.mutate(undefined, {
-                onSuccess: () => message.success('Catalogue seeded — every flag UNVERIFIED'),
+                onSuccess: () => message.success('Catalogue seeded — every flag unchecked'),
                 onError: (e: Error) => message.error(e.message),
               })
             }
           >
             Seed the catalogue
-          </Button>
-        ) : (
-          <Link to="/admin/hr/settings">
-            <Button size="small">← Settings</Button>
-          </Link>
-        )
+          </button>
+        ) : null
       }
     >
-      {/* A seeded flag is Kuwick's reading of the schedules, not the clinic's.
-          The notice says so, and it moved here with the table it is about. */}
-      {components.data ? <AdminNotice tone="warn">{components.data.verificationNotice.statement}</AdminNotice> : null}
 
-      <DataTable<PayComponentRow>
-        rows={rows}
-        loading={components.isLoading}
-        rowKey="code"
-        searchFields={['code', 'name']}
-        searchPlaceholder="Search pay items…"
-        emptyText="No pay items are set up yet."
-        emptyHint="Payroll policies can seed the standard Malaysian set."
-        columns={[
-          {
-            title: 'Item',
-            dataIndex: 'name',
-            render: (value: string, row) => (
-              <div>
-                <div style={{ fontWeight: 600 }}>{value}</div>
-                <span className="kw-muted" style={{ fontSize: 12 }}>
-                  {row.code}
-                </span>
-              </div>
-            ),
-          },
-          {
-            title: 'Adds or deducts',
-            dataIndex: 'type',
-            width: 140,
-            render: (value: string) => (
-              <StatusChip tone={value === 'DEDUCTION' ? 'attention' : 'info'}>
-                {value === 'DEDUCTION' ? 'Deducts' : value === 'OVERTIME' ? 'Overtime' : 'Adds'}
-              </StatusChip>
-            ),
-          },
-          { title: 'EPF', dataIndex: 'epfLiable', width: 90, render: yesNo },
-          { title: 'SOCSO', dataIndex: 'socsoLiable', width: 96, render: yesNo },
-          { title: 'EIS', dataIndex: 'eisLiable', width: 90, render: yesNo },
-          { title: 'PCB', dataIndex: 'pcbLiable', width: 90, render: yesNo },
-          { title: 'HRD', dataIndex: 'hrdLiable', width: 90, render: yesNo },
-          { title: 'Pro-rated', dataIndex: 'prorated', width: 110, render: yesNo },
-          // The two bases the employer page carried and nothing else showed:
-          // whether this item enlarges an overtime hour, and whether it shrinks
-          // when somebody takes unpaid leave.
-          { title: 'OT base', dataIndex: 'includeInOrpBase', width: 100, render: yesNo },
-          { title: 'Unpaid-leave base', dataIndex: 'includeInUnpaidLeaveBase', width: 150, render: yesNo },
-          {
-            title: 'Checked',
-            dataIndex: 'verificationStatus',
-            width: 120,
-            render: (status: string) =>
-              status === 'VERIFIED' ? (
-                <StatusChip tone="ok">Checked</StatusChip>
-              ) : (
-                <StatusChip tone="attention">Unchecked</StatusChip>
+      {components.data ? (
+        <div className="hr-notice hr-notice--attn" style={{ margin: '0 0 14px' }}>
+          {components.data.verificationNotice.statement}
+        </div>
+      ) : null}
+
+      <Panel>
+        <Table<PayComponentRow>
+          rows={rows}
+          loading={components.isLoading}
+          rowKey="id"
+          searchFields={['code', 'name']}
+          searchPlaceholder="Search pay items…"
+          searchLabel="Search pay items"
+          emptyText="No pay items are set up yet."
+          emptyHint="Seed the standard Malaysian set, then adjust what each item counts towards."
+          columns={[
+            {
+              title: 'Item',
+              dataIndex: 'name',
+              render: (value: string, row) => (
+                <div>
+                  <div className="hr-strong">{value}</div>
+                  <span className="hr-faint hr-small">
+                    {row.code}
+                    {row.systemControlled ? ' · system item — on/off only' : ''}
+                  </span>
+                </div>
               ),
-          },
-          {
-            title: 'Status',
-            dataIndex: 'active',
-            width: 110,
-            render: (active: boolean) =>
-              active ? <StatusChip tone="ok" dot>In use</StatusChip> : <StatusChip tone="neutral">Off</StatusChip>,
-          },
-        ]}
-      />
-    </AdminShell>
+            },
+            {
+              title: 'Adds or deducts',
+              dataIndex: 'type',
+              width: 120,
+              render: (value: string) => (
+                <StatusChip tone={value === 'DEDUCTION' ? 'attn' : 'info'}>
+                  {value === 'DEDUCTION' ? 'Deducts' : value === 'OVERTIME' ? 'Overtime' : 'Adds'}
+                </StatusChip>
+              ),
+            },
+            ...FLAGS.map((flag) => ({
+              title: flag.title,
+              dataIndex: flag.key,
+              width: flag.width,
+              align: 'center' as const,
+              render: (_: unknown, row: PayComponentRow) => {
+                const isPending = pending?.row.id === row.id && pending.flag === flag.key;
+                return (
+                  <span className="hr-anchor">
+                    <Switch
+                      size="small"
+                      checked={isPending ? pending.next : row[flag.key]}
+                      disabled={!mayManage || row.systemControlled || upsert.isPending}
+                      aria-label={`${flag.title} for ${row.name}`}
+                      title={row.systemControlled ? 'A system item keeps its statutory treatment.' : undefined}
+                      onChange={(next) => {
+                        setPending({ row, flag: flag.key, next });
+                        setFrom(dayjs().add(1, 'month').startOf('month'));
+                        setReason('');
+                        setProblem(null);
+                      }}
+                    />
+                    {isPending ? (
+                      <div className="hr-popover" role="dialog" aria-label="When does this take effect?">
+                        <div className="hr-popover__title">
+                          {flag.title} {pending.next ? 'on' : 'off'} for {row.name}
+                        </div>
+                        <div className="hr-popover__hint">
+                          A changed treatment is a new version, not an edit — months already priced keep the old one.
+                        </div>
+                        <label htmlFor={`from-${row.id}`}>From which month</label>
+                        <DatePicker
+                          id={`from-${row.id}`}
+                          picker="month"
+                          value={from}
+                          allowClear={false}
+                          format="MMM YYYY"
+                          style={{ width: '100%' }}
+                          onChange={(value) => value && setFrom(value.startOf('month'))}
+                        />
+                        <label htmlFor={`reason-${row.id}`}>Why</label>
+                        <Input
+                          id={`reason-${row.id}`}
+                          value={reason}
+                          placeholder="e.g. KWSP circular of 12 Aug"
+                          maxLength={500}
+                          onChange={(event) => setReason(event.target.value)}
+                          onPressEnter={save}
+                        />
+                        {problem ? <div className="hr-small" style={{ color: 'var(--hr-red)', marginTop: 6 }}>{problem}</div> : null}
+                        <div className="hr-popover__actions">
+                          <button type="button" className="hr-btn hr-btn--sm" onClick={cancel}>
+                            Cancel
+                          </button>
+                          <button type="button" className="hr-btn hr-btn--sm hr-btn--primary" onClick={save} disabled={upsert.isPending}>
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </span>
+                );
+              },
+            })),
+            { title: 'Kind', key: 'kind', width: 130, render: (_: unknown, row: PayComponentRow) => derived(row) },
+            {
+              title: 'Checked',
+              dataIndex: 'verificationStatus',
+              width: 100,
+              render: (status: string) =>
+                status === 'VERIFIED' ? <StatusChip tone="done">Checked</StatusChip> : <StatusChip tone="attn">Unchecked</StatusChip>,
+            },
+            {
+              title: 'In use',
+              dataIndex: 'active',
+              width: 80,
+              align: 'center' as const,
+              render: (active: boolean, row: PayComponentRow) => (
+                <Switch
+                  size="small"
+                  checked={active}
+                  disabled={!mayManage || upsert.isPending}
+                  aria-label={`${row.name} in use`}
+                  onChange={(next) => toggleActive(row, next)}
+                />
+              ),
+            },
+          ]}
+        />
+      </Panel>
+    </HrPage>
   );
 }

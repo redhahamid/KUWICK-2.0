@@ -46,6 +46,8 @@ export class AttendancePolicyService {
       defaults: DEFAULT_ATTENDANCE_POLICY,
       hasOwnPolicy: Boolean(own),
       hasGroupDefault: Boolean(groupDefault),
+      /** When the row in force was last changed — null while the built-in default applies. */
+      updatedAt: (own ?? groupDefault)?.updatedAt.toISOString() ?? null,
     };
   }
 

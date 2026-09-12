@@ -103,8 +103,11 @@ describe('the Slate kit', () => {
       (selector) => selector.includes('kw-app-header') || selector.includes('ant-'),
     );
     expect(headerRules.length).toBeGreaterThan(3);
+    // Scoped by one of HR's own classes — the shell, the header variant, or
+    // an `hr-` component — never bare. `.hr-table .ant-table` is fine;
+    // `.ant-table` alone would restyle every module's tables.
     for (const selector of headerRules) {
-      expect({ selector, scoped: /kw-hrSlate(Header)?/.test(selector) }).toEqual({ selector, scoped: true });
+      expect({ selector, scoped: /(kw-hrSlate(Header)?|\.hr-[a-z])/.test(selector) }).toEqual({ selector, scoped: true });
     }
   });
 });

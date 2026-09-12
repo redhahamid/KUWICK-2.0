@@ -1,14 +1,11 @@
 import { useState } from 'react';
-import { App, Button, DatePicker, Input, Modal, Select, Table, Tag } from 'antd';
-import { Link } from 'react-router-dom';
+import { App, DatePicker, Input, Select } from 'antd';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
-import {
-  useLegalEmployers,
-  useRecordEmployerHrd,
-  useUpsertLegalEmployer,
-} from '../hooks/useAdmin';
+import { Link } from 'react-router-dom';
+import { useLegalEmployers, useRecordEmployerHrd, useUpsertLegalEmployer } from '../hooks/useAdmin';
 import { useCan } from '../../core/hooks/useCan';
+import { Drawer, HrPage, Panel, StatusChip } from './ui';
+import { Table } from './ui/Table';
 import type { LegalEmployerRow } from '../types';
 
 /** The Act's own words for each class, and the rate the Act fixes for it. */
@@ -17,6 +14,20 @@ const HRD_LABELS: Record<string, string> = {
   OPTIONAL_SECTION_15: 'Registered — s.15 optional (0.5%)',
   NOT_REGISTERED: 'Not registered',
 };
+
+const FIELDS: [string, string][] = [
+  ['name', 'Registered name'],
+  ['registrationNo', 'Company registration number'],
+  ['epfEmployerNo', 'EPF employer number'],
+  ['socsoEmployerNo', 'SOCSO employer code'],
+  ['lhdnEmployerNo', 'LHDN employer number (E)'],
+  ['addressLine1', 'Address'],
+  ['city', 'City'],
+  ['state', 'State'],
+  ['bankName', 'Bank'],
+  ['bankAccountNo', 'Bank account number'],
+  ['bankAccountName', 'Account name'],
+];
 
 /**
  * THE EMPLOYER THAT FILES AND PAYS.
@@ -75,33 +86,93 @@ export function LegalEmployersPage() {
     setOpen(true);
   }
 
+  async function saveEmployer() {
+    setError(null);
+    if (!form.name?.trim()) {
+      setError('An employer needs a registered name.');
+      return;
+    }
+    try {
+      // A blank bank-account box means "leave the one on file alone" — the
+      // field is write-only, so blank is its resting state, and sending ''
+      // would clear a number the operator never saw.
+      const { bankAccountNo, ...rest } = form;
+      await upsert.mutateAsync({
+        ...(editing ? { id: editing.id } : {}),
+        ...rest,
+        ...(bankAccountNo && bankAccountNo.trim() !== '' ? { bankAccountNo: bankAccountNo.trim() } : {}),
+      });
+      message.success('Saved.');
+      setOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The server refused the change and did not say why.');
+    }
+  }
+
+  async function saveHrd() {
+    setHrdError(null);
+    if (!hrdClass) {
+      setHrdError('Choose the registration class. The Act fixes the rate — 1% under s.14, 0.5% under s.15.');
+      return;
+    }
+    if (!hrdReason.trim()) {
+      setHrdError('Say why this is being recorded — registration confirmed, headcount crossed, exemption…');
+      return;
+    }
+    try {
+      await recordHrd.mutateAsync({
+        legalEmployerId: hrdFor!.id,
+        effectiveFrom: hrdFrom.format('YYYY-MM-DD'),
+        hrdRegistration: hrdClass,
+        reason: hrdReason.trim(),
+      });
+      message.success('Recorded. The levy computes from the date it takes effect.');
+      setHrdFor(null);
+    } catch (e) {
+      setHrdError(e instanceof Error ? e.message : 'The server refused the change and did not say why.');
+    }
+  }
 
   return (
-    <AdminShell
+    <HrPage
+      crumb={
+        <>
+          <Link to="/admin/hr/settings">Settings</Link> &nbsp;/&nbsp; Company &amp; statutory
+        </>
+      }
       title="Company & statutory"
-      subtitle="The entity that employs, files and pays. A branch is where work happens; it files nothing."
-      error={firstError(employers)}
+      sub="The entity that employs, files and pays. A branch is where work happens; it files nothing."
+      error={employers.error instanceof Error ? employers.error.message : null}
       actions={
         mayManage ? (
-          <Button size="small" type="primary" onClick={() => edit(null)}>
-            New employer
-          </Button>
+          <button type="button" className="hr-btn hr-btn--primary" onClick={() => edit(null)}>
+            + New employer
+          </button>
         ) : null
       }
     >
-      <AdminSection padded={false}>
+
+      <Panel>
         <Table<LegalEmployerRow>
           rowKey="id"
-          size="small"
-          pagination={false}
           loading={employers.isLoading}
-          dataSource={employers.data ?? []}
+          rows={employers.data ?? []}
+          emptyText="No legal employer is recorded."
+          emptyHint="Nothing can be filed or paid without one."
           columns={[
-            { title: 'Employer', dataIndex: 'name' },
-            { title: 'Registration', dataIndex: 'registrationNo', render: (v: string | null) => v ?? '—' },
-            { title: 'EPF', dataIndex: 'epfEmployerNo', render: (v: string | null) => v ?? '—' },
-            { title: 'SOCSO', dataIndex: 'socsoEmployerNo', render: (v: string | null) => v ?? '—' },
-            { title: 'LHDN (E)', dataIndex: 'lhdnEmployerNo', render: (v: string | null) => v ?? '—' },
+            {
+              title: 'Employer',
+              dataIndex: 'name',
+              render: (value: string, row) => (
+                <div>
+                  <div className="hr-strong">{value}</div>
+                  <span className="hr-faint hr-small">{row.registrationNo ?? 'No registration number'}</span>
+                </div>
+              ),
+            },
+            { title: 'EPF', dataIndex: 'epfEmployerNo', render: (v: string | null) => v ?? <span className="hr-faint">—</span> },
+            { title: 'SOCSO', dataIndex: 'socsoEmployerNo', render: (v: string | null) => v ?? <span className="hr-faint">—</span> },
+            { title: 'LHDN (E)', dataIndex: 'lhdnEmployerNo', render: (v: string | null) => v ?? <span className="hr-faint">—</span> },
             {
               /*
                * THE LEVY CLASS IS A FACT WITH A DATE, and until it is recorded
@@ -117,20 +188,21 @@ export function LegalEmployersPage() {
                 row.hrdRegistration ? (
                   HRD_LABELS[row.hrdRegistration] ?? row.hrdRegistration
                 ) : (
-                  <Tag color="warning">Not recorded</Tag>
+                  <StatusChip tone="attn">Not recorded</StatusChip>
                 ),
             },
-            { title: 'Employees', dataIndex: 'employeeCount', align: 'right', width: 100 },
+            { title: 'Employees', dataIndex: 'employeeCount', num: true, width: 100 },
             {
               title: 'Could it file?',
               key: 'readiness',
+              width: 160,
               render: (_: unknown, row) =>
                 row.statutoryReadiness.complete ? (
-                  <Tag color="green">Complete</Tag>
+                  <StatusChip tone="done">Complete</StatusChip>
                 ) : (
                   <span>
-                    <Tag color="orange">{row.statutoryReadiness.missing.length} missing</Tag>
-                    <div style={{ fontSize: 11, color: '#888' }}>{row.statutoryReadiness.missing.join(', ')}</div>
+                    <StatusChip tone="attn">{row.statutoryReadiness.missing.length} missing</StatusChip>
+                    <div className="hr-faint hr-small">{row.statutoryReadiness.missing.join(', ')}</div>
                   </span>
                 ),
             },
@@ -138,18 +210,19 @@ export function LegalEmployersPage() {
               ? [
                   {
                     title: '',
-                    key: 'a',
+                    key: 'actions',
                     width: 170,
                     render: (_: unknown, row: LegalEmployerRow) => (
                       <span style={{ display: 'inline-flex', gap: 6 }}>
                         {mayManage ? (
-                          <Button size="small" onClick={() => edit(row)}>
+                          <button type="button" className="hr-btn hr-btn--sm" onClick={() => edit(row)}>
                             Edit
-                          </Button>
+                          </button>
                         ) : null}
                         {mayRecordHrd ? (
-                          <Button
-                            size="small"
+                          <button
+                            type="button"
+                            className="hr-btn hr-btn--sm"
                             onClick={() => {
                               setHrdFor(row);
                               setHrdClass(row.hrdRegistration ?? undefined);
@@ -159,7 +232,7 @@ export function LegalEmployersPage() {
                             }}
                           >
                             HRD class
-                          </Button>
+                          </button>
                         ) : null}
                       </span>
                     ),
@@ -168,72 +241,41 @@ export function LegalEmployersPage() {
               : []),
           ]}
         />
-      </AdminSection>
+      </Panel>
 
       {/*
-        * THE PAY COMPONENTS ARE NOT LISTED TWICE.
-        *
-        * The full seventeen-row table used to sit here, under the company's
-        * EPF and SOCSO numbers — which is where it landed when this page was
-        * the only settings page there was, and nowhere anybody looking for an
-        * allowance would think to look. It has a card of its own now, and the
-        * notice about unchecked flags went with it.
+        * THE PAY COMPONENTS ARE NOT LISTED TWICE, and the statutory tables are
+        * not either. Each has a page of its own; this one is about the entity.
         */}
-      <p className="kw-adminSection__desc">
-        What the clinic can pay or deduct, and what each item counts towards, is on{' '}
-        <Link to="/admin/hr/settings/payroll-items">Payroll items</Link>. The flags there decide what this employer
-        files; the numbers above decide whether it can file at all.
+      <p className="hr-note">
+        What the clinic can pay or deduct is on <Link className="hr-link" to="/admin/hr/settings/payroll-items">Payroll items</Link>; the
+        rates it deducts at are on <Link className="hr-link" to="/admin/hr/settings/statutory">Statutory rates</Link>. The numbers
+        above decide whether this employer can file at all.
       </p>
 
-      <Modal
+      <Drawer
         open={open}
         title={editing ? `Edit ${editing.name}` : 'New legal employer'}
-        okText="Save"
-        confirmLoading={upsert.isPending}
-        onCancel={() => {
+        onClose={() => {
           setOpen(false);
           setError(null);
         }}
-        onOk={async () => {
-          setError(null);
-          if (!form.name?.trim()) {
-            setError('An employer needs a registered name.');
-            return;
-          }
-          try {
-            // A blank bank-account box means "leave the one on file alone" —
-            // the field is write-only, so blank is its resting state, and
-            // sending '' would clear a number the operator never saw.
-            const { bankAccountNo, ...rest } = form;
-            await upsert.mutateAsync({
-              ...(editing ? { id: editing.id } : {}),
-              ...rest,
-              ...(bankAccountNo && bankAccountNo.trim() !== '' ? { bankAccountNo: bankAccountNo.trim() } : {}),
-            });
-            message.success('Saved.');
-            setOpen(false);
-          } catch (e) {
-            setError(e instanceof Error ? e.message : 'The server refused the change and did not say why.');
-          }
-        }}
+        footer={
+          <>
+            <button type="button" className="hr-btn" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+            <button type="button" className="hr-btn hr-btn--primary" onClick={saveEmployer} disabled={upsert.isPending}>
+              Save
+            </button>
+          </>
+        }
       >
-        {error ? <AdminNotice tone="warn">{error}</AdminNotice> : null}
-        <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
-          {[
-            ['name', 'Registered name'],
-            ['registrationNo', 'Company registration number'],
-            ['epfEmployerNo', 'EPF employer number'],
-            ['socsoEmployerNo', 'SOCSO employer code'],
-            ['lhdnEmployerNo', 'LHDN employer number (E)'],
-            ['addressLine1', 'Address'],
-            ['city', 'City'],
-            ['state', 'State'],
-            ['bankName', 'Bank'],
-            ['bankAccountNo', 'Bank account number'],
-            ['bankAccountName', 'Account name'],
-          ].map(([key, label]) => (
+        {error ? <div className="hr-notice hr-notice--block" style={{ margin: '0 0 12px' }}>{error}</div> : null}
+        <div style={{ display: 'grid', gap: 10 }}>
+          {FIELDS.map(([key, label]) => (
             <label key={key}>
-              <div style={{ fontSize: 12, color: '#666' }}>{label}</div>
+              <div className="hr-small hr-muted" style={{ marginBottom: 4 }}>{label}</div>
               <Input
                 value={form[key] ?? ''}
                 onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
@@ -246,46 +288,31 @@ export function LegalEmployersPage() {
             </label>
           ))}
         </div>
-      </Modal>
+      </Drawer>
 
-      <Modal
+      <Drawer
         open={hrdFor !== null}
         title={hrdFor ? `HRD Corp registration — ${hrdFor.name}` : ''}
-        okText="Record"
-        confirmLoading={recordHrd.isPending}
-        onCancel={() => setHrdFor(null)}
-        onOk={async () => {
-          setHrdError(null);
-          if (!hrdClass) {
-            setHrdError('Choose the registration class. The Act fixes the rate — 1% under s.14, 0.5% under s.15.');
-            return;
-          }
-          if (!hrdReason.trim()) {
-            setHrdError('Say why this is being recorded — registration confirmed, headcount crossed, exemption…');
-            return;
-          }
-          try {
-            await recordHrd.mutateAsync({
-              legalEmployerId: hrdFor!.id,
-              effectiveFrom: hrdFrom.format('YYYY-MM-DD'),
-              hrdRegistration: hrdClass,
-              reason: hrdReason.trim(),
-            });
-            message.success('Recorded. The levy computes from the date it takes effect.');
-            setHrdFor(null);
-          } catch (e) {
-            setHrdError(e instanceof Error ? e.message : 'The server refused the change and did not say why.');
-          }
-        }}
+        onClose={() => setHrdFor(null)}
+        footer={
+          <>
+            <button type="button" className="hr-btn" onClick={() => setHrdFor(null)}>
+              Cancel
+            </button>
+            <button type="button" className="hr-btn hr-btn--primary" onClick={saveHrd} disabled={recordHrd.isPending}>
+              Record
+            </button>
+          </>
+        }
       >
-        {hrdError ? <AdminNotice tone="warn">{hrdError}</AdminNotice> : null}
-        <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
+        {hrdError ? <div className="hr-notice hr-notice--block" style={{ margin: '0 0 12px' }}>{hrdError}</div> : null}
+        <div style={{ display: 'grid', gap: 10 }}>
           <label>
-            <div className="kw-fieldLabel">In force from</div>
+            <div className="hr-small hr-muted" style={{ marginBottom: 4 }}>In force from</div>
             <DatePicker value={hrdFrom} onChange={(v) => v && setHrdFrom(v)} style={{ width: '100%' }} allowClear={false} format="D MMM YYYY" />
           </label>
           <label>
-            <div className="kw-fieldLabel">Registration class</div>
+            <div className="hr-small hr-muted" style={{ marginBottom: 4 }}>Registration class</div>
             <Select
               value={hrdClass}
               onChange={setHrdClass}
@@ -295,20 +322,15 @@ export function LegalEmployersPage() {
             />
           </label>
           <label>
-            <div className="kw-fieldLabel">Reason</div>
-            <Input.TextArea
-              rows={2}
-              value={hrdReason}
-              onChange={(e) => setHrdReason(e.target.value)}
-              placeholder="HRD Corp registration letter dated…"
-            />
+            <div className="hr-small hr-muted" style={{ marginBottom: 4 }}>Reason</div>
+            <Input.TextArea rows={2} value={hrdReason} onChange={(e) => setHrdReason(e.target.value)} placeholder="HRD Corp registration letter dated…" />
           </label>
-          <p className="kw-muted" style={{ margin: 0, fontSize: 11.5 }}>
-            The rate is never typed here: 1% (section 14) and 0.5% (section 15) are the PSMB Act&apos;s own numbers.
-            A change is a new dated version — an earlier month&apos;s levy keeps the class that was true then.
+          <p className="hr-faint hr-small" style={{ margin: 0 }}>
+            The rate is never typed here: 1% (section 14) and 0.5% (section 15) are the PSMB Act&apos;s own numbers. A change is a new dated
+            version — an earlier month&apos;s levy keeps the class that was true then.
           </p>
         </div>
-      </Modal>
-    </AdminShell>
+      </Drawer>
+    </HrPage>
   );
 }

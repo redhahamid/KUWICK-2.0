@@ -104,6 +104,8 @@ export type AuditAction =
   | 'payComponent.seeded'
   | 'payComponent.created'
   | 'payComponent.updated'
+  // A named person here looked at the statutory registry. Not verification.
+  | 'statutory.checked'
   | 'payrollPolicy.created'
   | 'payrollPolicy.updated'
   | 'payrollInput.created'

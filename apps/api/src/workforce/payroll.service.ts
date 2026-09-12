@@ -2444,10 +2444,15 @@ export class PayrollService {
     const tenantId = currentTenantId();
     const existing = await tx.payrollApprovalPolicy.findUnique({ where: { tenantId } });
     if (existing) {
-      return { mode: existing.mode, allowOwnerSelfApproval: existing.allowOwnerSelfApproval };
+      return {
+        mode: existing.mode,
+        allowOwnerSelfApproval: existing.allowOwnerSelfApproval,
+        /** Settings says "Changed 14 Aug" on the card; this is where that comes from. */
+        updatedAt: existing.updatedAt.toISOString(),
+      };
     }
     const created = await tx.payrollApprovalPolicy.create({ data: { tenantId } });
-    return { mode: created.mode, allowOwnerSelfApproval: created.allowOwnerSelfApproval };
+    return { mode: created.mode, allowOwnerSelfApproval: created.allowOwnerSelfApproval, updatedAt: created.updatedAt.toISOString() };
   }
 
   /** What the payroll settings screen shows, and what the run header reads. */

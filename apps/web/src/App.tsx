@@ -95,6 +95,7 @@ import { LocumPage } from './admin/hr/LocumPage';
 import { PayrollReportsPage } from './admin/hr/PayrollReportsPage';
 import { PayrollSettingsPage } from './admin/hr/PayrollSettingsPage';
 import { PayrollItemsPage } from './admin/hr/PayrollItemsPage';
+import { StatutoryRatesPage } from './admin/hr/StatutoryRatesPage';
 import { HrSettingsPage } from './admin/hr/HrSettingsPage';
 import { AttendanceSettingsPage } from './admin/hr/AttendanceSettingsPage';
 import { PayrollMonthPage } from './admin/hr/PayrollMonthPage';
@@ -365,6 +366,7 @@ export function App() {
             <Route path="/admin/hr/settings" element={<HrSettingsPage />} />
             <Route path="/admin/hr/settings/company" element={<LegalEmployersPage />} />
             <Route path="/admin/hr/settings/payroll-items" element={<PayrollItemsPage />} />
+            <Route path="/admin/hr/settings/statutory" element={<StatutoryRatesPage />} />
             <Route path="/admin/hr/settings/payroll" element={<PayrollSettingsPage />} />
             <Route path="/admin/hr/settings/attendance-leave" element={<AttendanceSettingsPage />} />
             <Route path="/admin/hr/settings/public-holidays" element={<PublicHolidaysPage />} />

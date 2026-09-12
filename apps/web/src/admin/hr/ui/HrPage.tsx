@@ -14,20 +14,27 @@ export function HrPage({
   title,
   sub,
   actions,
+  crumb,
   error,
   children,
 }: {
   title: ReactNode;
   sub?: ReactNode;
   actions?: ReactNode;
+  /** "Settings / Payroll items" — drawn above the title, where the mockups put it. */
+  crumb?: ReactNode;
   error?: string | null;
   children: ReactNode;
 }) {
   return (
     <>
+      {crumb ? <div className="hr-crumb">{crumb}</div> : null}
       <div className="hr-pageHead">
         <div>
-          <h1>{title}</h1>
+          {/* `kw-admin__title` is the hook the browser walk finds a page's title
+              by. It carries no styling here — the old rule only binds with
+              `.ant-typography` beside it — so the name is borrowed, not the look. */}
+          <h1 className="kw-admin__title">{title}</h1>
           {sub ? <div className="hr-sub">{sub}</div> : null}
         </div>
         {actions ? <div className="hr-pageHead__actions">{actions}</div> : null}

@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { App, Button, DatePicker, Drawer, Form, Input, Popconfirm, Space } from 'antd';
-import { DeleteOutlined } from '@ant-design/icons';
+import { App, DatePicker, Form, Input, Popconfirm } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { Link } from 'react-router-dom';
-import { AdminShell } from '../components/AdminShell';
-import { DataTable } from '../components/DataTable';
+import { Drawer, HrPage, IconButton, Panel } from './ui';
+import { Table } from './ui/Table';
+import { IconClose } from './ui/icons';
 import {
   useCreatePublicHoliday,
   useDeletePublicHoliday,
@@ -48,51 +48,82 @@ export function PublicHolidaysPage() {
     }
   };
 
+  const thisYear = dayjs().year();
+  const count = (holidays ?? []).filter((row) => dayjs(row.date).year() === thisYear).length;
+
   return (
-    <AdminShell
+    <HrPage
+      crumb={
+        <>
+          <Link to="/admin/hr/settings">Settings</Link> &nbsp;/&nbsp; Public holidays
+        </>
+      }
       title="Public holidays"
-      subtitle="The days the clinic is closed, which attendance and leave both read."
+      sub="The days the clinic is closed, which attendance and leave both read."
       actions={
-        <Space>
-          <Link to="/admin/hr/settings">
-            <Button size="small">← Settings</Button>
-          </Link>
-          <Button type="primary" onClick={() => setOpen(true)}>
-            + Add holiday
-          </Button>
-        </Space>
+        <button type="button" className="hr-btn hr-btn--primary" onClick={() => setOpen(true)}>
+          + Add holiday
+        </button>
       }
     >
-      <DataTable<PublicHoliday>
-        rowKey="id"
-        loading={isLoading}
-        rows={holidays ?? []}
-        searchFields={['name']}
-        searchPlaceholder="Search holidays…"
-        emptyText="No public holidays are recorded."
-        emptyHint="Attendance and leave both read this calendar, so an empty one means no day is treated as a closure."
-        columns={[
-          {
-            title: 'Date',
-            dataIndex: 'date',
-            width: 260,
-            render: (value: string) => dayjs(value).format('YYYY-MM-DD (dddd)'),
-          },
-          { title: 'Name', dataIndex: 'name' },
-          {
-            title: '',
-            width: 40,
-            noExport: true,
-            render: (_: unknown, row: PublicHoliday) => (
-              <Popconfirm title="Remove this holiday?" onConfirm={() => deleteHoliday.mutate(row.id)}>
-                <Button type="text" size="small" danger icon={<DeleteOutlined />} />
-              </Popconfirm>
-            ),
-          },
-        ]}
-      />
 
-      <Drawer title="Add public holiday" open={open} onClose={() => setOpen(false)} destroyOnHidden>
+      {count === 0 ? (
+        <div className="hr-notice hr-notice--attn" style={{ margin: '0 0 14px' }}>
+          No holidays are recorded for {thisYear}. Until they are, no day this year is treated as a closure — a public
+          holiday worked will be paid as an ordinary day.
+        </div>
+      ) : null}
+
+      <Panel>
+        <Table<PublicHoliday>
+          rowKey="id"
+          loading={isLoading}
+          rows={holidays ?? []}
+          searchFields={['name']}
+          searchPlaceholder="Search holidays…"
+          searchLabel="Search holidays"
+          emptyText="No public holidays are recorded."
+          emptyHint="Attendance and leave both read this calendar, so an empty one means no day is treated as a closure."
+          columns={[
+            {
+              title: 'Date',
+              dataIndex: 'date',
+              width: 260,
+              render: (value: string) => dayjs(value).format('D MMM YYYY (dddd)'),
+            },
+            { title: 'Name', dataIndex: 'name', render: (value: string) => <span className="hr-strong">{value}</span> },
+            {
+              title: '',
+              width: 60,
+              render: (_: unknown, row: PublicHoliday) => (
+                <Popconfirm title="Remove this holiday?" onConfirm={() => deleteHoliday.mutate(row.id)}>
+                  <span>
+                    <IconButton label={`Remove ${row.name}`}>
+                      <IconClose />
+                    </IconButton>
+                  </span>
+                </Popconfirm>
+              ),
+            },
+          ]}
+        />
+      </Panel>
+
+      <Drawer
+        open={open}
+        title="Add public holiday"
+        onClose={() => setOpen(false)}
+        footer={
+          <>
+            <button type="button" className="hr-btn" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+            <button type="button" className="hr-btn hr-btn--primary" onClick={() => form.submit()} disabled={createHoliday.isPending}>
+              Add holiday
+            </button>
+          </>
+        }
+      >
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
           <Form.Item name="date" label="Date" rules={[{ required: true }]}>
             <DatePicker style={{ width: '100%' }} />
@@ -100,11 +131,8 @@ export function PublicHolidaysPage() {
           <Form.Item name="name" label="Holiday name" rules={[{ required: true }]}>
             <Input placeholder="e.g. Merdeka Day" />
           </Form.Item>
-          <Button type="primary" htmlType="submit" loading={createHoliday.isPending} block>
-            Add holiday
-          </Button>
         </Form>
       </Drawer>
-    </AdminShell>
+    </HrPage>
   );
 }

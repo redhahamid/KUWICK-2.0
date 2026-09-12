@@ -195,7 +195,10 @@ describe('the Settings cards', () => {
       new RegExp(`export function ${page}\\(`).test(source),
     );
     if (!entry) return { page, title: null };
-    const body = entry[1].slice(entry[1].indexOf('<AdminShell'));
+    // A page draws its title with `HrPage` on the Slate kit, or `AdminShell`
+    // until it has moved. Either way the first `title=` after the shell is it.
+    const at = Math.max(entry[1].indexOf('<HrPage'), entry[1].indexOf('<AdminShell'));
+    const body = at >= 0 ? entry[1].slice(at) : '';
     return { page, title: /title="([^"]+)"/.exec(body)?.[1] ?? null };
   };
 

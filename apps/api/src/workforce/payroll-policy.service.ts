@@ -48,6 +48,7 @@ export class PayrollPolicyService {
         termination: { basis: row.terminationBasis, days: row.terminationDays },
         isDefault: row.isDefault,
         employeeCount: row._count.employees,
+        updatedAt: row.updatedAt.toISOString(),
       })),
       notice:
         'These bases are recorded but NOT yet applied by any calculation. Which basis a Malaysian employer may lawfully use ' +

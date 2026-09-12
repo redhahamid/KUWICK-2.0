@@ -28,6 +28,8 @@ export type PayrollApprovalMode = 'STANDARD' | 'MAKER_CHECKER' | 'DUAL_APPROVAL'
 
 export interface ApprovalPolicy {
   mode: PayrollApprovalMode;
+  /** When the rule was last changed. Absent on the built-in default. */
+  updatedAt?: string;
   /**
    * Whether somebody holding `settings.manage` may approve a run they created
    * under a rule that would otherwise forbid it. True by default because

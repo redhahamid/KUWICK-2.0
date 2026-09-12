@@ -13,6 +13,7 @@ import { EmployeeSalaryService } from './employee-salary.service';
 import { ContributionBasisService } from './contribution-basis.service';
 import { StatutoryClassificationService } from './statutory-classification.service';
 import { PayComponentService } from './pay-component.service';
+import { StatutorySettingsService } from './statutory-settings.service';
 import { PayrollPolicyService } from './payroll-policy.service';
 import { PayrollInputService } from './payroll-input.service';
 import { StaffClaimService } from './staff-claim.service';
@@ -54,6 +55,7 @@ import { PayrollFinanceService } from './payroll-finance.service';
     ContributionBasisService,
     StatutoryClassificationService,
     PayComponentService,
+    StatutorySettingsService,
     PayrollPolicyService,
     PayrollInputService,
     StaffClaimService,
@@ -80,6 +82,7 @@ import { PayrollFinanceService } from './payroll-finance.service';
     ContributionBasisService,
     StatutoryClassificationService,
     PayComponentService,
+    StatutorySettingsService,
     PayrollPolicyService,
     PayrollInputService,
     StaffClaimService,

@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { App, Button, Input, InputNumber, Select, Table } from 'antd';
+import { App, Input, InputNumber, Select } from 'antd';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
+import { firstError } from '../components/AdminShell';
+import { HrPage, Panel, PanelHead } from './ui';
+import { Table } from './ui/Table';
 import { ringgit } from '../components/DataTable';
 import { useEmployees, useImportYtdOpening, useLegalEmployers } from '../hooks/useAdmin';
 import { useCan } from '../../core/hooks/useCan';
@@ -192,125 +194,137 @@ export function YtdOpeningImportPage() {
   );
 
   return (
-    <AdminShell
-      error={firstError(employers, employees)}
+    <HrPage
+      crumb={
+        <>
+          <Link to="/admin/hr/settings">Settings</Link> &nbsp;/&nbsp; Opening balances
+        </>
+      }
       title="Opening balances"
-      subtitle="The months this employer paid before Kuwick ran payroll — so a mid-year start does not tax everybody as though January paid nothing."
+      sub="The months this employer paid before Kuwick ran payroll — so a mid-year start does not tax everybody as though January paid nothing."
+      error={(() => {
+        const first = firstError(employers, employees);
+        return typeof first === 'string' ? first : null;
+      })()}
     >
+
       {!mayImport ? (
-        <AdminNotice tone="info">
+        <div className="hr-notice hr-notice--info" style={{ margin: '0 0 14px' }}>
           Importing opening balances changes what monthly tax computes for the rest of the year, so it needs the
           payroll approval permission. You can read this screen but not import.
-        </AdminNotice>
+        </div>
       ) : null}
-      <AdminNotice tone="info">
+      <div className="hr-notice hr-notice--info" style={{ margin: '0 0 14px' }}>
         <strong>This employer&apos;s months only, as months.</strong> Pay from a previous employer is declared on Form
         TP3 on the employee&apos;s record — the server refuses months from before the employment here began. A month an
         approved Kuwick run already wrote is refused too: the run is the record.
-      </AdminNotice>
+      </div>
 
-      <AdminSection title="Where these figures come from">
-        <div className="kw-formGrid2">
-          <label>
-            <div className="kw-fieldLabel">Employing company</div>
-            <Select
-              value={legalEmployerId}
-              onChange={setLegalEmployerId}
-              style={{ width: '100%' }}
-              placeholder="Choose the legal employer"
-              options={(employers.data ?? []).map((row) => ({ value: row.id, label: row.name }))}
-            />
-          </label>
-          <label>
-            <div className="kw-fieldLabel">Source of the figures</div>
-            <Input
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
-              placeholder="e.g. Payslips from the previous system, Jan–Jun 2026"
-            />
-          </label>
+      <Panel>
+        <PanelHead title="Where these figures come from" />
+        <div className="hr-fld">
+          <span className="hr-fld__k">Employing company</span>
+          <Select
+            value={legalEmployerId}
+            onChange={setLegalEmployerId}
+            placeholder="Choose the legal employer"
+            options={(employers.data ?? []).map((row) => ({ value: row.id, label: row.name }))}
+          />
         </div>
-      </AdminSection>
+        <div className="hr-fld">
+          <span className="hr-fld__k">Source of the figures</span>
+          <Input
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            placeholder="e.g. Payslips from the previous system, Jan–Jun 2026"
+          />
+        </div>
+      </Panel>
 
-      <AdminSection
-        title="Add a month"
-        description="One row per employee per month, exactly as the old payslip states it. Running totals are refused by design — a total cannot be checked or corrected month by month."
-      >
-        <div className="kw-formGrid2" style={{ marginBottom: 10 }}>
-          <label>
-            <div className="kw-fieldLabel">Employee</div>
+      <Panel className="hr-mt">
+        <PanelHead
+          title="Add a month"
+          sub="One row per employee per month, exactly as the old payslip states it. Running totals are refused by design — a total cannot be checked or corrected month by month."
+        />
+        <div className="hr-fld">
+          <span className="hr-fld__k">Employee</span>
+          <Select
+            showSearch
+            optionFilterProp="label"
+            value={staffId}
+            onChange={setStaffId}
+            placeholder="Choose an employee"
+            options={employeeOptions}
+          />
+        </div>
+        <div className="hr-fld">
+          <span className="hr-fld__k">Month</span>
+          <span style={{ display: 'flex', gap: 8 }}>
             <Select
-              showSearch
-              optionFilterProp="label"
-              value={staffId}
-              onChange={setStaffId}
-              style={{ width: '100%' }}
-              placeholder="Choose an employee"
-              options={employeeOptions}
+              value={month}
+              onChange={setMonth}
+              placeholder="Month"
+              style={{ width: 160 }}
+              options={Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: dayjs().month(i).format('MMMM') }))}
             />
-          </label>
-          <div className="kw-formGrid2">
-            <label>
-              <div className="kw-fieldLabel">Tax year</div>
-              <Select
-                value={taxYear}
-                onChange={setTaxYear}
-                style={{ width: '100%' }}
-                options={[dayjs().year(), dayjs().year() - 1].map((y) => ({ value: y, label: String(y) }))}
-              />
-            </label>
-            <label>
-              <div className="kw-fieldLabel">Month</div>
-              <Select
-                value={month}
-                onChange={setMonth}
-                style={{ width: '100%' }}
-                placeholder="Month"
-                options={Array.from({ length: 12 }, (_, i) => ({
-                  value: i + 1,
-                  label: dayjs().month(i).format('MMMM'),
-                }))}
-              />
-            </label>
+            <Select
+              value={taxYear}
+              onChange={setTaxYear}
+              style={{ width: 110 }}
+              options={[dayjs().year(), dayjs().year() - 1].map((y) => ({ value: y, label: String(y) }))}
+            />
+          </span>
+        </div>
+        <div style={{ padding: '14px 22px' }}>
+          <div className="hr-grid2">
+            {numberField('gross', 'Gross for the month')}
+            {numberField('additional', 'Of which bonus / additional remuneration')}
+            {numberField('pcb', 'PCB deducted')}
+            {numberField('cp38', 'CP38 deducted')}
+            {numberField('zakat', 'Zakat via payroll')}
+            {numberField('deductions', 'TP1 deductions the month applied')}
+            {numberField('epfEmployee', 'EPF — employee')}
+            {numberField('epfEmployer', 'EPF — employer')}
+            {numberField('socsoEmployee', 'SOCSO — employee')}
+            {numberField('socsoEmployer', 'SOCSO — employer')}
+            {numberField('eisEmployee', 'EIS — employee')}
+            {numberField('eisEmployer', 'EIS — employer')}
+            {numberField('lindung', 'LINDUNG 24 JAM withheld')}
+          </div>
+          <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button type="button" className="hr-btn" onClick={addMonth}>
+              Add to the import
+            </button>
+            {blankFields.length > 0 && blankFields.length < MONEY_FIELDS.length ? (
+              <button type="button" className="hr-btn" onClick={fillBlanksWithZero}>
+                Fill the {blankFields.length} blank figure{blankFields.length === 1 ? '' : 's'} with RM0.00
+              </button>
+            ) : null}
           </div>
         </div>
-        <div className="kw-formGrid2">
-          {numberField('gross', 'Gross for the month')}
-          {numberField('additional', 'Of which bonus / additional remuneration')}
-          {numberField('pcb', 'PCB deducted')}
-          {numberField('cp38', 'CP38 deducted')}
-          {numberField('zakat', 'Zakat via payroll')}
-          {numberField('deductions', 'TP1 deductions the month applied')}
-          {numberField('epfEmployee', 'EPF — employee')}
-          {numberField('epfEmployer', 'EPF — employer')}
-          {numberField('socsoEmployee', 'SOCSO — employee')}
-          {numberField('socsoEmployer', 'SOCSO — employer')}
-          {numberField('eisEmployee', 'EIS — employee')}
-          {numberField('eisEmployer', 'EIS — employer')}
-          {numberField('lindung', 'LINDUNG 24 JAM withheld')}
-        </div>
-        <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Button onClick={addMonth}>Add to the import</Button>
-          {blankFields.length > 0 && blankFields.length < MONEY_FIELDS.length ? (
-            <Button onClick={fillBlanksWithZero}>
-              Fill the {blankFields.length} blank figure{blankFields.length === 1 ? '' : 's'} with RM0.00
-            </Button>
-          ) : null}
-        </div>
-      </AdminSection>
+      </Panel>
 
-      <AdminSection
-        title={`To import — ${staged.length} month${staged.length === 1 ? '' : 's'}`}
-        description="Nothing below is saved yet. Importing writes every row, stamped with the source above."
-      >
-        {error ? <AdminNotice tone="warn">{error}</AdminNotice> : null}
-        {done ? <AdminNotice tone="info">{done}</AdminNotice> : null}
+      <Panel className="hr-mt">
+        <PanelHead
+          title={`To import — ${staged.length} month${staged.length === 1 ? '' : 's'}`}
+          sub="Nothing below is saved yet. Importing writes every row, stamped with the source above."
+          actions={
+            <button
+              type="button"
+              className="hr-btn hr-btn--primary"
+              disabled={!mayImport || staged.length === 0 || importMutation.isPending}
+              onClick={submit}
+            >
+              Import {staged.length > 0 ? `${staged.length} month${staged.length === 1 ? '' : 's'}` : ''}
+            </button>
+          }
+        />
+        {error ? <div className="hr-notice hr-notice--block">{error}</div> : null}
+        {done ? <div className="hr-notice hr-notice--info">{done}</div> : null}
         <Table<StagedMonth>
           rowKey="key"
-          size="small"
-          pagination={false}
-          dataSource={staged}
-          locale={{ emptyText: 'No months added yet.' }}
+          rows={staged}
+          emptyText="No months added yet."
           columns={[
             { title: 'Employee', dataIndex: 'name' },
             {
@@ -319,41 +333,27 @@ export function YtdOpeningImportPage() {
               width: 140,
               render: (_: unknown, row) => dayjs(new Date(Date.UTC(row.taxYear, row.month - 1, 1))).format('MMM YYYY'),
             },
-            { title: 'Gross', key: 'gross', align: 'right', width: 110, render: (_: unknown, row) => rm(row.grossCents) },
-            { title: 'PCB', key: 'pcb', align: 'right', width: 100, render: (_: unknown, row) => rm(row.pcbCents ?? 0) },
-            {
-              title: 'EPF (staff)',
-              key: 'epf',
-              align: 'right',
-              width: 110,
-              render: (_: unknown, row) => rm(row.epfEmployeeCents ?? 0),
-            },
+            { title: 'Gross', key: 'gross', num: true, width: 110, render: (_: unknown, row) => rm(row.grossCents) },
+            { title: 'PCB', key: 'pcb', num: true, width: 100, render: (_: unknown, row) => rm(row.pcbCents ?? 0) },
+            { title: 'EPF (staff)', key: 'epf', num: true, width: 110, render: (_: unknown, row) => rm(row.epfEmployeeCents ?? 0) },
             {
               title: '',
               key: 'remove',
               width: 90,
               render: (_: unknown, row) => (
-                <Button size="small" type="text" danger onClick={() => setStaged(staged.filter((r) => r.key !== row.key))}>
+                <button type="button" className="hr-btn hr-btn--sm hr-btn--ghost" onClick={() => setStaged(staged.filter((r) => r.key !== row.key))}>
                   Remove
-                </Button>
+                </button>
               ),
             },
           ]}
         />
-        <div style={{ marginTop: 12, display: 'flex', gap: 10, alignItems: 'center' }}>
-          <Button
-            type="primary"
-            disabled={!mayImport || staged.length === 0}
-            loading={importMutation.isPending}
-            onClick={submit}
-          >
-            Import {staged.length > 0 ? `${staged.length} month${staged.length === 1 ? '' : 's'}` : ''}
-          </Button>
-          <Link to="/admin/hr/payroll" className="kw-muted">
-            Back to payroll readiness
+        <div className="hr-panelNote">
+          <Link className="hr-link" to="/admin/hr/payroll">
+            Back to payroll
           </Link>
         </div>
-      </AdminSection>
-    </AdminShell>
+      </Panel>
+    </HrPage>
   );
 }

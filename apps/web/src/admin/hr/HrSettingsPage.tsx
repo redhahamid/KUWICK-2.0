@@ -7,7 +7,9 @@ import {
   usePayComponents,
   usePayrollApprovalPolicy,
   usePayrollRuns,
+  useStatutoryRates,
   useStatutoryRuleSets,
+  useAttendancePolicy,
 } from '../hooks/useAdmin';
 import { usePublicHolidays } from '../../hr/hooks/usePublicHolidays';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -42,6 +44,8 @@ export function HrSettingsPage() {
   const approval = usePayrollApprovalPolicy();
   const holidays = usePublicHolidays();
   const runs = usePayrollRuns({ clinicId });
+  const rates = useStatutoryRates();
+  const attendance = useAttendancePolicy(clinicId);
   const employees = useEmployees({ clinicId });
 
   const employerRows = employers.data ?? [];
@@ -49,7 +53,10 @@ export function HrSettingsPage() {
   const componentCount = componentRows.length;
   const employeeCount = (employees.data ?? []).filter((row) => row.active).length;
   const rateSets = statutory.data ?? [];
-  const checked = rateSets.find((set) => set.verified) ?? null;
+  const registryOk = rateSets.length > 0 && rateSets.every((set) => set.verified);
+  /** The clinic's own check of the registry — a named person, on a date. */
+  const clinicCheck = rates.data?.check ?? null;
+  const checked = clinicCheck && clinicCheck.current ? clinicCheck : null;
 
   // An employer that cannot file is an employer that cannot pay: EPF, SOCSO,
   // EIS and PCB submissions are all made by an entity, and one missing number
@@ -148,13 +155,15 @@ export function HrSettingsPage() {
       key: 'rates',
       title: 'Statutory rates checked',
       done: Boolean(checked),
-      outstanding: 'A check against KWSP and PERKESO',
+      outstanding: 'A look at the statutory tables',
       detail: checked
-        ? `EPF, SOCSO and EIS tables in force, checked against KWSP and PERKESO${
-            checked.verifiedAt ? ` on ${dayjs(checked.verifiedAt).format('D MMM YYYY')}` : ''
-          }.`
-        : 'EPF, SOCSO and EIS tables are loaded but unchecked against KWSP and PERKESO. Until somebody checks them, payroll stays in test mode and no run may be paid or filed.',
-      to: '/admin/hr/settings/payroll',
+        ? `EPF, SOCSO and EIS tables in force, checked by ${checked.checkedBy ?? 'this clinic'} on ${dayjs(checked.checkedAt).format('D MMM YYYY')}.`
+        : clinicCheck
+          ? `Checked on ${dayjs(clinicCheck.checkedAt).format('D MMM YYYY')}, but the tables have changed since. Look again.`
+          : registryOk
+            ? "Kuwick's tables are verified against KWSP, PERKESO and LHDN. Nobody here has looked at them yet."
+            : 'EPF, SOCSO and EIS tables are loaded but unchecked. Until somebody checks them, payroll stays in test mode and no run may be paid or filed.',
+      to: '/admin/hr/settings/statutory',
     },
     {
       key: 'bank',
@@ -202,16 +211,16 @@ export function HrSettingsPage() {
       icon: <IconSliders />,
       tone: approval.data ? 'done' : 'muted',
       state: approval.data ? 'Set' : 'Not set',
-      meta: null,
+      meta: changedOn([approval.data?.updatedAt]),
     },
     {
       title: 'Attendance & leave policies',
       description: 'Grace period, what counts as a full day, and what counts as overtime.',
       to: '/admin/hr/settings/attendance-leave',
       icon: <IconClock />,
-      tone: 'done',
-      state: 'Set',
-      meta: null,
+      tone: attendance.data?.source === 'KUWICK_DEFAULT' ? 'muted' : 'done',
+      state: attendance.data?.source === 'KUWICK_DEFAULT' ? "Kuwick's defaults" : 'Set',
+      meta: changedOn([attendance.data?.updatedAt ?? undefined]),
     },
     {
       title: 'Public holidays',

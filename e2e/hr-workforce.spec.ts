@@ -150,11 +150,11 @@ test.describe('What "late" means here', () => {
     await loginAdmin(page);
     await gotoAdmin(page, '/admin/hr/settings/attendance-leave');
 
-    const panel = page.locator('.kw-adminSection', { hasText: 'Attendance rules' });
+    const panel = page.locator('.hr-panel', { hasText: 'Attendance rules' });
     await expect(panel).toBeVisible();
     // The screen SAYS which of the three answers is in force, because "why is
     // this branch different" is the first question anybody asks.
-    await expect(panel.locator('.ant-tag').first()).toContainText('In force:');
+    await expect(panel.locator('.hr-chip').first()).toContainText('In force:');
 
     const lateGrace = panel.locator('.ant-input-number-input').first();
     const original = await lateGrace.inputValue();
@@ -166,7 +166,7 @@ test.describe('What "late" means here', () => {
 
     await page.reload();
     await expect(page.locator('.ant-spin-spinning')).toHaveCount(0, { timeout: 30_000 });
-    const reloaded = page.locator('.kw-adminSection', { hasText: 'Attendance rules' });
+    const reloaded = page.locator('.hr-panel', { hasText: 'Attendance rules' });
     await expect(reloaded.locator('.ant-input-number-input').first()).toHaveValue(changed);
 
     // Put it back, so a test does not leave the clinic measuring by something
@@ -182,7 +182,7 @@ test.describe('What "late" means here', () => {
     // notices for a year and then notices for every month of that year.
     await loginAdmin(page);
     await gotoAdmin(page, '/admin/hr/settings/attendance-leave');
-    const panel = page.locator('.kw-adminSection', { hasText: 'Attendance rules' });
+    const panel = page.locator('.hr-panel', { hasText: 'Attendance rules' });
     await expect(panel).toContainText('The minimum is applied before the rounding');
   });
 });

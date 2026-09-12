@@ -28,6 +28,7 @@ import { EmployeeSalaryService } from './employee-salary.service';
 import { ContributionBasisService } from './contribution-basis.service';
 import { StatutoryClassificationService } from './statutory-classification.service';
 import { PayComponentService } from './pay-component.service';
+import { StatutorySettingsService } from './statutory-settings.service';
 import { PayrollPolicyService } from './payroll-policy.service';
 import { PayrollInputService } from './payroll-input.service';
 import { UpsertLegalEmployerDto } from './dto/upsert-legal-employer.dto';
@@ -75,6 +76,7 @@ export class WorkforceController {
     private readonly contributionBases: ContributionBasisService,
     private readonly classifications: StatutoryClassificationService,
     private readonly payComponents: PayComponentService,
+    private readonly statutorySettings: StatutorySettingsService,
     private readonly payrollPolicies: PayrollPolicyService,
     private readonly payrollInputs: PayrollInputService,
     private readonly claims: StaffClaimService,
@@ -752,6 +754,22 @@ export class WorkforceController {
   @Post('payroll/statutory-rules')
   upsertStatutoryRules(@Body() dto: UpsertStatutoryRulesDto) {
     return this.payroll.upsertStatutoryRules(dto);
+  }
+
+  /**
+   * The tables the calculation reads, exposed for the Statutory rates screen.
+   * Read-only by construction: there is nothing here a clinic can type into.
+   */
+  @Get('payroll/statutory-rates')
+  statutoryRates() {
+    return this.statutorySettings.rates();
+  }
+
+  /** A named person here looked at the tables today. Kept apart from the
+      registry's own verification, which this does not move. */
+  @Post('payroll/statutory-check')
+  markStatutoryChecked() {
+    return this.statutorySettings.markChecked();
   }
 
   @Get('payroll/runs')

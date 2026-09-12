@@ -86,6 +86,10 @@ import type {
   PayrollJourney,
   AttendancePolicy,
   EffectiveAttendancePolicy,
+  StatutoryRates,
+  StatutoryCheck,
+  PayrollPolicyRow,
+  PayComponentRow,
 } from '../types';
 
 function qs(params: Record<string, string | number | boolean | undefined>): string {
@@ -784,6 +788,27 @@ export function useApprovePayroll() {
   );
 }
 
+export function useStatutoryRates() {
+  return useQuery({
+    queryKey: ['admin-hr', 'statutory-rates'],
+    queryFn: () => apiClient.get<StatutoryRates>('/workforce/payroll/statutory-rates'),
+  });
+}
+
+/** A named person here looked at the tables today. Kept apart from the
+    registry's own verification, which it does not move. */
+export function useMarkStatutoryChecked() {
+  return useAdminMutation(() => apiClient.post<StatutoryCheck>('/workforce/payroll/statutory-check', {}), ['admin-hr']);
+}
+
+/** The clinic's pay-rule sets — proration, overtime, unpaid leave bases. */
+export function usePayrollPolicies() {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-policies'],
+    queryFn: () => apiClient.get<{ policies: PayrollPolicyRow[]; notice: string }>('/workforce/payroll-policies'),
+  });
+}
+
 export function useStatutoryRuleSets() {
   return useQuery({
     queryKey: ['admin-hr', 'statutory'],
@@ -981,6 +1006,18 @@ export function usePayComponents() {
     queryKey: ['admin-hr', 'pay-components'],
     queryFn: () => apiClient.get<PayComponentList>('/workforce/pay-components'),
   });
+}
+
+/**
+ * One component, saved whole. A changed statutory treatment on an existing
+ * component is a NEW dated version and the server insists on `effectiveFrom`
+ * for it; a changed label is an edit and needs nothing.
+ */
+export function useUpsertPayComponent() {
+  return useAdminMutation(
+    (body: Record<string, unknown>) => apiClient.post<PayComponentRow>('/workforce/pay-components', body),
+    ['admin-hr'],
+  );
 }
 
 export function useSeedPayComponents() {
