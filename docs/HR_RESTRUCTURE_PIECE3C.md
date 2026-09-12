@@ -208,7 +208,7 @@ Medical benefits): built on the kit's patterns and shown as screenshots.
 | API unit | `npm run test:api` | 127 suites, 2727 tests, green |
 | API e2e | `cd apps/api && npx jest --config test/jest-e2e.json --runInBand` | 40 suites, 455 tests, green |
 | Web unit | `cd apps/web && npx vitest run` | 99 files, 1714 tests, green (three HR tests followed the rebuilt screens, §5) |
-| Browser | `CHROME_PATH=/opt/pw-browsers/chromium npx playwright test` | see below |
+| Browser | `CHROME_PATH=/opt/pw-browsers/chromium npx playwright test` | 101 tests: 97 green, 3 skipped, 1 failed — `canvas-appointment.spec.ts:40`, pre-existing since Piece 1 and identical on master. The third skip is *Day-end closing*, which skips itself once the seeded day has been closed by an earlier run in the same day |
 
 ## 9. Not in this piece
 
