@@ -638,6 +638,12 @@ export interface WorkforceToday {
 }
 
 export interface EmployeeRow {
+  /** The directory's dots: is the reference number on file, is the bank account. */
+  epfNumberOnFile: boolean;
+  socsoNumberOnFile: boolean;
+  bankAccountOnFile: boolean;
+  /** Whether each scheme applies under the standing in force today; NULL when no standing is recorded. */
+  schemes: { epf: boolean; socso: boolean; eis: boolean } | null;
   staffId: string;
   fullName: string;
   legacyRole: string;
@@ -1300,7 +1306,7 @@ export interface EmployeeRecord {
     pcbApplicable: boolean;
     note: string;
   };
-  leavePolicy: { id: string; name: string } | null;
+  leavePolicy: { id: string; name: string; annualLeaveDays: number | null } | null;
   attendance: {
     daysRecorded: number;
     daysWorked: number;
@@ -2923,4 +2929,29 @@ export interface PayrollPolicyRow {
   isDefault: boolean;
   employeeCount: number;
   updatedAt: string;
+}
+
+/** A pay component's monthly amount for one employee, from a date. */
+export interface RecurringItemRow {
+  id: string;
+  componentCode: string;
+  componentName: string;
+  direction: 'ADDITION' | 'DEDUCTION' | null;
+  label: string | null;
+  amount: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  status: 'ACTIVE' | 'UPCOMING' | 'ENDED';
+  note: string | null;
+  recordedBy: string;
+  recordedAt: string;
+  /** The component's statutory treatment, read from the catalogue. */
+  treatment: { epf: boolean; socso: boolean; pcb: boolean; active: boolean } | null;
+}
+
+export interface RecurringItemChoice {
+  code: string;
+  name: string;
+  direction: 'ADDITION' | 'DEDUCTION';
+  treatment: { epf: boolean; socso: boolean; pcb: boolean };
 }

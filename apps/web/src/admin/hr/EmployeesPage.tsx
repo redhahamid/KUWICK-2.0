@@ -1,323 +1,373 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Input, Select, Tooltip } from 'antd';
-import dayjs from 'dayjs';
-import { AdminSection, AdminShell, firstError } from '../components/AdminShell';
-import { StatStrip } from '../components/StatStrip';
-import { DataTable } from '../components/DataTable';
-import { FilterBar, Filter } from '../components/FilterBar';
-import { PersonCell } from '../components/Person';
-import { StatusChip, employmentTone, humanise } from '../components/Chip';
-import { readinessSummary } from '../components/ReadinessList';
-import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useEmployees, usePayrollReadiness, useWorkforceToday } from '../hooks/useAdmin';
+import { Dropdown } from 'antd';
+import dayjs from 'dayjs';
+import { useClinicFilter } from '../../core/hooks/useClinicFilter';
+import { useCan } from '../../core/hooks/useCan';
+import { useEmployees, usePayrollReadiness, usePayrollRuns } from '../hooks/useAdmin';
+import { initialsOf } from './ui/who';
+import { HrPage, Panel, SegControl, StatCard, StatRow, StatusChip } from './ui';
+import { Table } from './ui/Table';
+import { IconCalendar, IconDownload, IconEdit, IconEmployees, IconInfo, IconMore, IconPayroll, IconPlus } from './ui/icons';
+import { downloadCsv } from './ui/csv';
 import { CompleteProfileDrawer } from './CompleteProfileDrawer';
-import type { EmployeeRow } from '../types';
+import { MarkResignedModal } from './MarkResignedModal';
+import { BenefitsView } from './BenefitsView';
+import type { EmployeeRow, PayrollReadinessItem } from '../types';
 
 /**
- * PEOPLE — the directory, as the seven questions somebody opens it with.
+ * EMPLOYEES — the directory, on the kit.
  *
- * The reference sheet is explicit about what a directory row must answer:
- * who, what role, which branch, employment status, payroll readiness, current
- * status, and what can I do. Every column here is one of those. What went is
- * everything that was a column because it was a database field — the legacy
- * role enum, the leave policy name, the professional-type discriminator —
- * which are still available from the column picker and no longer the first
- * thing the eye lands on.
+ * Four things a row says, in the mockup's order: who; what kind of
+ * employment; whether EPF, SOCSO and EIS apply to them and whether a bank
+ * account is on file — four dots, green or red; when they joined; and whether
+ * the record is complete enough to pay. Then Edit, and a menu of the three
+ * things you can do: View · Edit · Mark as resigned. THERE IS NO DELETE. A
+ * person who was paid is a person the year's forms still name.
  *
- * CURRENT STATUS IS TODAY'S FACT, not the employment one. "Active" and "on
- * duty" are different answers and the directory used to give only the first,
- * so somebody looking for who is in the building had to go to Attendance.
+ * THE DOTS ARE TWO DIFFERENT FACTS. EPF, SOCSO and EIS read the statutory
+ * standing in force today — does the scheme apply to this person — and a
+ * red dot there is not a defect: a foreign worker outside SOCSO is correctly
+ * red and correctly "Complete". The bank dot reads whether an account is on
+ * file, and a red one IS a defect, because nobody can be paid without it.
+ * "Record" is the payroll gate's own checklist for this month, so a person
+ * this page calls Complete is a person the run can pay.
+ *
+ * THE CLINICAL CREDENTIAL STAYS ON THE ROW. "Doctor · may sign" beside a
+ * position is a fact about the job, not about employment, and the browser
+ * guarantee from the employee-master work holds it here: an account, an
+ * employment and a clinical credential are three separate facts.
  */
+type Seg = 'ACTIVE' | 'RESIGNED' | 'ALL';
+type View = 'employees' | 'benefits';
 
-type Presence = 'ON_DUTY' | 'ON_LEAVE' | 'ROSTERED' | 'OFF';
+const GONE = new Set(['RESIGNED', 'TERMINATED']);
+const TYPE_LABEL: Record<string, string> = {
+  PERMANENT: 'Permanent',
+  CONTRACT: 'Contract',
+  PART_TIME: 'Part-time',
+  LOCUM: 'Locum',
+  INTERN: 'Intern',
+};
+/** The payroll gate's item labels, said as what is missing. */
+const SHORT: Record<string, string> = {
+  'Bank account': 'Bank missing',
+  Salary: 'Salary missing',
+  'Legal employer': 'Employer missing',
+  'Rest day': 'Rest day missing',
+  'Monthly tax (PCB) information': 'Tax info missing',
+  'EPF, SOCSO and EIS': 'Standing missing',
+  'Date of birth': 'Date of birth missing',
+  'Pay history for the year': 'Pay history missing',
+};
+const shortOf = (label: string) => SHORT[label] ?? `${label} missing`;
+
+type RecordState = { label: string; tone: 'done' | 'attn' | 'muted'; blockers: string[] };
+
+function recordOf(row: EmployeeRow, items: PayrollReadinessItem[] | undefined): RecordState {
+  if (!row.hasProfile) return { label: 'No record', tone: 'muted', blockers: [] };
+  if (!items) {
+    // Not on this month's gate (a contractor, or somebody it has not seen
+    // yet): the one thing every record needs is the bank account.
+    return row.bankAccountOnFile
+      ? { label: 'Complete', tone: 'done', blockers: [] }
+      : { label: 'Bank missing', tone: 'attn', blockers: ['Bank account'] };
+  }
+  const blockers = items.filter((item) => !item.done && item.severity === 'BLOCKING').map((item) => item.label);
+  if (blockers.length === 0) return { label: 'Complete', tone: 'done', blockers };
+  return { label: blockers.length === 1 ? shortOf(blockers[0]) : `${blockers.length} missing`, tone: 'attn', blockers };
+}
+
+const Dot = ({ on, title }: { on: boolean | null; title: string }) => (
+  <span
+    className={`hr-dot ${on === null ? 'hr-dot--muted' : on ? 'hr-dot--ok' : 'hr-dot--block'}`}
+    role="img"
+    aria-label={`${title}: ${on === null ? 'no standing recorded' : on ? 'yes' : 'no'}`}
+    title={on === null ? `${title}: no statutory standing recorded` : `${title}: ${on ? 'yes' : 'no'}`}
+  />
+);
 
 export function EmployeesPage() {
   const { clinicId } = useClinicFilter();
   const navigate = useNavigate();
-  const { data, isLoading, isError, error } = useEmployees({ clinicId });
+  const mayManage = useCan('hr.employee.manage');
+  const [search, setSearch] = useSearchParams();
+  const view: View = search.get('view') === 'benefits' ? 'benefits' : 'employees';
+
+  const employees = useEmployees({ clinicId });
   const readiness = usePayrollReadiness({ period: dayjs().format('YYYY-MM'), clinicId });
-  const today = useWorkforceToday(clinicId);
+  const runs = usePayrollRuns({ clinicId, year: dayjs().year() });
 
-  const [query, setQuery] = useState('');
-  const [status, setStatus] = useState<string>('ALL');
-
-  /*
-   * WHETHER SOMEBODY CAN ACTUALLY BE PAID, on the directory — the same read
-   * the payroll gate uses, so a person cannot read READY here and hold up
-   * approval on the next screen.
-   */
-  const readinessByStaff = useMemo(() => {
-    const map = new Map<string, ReturnType<typeof readinessSummary>>();
-    for (const row of readiness.data?.employees ?? []) map.set(row.staffId, readinessSummary(row.readiness));
-    return map;
-  }, [readiness.data]);
-
-  const presenceByStaff = useMemo(() => {
-    const map = new Map<string, Presence>();
-    for (const row of today.data?.scheduled ?? []) map.set(row.staffId, 'ROSTERED');
-    for (const row of today.data?.onLeave ?? []) map.set(row.staffId, 'ON_LEAVE');
-    // On duty wins: a punch is a stronger fact than a roster line.
-    for (const row of today.data?.onDuty ?? []) map.set(row.staffId, 'ON_DUTY');
-    return map;
-  }, [today.data]);
+  const [seg, setSeg] = useState<Seg>('ACTIVE');
+  const [completing, setCompleting] = useState<{ staffId: string; fullName: string } | null>(null);
+  const [resigning, setResigning] = useState<{ staffId: string; fullName: string } | null>(null);
 
   // ?staffId= still redirects to that person, so links written before the
-  // employee workspace was a route still land on them.
-  const [search] = useSearchParams();
+  // employee record was a route still land on them.
   const legacyStaffId = search.get('staffId');
   useEffect(() => {
     if (legacyStaffId) navigate(`/admin/hr/employees/${legacyStaffId}`, { replace: true });
   }, [legacyStaffId, navigate]);
 
-  const incomplete = data?.filter((row) => !row.hasProfile) ?? [];
-  const [completing, setCompleting] = useState<{ staffId: string; fullName: string } | null>(null);
+  const itemsByStaff = useMemo(() => {
+    const map = new Map<string, PayrollReadinessItem[]>();
+    for (const row of readiness.data?.employees ?? []) map.set(row.staffId, row.readiness.items);
+    return map;
+  }, [readiness.data]);
 
-  const rows = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return (data ?? []).filter((row) => {
-      if (status === 'ACTIVE' && row.employmentStatus !== 'ACTIVE') return false;
-      if (status === 'PROBATION' && row.employmentStatus !== 'PROBATION') return false;
-      if (status === 'NO_PROFILE' && row.hasProfile) return false;
-      if (status === 'NOT_READY' && (readinessByStaff.get(row.staffId)?.tone ?? 'ok') === 'ok') return false;
-      if (!needle) return true;
-      return [row.fullName, row.position, row.employeeNo, row.department, row.clinicName]
-        .filter(Boolean)
-        .some((field) => String(field).toLowerCase().includes(needle));
-    });
-  }, [data, query, status, readinessByStaff]);
+  const all = employees.data ?? [];
+  const records = useMemo(() => new Map(all.map((row) => [row.staffId, recordOf(row, itemsByStaff.get(row.staffId))])), [all, itemsByStaff]);
+  const employed = all.filter((row) => !row.hasProfile || !GONE.has(row.employmentStatus ?? ''));
+
+  const rows = useMemo(
+    () =>
+      all.filter((row) => {
+        const gone = row.hasProfile && GONE.has(row.employmentStatus ?? '');
+        if (seg === 'ACTIVE') return !gone;
+        if (seg === 'RESIGNED') return gone;
+        return true;
+      }),
+    [all, seg],
+  );
+
+  // ── The four figures ──────────────────────────────────────────────────────
+  const byType = employed.reduce<Record<string, number>>((acc, row) => {
+    const key = row.employmentType ?? 'NO_RECORD';
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  }, {});
+  const typeLine = ['PERMANENT', 'CONTRACT', 'PART_TIME', 'LOCUM', 'INTERN']
+    .filter((key) => byType[key])
+    .map((key) => `${byType[key]} ${TYPE_LABEL[key].toLowerCase()}`)
+    .join(' · ');
+
+  const joinedThisYear = employed.filter((row) => row.startDate && dayjs(row.startDate).year() === dayjs().year());
+  const joinedNames = joinedThisYear.slice(0, 3).map((row) => row.fullName).join(', ') + (joinedThisYear.length > 3 ? ` +${joinedThisYear.length - 3}` : '');
+
+  const incomplete = employed.filter((row) => records.get(row.staffId)?.tone !== 'done');
+  const reasons = incomplete.flatMap((row) => {
+    const state = records.get(row.staffId);
+    return state?.label === 'No record' ? ['No employment record'] : (state?.blockers ?? []).map(shortOf);
+  });
+  const commonest = [...reasons.reduce((m, r) => m.set(r, (m.get(r) ?? 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1])[0]?.[0];
+
+  const latestRun = [...(runs.data ?? [])].sort((a, b) => b.period.localeCompare(a.period))[0];
+  const runSettled = latestRun && (latestRun.status === 'APPROVED' || latestRun.status === 'PAID');
+
+  const exportRows = () =>
+    downloadCsv(
+      'employees',
+      ['Name', 'Position', 'Type', 'Branch', 'Employee no.', 'Joined', 'EPF applies', 'SOCSO applies', 'EIS applies', 'Bank on file', 'Record', 'Status'],
+      rows.map((row) => [
+        row.fullName,
+        row.position,
+        row.employmentType ? TYPE_LABEL[row.employmentType] ?? row.employmentType : '',
+        row.clinicName,
+        row.employeeNo,
+        row.startDate ? dayjs(row.startDate).format('YYYY-MM-DD') : '',
+        row.schemes ? (row.schemes.epf ? 'yes' : 'no') : '',
+        row.schemes ? (row.schemes.socso ? 'yes' : 'no') : '',
+        row.schemes ? (row.schemes.eis ? 'yes' : 'no') : '',
+        row.bankAccountOnFile ? 'yes' : 'no',
+        records.get(row.staffId)?.label ?? '',
+        row.employmentStatus ?? '',
+      ]),
+    );
+
+  const setView = (next: View) => {
+    const params = new URLSearchParams(search);
+    if (next === 'benefits') params.set('view', 'benefits');
+    else params.delete('view');
+    setSearch(params, { replace: true });
+  };
+
+  const tabs = (
+    <div className="hr-tabs" role="tablist" aria-label="Employees views">
+      <button type="button" role="tab" aria-selected={view === 'employees'} className={view === 'employees' ? 'is-active' : ''} onClick={() => setView('employees')}>
+        Employees
+      </button>
+      <button type="button" role="tab" aria-selected={view === 'benefits'} className={view === 'benefits' ? 'is-active' : ''} onClick={() => setView('benefits')}>
+        Medical benefits
+      </button>
+    </div>
+  );
+
+  const open = (row: EmployeeRow) =>
+    row.hasProfile ? navigate(`/admin/hr/employees/${row.staffId}`) : setCompleting({ staffId: row.staffId, fullName: row.fullName });
 
   return (
-    <AdminShell
-      error={firstError({ isError, error })}
+    <HrPage
       title="Employees"
-      subtitle="Everybody who works here, and whether payroll can pay them."
+      sub="Click a name to open the record. Salary and allowance changes are dated, so past payrolls never move."
+      error={employees.error instanceof Error ? employees.error.message : null}
       actions={
-        <Button type="primary" onClick={() => navigate('/admin/hr/employees/new')}>
-          + Add employee
-        </Button>
+        <>
+          {view === 'employees' ? (
+            <button type="button" className="hr-btn" onClick={exportRows} disabled={rows.length === 0}>
+              <IconDownload />
+              Export
+            </button>
+          ) : null}
+          {mayManage ? (
+            <button type="button" className="hr-btn hr-btn--primary" onClick={() => navigate('/admin/hr/employees/new')}>
+              <IconPlus />
+              Add employee
+            </button>
+          ) : null}
+        </>
       }
     >
-      <CompleteProfileDrawer
-        staffId={completing?.staffId ?? null}
-        fullName={completing?.fullName ?? ''}
-        onClose={() => setCompleting(null)}
-      />
+      <CompleteProfileDrawer staffId={completing?.staffId ?? null} fullName={completing?.fullName ?? ''} onClose={() => setCompleting(null)} />
+      <MarkResignedModal staffId={resigning?.staffId ?? null} fullName={resigning?.fullName ?? ''} open={Boolean(resigning)} onClose={() => setResigning(null)} />
 
-      <StatStrip
-        stats={[
-          { label: 'Total staff', value: data?.length ?? 0 },
-          {
-            label: 'Ready for payroll',
-            value: readiness.data?.summary.ready ?? 0,
-            tone: (readiness.data?.summary.withBlockers ?? 0) > 0 ? 'warn' : 'good',
-            hint:
-              (readiness.data?.summary.withBlockers ?? 0) > 0
-                ? `${readiness.data?.summary.withBlockers} would hold up approval`
-                : 'Nobody is holding up approval',
-          },
-          {
-            label: 'On duty now',
-            value: today.data?.onDuty?.length ?? 0,
-            hint: `${today.data?.onLeave?.length ?? 0} on leave`,
-          },
-          {
-            label: 'No employment record',
-            value: incomplete.length,
-            tone: incomplete.length > 0 ? 'warn' : 'good',
-            explain: 'They can sign in and be rostered. Payroll leaves them out rather than refusing.',
-          },
-        ]}
-      />
+      {view === 'benefits' ? (
+        <BenefitsView clinicId={clinicId} tabs={tabs} />
+      ) : (
+        <>
+          <StatRow>
+            <StatCard icon={<IconEmployees />} label="Active" value={employed.length} sub={typeLine || 'Nobody on record yet'} />
+            <StatCard icon={<IconCalendar />} label="Joined this year" value={joinedThisYear.length} sub={joinedThisYear.length ? joinedNames : 'Nobody yet'} />
+            <StatCard
+              icon={<IconInfo />}
+              label="Records incomplete"
+              value={incomplete.length}
+              tone={incomplete.length > 0 ? 'gold' : 'plain'}
+              sub={incomplete.length > 0 ? commonest : 'Every record is complete'}
+            />
+            <StatCard
+              icon={<IconPayroll />}
+              label="Monthly payroll"
+              value={latestRun ? `RM${Math.round(latestRun.grossTotal).toLocaleString('en-MY')}` : '—'}
+              sub={latestRun ? `Gross${runSettled ? '' : ', not yet approved'}, ${dayjs(latestRun.period).format('MMMM YYYY')}` : 'No payroll run yet'}
+            />
+          </StatRow>
 
-      <FilterBar
-        right={
-          incomplete.length > 0 ? (
-            <Button size="small" onClick={() => setStatus('NO_PROFILE')}>
-              {incomplete.length} to finish
-            </Button>
-          ) : null
-        }
-      >
-        <Filter label="Search">
-          <Input
-            allowClear
-            size="small"
-            style={{ width: 260 }}
-            placeholder="Name, position, employee number…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </Filter>
-        <Filter label="Show">
-          <Select
-            size="small"
-            style={{ width: 190 }}
-            value={status}
-            onChange={setStatus}
-            options={[
-              { value: 'ALL', label: 'Everybody' },
-              { value: 'ACTIVE', label: 'Active only' },
-              { value: 'PROBATION', label: 'On probation' },
-              { value: 'NOT_READY', label: 'Not payroll-ready' },
-              { value: 'NO_PROFILE', label: 'No employment record' },
-            ]}
-          />
-        </Filter>
-      </FilterBar>
-
-      <AdminSection padded={false}>
-        <DataTable<EmployeeRow>
-          rows={rows}
-          loading={isLoading}
-          rowKey="staffId"
-          exportName="employees"
-          emptyText={query || status !== 'ALL' ? 'Nobody matches that filter' : 'No staff records'}
-          scrollY={560}
-          onRow={(row) => ({
-            onClick: () =>
-              row.hasProfile
-                ? navigate(`/admin/hr/employees/${row.staffId}`)
-                : setCompleting({ staffId: row.staffId, fullName: row.fullName }),
-          })}
-          columns={[
-            {
-              title: 'Employee',
-              dataIndex: 'fullName',
-              key: 'fullName',
-              width: 240,
-              sorter: (a, b) => a.fullName.localeCompare(b.fullName),
-              render: (value: string, row) => (
-                <PersonCell name={value} meta={row.employeeNo ?? row.email ?? 'No employee number'} />
-              ),
-            },
-            {
-              title: 'Role',
-              key: 'role',
-              width: 200,
-              render: (_: unknown, row) => (
-                <span>
-                  {row.position ?? <span className="kw-muted">Not recorded</span>}
-                  {/*
-                    * A DOCTOR IS AN EMPLOYEE **AND** A CREDENTIALED CLINICIAN.
-                    *
-                    * The reference sheet's directory has no clinical column, and
-                    * it is right that a receptionist's phone number should not be
-                    * behind one. But collapsing "has a clinical job title" into
-                    * "may sign a prescription" is how the wrong person signs one,
-                    * so the credential rides on the ROLE — where it is a fact
-                    * about the job rather than a column of its own.
-                    */}
-                  {row.professionalType === 'MEDICAL_DOCTOR' ? (
-                    <span className="kw-cellMeta">
-                      <StatusChip tone={row.canSignClinicalNotes ? 'ok' : 'attention'} dot>
-                        {row.canSignClinicalNotes ? 'Doctor · may sign' : 'Doctor · not cleared to sign'}
+          <Panel>
+            {tabs}
+            <Table<EmployeeRow>
+              rowKey="staffId"
+              rows={rows}
+              loading={employees.isLoading}
+              searchFields={['fullName', 'position', 'employeeNo', 'department']}
+              searchPlaceholder="Search name or role"
+              searchLabel="Search name or role"
+              emptyText={seg === 'RESIGNED' ? 'Nobody has left.' : 'No staff records.'}
+              onRow={(row) => ({ onClick: () => open(row) })}
+              toolbar={
+                <SegControl<Seg>
+                  label="Show"
+                  value={seg}
+                  onChange={setSeg}
+                  options={[
+                    { value: 'ACTIVE', label: 'Active' },
+                    { value: 'RESIGNED', label: 'Resigned' },
+                    { value: 'ALL', label: 'All' },
+                  ]}
+                />
+              }
+              toolbarRight={<span className="hr-small hr-faint">⋯ = View · Edit · Mark as resigned. There is no delete.</span>}
+              columns={[
+                {
+                  title: 'Employee',
+                  dataIndex: 'fullName',
+                  render: (value: string, row) => (
+                    <div className="hr-who">
+                      <span className="hr-who__avatar">{initialsOf(value)}</span>
+                      <div>
+                        <div className="hr-who__name">{value}</div>
+                        <div className="hr-who__role">
+                          {row.position ?? (row.hasProfile ? 'No position recorded' : 'No employment record')}
+                          {row.professionalType === 'MEDICAL_DOCTOR'
+                            ? ` · Doctor, ${row.canSignClinicalNotes ? 'may sign' : 'not cleared to sign'}`
+                            : ' · Not a clinician'}
+                        </div>
+                      </div>
+                    </div>
+                  ),
+                },
+                {
+                  title: 'Type',
+                  dataIndex: 'employmentType',
+                  width: 120,
+                  render: (value: string | null, row) =>
+                    row.hasProfile ? (
+                      <StatusChip tone={GONE.has(row.employmentStatus ?? '') ? 'block' : 'muted'}>
+                        {GONE.has(row.employmentStatus ?? '') ? 'Resigned' : (TYPE_LABEL[value ?? ''] ?? value ?? '—')}
                       </StatusChip>
+                    ) : (
+                      <StatusChip tone="attn">No record</StatusChip>
+                    ),
+                },
+                { title: 'EPF', key: 'epf', width: 64, align: 'center' as const, render: (_: unknown, row) => <Dot on={row.schemes?.epf ?? null} title="EPF applies" /> },
+                { title: 'SOCSO', key: 'socso', width: 74, align: 'center' as const, render: (_: unknown, row) => <Dot on={row.schemes?.socso ?? null} title="SOCSO applies" /> },
+                { title: 'EIS', key: 'eis', width: 60, align: 'center' as const, render: (_: unknown, row) => <Dot on={row.schemes?.eis ?? null} title="EIS applies" /> },
+                { title: 'Bank', key: 'bank', width: 64, align: 'center' as const, render: (_: unknown, row) => <Dot on={row.hasProfile ? row.bankAccountOnFile : null} title="Bank account on file" /> },
+                {
+                  title: 'Joined',
+                  dataIndex: 'startDate',
+                  width: 130,
+                  render: (value: string | null) => (value ? dayjs(value).format('D MMM YYYY') : <span className="hr-faint">—</span>),
+                },
+                {
+                  title: 'Record',
+                  key: 'record',
+                  width: 150,
+                  render: (_: unknown, row) => {
+                    const state = records.get(row.staffId);
+                    return state ? (
+                      <StatusChip tone={state.tone}>{state.label}</StatusChip>
+                    ) : null;
+                  },
+                },
+                {
+                  title: '',
+                  key: 'actions',
+                  width: 130,
+                  render: (_: unknown, row) => (
+                    <span className="hr-menu" onClick={(event) => event.stopPropagation()}>
+                      {row.hasProfile ? (
+                        <button type="button" className="hr-btn hr-btn--sm" onClick={() => navigate(`/admin/hr/employees/${row.staffId}?tab=profile&edit=1`)}>
+                          <IconEdit />
+                          Edit
+                        </button>
+                      ) : (
+                        <button type="button" className="hr-btn hr-btn--sm" onClick={() => setCompleting({ staffId: row.staffId, fullName: row.fullName })}>
+                          Finish
+                        </button>
+                      )}
+                      <Dropdown
+                        trigger={['click']}
+                        menu={{
+                          items: [
+                            { key: 'view', label: 'View', disabled: !row.hasProfile },
+                            { key: 'edit', label: 'Edit', disabled: !row.hasProfile },
+                            { type: 'divider' },
+                            {
+                              key: 'resign',
+                              label: 'Mark as resigned',
+                              danger: true,
+                              disabled: !mayManage || !row.hasProfile || GONE.has(row.employmentStatus ?? ''),
+                            },
+                          ],
+                          onClick: ({ key }) => {
+                            if (key === 'view') navigate(`/admin/hr/employees/${row.staffId}`);
+                            if (key === 'edit') navigate(`/admin/hr/employees/${row.staffId}?tab=profile&edit=1`);
+                            if (key === 'resign') setResigning({ staffId: row.staffId, fullName: row.fullName });
+                          },
+                        }}
+                      >
+                        <button type="button" className="hr-btn hr-btn--sm hr-btn--icon" aria-label={`More for ${row.fullName}`}>
+                          <IconMore />
+                        </button>
+                      </Dropdown>
                     </span>
-                  ) : (
-                    // NOT A CLINICIAN IS ALSO A FACT, and one worth stating: a
-                    // department alone ("Pharmacy") does not say whether this
-                    // person may sign anything.
-                    // "Not a clinician" rather than "Non-clinical": one record
-                    // has the DEPARTMENT "Clinical", and "Clinical ·
-                    // Non-clinical" reads as a contradiction rather than as two
-                    // facts. This wording cannot collide with a department name.
-                    <span className="kw-cellMeta">
-                      {row.department ? `${row.department} · Not a clinician` : 'Not a clinician'}
-                    </span>
-                  )}
-                </span>
-              ),
-            },
-            {
-              title: 'Branch',
-              dataIndex: 'clinicName',
-              key: 'clinicName',
-              width: 150,
-              render: (value: string | null) => value ?? <span className="kw-muted">All branches</span>,
-            },
-            {
-              title: 'Employment',
-              key: 'employmentStatus',
-              width: 150,
-              render: (_: unknown, row) =>
-                row.hasProfile ? (
-                  <span>
-                    <StatusChip tone={employmentTone(row.employmentStatus)} dot>
-                      {humanise(row.employmentStatus)}
-                    </StatusChip>
-                    <span className="kw-cellMeta">
-                      {humanise(row.employmentType)}
-                      {row.startDate ? ` · since ${dayjs(row.startDate).format('MMM YYYY')}` : ''}
-                    </span>
-                  </span>
-                ) : (
-                  <StatusChip tone="neutral">No record</StatusChip>
-                ),
-            },
-            {
-              // WHAT IS MISSING, NAMED. A bare "5/8" tells somebody they have a
-              // problem and nothing about what it is.
-              title: 'Payroll',
-              key: 'payrollReadiness',
-              width: 170,
-              render: (_: unknown, row) => {
-                if (!row.hasProfile) return <span className="kw-muted">—</span>;
-                const state = readinessByStaff.get(row.staffId);
-                if (!state) return <span className="kw-muted">—</span>;
-                return (
-                  <Tooltip title={state.missing.length ? `Outstanding: ${state.missing.join(', ')}` : undefined}>
-                    <span>
-                      <StatusChip tone={state.tone} dot>
-                        {state.label}
-                      </StatusChip>
-                    </span>
-                  </Tooltip>
-                );
-              },
-            },
-            {
-              title: 'Today',
-              key: 'presence',
-              width: 130,
-              render: (_: unknown, row) => {
-                const presence = presenceByStaff.get(row.staffId) ?? 'OFF';
-                if (presence === 'ON_DUTY') return <StatusChip tone="ok" dot>On duty</StatusChip>;
-                if (presence === 'ON_LEAVE') return <StatusChip tone="info" dot>On leave</StatusChip>;
-                if (presence === 'ROSTERED') return <StatusChip tone="neutral" dot>Rostered</StatusChip>;
-                return <span className="kw-muted">Off</span>;
-              },
-            },
-            {
-              title: '',
-              key: 'action',
-              width: 96,
-              noExport: true,
-              render: (_: unknown, row) =>
-                row.hasProfile ? (
-                  <Button size="small" type="text" className="kw-rowAction">
-                    View →
-                  </Button>
-                ) : (
-                  <Button
-                    size="small"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setCompleting({ staffId: row.staffId, fullName: row.fullName });
-                    }}
-                  >
-                    Finish
-                  </Button>
-                ),
-            },
-            { title: 'Department', dataIndex: 'department', key: 'department', optional: true },
-            { title: 'Manager', dataIndex: 'manager', key: 'manager', optional: true },
-            { title: 'Leave policy', dataIndex: 'leavePolicy', key: 'leavePolicy', optional: true },
-            { title: 'Phone', dataIndex: 'phone', key: 'phone', optional: true },
-            { title: 'Email', dataIndex: 'email', key: 'email', optional: true },
-          ]}
-        />
-      </AdminSection>
-    </AdminShell>
+                  ),
+                },
+              ]}
+            />
+          </Panel>
+        </>
+      )}
+    </HrPage>
   );
 }

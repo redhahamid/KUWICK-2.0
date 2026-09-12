@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { StatutoryStandingSection } from './EmployeeWorkspacePage';
+import { StatutoryStandingSection } from './StatutoryStandingManager';
 import type { EmployeeRecord } from '../types';
 
 /**
@@ -63,8 +63,10 @@ describe('the statutory standing panel', () => {
         })}
       />,
     );
-    // Six facts, all unknown — not one of the API's readiness fallbacks.
-    expect(screen.getAllByText('Not recorded')).toHaveLength(6);
+    // Ten facts, all unknown — not one of the API's readiness fallbacks. (Six
+    // in the first build; Piece 3c added the EPF employee share, SOCSO and EIS
+    // applicability, and the overtime-above-the-Act policy.)
+    expect(screen.getAllByText('Not recorded')).toHaveLength(10);
     expect(screen.queryByText('Sunday')).toBeNull();
     expect(screen.queryByText('Malaysian citizen')).toBeNull();
     expect(screen.getByText(/No statutory classification is recorded/)).toBeTruthy();
@@ -79,7 +81,7 @@ describe('the statutory standing panel', () => {
         })}
       />,
     );
-    expect(screen.getAllByText('Not recorded')).toHaveLength(6);
+    expect(screen.getAllByText('Not recorded')).toHaveLength(10);
     expect(screen.getByText(/2 statutory classifications apply/)).toBeTruthy();
   });
 });

@@ -90,6 +90,8 @@ import type {
   StatutoryCheck,
   PayrollPolicyRow,
   PayComponentRow,
+  RecurringItemRow,
+  RecurringItemChoice,
 } from '../types';
 
 function qs(params: Record<string, string | number | boolean | undefined>): string {
@@ -981,6 +983,37 @@ export function useAssignEmployer() {
   return useAdminMutation(
     ({ staffId, legalEmployerId }: { staffId: string; legalEmployerId: string | null }) =>
       apiClient.patch(`/workforce/employees/${staffId}/legal-employer`, { legalEmployerId }),
+    ['admin-hr'],
+  );
+}
+
+export function useRecurringItems(staffId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'recurring-items', staffId],
+    queryFn: () => apiClient.get<RecurringItemRow[]>(`/workforce/employees/${staffId}/recurring-items`),
+    enabled: Boolean(staffId),
+  });
+}
+
+export function useRecurringItemChoices() {
+  return useQuery({
+    queryKey: ['admin-hr', 'recurring-item-choices'],
+    queryFn: () => apiClient.get<RecurringItemChoice[]>('/workforce/recurring-item-choices'),
+  });
+}
+
+export function useCreateRecurringItem() {
+  return useAdminMutation(
+    ({ staffId, ...body }: { staffId: string } & Record<string, unknown>) =>
+      apiClient.post(`/workforce/employees/${staffId}/recurring-items`, body),
+    ['admin-hr'],
+  );
+}
+
+export function useUpdateRecurringItem() {
+  return useAdminMutation(
+    ({ staffId, id, ...body }: { staffId: string; id: string } & Record<string, unknown>) =>
+      apiClient.patch(`/workforce/employees/${staffId}/recurring-items/${id}`, body),
     ['admin-hr'],
   );
 }

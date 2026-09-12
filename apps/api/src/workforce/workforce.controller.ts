@@ -33,6 +33,8 @@ import { PayrollPolicyService } from './payroll-policy.service';
 import { PayrollInputService } from './payroll-input.service';
 import { UpsertLegalEmployerDto } from './dto/upsert-legal-employer.dto';
 import { RecordSalaryDto } from './dto/record-salary.dto';
+import { CreateRecurringItemDto, UpdateRecurringItemDto } from './dto/recurring-item.dto';
+import { EmployeeRecurringItemService } from './employee-recurring-item.service';
 import { RecordContributionBasisDto } from './dto/record-contribution-basis.dto';
 import {
   RecordEmployerStatutoryDto,
@@ -73,6 +75,7 @@ export class WorkforceController {
     private readonly benefits_: BenefitService,
     private readonly legalEmployers: LegalEmployerService,
     private readonly salaries: EmployeeSalaryService,
+    private readonly recurringItems: EmployeeRecurringItemService,
     private readonly contributionBases: ContributionBasisService,
     private readonly classifications: StatutoryClassificationService,
     private readonly payComponents: PayComponentService,
@@ -358,6 +361,27 @@ export class WorkforceController {
   @Post('employees/:staffId/salary')
   recordSalary(@Param('staffId') staffId: string, @Body() dto: RecordSalaryDto) {
     return this.salaries.record(staffId, dto);
+  }
+
+  // --- Recurring items: what a component carries for one employee monthly ----
+  @Get('employees/:staffId/recurring-items')
+  listRecurringItems(@Param('staffId') staffId: string) {
+    return this.recurringItems.list(staffId);
+  }
+
+  @Get('recurring-item-choices')
+  recurringItemChoices() {
+    return this.recurringItems.choices();
+  }
+
+  @Post('employees/:staffId/recurring-items')
+  createRecurringItem(@Param('staffId') staffId: string, @Body() dto: CreateRecurringItemDto) {
+    return this.recurringItems.create(staffId, dto);
+  }
+
+  @Patch('employees/:staffId/recurring-items/:id')
+  updateRecurringItem(@Param('staffId') staffId: string, @Param('id') id: string, @Body() dto: UpdateRecurringItemDto) {
+    return this.recurringItems.update(staffId, id, dto);
   }
 
   // --- Employer-selected contribution basis ---------------------------------

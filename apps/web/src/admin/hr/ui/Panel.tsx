@@ -13,13 +13,16 @@ export function PanelHead({
   title,
   sub,
   actions,
+  rule,
 }: {
   title: ReactNode;
   sub?: ReactNode;
   actions?: ReactNode;
+  /** A hairline above: the second and later sections of one panel. */
+  rule?: boolean;
 }) {
   return (
-    <div className="hr-panelHead">
+    <div className={rule ? 'hr-panelHead hr-panelHead--rule' : 'hr-panelHead'}>
       <div>
         <h2>{title}</h2>
         {sub ? <div className="hr-sub">{sub}</div> : null}

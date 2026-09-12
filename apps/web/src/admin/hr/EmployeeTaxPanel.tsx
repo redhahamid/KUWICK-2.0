@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { App, Button, DatePicker, Input, InputNumber, Modal, Select, Space, Tooltip } from 'antd';
+import { App, DatePicker, Input, InputNumber, Modal, Select, Tooltip } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
-import { AdminNotice, AdminSection } from '../components/AdminShell';
-import { DataTable, money } from '../components/DataTable';
+import { money } from '../components/DataTable';
+import { PanelHead } from './ui';
+import { Table } from './ui/Table';
+import { IconPlus } from './ui/icons';
 import { apiClient } from '../../core/api-client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCan } from '../../core/hooks/useCan';
@@ -210,227 +212,173 @@ export function EmployeeTaxPanel({ staffId }: { staffId: string }) {
     });
   };
 
+  const field = (label: string, control: React.ReactNode, help?: string) => (
+    <div>
+      <label>{label}</label>
+      {control}
+      {help ? <div className="hr-form__help">{help}</div> : null}
+    </div>
+  );
+
   return (
     <>
-      <AdminSection
+      <PanelHead
+        rule
         title={`TP1 — monthly deduction claims, ${year}`}
-        description="The employer's approved figure off the employee's Form TP1. It enters that month's tax as LP1; the relief catalogue's annual caps are not verified against LHDN, so approving the form remains the employer's own act."
+        sub="The employer's approved figure off the employee's Form TP1. It enters that month's tax as LP1; the relief catalogue's annual caps are not verified against LHDN, so approving the form remains the employer's own act."
         actions={
-          <Space>
+          <>
             <Select
               size="small"
               value={year}
               onChange={setYear}
+              aria-label="Tax year"
               options={[currentYear, currentYear - 1, currentYear - 2].map((y) => ({ value: y, label: String(y) }))}
               style={{ width: 90 }}
             />
             {mayRun ? (
-              <Button size="small" type="primary" ghost onClick={() => { setError(null); setTp1Open(true); }}>
+              <button type="button" className="hr-btn hr-btn--sm" onClick={() => { setError(null); setTp1Open(true); }}>
+                <IconPlus />
                 Record a TP1
-              </Button>
+              </button>
             ) : null}
-          </Space>
+          </>
         }
-      >
-        <DataTable<Tp1Row>
-          rowKey="id"
-          rows={data?.tp1 ?? []}
-          emptyText="No TP1 has been recorded this year. Monthly tax is worked out as though none was filed — which is correct for an employee who filed none."
-          columns={[
-            { title: 'Month', dataIndex: 'period', width: 110, render: (value: string) => dayjs(`${value}-01`).format('MMM YYYY') },
-            {
-              title: 'Deductions (LP1)',
-              width: 150,
-              align: 'right' as const,
-              render: (_: unknown, row: Tp1Row) => money(row.deductionsCents / 100),
-            },
-            {
-              title: 'Self-paid zakat',
-              width: 140,
-              align: 'right' as const,
-              render: (_: unknown, row: Tp1Row) =>
-                row.zakatSelfPaidCents > 0 ? money(row.zakatSelfPaidCents / 100) : <span className="kw-muted">—</span>,
-            },
-            {
-              title: 'Items',
-              render: (_: unknown, row: Tp1Row) =>
-                row.items ? (
-                  <span className="kw-muted">{row.items.map((item) => item.label).join(' · ')}</span>
-                ) : (
-                  <span className="kw-muted">Total only</span>
-                ),
-            },
-            {
-              title: 'Recorded',
-              width: 170,
-              render: (_: unknown, row: Tp1Row) => (
-                <Tooltip title={row.receivedDate ? `Form received ${row.receivedDate}` : undefined}>
-                  <span className="kw-muted">
-                    {row.recordedBy}, {dayjs(row.recordedAt).format('D MMM')}
-                  </span>
-                </Tooltip>
-              ),
-            },
-            {
-              title: '',
-              width: 80,
-              render: (_: unknown, row: Tp1Row) =>
-                mayRun ? (
-                  <Button size="small" danger type="text" onClick={() => remove('tp1', row.id)}>
-                    Delete
-                  </Button>
-                ) : null,
-            },
-          ]}
-        />
-      </AdminSection>
+      />
+      <Table<Tp1Row>
+        rowKey="id"
+        rows={data?.tp1 ?? []}
+        loading={query.isLoading}
+        emptyText="No TP1 has been recorded this year."
+        emptyHint="Monthly tax is worked out as though none was filed — which is correct for an employee who filed none."
+        columns={[
+          { title: 'Month', dataIndex: 'period', width: 110, render: (value: string) => dayjs(`${value}-01`).format('MMM YYYY') },
+          { title: 'Deductions (LP1)', key: 'lp1', num: true, width: 150, render: (_: unknown, row: Tp1Row) => money(row.deductionsCents / 100) },
+          {
+            title: 'Self-paid zakat',
+            key: 'zakat',
+            num: true,
+            width: 140,
+            render: (_: unknown, row: Tp1Row) => (row.zakatSelfPaidCents > 0 ? money(row.zakatSelfPaidCents / 100) : <span className="hr-faint">—</span>),
+          },
+          {
+            title: 'Items',
+            key: 'items',
+            render: (_: unknown, row: Tp1Row) =>
+              row.items ? <span className="hr-muted">{row.items.map((item) => item.label).join(' · ')}</span> : <span className="hr-faint">Total only</span>,
+          },
+          {
+            title: 'Recorded',
+            key: 'recorded',
+            width: 170,
+            render: (_: unknown, row: Tp1Row) => (
+              <Tooltip title={row.receivedDate ? `Form received ${row.receivedDate}` : undefined}>
+                <span className="hr-muted">
+                  {row.recordedBy}, {dayjs(row.recordedAt).format('D MMM')}
+                </span>
+              </Tooltip>
+            ),
+          },
+          {
+            title: '',
+            key: 'remove',
+            width: 80,
+            render: (_: unknown, row: Tp1Row) =>
+              mayRun ? (
+                <button type="button" className="hr-btn hr-btn--sm hr-btn--ghost" style={{ color: 'var(--hr-red)' }} onClick={() => remove('tp1', row.id)}>
+                  Delete
+                </button>
+              ) : null,
+          },
+        ]}
+      />
 
-      <AdminSection
+      <PanelHead
+        rule
         title={`TP3 — previous employment, ${year}`}
-        description="A mid-year joiner's pay, EPF, tax and deductions at their previous employer this year, so cumulative monthly tax carries on from where it stood. This employer's own pre-Kuwick months go through the opening-balance import instead — the server refuses the overlap either way."
+        sub="A mid-year joiner's pay, EPF, tax and deductions at their previous employer this year, so cumulative monthly tax carries on from where it stood. This employer's own pre-Kuwick months go through Opening balances instead — the server refuses the overlap either way."
         actions={
           mayRun ? (
-            <Button size="small" type="primary" ghost onClick={() => { setError(null); setTp3Open(true); }}>
+            <button type="button" className="hr-btn hr-btn--sm" onClick={() => { setError(null); setTp3Open(true); }}>
+              <IconPlus />
               Record a TP3
-            </Button>
-          ) : undefined
+            </button>
+          ) : null
         }
-      >
-        <DataTable<Tp3Row>
-          rowKey="id"
-          rows={data?.tp3 ?? []}
-          emptyText="No previous employment is declared for this year."
-          columns={[
-            { title: 'Previous employer', dataIndex: 'previousEmployerName' },
-            {
-              title: 'Period',
-              width: 190,
-              render: (_: unknown, row: Tp3Row) =>
-                row.employmentFrom || row.employmentTo ? (
-                  <span className="kw-muted">
-                    {row.employmentFrom ?? '…'} → {row.employmentTo ?? '…'}
-                  </span>
-                ) : (
-                  <span className="kw-muted">—</span>
-                ),
-            },
-            { title: 'Gross', width: 120, align: 'right' as const, render: (_: unknown, row: Tp3Row) => money(row.grossCents / 100) },
-            { title: 'EPF', width: 110, align: 'right' as const, render: (_: unknown, row: Tp3Row) => money(row.epfCents / 100) },
-            { title: 'MTD paid', width: 110, align: 'right' as const, render: (_: unknown, row: Tp3Row) => money(row.mtdPaidCents / 100) },
-            {
-              title: 'Source',
-              render: (_: unknown, row: Tp3Row) => <span className="kw-muted">{row.source}</span>,
-            },
-            {
-              title: '',
-              width: 80,
-              render: (_: unknown, row: Tp3Row) =>
-                mayRun ? (
-                  <Button size="small" danger type="text" onClick={() => remove('tp3', row.id)}>
-                    Delete
-                  </Button>
-                ) : null,
-            },
-          ]}
-        />
-      </AdminSection>
+      />
+      <Table<Tp3Row>
+        rowKey="id"
+        rows={data?.tp3 ?? []}
+        loading={query.isLoading}
+        emptyText="No previous employment is declared for this year."
+        columns={[
+          { title: 'Previous employer', dataIndex: 'previousEmployerName' },
+          {
+            title: 'Period',
+            key: 'period',
+            width: 190,
+            render: (_: unknown, row: Tp3Row) =>
+              row.employmentFrom || row.employmentTo ? (
+                <span className="hr-muted">
+                  {row.employmentFrom ?? '…'} → {row.employmentTo ?? '…'}
+                </span>
+              ) : (
+                <span className="hr-faint">—</span>
+              ),
+          },
+          { title: 'Gross', key: 'gross', num: true, width: 120, render: (_: unknown, row: Tp3Row) => money(row.grossCents / 100) },
+          { title: 'EPF', key: 'epf', num: true, width: 110, render: (_: unknown, row: Tp3Row) => money(row.epfCents / 100) },
+          { title: 'MTD paid', key: 'mtd', num: true, width: 110, render: (_: unknown, row: Tp3Row) => money(row.mtdPaidCents / 100) },
+          { title: 'Source', key: 'source', render: (_: unknown, row: Tp3Row) => <span className="hr-muted">{row.source}</span> },
+          {
+            title: '',
+            key: 'remove',
+            width: 80,
+            render: (_: unknown, row: Tp3Row) =>
+              mayRun ? (
+                <button type="button" className="hr-btn hr-btn--sm hr-btn--ghost" style={{ color: 'var(--hr-red)' }} onClick={() => remove('tp3', row.id)}>
+                  Delete
+                </button>
+              ) : null,
+          },
+        ]}
+      />
 
-      <Modal
-        open={tp1Open}
-        title="Record a TP1 for a month"
-        okText="Record it"
-        confirmLoading={saving}
-        onCancel={() => setTp1Open(false)}
-        onOk={saveTp1}
-      >
-        {error ? <AdminNotice tone="warn">{error}</AdminNotice> : null}
-        <div style={{ display: 'grid', gap: 10 }}>
-          <div>
-            <div className="kw-muted" style={{ fontSize: 12.5, marginBottom: 4 }}>Month it applies to</div>
-            <DatePicker picker="month" value={tp1Period} onChange={setTp1Period} style={{ width: '100%' }} />
-          </div>
-          <div>
-            <div className="kw-muted" style={{ fontSize: 12.5, marginBottom: 4 }}>Approved deductions (RM)</div>
-            <InputNumber value={tp1Amount} onChange={setTp1Amount} min={0} precision={2} style={{ width: '100%' }} />
-          </div>
-          <div>
-            <div className="kw-muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
-              Zakat the employee paid themselves (RM) — zakat deducted through payroll is already counted
-            </div>
-            <InputNumber value={tp1Zakat} onChange={setTp1Zakat} min={0} precision={2} style={{ width: '100%' }} />
-          </div>
-          <div>
-            <div className="kw-muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
-              Items, one per line, amount last — they must add to the total
-            </div>
-            <Input.TextArea
-              rows={3}
-              value={tp1Items}
-              onChange={(e) => setTp1Items(e.target.value)}
-              placeholder={'Medical treatment for parents 1,500.00\nLifestyle — books 500.00'}
-            />
-          </div>
-          <div>
-            <div className="kw-muted" style={{ fontSize: 12.5, marginBottom: 4 }}>Form received</div>
-            <DatePicker value={tp1Received} onChange={setTp1Received} style={{ width: '100%' }} />
-          </div>
+      <Modal open={tp1Open} title="Record a TP1 for a month" okText="Record it" confirmLoading={saving} onCancel={() => setTp1Open(false)} onOk={saveTp1}>
+        {error ? <div className="hr-notice hr-notice--attn">{error}</div> : null}
+        <div className="hr-form">
+          {field('Month it applies to', <DatePicker picker="month" value={tp1Period} onChange={setTp1Period} style={{ width: '100%' }} />)}
+          {field('Approved deductions (RM)', <InputNumber value={tp1Amount} onChange={setTp1Amount} min={0} precision={2} style={{ width: '100%' }} />)}
+          {field(
+            'Zakat the employee paid themselves (RM)',
+            <InputNumber value={tp1Zakat} onChange={setTp1Zakat} min={0} precision={2} style={{ width: '100%' }} />,
+            'Zakat deducted through payroll is already counted.',
+          )}
+          {field(
+            'Items, one per line, amount last',
+            <Input.TextArea rows={3} value={tp1Items} onChange={(e) => setTp1Items(e.target.value)} placeholder={'Medical treatment for parents 1,500.00\nLifestyle — books 500.00'} />,
+            'They must add to the total.',
+          )}
+          {field('Form received', <DatePicker value={tp1Received} onChange={setTp1Received} style={{ width: '100%' }} />)}
         </div>
       </Modal>
 
-      <Modal
-        open={tp3Open}
-        title={`Record previous employment for ${year}`}
-        okText="Record it"
-        confirmLoading={saving}
-        onCancel={() => setTp3Open(false)}
-        onOk={saveTp3}
-      >
-        {error ? <AdminNotice tone="warn">{error}</AdminNotice> : null}
-        <div style={{ display: 'grid', gap: 10 }}>
-          <div>
-            <div className="kw-muted" style={{ fontSize: 12.5, marginBottom: 4 }}>Previous employer</div>
-            <Input value={tp3Employer} onChange={(e) => setTp3Employer(e.target.value)} />
+      <Modal open={tp3Open} title={`Record previous employment for ${year}`} okText="Record it" confirmLoading={saving} onCancel={() => setTp3Open(false)} onOk={saveTp3}>
+        {error ? <div className="hr-notice hr-notice--attn">{error}</div> : null}
+        <div className="hr-form">
+          {field('Previous employer', <Input value={tp3Employer} onChange={(e) => setTp3Employer(e.target.value)} />)}
+          <div className="hr-form__row">
+            {field('Employed from', <DatePicker value={tp3From} onChange={setTp3From} style={{ width: '100%' }} />)}
+            {field('to', <DatePicker value={tp3To} onChange={setTp3To} style={{ width: '100%' }} />)}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <div className="kw-muted" style={{ fontSize: 12.5, marginBottom: 4 }}>Employed from</div>
-              <DatePicker value={tp3From} onChange={setTp3From} style={{ width: '100%' }} />
-            </div>
-            <div>
-              <div className="kw-muted" style={{ fontSize: 12.5, marginBottom: 4 }}>to</div>
-              <DatePicker value={tp3To} onChange={setTp3To} style={{ width: '100%' }} />
-            </div>
+          <div className="hr-form__row">
+            {field('Gross paid (RM)', <InputNumber value={tp3Gross} onChange={setTp3Gross} min={0} precision={2} style={{ width: '100%' }} />)}
+            {field('EPF (RM)', <InputNumber value={tp3Epf} onChange={setTp3Epf} min={0} precision={2} style={{ width: '100%' }} />)}
+            {field('MTD paid (RM)', <InputNumber value={tp3Mtd} onChange={setTp3Mtd} min={0} precision={2} style={{ width: '100%' }} />)}
+            {field('Zakat there (RM)', <InputNumber value={tp3Zakat} onChange={setTp3Zakat} min={0} precision={2} style={{ width: '100%' }} />)}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-            <div>
-              <div className="kw-muted" style={{ fontSize: 12.5, marginBottom: 4 }}>Gross paid (RM)</div>
-              <InputNumber value={tp3Gross} onChange={setTp3Gross} min={0} precision={2} style={{ width: '100%' }} />
-            </div>
-            <div>
-              <div className="kw-muted" style={{ fontSize: 12.5, marginBottom: 4 }}>EPF (RM)</div>
-              <InputNumber value={tp3Epf} onChange={setTp3Epf} min={0} precision={2} style={{ width: '100%' }} />
-            </div>
-            <div>
-              <div className="kw-muted" style={{ fontSize: 12.5, marginBottom: 4 }}>MTD paid (RM)</div>
-              <InputNumber value={tp3Mtd} onChange={setTp3Mtd} min={0} precision={2} style={{ width: '100%' }} />
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <div className="kw-muted" style={{ fontSize: 12.5, marginBottom: 4 }}>Zakat there (RM)</div>
-              <InputNumber value={tp3Zakat} onChange={setTp3Zakat} min={0} precision={2} style={{ width: '100%' }} />
-            </div>
-            <div>
-              <div className="kw-muted" style={{ fontSize: 12.5, marginBottom: 4 }}>Deductions applied there (RM)</div>
-              <InputNumber value={tp3Lp} onChange={setTp3Lp} min={0} precision={2} style={{ width: '100%' }} />
-            </div>
-          </div>
-          <div>
-            <div className="kw-muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
-              Where these figures came from — e.g. “Borang TP3 dated 3 July 2026”
-            </div>
-            <Input value={tp3Source} onChange={(e) => setTp3Source(e.target.value)} />
-          </div>
+          {field('Deductions applied there (RM)', <InputNumber value={tp3Lp} onChange={setTp3Lp} min={0} precision={2} style={{ width: '100%' }} />)}
+          {field('Where these figures came from', <Input value={tp3Source} onChange={(e) => setTp3Source(e.target.value)} placeholder="e.g. Borang TP3 dated 3 July 2026" />)}
         </div>
       </Modal>
     </>

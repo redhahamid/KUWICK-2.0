@@ -97,6 +97,10 @@ export type AuditAction =
   | 'legalEmployer.updated'
   | 'employee.employerAssigned'
   | 'employeeSalary.recorded'
+  /** A monthly allowance or deduction on one employee, dated. */
+  | 'employeeRecurringItem.created'
+  | 'employeeRecurringItem.updated'
+  | 'employeeRecurringItem.ended'
   /** The employer selected which wages EPF is contributed on — a dated preference. */
   | 'employeeContributionBasis.recorded'
   | 'employeeStatutoryClassification.recorded'

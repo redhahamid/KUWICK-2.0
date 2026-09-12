@@ -46,7 +46,8 @@ export const ADMIN_ROUTES = [
   { path: '/admin/hr/attendance/roster', module: 'HR', heading: 'Roster' },
   { path: '/admin/hr/leave', module: 'HR', heading: 'Leave' },
   { path: '/admin/hr/claims', module: 'HR', heading: 'Claims' },
-  { path: '/admin/hr/benefits', module: 'HR', heading: 'Medical Benefits' },
+  // Redirects to Employees ?view=benefits since Piece 3c: the heading is the Employees page's.
+  { path: '/admin/hr/benefits', module: 'HR', heading: 'Employees' },
   { path: '/admin/hr/reports', module: 'HR', heading: 'Reports' },
   { path: '/admin/hr/payroll', module: 'HR', heading: 'Payroll' },
   { path: '/admin/hr/incentives', module: 'HR', heading: 'Doctor Incentives' },

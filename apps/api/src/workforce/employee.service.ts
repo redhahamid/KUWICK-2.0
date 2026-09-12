@@ -43,6 +43,7 @@ export class EmployeeService {
     // request cared to name.
     const { scope } = await requireScope(this.rawPrisma, 'hr.view');
 
+    const today = new Date();
     const staff = await this.prisma.staff.findMany({
       where: {
         ...scope.where(params.clinicId),
@@ -57,6 +58,15 @@ export class EmployeeService {
           include: { manager: { select: { id: true, fullName: true } }, leavePolicy: { select: { id: true, name: true } } },
         },
         roleAssignments: { select: { role: true, customRole: { select: { name: true } } } },
+        // THE STANDING IN FORCE TODAY, one row, so the directory can say
+        // whether EIS applies without a read per employee. The same table the
+        // record resolves per period; here "today" is the only period asked.
+        statutoryClassifications: {
+          where: { effectiveFrom: { lte: today }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: today } }] },
+          orderBy: { effectiveFrom: 'desc' },
+          take: 1,
+          select: { epfApplicable: true, socsoApplicable: true, eisApplicable: true },
+        },
       },
     });
 
@@ -86,6 +96,21 @@ export class EmployeeService {
         leavePolicy: row.employeeProfile?.leavePolicy?.name ?? null,
         phone: row.employeeProfile?.phone ?? null,
         email: row.employeeProfile?.email ?? null,
+        // PRESENCE, NOT THE NUMBERS. The directory's four dots: is the
+        // reference number on file, is the bank account, and does the scheme
+        // apply to this person under the standing in force today. NULL for
+        // the schemes means nobody has recorded a standing — a different fact
+        // from "does not apply".
+        epfNumberOnFile: Boolean(row.employeeProfile?.epfNumber),
+        socsoNumberOnFile: Boolean(row.employeeProfile?.socsoNumber),
+        bankAccountOnFile: Boolean(row.employeeProfile?.bankAccountNo),
+        schemes: row.statutoryClassifications[0]
+          ? {
+              epf: row.statutoryClassifications[0].epfApplicable,
+              socso: row.statutoryClassifications[0].socsoApplicable,
+              eis: row.statutoryClassifications[0].eisApplicable,
+            }
+          : null,
       }));
   }
 
@@ -133,7 +158,7 @@ export class EmployeeService {
       include: {
         staff: { select: { id: true, fullName: true, role: true, active: true, clinicId: true } },
         manager: { select: { id: true, fullName: true } },
-        leavePolicy: { select: { id: true, name: true } },
+        leavePolicy: { select: { id: true, name: true, entitlements: { select: { leaveType: true, daysPerYear: true } } } },
         // WHO EMPLOYS THEM, which is not where they work. Stage 1 made the
         // legal employer a real entity and assigned every person to one, and
         // then this record showed only the branch — so the fact that decides
@@ -432,7 +457,19 @@ export class EmployeeService {
         payoutStatus: claim.payoutStatus,
         decidedBy: claim.decidedBy?.fullName ?? null,
       })),
-      leavePolicy: profile.leavePolicy ? { id: profile.leavePolicy.id, name: profile.leavePolicy.name } : null,
+      leavePolicy: profile.leavePolicy
+        ? {
+            id: profile.leavePolicy.id,
+            name: profile.leavePolicy.name,
+            // The policy's annual-leave days, so the record can say "16 days"
+            // beside the policy's name. One figure per policy: the entitlement
+            // table has no service-length tiers.
+            annualLeaveDays: (() => {
+              const annual = profile.leavePolicy.entitlements.find((row) => row.leaveType === 'ANNUAL');
+              return annual ? Number(annual.daysPerYear) : null;
+            })(),
+          }
+        : null,
       attendance: {
         daysRecorded: attendance.length,
         daysWorked: worked.length,

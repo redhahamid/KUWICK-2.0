@@ -107,6 +107,56 @@ export const IconLock = () => (
   </Glyph>
 );
 
+export const IconInfo = () => (
+  <Glyph>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v5M12 8h.01" />
+  </Glyph>
+);
+
+export const IconEdit = () => (
+  <Glyph>
+    <path d="M4 20h4l10-10-4-4L4 16v4z" />
+    <path d="M12.5 7.5l4 4" />
+  </Glyph>
+);
+
+export const IconMore = () => (
+  <Glyph>
+    <circle cx="6" cy="12" r="1.2" />
+    <circle cx="12" cy="12" r="1.2" />
+    <circle cx="18" cy="12" r="1.2" />
+  </Glyph>
+);
+
+export const IconDownload = () => (
+  <Glyph>
+    <path d="M12 4v11M7 10l5 5 5-5" />
+    <path d="M4 19h16" />
+  </Glyph>
+);
+
+export const IconHistory = () => (
+  <Glyph>
+    <path d="M4 12a8 8 0 1 0 2.3-5.7" />
+    <path d="M4 4v4.5h4.5" />
+    <path d="M12 8v4l3 2" />
+  </Glyph>
+);
+
+export const IconDoc = () => (
+  <Glyph>
+    <path d="M6 3h8l4 4v14H6z" />
+    <path d="M14 3v4h4M9 12h6M9 16h6" />
+  </Glyph>
+);
+
+export const IconPlus = () => (
+  <Glyph>
+    <path d="M12 5v14M5 12h14" />
+  </Glyph>
+);
+
 export const IconClose = () => (
   <Glyph>
     <path d="M6 6l12 12M18 6 6 18" />

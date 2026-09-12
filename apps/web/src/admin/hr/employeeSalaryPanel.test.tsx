@@ -40,7 +40,7 @@ import { EmployeeSalaryPanel } from './EmployeeSalaryPanel';
 
 function open() {
   render(<EmployeeSalaryPanel staffId="staff-1" canSeePay />);
-  fireEvent.click(screen.getByRole('button', { name: /Record a change/ }));
+  fireEvent.click(screen.getByRole('button', { name: /Change salary/ }));
 }
 
 /** The modal holds the amount input and the date picker; the amount is first. */
@@ -84,9 +84,10 @@ describe('recording a salary change', () => {
 
   it('names the row in force rather than leaving the reader to compare dates', () => {
     render(<EmployeeSalaryPanel staffId="staff-1" canSeePay />);
-    expect(screen.getByText('In force now')).toBeTruthy();
-    // Twice on purpose: the answer at the top and the row it comes from.
-    expect(screen.getAllByText('RM3,200.00').length).toBeGreaterThanOrEqual(1);
+    // The row in force carries the word, as a chip beside its date; the
+    // figure sits under a "Basic (RM)" header, so the prefix is the column's.
+    expect(screen.getByText('Current')).toBeTruthy();
+    expect(screen.getAllByText('3,200.00').length).toBeGreaterThanOrEqual(1);
   });
 
   it('says the salary is not shown rather than showing a blank, when pay is not visible', () => {

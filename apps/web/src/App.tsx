@@ -87,7 +87,6 @@ import { EmployeesPage } from './admin/hr/EmployeesPage';
 import { TimesheetPage } from './admin/hr/TimesheetPage';
 import { LegalEmployersPage } from './admin/hr/LegalEmployersPage';
 import { IncentivesPage } from './admin/hr/IncentivesPage';
-import { BenefitsPage } from './admin/hr/BenefitsPage';
 import { AdminRosterPage } from './admin/hr/RosterPage';
 import { LeavePage } from './admin/hr/LeavePage';
 import { ClaimsPage } from './admin/hr/ClaimsPage';
@@ -353,7 +352,8 @@ export function App() {
             <Route path="/admin/hr/payroll/all" element={<Navigate to="/admin/hr/payroll/history" replace />} />
             <Route path="/admin/hr/payroll/:id" element={<PayrollRunPage />} />
             <Route path="/admin/hr/incentives" element={<IncentivesPage />} />
-            <Route path="/admin/hr/benefits" element={<BenefitsPage />} />
+            {/* Medical benefits is a view of Employees now (Piece 1 decision); the old address still lands on it. */}
+            <Route path="/admin/hr/benefits" element={<Navigate to="/admin/hr/employees?view=benefits" replace />} />
             <Route path="/admin/hr/locum" element={<LocumPage />} />
             <Route path="/admin/hr/reports" element={<PayrollReportsPage />} />
             {/*

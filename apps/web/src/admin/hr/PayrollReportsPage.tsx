@@ -134,7 +134,7 @@ const ELSEWHERE: { title: string; description: string; to: string; category: Rep
   {
     title: 'Medical benefits register',
     description: 'What each employee has used against their entitlement this year.',
-    to: '/admin/hr/benefits',
+    to: '/admin/hr/employees?view=benefits',
     category: 'Claims & incentives',
   },
 ];
