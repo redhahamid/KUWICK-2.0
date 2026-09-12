@@ -239,6 +239,12 @@ give the spec a per-run counter for the employee number instead of
 acceptance: `makeEmployee` now numbers its employees from a per-run counter,
 and the suite is green with it.
 
+**After the acceptance corrections** (one chip for the list, the lock, the
+Kind column, the spec's counter): API unit unchanged; API e2e 40 suites, 455
+tests, green on one run with the counter in place; web unit 99 files, 1714
+tests, green; the admin-shell walk, the HR navigation spec and the HR
+workforce spec, 25 tests, green.
+
 ## 10. Not in this piece
 
 Every other HR screen (3c onward). The overtime and public-holiday pricing
