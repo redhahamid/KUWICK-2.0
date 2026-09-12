@@ -214,7 +214,7 @@ needs the database owner (`ADMIN_UAT_RESET_URL`), which the container has.
 | API unit | `npm run test:api` | 127 suites, 2727 tests, green |
 | API e2e | `cd apps/api && npx jest --config test/jest-e2e.json --runInBand` | 40 suites: 39 green on the full run; `payroll-synthetic-month` failed in its `beforeAll` and passed 14/14 on its own — see below |
 | Web unit | `cd apps/web && npx vitest run` | 99 files, 1714 tests, green — including the 3a isolation guards and the card-label-equals-title guard, both re-pointed at `HrPage` |
-| Browser | `CHROME_PATH=/opt/pw-browsers/chromium npx playwright test` | see the report |
+| Browser | `CHROME_PATH=/opt/pw-browsers/chromium npx playwright test` | 101 tests: 98 green, 2 skipped, 1 failed — `canvas-appointment.spec.ts:40`, the follow-up booked from the consultation not appearing in the Appointments module, which fails identically on master and was recorded as pre-existing in Piece 1. Run twice: the first run's nine failures are §8; the second, after the helper fix and a re-seed, is this row |
 
 **The one red suite, and why it is not this piece's.** `[D]` The full API
 e2e run failed `payroll-synthetic-month.e2e-spec.ts` in `beforeAll`: the
