@@ -4,16 +4,11 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PayrollJourney } from '../types';
 
-vi.mock('../hooks/useAdmin', () => ({
-  usePayrollInputs: () => ({ data: [], isLoading: false }),
-  usePayComponents: () => ({ data: { components: [] }, isLoading: false }),
-  useUpsertPayrollInput: () => ({ mutate: () => {}, isPending: false }),
-}));
+vi.mock('../hooks/useAdmin', () => ({}));
 
-const { PayrollGrid } = await import('./PayrollGrid');
+const { GRID_COLUMNS, PayrollGrid, planGridEdit } = await import('./PayrollGrid');
 
 type PayRow = PayrollJourney['pay']['rows'][number];
-type Totals = PayrollJourney['pay']['totals'];
 
 /**
  * THE VIEWPORT, UNDER TEST'S CONTROL.
@@ -21,14 +16,13 @@ type Totals = PayrollJourney['pay']['totals'];
  * The shared setup's `matchMedia` answers `false` to everything, which makes
  * antd's breakpoint hook report a phone — so without this every case below
  * would silently assert against the CARD layout while claiming to test the
- * register. Explicit width, explicit layout.
+ * grid. Explicit width, explicit layout.
  */
 function viewport(width: number) {
   window.matchMedia = ((query: string) => {
     const min = /min-width:\s*(\d+)px/.exec(query);
     const max = /max-width:\s*(\d+)px/.exec(query);
-    const matches =
-      (!min || width >= Number(min[1])) && (!max || width <= Number(max[1]));
+    const matches = (!min || width >= Number(min[1])) && (!max || width <= Number(max[1]));
     return {
       matches,
       media: query,
@@ -43,7 +37,6 @@ function viewport(width: number) {
 }
 
 afterEach(() => {
-  // Leave the shared all-false stub in place for whatever runs next.
   // @ts-expect-error — deliberately clearing the per-test override.
   delete window.matchMedia;
 });
@@ -86,293 +79,246 @@ function row(over: Partial<PayRow> = {}): PayRow {
     incentive: '0.00',
     otherEarnings: '0.00',
     deductionTotal: '439.50',
-    items: [],
+    claims: '0.00',
+    otherIncome: '250.00',
+    overtimeHours: 4,
+    unpaidDays: 0,
+    items: [
+      {
+        id: 'in-1',
+        componentCode: 'ALLOWANCE',
+        label: 'Fixed monthly allowance',
+        amount: '250.00',
+        source: 'MANUAL',
+        sourceRecordId: null,
+        provenance: null,
+        earnedPeriod: null,
+        editable: true,
+      },
+    ],
     ...over,
   } as PayRow;
 }
 
-function totals(over: Partial<Totals> = {}): Totals {
-  return {
-    basic: '3200.00',
-    unpaidLeave: '0.00',
-    salaryEarned: '3200.00',
-    allowances: '250.00',
-    overtime: '98.48',
-    incentive: '0.00',
-    otherEarnings: '0.00',
-    additions: '348.48',
-    gross: '3548.48',
-    statutoryEmployee: '414.85',
-    statutoryNotCalculated: 0,
-    pcb: '24.65',
-    pcbMissing: 0,
-    lindung: '0.00',
-    lindungNotDetermined: 0,
-    otherDeductions: '0.00',
-    deductions: '439.50',
-    net: '3108.98',
-    employerContributions: '530.25',
-    employerCost: '4078.73',
-    additionalEarnings: '250.00',
-    socsoEis: '24.85',
-    socsoEisNotCalculated: 0,
-    epfEmployee: '390.00',
-    socsoEmployee: '17.75',
-    eisEmployee: '7.10',
-    addsUp: true,
-    discrepancy: null,
-    ...over,
-  } as Totals;
-}
+const noop = () => {};
 
 function grid(props: Partial<Parameters<typeof PayrollGrid>[0]> = {}) {
   return render(
     <MemoryRouter>
-      <PayrollGrid rows={[row()]} totals={totals()} onOpenEmployee={() => {}} {...props} />
+      <PayrollGrid
+        rows={[row()]}
+        runId="run-1"
+        canEdit
+        edit={null}
+        onStartEdit={noop}
+        onEditChange={noop}
+        onSave={noop}
+        onCancel={noop}
+        saving={false}
+        {...props}
+      />
     </MemoryRouter>,
   );
 }
 
-/**
- * THE COLUMNS AS THE SUMMARY ROW SEES THEM.
- *
- * The header is two rows: the band (Earnings / Deductions / Result) over its
- * leaves, plus Employee spanning both. The summary emits one cell per LEAF
- * plus one for Employee, so the comparison list has to be assembled the same
- * way — reading only the second row drops Employee and every index is out by
- * one, which is the exact failure mode this file exists to catch.
- */
-function leafHeaders() {
+/** The leaf headers, in order — Employee and Status first, then the money. */
+function headers() {
   const rows = [...document.querySelectorAll('thead tr')];
-  if (rows.length < 2) {
-    return [...rows[0].querySelectorAll('th')].map((cell) => cell.textContent?.trim() ?? '');
-  }
-  const spanning = [...rows[0].querySelectorAll('th')].filter((cell) => cell.getAttribute('rowspan'));
-  const leaves = [...rows[1].querySelectorAll('th')];
-  return [...spanning, ...leaves].map((cell) => cell.textContent?.trim() ?? '');
+  return [...rows[rows.length - 1].querySelectorAll('th')].map((cell) => cell.textContent?.trim() ?? '');
 }
 
-function totalCells() {
-  const totalsRow = document.querySelector('.kw-payrollGrid__totals');
-  return [...(totalsRow?.querySelectorAll('td') ?? [])].map((cell) => cell.textContent?.trim() ?? '');
-}
-
-describe('the payroll register', () => {
+describe('the payroll grid', () => {
   /*
-   * THE TOTALS ROW HAS TO LINE UP WITH ITS COLUMNS.
-   *
-   * It did not. The summary's cells are POSITIONAL, and when the register
-   * still had an expand control that control was a column: the summary emitted
-   * one cell fewer than the table had and every total slid one place to the
-   * left. The figure sitting under NET PAY was the PCB total, and the month's
-   * net — the number the entire screen exists to show — was pushed off the end
-   * of the row. Nothing looked broken. RM110.25 under "Net pay" for six people
-   * is simply a number, and an owner reading it has no way to know it is the
-   * wrong column's.
+   * THE ROW ADDS UP LEFT TO RIGHT. Everything that makes up gross sits to the
+   * left of it and everything that comes off sits to the right — the shape
+   * payroll.html draws, and the property that lets a reader check a row.
    */
-  it('puts each total under its own column, net pay included', () => {
-    viewport(1440);
-    grid({
-      rows: [row(), row({ staffId: 'staff-2', name: 'Siti Zaleha' })],
-      totals: totals({ net: '5491.53' }),
-    });
-
-    const header = leafHeaders();
-    const cells = totalCells();
-    expect(cells).toHaveLength(header.length);
-
-    const netColumn = header.indexOf('Net pay');
-    expect(netColumn).toBeGreaterThan(-1);
-    expect(cells[netColumn]).toBe('5491.53');
-  });
-
-  /*
-   * AND IT STILL LINES UP WHEN THE OPTIONAL COLUMNS ARE ON.
-   *
-   * This is the case that used to be impossible to keep right: the columns
-   * were built from one list and the totals from a second, hand-kept one, so
-   * the first optional column to appear slid every total after it. The two are
-   * now derived from ONE definition — a column names the total it foots on —
-   * which is what this asserts, at every combination of the switches.
-   */
-  it('keeps every total under its column when columns are split apart', () => {
+  it('lays the columns out as payroll.html does: earnings, gross, deductions, net', () => {
     viewport(1440);
     grid();
-
-    for (const label of ['Allowances and claims separately', 'SOCSO and EIS separately', 'Cost to clinic']) {
-      fireEvent.click(screen.getByRole('button', { name: /Columns/ }));
-      fireEvent.click(screen.getByText(label));
-
-      const header = leafHeaders();
-      const cells = totalCells();
-      expect(cells, `after "${label}"`).toHaveLength(header.length);
-      expect(cells[header.indexOf('Net pay')], `after "${label}"`).toBe('3108.98');
+    expect(headers()).toEqual([
+      'Employee',
+      'Status',
+      'Basic',
+      'Other income',
+      'OT h',
+      'Unpaid d',
+      'Claims',
+      'Gross',
+      'EPF',
+      'SOCSO',
+      'EIS',
+      'PCB',
+      'Other',
+      'Net pay',
+      '',
+    ]);
+    const at = (title: string) => GRID_COLUMNS.findIndex((column) => column.title === title);
+    for (const title of ['Basic', 'Other income', 'OT h', 'Unpaid d', 'Claims']) {
+      expect(at(title), `${title} must come before Gross`).toBeLessThan(at('Gross'));
     }
-
-    // And the split columns really did replace the grouped one rather than
-    // appearing beside it, which would double-count the row.
-    const header = leafHeaders();
-    expect(header).toContain('Allowances');
-    expect(header).toContain('Claims & other');
-    expect(header).not.toContain('Additional');
-    expect(header).toContain('SOCSO');
-    expect(header).toContain('EIS');
-    expect(header).not.toContain('SOCSO/EIS');
-  });
-
-  /*
-   * THE TOTALS ARE THE SERVER'S, NOT A SUM OF WHAT IS ON SCREEN.
-   *
-   * The register this replaced summed its own columns in a `useMemo`, which is
-   * a second payroll implementation — and one that silently disagrees with the
-   * payslip the moment a row is filtered, paginated or rounded differently.
-   * The footer must print what the API said, even when that is not what the
-   * visible rows add to.
-   */
-  it('prints the server total rather than adding the rows up itself', () => {
-    viewport(1440);
-    grid({
-      rows: [row({ netPay: '1.00' }), row({ staffId: 'staff-2', name: 'Siti Zaleha', netPay: '2.00' })],
-      totals: totals({ net: '9999.99' }),
-    });
-    const header = leafHeaders();
-    expect(totalCells()[header.indexOf('Net pay')]).toBe('9999.99');
-  });
-
-  /*
-   * THE ROW HAS TO ADD UP LEFT TO RIGHT.
-   *
-   * `grossPay` is basic LESS unpaid leave plus the additions — s.18A makes an
-   * incomplete month's wages smaller, it does not take a deduction from them.
-   * The Unpaid leave column sat AFTER Gross, between it and Other deductions,
-   * which is where a deduction goes: basic plus the four additions came to
-   * RM41,094.88 against a printed gross of RM40,959.40, and the RM135.48 that
-   * explains the gap was on the wrong side of it. Nothing looked broken; a
-   * register that does not add up is simply a register somebody stops trusting.
-   */
-  it('puts every column that makes up gross to the LEFT of it, so a row adds up', () => {
-    viewport(1440);
-    grid({
-      rows: [
-        row({
-          basicSalary: '4200.00',
-          unpaidLeaveDeduction: '135.48',
-          allowances: '0.00',
-          overtimePay: '0.00',
-          incentive: '0.00',
-          additionalEarnings: '0.00',
-          grossPay: '4064.52',
-        }),
-      ],
-      totals: totals({
-        basic: '4200.00',
-        unpaidLeave: '135.48',
-        additionalEarnings: '0.00',
-        overtime: '0.00',
-        incentive: '0.00',
-        gross: '4064.52',
-      }),
-    });
-
-    const header = leafHeaders();
-    const at = (label: string) => header.indexOf(label);
-    for (const label of ['Basic', 'Unpaid leave', 'Additional', 'Overtime', 'Incentive']) {
-      expect(at(label), `${label} must exist`).toBeGreaterThan(-1);
-      expect(at(label), `${label} must come before Gross`).toBeLessThan(at('Gross'));
-    }
-    // And what genuinely does come off AFTER gross stays after it.
     expect(at('EPF')).toBeGreaterThan(at('Gross'));
-    expect(at('PCB')).toBeGreaterThan(at('Gross'));
-
-    // The arithmetic the order promises: 4200 − 135.48 = 4064.52.
-    const cells = totalCells();
-    const money = (label: string) => Number(cells[at(label)]?.replace('−', '').replace('-', '') || '0');
-    expect(
-      money('Basic') - money('Unpaid leave') + money('Additional') + money('Overtime') + money('Incentive'),
-    ).toBeCloseTo(money('Gross'), 2);
+    expect(at('Net pay')).toBe(GRID_COLUMNS.length - 1);
   });
 
   /*
-   * A ROW OPENS A DRAWER, NOT AN EXPANSION.
-   *
-   * The detail used to open UNDER the row, which pushed every other row down
-   * the screen — so the moment you opened one person you lost the register you
-   * were reading them against.
+   * THREE KINDS OF CELL, and the class says which. Grey comes from records or
+   * is worked out; white can be edited. Overtime hours and unpaid days are
+   * grey on purpose — §6: overtime reaches payroll only once approved in
+   * Attendance, and nobody works it out by hand.
    */
-  it('opens the chosen employee instead of expanding the table', () => {
+  it('marks basic, hours and days as from-the-records and only the two "other" cells as editable', () => {
     viewport(1440);
-    const opened: string[] = [];
-    grid({
-      rows: [row(), row({ staffId: 'staff-2', name: 'Siti Zaleha' })],
-      onOpenEmployee: (chosen) => opened.push(chosen.name),
-    });
-
-    const before = document.querySelectorAll('tbody .ant-table-row').length;
-    fireEvent.click(screen.getByText('Siti Zaleha'));
-
-    expect(opened).toEqual(['Siti Zaleha']);
-    expect(document.querySelectorAll('tbody .ant-table-row')).toHaveLength(before);
-    expect(document.querySelectorAll('.ant-table-row-expand-icon')).toHaveLength(0);
+    grid();
+    const cells = [...document.querySelectorAll('tbody tr:first-child td')];
+    const kind = (title: string) => {
+      const index = 2 + GRID_COLUMNS.findIndex((column) => column.title === title);
+      const cell = cells[index];
+      return cell.classList.contains('is-editable') ? 'editable' : cell.classList.contains('is-record') ? 'record' : cell.classList.contains('is-auto') ? 'auto' : '?';
+    };
+    expect(kind('Basic')).toBe('record');
+    expect(kind('OT h')).toBe('record');
+    expect(kind('Unpaid d')).toBe('record');
+    expect(kind('Other income')).toBe('editable');
+    expect(kind('Other')).toBe('editable');
+    expect(kind('Claims')).toBe('auto');
+    expect(kind('Gross')).toBe('auto');
+    expect(kind('EPF')).toBe('auto');
+    expect(kind('Net pay')).toBe('auto');
   });
 
-  it('renders a statutory figure that was never worked out as a dash, never as 0.00', () => {
-    // NULL means "not worked out" — no rates configured, or a fact missing.
-    // Rendering it as 0.00 tells a clinic it owes nothing, which is the one
-    // wrong answer that gets acted on.
+  it('prints the server’s figures grouped, and a dash for a statutory figure never worked out', () => {
+    // NULL means "not worked out". Rendering it as 0.00 tells a clinic it
+    // owes nothing, which is the one wrong answer that gets acted on.
     viewport(1440);
-    grid({ rows: [row({ epfEmployee: null, pcb: null, socsoEis: null })] });
-    const tableRow = document.querySelector('tbody .ant-table-row');
-    expect(within(tableRow as HTMLElement).getAllByText('—').length).toBeGreaterThan(0);
+    grid({ rows: [row({ basicSalary: '4200.00', epfEmployee: null, pcb: null })] });
+    const first = document.querySelector('tbody tr') as HTMLElement;
+    expect(within(first).getByText('4,200.00')).toBeVisible();
+    expect(within(first).getByText('3,548.48')).toBeVisible();
+    expect(within(first).getAllByTitle('Not worked out')).toHaveLength(2);
+    expect(within(first).getAllByText('0.00', { exact: true }).length).toBeGreaterThan(0); // claims really are nil
   });
 
-  /*
-   * A PROBLEM BELONGS BESIDE THE PERSON IT IS A PROBLEM WITH.
-   *
-   * Readiness used to be a separate PAGE: leave the register, read a list of
-   * names, come back, find the row again. The status and its remedy are now on
-   * the row, and the remedy goes to where the fix is made — never to Settings
-   * for somebody to hunt through.
-   */
-  it('shows a blocker on the row it blocks, with a fix that goes to the remedy', () => {
+  it('shows the person’s status beside the person, with Fix going to the remedy', () => {
     viewport(1440);
     grid({
       rows: [
-        row({
-          staffId: 'staff-9',
-          name: 'Wan Azman',
-          state: 'NEEDS_ATTENTION',
-          blockers: 1,
-          reason: 'Bank account missing',
-          fixLink: '/admin/hr/employees/staff-9',
-        }),
+        row({ staffId: 'staff-9', name: 'Wan Azman', blockers: 1, reason: 'Bank account missing', fixLink: '/admin/hr/employees/staff-9' }),
+        row({ staffId: 'staff-2', name: 'Siti Zaleha', warnings: 1, reason: 'EPF basis differs' }),
+        row(),
       ],
     });
     expect(screen.getByText('Blocked')).toBeVisible();
     expect(screen.getByRole('link', { name: 'Fix' })).toHaveAttribute('href', '/admin/hr/employees/staff-9');
-  });
-
-  it('separates a warning from a blocker, because they are different decisions', () => {
-    viewport(1440);
-    grid({ rows: [row({ warnings: 1, reason: 'EPF basis differs from Kuwick assessment' })] });
     expect(screen.getByText('Check')).toBeVisible();
-    expect(screen.queryByText('Blocked')).toBeNull();
+    expect(screen.getByText('Ready')).toBeVisible();
   });
 
-  /*
-   * A PHONE GETS CARDS, NOT A SQUEEZED SPREADSHEET.
-   *
-   * Sixteen columns inside 390px can only be done by shrinking the type until
-   * nobody can read it, which is not a responsive design — it is a smaller
-   * unreadable one.
-   */
-  it('becomes one card per person on a phone, and still shows the month total', () => {
+  it('still lists somebody the run left out — blocked, with dashes, and a Fix to their record', () => {
+    // A person with no line is not a person with no problem; a grid that
+    // omits them is a month that is quietly one person short.
+    viewport(1440);
+    grid({ leftOut: [{ staffId: 'staff-7', name: 'Wan Azman', position: 'Panel clerk', reason: 'No salary on record' }] });
+    const rows = document.querySelectorAll('tbody tr');
+    expect(rows).toHaveLength(2);
+    const last = rows[1] as HTMLElement;
+    expect(within(last).getByText('Blocked')).toBeVisible();
+    expect(within(last).getByRole('link', { name: 'Fix' })).toHaveAttribute('href', '/admin/hr/employees/staff-7');
+    expect(within(last).getAllByText('—').length).toBe(GRID_COLUMNS.length);
+  });
+
+  it('links the name to the person’s own payroll page for the run', () => {
+    viewport(1440);
+    grid();
+    expect(screen.getByRole('link', { name: /Nurul Hidayah/ })).toHaveAttribute('href', '/admin/hr/payroll/run-1/employees/staff-1');
+  });
+
+  it('turns the two white cells into inputs while a row is edited, and links the grey ones to where they are corrected', () => {
+    viewport(1440);
+    const started: string[] = [];
+    const { rerender } = grid({ onStartEdit: (chosen) => started.push(chosen.name) });
+    fireEvent.click(screen.getByRole('button', { name: /Edit/ }));
+    expect(started).toEqual(['Nurul Hidayah']);
+
+    rerender(
+      <MemoryRouter>
+        <PayrollGrid
+          rows={[row()]}
+          runId="run-1"
+          canEdit
+          edit={{ staffId: 'staff-1', otherIncome: '250.00', otherDeduction: '0.00' }}
+          onStartEdit={noop}
+          onEditChange={noop}
+          onSave={noop}
+          onCancel={noop}
+          saving={false}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('textbox', { name: 'Other income for Nurul Hidayah' })).toHaveValue('250.00');
+    expect(screen.getByRole('textbox', { name: 'Other for Nurul Hidayah' })).toHaveValue('0.00');
+    expect(screen.getByText('Editing')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeVisible();
+    // Statutory cells stay untouchable: no input for EPF, SOCSO, EIS or PCB.
+    expect(screen.getAllByRole('textbox')).toHaveLength(2);
+    const fixes = screen.getAllByRole('link', { name: 'Fix' }).map((link) => link.getAttribute('href'));
+    expect(fixes).toEqual(['/admin/hr/attendance?staffId=staff-1', '/admin/hr/leave?staffId=staff-1']);
+  });
+
+  it('becomes one card per person on a phone', () => {
     viewport(390);
     grid({ rows: [row(), row({ staffId: 'staff-2', name: 'Siti Zaleha' })] });
-
     expect(document.querySelector('table')).toBeNull();
-    expect(document.querySelectorAll('.kw-payCard:not(.kw-payCard--total)')).toHaveLength(2);
-    expect(screen.getByText('Nurul Hidayah')).toBeVisible();
-    expect(screen.getByText('2 employees')).toBeVisible();
-    expect(within(document.querySelector('.kw-payCard--total') as HTMLElement).getByText('3108.98')).toBeVisible();
+    expect(document.querySelectorAll('.kw-payCard')).toHaveLength(2);
+    expect(screen.getByText('Siti Zaleha')).toBeVisible();
+  });
+});
+
+/*
+ * WHAT A TYPED FIGURE MEANS. "Other income" is a sum, and only the hand-keyed
+ * part of it is the cell's to change. The plan is the one piece of arithmetic
+ * the grid does, so it is pinned here to the sen.
+ */
+describe('planning a grid edit', () => {
+  it('turns a higher figure into a larger hand-keyed allowance, keeping the recorded part', () => {
+    // 250.00 shown = 250.00 typed by hand earlier; nothing recorded. 300 → 300.
+    const plan = planGridEdit(row(), { staffId: 'staff-1', otherIncome: '300', otherDeduction: '0.00' });
+    expect(plan.problem).toBeNull();
+    expect(plan.changes).toEqual([{ componentCode: 'ALLOWANCE', amount: '300.00', existingId: 'in-1', label: 'Fixed monthly allowance' }]);
+  });
+
+  it('keeps the recorded part fixed: a recurring item is corrected on the record, not overwritten here', () => {
+    // 1,050.00 shown = 800 recurring + 250 typed. Typing 900 leaves 100 by hand;
+    // typing 700 would need a negative allowance, so it is refused with the floor named.
+    const withRecurring = row({
+      otherIncome: '1050.00',
+      items: [
+        ...row().items,
+        { id: 'in-2', componentCode: 'ALLOWANCE', label: 'Housing', amount: '800.00', source: 'RECURRING', sourceRecordId: 'ri-1', provenance: 'Recurring allowance', earnedPeriod: null, editable: false },
+      ],
+    });
+    const ok = planGridEdit(withRecurring, { staffId: 'staff-1', otherIncome: '900', otherDeduction: '0.00' });
+    expect(ok.changes[0]).toMatchObject({ componentCode: 'ALLOWANCE', amount: '100.00' });
+    const refused = planGridEdit(withRecurring, { staffId: 'staff-1', otherIncome: '700', otherDeduction: '0.00' });
+    expect(refused.problem).toMatch(/cannot go below RM800\.00/);
+    expect(refused.changes).toEqual([]);
+  });
+
+  it('removes the hand-keyed input when the cell is cleared to what the records give, and changes nothing when nothing moved', () => {
+    const cleared = planGridEdit(row(), { staffId: 'staff-1', otherIncome: '0', otherDeduction: '0.00' });
+    expect(cleared.changes).toEqual([{ componentCode: 'ALLOWANCE', amount: null, existingId: 'in-1', label: 'Fixed monthly allowance' }]);
+    const same = planGridEdit(row(), { staffId: 'staff-1', otherIncome: 'RM 250.00', otherDeduction: '0.00' });
+    expect(same.changes).toEqual([]);
+    expect(same.problem).toBeNull();
+  });
+
+  it('writes a deduction typed into "Other" as a hand-keyed other deduction', () => {
+    const plan = planGridEdit(row(), { staffId: 'staff-1', otherIncome: '250.00', otherDeduction: '120.50' });
+    expect(plan.changes).toEqual([{ componentCode: 'OTHER_DEDUCTION', amount: '120.50', existingId: null, label: 'Other deduction (payroll grid)' }]);
+  });
+
+  it('refuses a figure that is not money', () => {
+    expect(planGridEdit(row(), { staffId: 'staff-1', otherIncome: 'abc', otherDeduction: '0' }).problem).toMatch(/at most two decimal places/);
   });
 });

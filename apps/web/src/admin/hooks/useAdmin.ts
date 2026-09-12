@@ -90,6 +90,7 @@ import type {
   StatutoryCheck,
   PayrollPoliciesResponse,
   PayrollPolicyRow,
+  EmployeeYtd,
   PayComponentRow,
   RecurringItemRow,
   RecurringItemChoice,
@@ -1098,6 +1099,15 @@ export function useOverrideException() {
       apiClient.patch(`/workforce/payroll/exceptions/${id}/override`, { reason }),
     ['admin-hr'],
   );
+}
+
+/** The year so far for one person — approved months and the opening import, summed by the server. */
+export function useEmployeeYtd(staffId: string | undefined, taxYear: number) {
+  return useQuery({
+    queryKey: ['admin-hr', 'employee-ytd', staffId, taxYear],
+    queryFn: () => apiClient.get<EmployeeYtd>(`/workforce/payroll/employees/${staffId}/ytd?taxYear=${taxYear}`),
+    enabled: Boolean(staffId),
+  });
 }
 
 export function usePayrollVariance(runId: string | undefined) {

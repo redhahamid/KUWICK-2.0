@@ -3,10 +3,10 @@ import { describe, expect, it } from 'vitest';
 // Vite's ?raw import gives the file's SOURCE. Several of these guards are about
 // what the screens are WIRED to, which rendering alone cannot prove.
 import runSource from './PayrollRunPage.tsx?raw';
-// The per-person money detail moved out of the run page's two reading steps
-// and into the drawer the register opens, so the guards that pin "this screen
-// renders the engine and computes nothing" follow it there.
-import drawerSource from './PayrollEmployeeDrawer.tsx?raw';
+// The per-person money detail is its own page (employee-payroll.html), so the
+// guards that pin "this screen renders the engine and computes nothing" live
+// against it.
+import drawerSource from './PayrollEmployeePage.tsx?raw';
 import gridSource from './PayrollGrid.tsx?raw';
 import homeSource from './PayrollMonthPage.tsx?raw';
 import centreSource from './PayrollExceptionCentre.tsx?raw';
@@ -85,25 +85,22 @@ describe('the money steps render the engine and compute nothing', () => {
    * as zero. The grouping now comes from the journey payload; these guards
    * assert the screens read it and no longer do arithmetic of their own.
    */
-  it('renders the residual the server derived rather than subtracting to find it', () => {
+  it('renders the "other income" and "claims" the server derived rather than subtracting to find them', () => {
     /*
-     * BASIC + ALLOWANCES + OVERTIME + INCENTIVES + BONUS DOES NOT ALWAYS REACH
-     * GROSS. A reimbursed claim and a mileage payment are earnings belonging to
-     * none of those five, so a register without the residual is a money table
-     * that visibly fails to add up across — the defect two earlier versions of
-     * the earnings table had.
-     *
-     * The register carries the column and the run page fills it from
-     * `pay.rows[].otherEarnings`, which the engine worked out from the line's
-     * own gross. Neither file subtracts anything to find it.
+     * BASIC + OVERTIME + CLAIMS DOES NOT REACH GROSS. Allowances, incentives,
+     * a bonus and the recurring items are "other income" — the grid's own
+     * column — and the journey service works it out as a residual of the
+     * line's own gross, so the row cannot fail to add up across. The grid
+     * carries the column and fills it from `pay.rows[].otherIncome`; it never
+     * subtracts anything to find it.
      */
-    expect(code(gridSource)).toMatch(/otherEarnings/);
-    expect(code(gridSource)).toMatch(/Claims & other/);
-    // The residual reaches the screen as a FIELD on the row and as a totals
-    // key — never as a difference the register works out. `additionalEarnings`
-    // is the same money grouped with allowances, also summed by the server.
-    expect(code(gridSource)).toMatch(/total: 'otherEarnings'/);
-    expect(code(gridSource)).toMatch(/total: 'additionalEarnings'/);
+    expect(code(gridSource)).toMatch(/field: 'otherIncome'/);
+    expect(code(gridSource)).toMatch(/field: 'claims'/);
+    // Each column names the totals key it foots on — the stat cards and the
+    // export read the same keys — never a difference the grid works out.
+    expect(code(gridSource)).toMatch(/total: 'otherIncome'/);
+    expect(code(gridSource)).toMatch(/total: 'claims'/);
+    expect(code(gridSource)).not.toMatch(/grossCents\s*-/);
   });
 
   it('takes every total from data.pay.totals, never from a sum over the rows on screen', () => {
@@ -135,18 +132,18 @@ describe('the money steps render the engine and compute nothing', () => {
      * because that is the property that makes the arithmetic work.
      */
     const grid = code(gridSource);
-    expect(grid.indexOf("field: 'unpaidLeaveDeduction'")).toBeGreaterThan(-1);
-    expect(grid.indexOf("field: 'unpaidLeaveDeduction'")).toBeLessThan(grid.indexOf("field: 'grossPay'"));
+    expect(grid.indexOf("field: 'unpaidDays'")).toBeGreaterThan(-1);
+    expect(grid.indexOf("field: 'unpaidDays'")).toBeLessThan(grid.indexOf("field: 'grossPay'"));
 
-    // And in the drawer it sits with the EARNINGS it reduces, because gross
-    // has already absorbed it — listed under Deductions it was a total that
-    // never touches net pay.
-    expect(code(drawerSource)).toMatch(/Less unpaid leave/);
+    // And on the person's page it sits with the EARNINGS it reduces, because
+    // gross has already absorbed it — listed under Deductions it was a total
+    // that never touches net pay.
+    expect(code(drawerSource)).toMatch(/Unpaid leave —/);
     expect(code(drawerSource)).toMatch(/wages are smaller, not deducted twice/);
-    // The deductions total is the line's OWN other-deductions figure. Anything
-    // that folded unpaid leave back in here would charge it twice.
+    // The deductions total is the line's OWN figure. Anything that folded
+    // unpaid leave back in here would charge it twice.
     expect(code(drawerSource)).toMatch(/label="Other deductions"/);
-    expect(code(drawerSource)).toMatch(/row\.otherDeductions/);
+    expect(code(drawerSource)).toMatch(/row\.deductionTotal/);
   });
 
   it('surfaces a run whose lines do not reach its own totals rather than tidying it up', () => {
@@ -359,12 +356,12 @@ describe('the locum screen never implies payroll', () => {
 });
 
 describe('derived figures are corrected upstream, never re-keyed in payroll', () => {
-  it('says so on the employee drawer, beside the figure it explains', () => {
+  it('says so on the employee page, beside the figure it explains', () => {
     // A derived figure is not editable here, and the drawer says WHERE it is
     // corrected rather than leaving the reader to guess — the upstream map
     // turns "you cannot edit this" into "edit this in Attendance".
     expect(code(drawerSource)).toMatch(/const UPSTREAM/);
-    expect(code(drawerSource)).toMatch(/Edit in \{upstream\.where\}/);
+    expect(code(drawerSource)).toMatch(/Edit in \$?\{upstream\.where\}/);
     expect(code(drawerSource)).toMatch(/item\.editable \? null : UPSTREAM\[item\.source\]/);
     // And the provenance the materialiser wrote travels with every derived
     // amount, which is the whole reason the drawer replaced a row expansion.

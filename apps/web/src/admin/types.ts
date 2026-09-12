@@ -867,8 +867,16 @@ export interface PayslipDoc {
     epfNumber: string | null;
     socsoNumber: string | null;
     taxNumber: string | null;
+    /** NRIC or passport, as on the record today. */
+    identifier?: { type: string; value: string } | null;
     identifiersAsAt: 'CURRENT';
   };
+  /** The two signatures on the slip: who prepared the month, who approved it. */
+  preparedBy?: { name: string; position: string | null; at: string } | null;
+  approvedBy?: { name: string; position: string | null; at: string } | null;
+  paidAt?: string | null;
+  netInWords?: string;
+  hrdLevyCents?: number | null;
   attendance: { workedDays: number | null; unpaidDays: number | null; overtimeHours: number | null } | null;
   itemised: boolean;
   earnings: { code: string; label: string; amountCents: number }[] | null;
@@ -1833,6 +1841,23 @@ export interface PayrollExceptionList {
   gate: PayrollExceptionGate;
 }
 
+/** The year so far for one employee: the months on record and their sum, in cents. */
+export interface EmployeeYtd {
+  staffId: string;
+  taxYear: number;
+  months: { month: number; grossCents: number; pcbCents: number; epfEmployeeCents: number; source?: string }[];
+  total: {
+    grossCents: number;
+    additionalRemunerationCents: number;
+    pcbCents: number;
+    zakatCents: number;
+    epfEmployeeCents: number;
+    socsoEmployeeCents: number;
+    eisEmployeeCents: number;
+  };
+  imported: number[];
+}
+
 export interface PayrollVarianceRow {
   staffId: string;
   name: string;
@@ -2260,6 +2285,16 @@ export interface PayrollJourney {
       otherEarnings: string;
       /** The line's own gross minus its own net. */
       deductionTotal: string;
+      /**
+       * THE GRID'S OWN COLUMNS (Piece 3d), summed by the server. Claims are
+       * the reimbursed claims on the line; "other income" is everything that
+       * reached gross which is not basic, overtime or a claim — the white cell
+       * the grid lets a person edit. Hours and days come from the line.
+       */
+      claims: string;
+      otherIncome: string;
+      overtimeHours: number;
+      unpaidDays: number;
       items: PayrollJourneyPayItem[];
     }[];
     /**
@@ -2305,6 +2340,11 @@ export interface PayrollJourney {
       epfEmployee: string;
       socsoEmployee: string;
       eisEmployee: string;
+      /** The grid's columns — see the row. */
+      claims: string;
+      otherIncome: string;
+      overtimeHours: number;
+      unpaidDays: number;
       addsUp: boolean;
       discrepancy: string | null;
     };

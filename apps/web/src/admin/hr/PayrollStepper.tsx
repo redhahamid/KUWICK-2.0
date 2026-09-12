@@ -1,4 +1,5 @@
-import { StageBar } from '../components/StageBar';
+import type { ReactNode } from 'react';
+import { Steps } from './ui';
 
 export type StepKey = 'prepare' | 'review' | 'approve' | 'complete';
 
@@ -13,9 +14,9 @@ export type StepKey = 'prepare' | 'review' | 'approve' | 'complete';
  * four pages that wanted nothing from them.
  *
  * The stages below are the decisions instead: get it ready, look at it,
- * approve it, finish it. The earnings and deductions detail did not go
- * anywhere — it is under the register's own rows, next to the figure it
- * explains, which is where somebody asks the question.
+ * approve it, pay it — the words payroll.html uses. The earnings and
+ * deductions detail did not go anywhere: it is on each person's own payroll
+ * page, next to the figure it explains, which is where somebody asks.
  *
  * The old keys still resolve (see `normaliseStep`) because links to
  * `?step=earnings` are in exception remedies and in the guide.
@@ -23,12 +24,9 @@ export type StepKey = 'prepare' | 'review' | 'approve' | 'complete';
 export const STEPS: { key: StepKey; label: string; heading: string; blurb: string }[] = [
   {
     key: 'prepare',
-    // THE REFERENCE SHEET'S NAMES, where the domain does not contradict them:
-    // Payroll Details · Review · Approve · Finalise. "Prepare" and "Complete"
-    // were mine; these are the words a payroll clerk already uses.
-    label: 'Payroll Details',
+    label: 'Prepare',
     heading: 'The month, employee by employee',
-    blurb: 'Every figure that makes up every payslip. Open a row for one person’s detail.',
+    blurb: 'Grey cells come from records or are worked out for you; white cells you can edit. Save each row.',
   },
   {
     key: 'review',
@@ -40,12 +38,12 @@ export const STEPS: { key: StepKey; label: string; heading: string; blurb: strin
     key: 'approve',
     label: 'Approve',
     heading: 'Approve the month',
-    blurb: 'What you are signing off, and what happens when you do.',
+    blurb: 'What you are signing off, and what happens when you do. Approving locks the month.',
   },
   {
     key: 'complete',
-    label: 'Finalise',
-    heading: 'Payslips and payment',
+    label: 'Pay',
+    heading: 'Bank listing and payslips',
     blurb: 'Payslips, the payment listing, and the statutory figures to file.',
   },
 ];
@@ -69,6 +67,7 @@ export function normaliseStep(raw: string | null): StepKey {
     case 'approve':
       return 'approve';
     case 'complete':
+    case 'pay':
       return 'complete';
     default:
       return 'prepare';
@@ -92,6 +91,10 @@ const STEP_OF_CODE: Record<string, StepKey> = {
   SALARY_BASIS_UNSUPPORTED: 'prepare',
   NO_DOB: 'prepare',
   NO_LEGAL_EMPLOYER: 'prepare',
+  NO_STATUTORY_CLASSIFICATION: 'prepare',
+  NO_REST_DAY: 'prepare',
+  OVERTIME_ENTITLEMENT_UNRECORDED: 'prepare',
+  CLINIC_RATE_BELOW_STATUTORY: 'prepare',
   UNAPPROVED_OVERTIME: 'prepare',
   MISSING_PUNCH: 'prepare',
   UNKNOWN_COMPONENT: 'review',
@@ -111,24 +114,22 @@ export function stepsWithProblems(
 }
 
 /**
- * THE FOUR STAGES, on the shared stage strip.
+ * THE FOUR STAGES, on the kit's step strip (payroll.html).
  *
- * It had its own bespoke stepper markup, which meant payroll's stages and Add
- * Employee's stages looked like two different products doing the same thing.
- * `StageBar` is one component and one set of styles; what stays here is the
- * only thing payroll knows that the strip does not — which stage is carrying a
- * blocker.
+ * A TICK MEANS SETTLED, NOT VISITED. It used to mean "behind where you are",
+ * which put a green tick beside the register while somebody on it had no
+ * salary on file. A tick is the strongest "this is fine" a screen has;
+ * spending it on "you have scrolled past this" is how a row of green ticks
+ * ends up over a run that cannot be paid. Each stage answers its own
+ * question:
  *
- * A TICK MEANS SETTLED, NOT VISITED.
- *
- * It used to mean "behind where you are", which put a green tick beside
- * Payroll Details while somebody on that stage had no salary on file. A tick
- * is the strongest "this is fine" a screen has; spending it on "you have
- * scrolled past this" is how a row of green ticks ends up over a run that
- * cannot be paid.
+ *   Prepare   the month has been worked out and nothing here blocks
+ *   Review    nothing at all blocks approval
+ *   Approve   the run is actually approved
+ *   Pay       it has been paid
  *
  * Stages are NOT locked. An owner who wants to look ahead should be able to;
- * what stops them finalising is the approval gate, not a disabled tab.
+ * what stops them approving is the gate, not a disabled tab.
  */
 export function PayrollStepper({
   current,
@@ -136,6 +137,7 @@ export function PayrollStepper({
   problemSteps,
   status,
   canApprove,
+  subs,
 }: {
   current: StepKey;
   onChange: (key: StepKey) => void;
@@ -145,20 +147,9 @@ export function PayrollStepper({
   status?: string;
   /** Whether the approval gate is open. */
   canApprove?: boolean;
+  /** The line under each stage's name: "2 blocked, 1 to check", "Locks the month". */
+  subs?: Partial<Record<StepKey, ReactNode>>;
 }) {
-  /*
-   * DONE MEANS THE STAGE'S WORK IS FINISHED — not that you have scrolled past
-   * it. The rule here was `index < currentIndex`, which is the very thing the
-   * note above says was fixed: standing on Finalise put a green tick on
-   * Approve for a run nobody had approved and four blockers would not let
-   * them. A tick is the strongest "this is fine" a screen has.
-   *
-   * Each stage now answers its own question:
-   *   Payroll Details  the month has been worked out and nothing here blocks
-   *   Review           nothing at all blocks approval
-   *   Approve          the run is actually approved
-   *   Finalise         it has been paid
-   */
   const approved = status === 'APPROVED' || status === 'PAID';
   const isDone = (key: StepKey, blocked: boolean): boolean => {
     switch (key) {
@@ -174,17 +165,16 @@ export function PayrollStepper({
   };
 
   return (
-    <StageBar
+    <Steps
       current={current}
-      stages={STEPS.map((step) => {
+      onSelect={(key) => onChange(key as StepKey)}
+      steps={STEPS.map((step) => {
         const blocked = problemSteps?.has(step.key) ?? false;
         return {
           key: step.key,
           label: step.label,
-          hint: blocked ? 'Needs attention' : undefined,
-          attention: blocked,
+          sub: subs?.[step.key] ?? (blocked ? 'Needs attention' : undefined),
           done: isDone(step.key, blocked),
-          onSelect: () => onChange(step.key),
         };
       })}
     />

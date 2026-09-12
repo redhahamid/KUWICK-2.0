@@ -158,7 +158,7 @@ export class PayrollPolicyService {
       categories: WORKFORCE_CATEGORIES,
       notice:
         'Overtime, rest-day and public-holiday pay follow the rule set from the next calculation. The proration bases are ' +
-        'recorded but not yet applied: which basis a Malaysian employer may lawfully use has not been established against ' +
+        'recorded but NOT yet applied: which basis a Malaysian employer may lawfully use has not been established against ' +
         'the Employment Act, so proration stays unimplemented rather than guessed.',
     };
   }

@@ -1,36 +1,32 @@
-import { App, Button, DatePicker } from 'antd';
+import { App } from 'antd';
 import dayjs from 'dayjs';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { AdminShell, firstError } from '../components/AdminShell';
-import { Panel } from '../components/Panel';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useCreatePayrollRun, usePayrollHome } from '../hooks/useAdmin';
 import { useCan } from '../../core/hooks/useCan';
-import { PayrollMonthHeader } from './PayrollMonthHeader';
 import { PayrollStartGate } from './PayrollStartGate';
 import { PayrollWorkspace } from './PayrollRunPage';
 import { ProvisionalBanner } from './ProvisionalBanner';
+import { HrPage, Panel, PanelHead, SegControl, StatCard, StatRow } from './ui';
+import { IconHistory, IconPayroll } from './ui/icons';
+
+/** The query's own error, as a sentence, or nothing. */
+const errorText = (query: { error: unknown }) => (query.error instanceof Error ? query.error.message : null);
 
 /**
  * `/admin/hr/payroll` — THE CURRENT MONTH, NOT A PAGE ABOUT PAYROLL.
  *
- * This route used to be a landing dashboard: a hero, three explanatory cards
- * ("Feeding this month", "Employee setup"), and a table of previous runs. The
- * month's own work was one click further in, and the owner's verdict was that
- * their spreadsheet was easier to use. It was: a spreadsheet opens on the
- * month.
- *
- * So this resolves the period's run and mounts the workspace directly. There
- * is no intermediate screen. The three cards did not become a smaller
- * dashboard — they were answers to "who is not ready?", and that question is
- * now answered BESIDE THE PERSON IT IS ABOUT, on their row in the register.
+ * This resolves the period's run and mounts the workspace directly. There is
+ * no intermediate screen: a spreadsheet opens on the month, and so does this.
  *
  * THE PERIOD IS IN THE URL. `?period=2026-09` makes a month linkable and
- * survives a refresh, which the local `useState` this replaced did not.
+ * survives a refresh. The month control is the mockup's three-way segment —
+ * last month, this month, next month — so moving a month is one click and
+ * the neighbours are always named.
  *
- * WHEN THE MONTH HAS NOT BEEN STARTED the same header still leads — the month,
- * the headcount expected, and dashes where the figures will be. Dashes, not
- * zeros: "RM0.00 net pay" is a claim about a month nobody has worked out yet.
+ * WHEN THE MONTH HAS NOT BEEN STARTED the same four figures still lead, with
+ * dashes where they will be. Dashes, not zeros: "RM0.00 net pay" is a claim
+ * about a month nobody has worked out yet.
  */
 export function PayrollMonthPage() {
   const { message } = App.useApp();
@@ -41,6 +37,7 @@ export function PayrollMonthPage() {
 
   const period = search.get('period') ?? dayjs().format('YYYY-MM');
   const setPeriod = (next: string) => {
+    if (next === period) return;
     const params = new URLSearchParams(search);
     params.set('period', next);
     // A new month starts at the first stage: carrying `?step=approve` across a
@@ -54,19 +51,16 @@ export function PayrollMonthPage() {
   const data = home.data;
 
   const monthNav = (
-    <>
-      <DatePicker
-        picker="month"
-        size="small"
-        allowClear={false}
-        aria-label="Payroll month"
-        value={dayjs(period)}
-        onChange={(value) => value && setPeriod(value.format('YYYY-MM'))}
-      />
-      <Link to="/admin/hr/payroll/history">
-        <Button size="small">History</Button>
-      </Link>
-    </>
+    <SegControl<string>
+      label="Payroll month"
+      value={period}
+      onChange={setPeriod}
+      options={[
+        { value: dayjs(period).subtract(1, 'month').format('YYYY-MM'), label: dayjs(period).subtract(1, 'month').format('MMM') },
+        { value: period, label: dayjs(period).format('MMM YYYY') },
+        { value: dayjs(period).add(1, 'month').format('YYYY-MM'), label: dayjs(period).add(1, 'month').format('MMM') },
+      ]}
+    />
   );
 
   // The month has a run: this IS the workspace. Nothing wraps it.
@@ -74,62 +68,68 @@ export function PayrollMonthPage() {
     return <PayrollWorkspace runId={data.run.id} monthNav={monthNav} />;
   }
 
+  const label = data?.periodLabel ?? dayjs(period).format('MMMM YYYY');
   return (
-    <AdminShell error={firstError(home)} title="Payroll">
-      <PayrollMonthHeader
-        periodLabel={data?.periodLabel ?? dayjs(period).format('MMMM YYYY')}
-        status="NOT_STARTED"
-        provisional={data ? data.periodStatutoryStatus !== 'CONFIGURED' : false}
-        employees={data?.employeesExpected ?? 0}
-        gross={null}
-        deductions={null}
-        employerContributions={null}
-        net={null}
-        right={monthNav}
-      />
+    <HrPage
+      title="Payroll"
+      sub="One run per month. Grey cells come from records or are worked out for you; white cells you can edit. Save each row."
+      error={errorText(home)}
+      actions={
+        <>
+          {monthNav}
+          <Link className="hr-btn" to="/admin/hr/payroll/history">
+            <IconHistory />
+            History
+          </Link>
+        </>
+      }
+    >
+      <StatRow>
+        <StatCard icon={<IconPayroll />} label="Gross pay" value="—" sub={data ? `${data.employeesExpected} ${data.employeesExpected === 1 ? 'employee' : 'employees'} expected` : undefined} />
+        <StatCard icon={<IconPayroll />} label="Employee deductions" value="—" sub="EPF, SOCSO, EIS, PCB" />
+        <StatCard icon={<IconPayroll />} label="Employer contributions" value="—" sub="Paid on top of gross" />
+        <StatCard icon={<IconPayroll />} label="Net pay" value="—" sub="Not started" />
+      </StatRow>
       <ProvisionalBanner statutoryStatus={data?.periodStatutoryStatus} />
 
       {data ? (
         <PayrollStartGate period={period} clinicId={clinicId} salaryOnRecord={data.setup.salaryOnRecord}>
           {({ canStart, reason }) => (
-            <Panel
-              title="This month has not been started"
-              hint={
-                canStart
-                  ? `Kuwick will work out ${data.employeesExpected} ${
-                      data.employeesExpected === 1 ? 'payslip' : 'payslips'
-                    } from attendance, leave, claims and incentives already approved.`
-                  : (reason ?? undefined)
-              }
-              action={
-                mayRun ? (
-                  <Button
-                    type="primary"
-                    disabled={!canStart}
-                    loading={createRun.isPending}
-                    onClick={() =>
-                      createRun.mutate(
-                        { period: `${period}-01`, clinicId },
-                        {
-                          // Straight into the register, on the stage the work
-                          // starts at — not back to a summary of what happened.
-                          onSuccess: (created) =>
-                            navigate(`/admin/hr/payroll/${(created as { id: string }).id}?step=prepare`),
-                          onError: (error: Error) => message.error(error.message),
-                        },
-                      )
-                    }
-                  >
-                    Start {data.periodLabel} payroll
-                  </Button>
-                ) : undefined
-              }
-            >
-              <span />
+            <Panel>
+              <PanelHead
+                title={`${label} has not been started`}
+                sub={
+                  canStart
+                    ? `Kuwick will work out ${data.employeesExpected} ${data.employeesExpected === 1 ? 'payslip' : 'payslips'} from attendance, leave, claims, recurring items and incentives already approved.`
+                    : (reason ?? undefined)
+                }
+                actions={
+                  mayRun ? (
+                    <button
+                      type="button"
+                      className="hr-btn hr-btn--primary"
+                      disabled={!canStart || createRun.isPending}
+                      onClick={() =>
+                        createRun.mutate(
+                          { period: `${period}-01`, clinicId },
+                          {
+                            // Straight into the grid, on the stage the work
+                            // starts at — not back to a summary of what happened.
+                            onSuccess: (created) => navigate(`/admin/hr/payroll/${(created as { id: string }).id}?step=prepare`),
+                            onError: (error: Error) => message.error(error.message),
+                          },
+                        )
+                      }
+                    >
+                      Start {label} payroll
+                    </button>
+                  ) : undefined
+                }
+              />
             </Panel>
           )}
         </PayrollStartGate>
       ) : null}
-    </AdminShell>
+    </HrPage>
   );
 }

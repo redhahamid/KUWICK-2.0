@@ -3,6 +3,7 @@ import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-s
 import { PrismaService } from '../core/prisma.service';
 import { requirePermission, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
+import { ringgitInWords } from '../finance/money-words';
 import {
   SnapshotEmployeeLine,
   SnapshotPayload,
@@ -124,6 +125,11 @@ export class PayrollPayslipService {
         clinic: { select: { name: true } },
         legalEmployer: true,
         approvals: { orderBy: { sequence: 'asc' }, include: { staff: { select: { fullName: true } } } },
+        // WHO PREPARED AND WHO APPROVED — the two signatures on the slip
+        // (payslip.html): the person who ran the month and the person who
+        // locked it, each with the position on their own employee record.
+        createdBy: { select: { fullName: true, employeeProfile: { select: { position: true } } } },
+        approvedBy: { select: { fullName: true, employeeProfile: { select: { position: true } } } },
         _count: { select: { snapshots: true } },
       },
     });
@@ -162,7 +168,9 @@ export class PayrollPayslipService {
     // the CURRENT profile, labelled as such.
     const profile = await this.prisma.employeeProfile.findUnique({
       where: { staffId },
-      select: { epfNumber: true, socsoNumber: true, taxNumber: true },
+      // The identity number (NRIC or passport) is write-only on every screen
+      // and appears here because the payslip is the employee's own document.
+      select: { epfNumber: true, socsoNumber: true, taxNumber: true, identifierType: true, identifierValue: true },
     });
 
     // Year to date THROUGH the payslip's own month, from the table approval
@@ -254,8 +262,37 @@ export class PayrollPayslipService {
         epfNumber: profile?.epfNumber ?? null,
         socsoNumber: profile?.socsoNumber ?? null,
         taxNumber: profile?.taxNumber ?? null,
+        /** NRIC or passport, as on the record today. */
+        identifier: profile?.identifierValue
+          ? { type: profile.identifierType ?? 'NRIC', value: profile.identifierValue }
+          : null,
         identifiersAsAt: 'CURRENT' as const,
       },
+      /**
+       * THE SIGNATURES (payslip.html): who prepared the month and who approved
+       * it, with their positions and dates. Typed names in the signature box —
+       * no signature image is on record. Prepared is the last calculation;
+       * approved is the run's own approval, or the last of several.
+       */
+      preparedBy: {
+        name: run.createdBy.fullName,
+        position: run.createdBy.employeeProfile?.position ?? null,
+        at: (run.calculatedAt ?? run.createdAt).toISOString(),
+      },
+      approvedBy: run.approvedBy
+        ? {
+            name: run.approvedBy.fullName,
+            position: run.approvedBy.employeeProfile?.position ?? null,
+            at: (run.approvedAt ?? snapshot.createdAt).toISOString(),
+          }
+        : payload.approvals && payload.approvals.length > 0
+          ? { name: payload.approvals[payload.approvals.length - 1].name, position: null, at: snapshot.createdAt.toISOString() }
+          : null,
+      /** When the money went out, if it has. */
+      paidAt: run.paidAt?.toISOString() ?? null,
+      netInWords: ringgitInWords(line.netCents),
+      /** Employer cost, for the strip above the net; null where not worked out or recorded. */
+      hrdLevyCents: line.statutory.hrdLevyCents ?? null,
       attendance: detail
         ? { workedDays: detail.workedDays, unpaidDays: detail.unpaidDays, overtimeHours: detail.overtimeHours }
         : null,

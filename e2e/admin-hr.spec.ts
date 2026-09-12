@@ -128,7 +128,7 @@ test.describe('HR', () => {
 
     await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible();
     // The month IS the landing screen — no dashboard between an owner and it.
-    await expect(page.locator('.kw-payMonth')).toBeVisible();
+    await expect(page.locator('.hr-stats')).toBeVisible();
     await expect(page.locator('.kw-payrollGrid')).toBeVisible();
 
     // The month in progress reads as a status, not a promise: Calculated. An
@@ -138,7 +138,7 @@ test.describe('HR', () => {
     // A chip rather than an antd tag, and sentence case rather than the enum:
     // HR speaks one status vocabulary now (see components/Chip.tsx), and a
     // screen that prints CALCULATED is talking to the database.
-    await expect(page.locator('.kw-chip', { hasText: 'Calculated' }).first()).toBeVisible();
+    await expect(page.locator('.hr-chip', { hasText: 'Calculated' }).first()).toBeVisible();
 
     /*
      * THE ONE SAFETY INDICATOR — honest in BOTH directions. This spec used to
@@ -164,7 +164,7 @@ test.describe('HR', () => {
      */
     // The stage's accessible name carries its hint too ("Review · Needs
     // attention"), so it is matched by the stage rather than by exact text.
-    await page.locator('.kw-stage', { hasText: 'Review' }).first().click();
+    await page.locator('.hr-step', { hasText: 'Review' }).first().click();
     await expect(page.getByText(/blocking exception\(s\) must be resolved before this run can be approved/i)).toBeVisible();
 
     // The person who cannot be paid is NAMED, with the consequence and the

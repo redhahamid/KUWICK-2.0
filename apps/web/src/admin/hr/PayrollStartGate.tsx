@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom';
-import { Button, Tag } from 'antd';
-import { AdminSection } from '../components/AdminShell';
 import { usePayrollReadiness } from '../hooks/useAdmin';
+import { Panel, PanelHead, StatusChip } from './ui';
+import { Table } from './ui/Table';
 import type { PayrollReadiness } from '../types';
+
+type ReadinessRow = PayrollReadiness['employees'][number];
 
 /**
  * WHETHER THIS MONTH CAN START AT ALL.
@@ -39,23 +41,17 @@ export function PayrollStartGate({
    * WHAT STOPS A MONTH STARTING IS NOT WHAT STOPS IT BEING APPROVED, and
    * conflating the two would replace one wrong answer with another.
    *
-   * There are two honest readings of "ready", and Kuwick keeps both on
-   * purpose:
-   *
    *   `setup.ready`     the STANDING facts — a salary, a bank account, a date
    *                     of birth. Set once, true until somebody changes them.
    *   `readiness.ready` nothing blocking THIS MONTH, which also counts the
    *                     monthly tax figure — outstanding on the first of every
    *                     month for everybody, by design, because Kuwick does
-   *                     not work PCB out.
+   *                     not always work PCB out.
    *
    * Gating the START on the second would refuse to open a month that only
    * needs its PCB entering — which is work you do INSIDE the run. So the gate
    * asks the narrower question the run itself asks: is there anybody whose pay
    * can be computed at all, meaning anybody with a salary in force.
-   *
-   * The list below still uses the fuller reading, because "who will block
-   * approval" is exactly what somebody wants to see before they start.
    */
   const canStart = salaryOnRecord > 0;
   const blocked = data?.employees.filter((row) => !row.readiness.ready) ?? [];
@@ -64,65 +60,73 @@ export function PayrollStartGate({
     <>
       {children({
         canStart,
-        reason: canStart
-          ? null
-          : 'Nobody has a salary on record, so there is no pay to work out. Set at least one salary first.',
+        reason: canStart ? null : 'Nobody has a salary on record, so there is no pay to work out. Set at least one salary first.',
       })}
 
       {!canStart ? (
-        <AdminSection
-          title={`${data?.periodLabel ?? 'This month'} cannot start`}
-          description="Payroll needs at least one employee with a salary in force."
-        >
-          {blocked.length > 0 ? <BlockedList rows={blocked} /> : <span />}
-        </AdminSection>
+        <Panel className="hr-mt">
+          <PanelHead title={`${data?.periodLabel ?? 'This month'} cannot start`} sub="Payroll needs at least one employee with a salary in force." />
+          {blocked.length > 0 ? <BlockedList rows={blocked} /> : null}
+        </Panel>
       ) : null}
 
       {canStart && blocked.length > 0 ? (
-        <AdminSection
-          title={`${blocked.length} ${blocked.length === 1 ? 'person' : 'people'} will hold up approval`}
-          description="The month can be worked out now; it cannot be approved until these are sorted."
-        >
+        <Panel className="hr-mt">
+          <PanelHead
+            title={`${blocked.length} ${blocked.length === 1 ? 'person' : 'people'} will hold up approval`}
+            sub="The month can be worked out now; it cannot be approved until these are sorted."
+          />
           <BlockedList rows={blocked} />
-        </AdminSection>
+        </Panel>
       ) : null}
     </>
   );
 }
 
-function BlockedList({ rows }: { rows: PayrollReadiness['employees'] }) {
+function BlockedList({ rows }: { rows: ReadinessRow[] }) {
   return (
-    <div className="kw-blockedList">
-      {rows.slice(0, 8).map((row) => {
-        const missing = row.readiness.items.filter((item) => !item.done);
-        return (
-          <div className="kw-blockedList__row" key={row.staffId}>
-            <div className="kw-blockedList__who">
-              <Link to={`/admin/hr/employees/${row.staffId}`} className="kw-blockedList__name">
-                {row.name}
+    <Table<ReadinessRow>
+      rowKey="staffId"
+      rows={rows}
+      columns={[
+        {
+          title: 'Employee',
+          dataIndex: 'name',
+          render: (value: string, row) => (
+            <span>
+              <Link className="hr-link hr-strong" to={`/admin/hr/employees/${row.staffId}`}>
+                {value}
               </Link>
-              <span className="kw-muted">{row.position ?? 'No position recorded'}</span>
-            </div>
-            <div className="kw-blockedList__missing">
-              {missing.map((item) => (
-                <Tag key={item.key} color={item.severity === 'BLOCKING' ? 'red' : 'gold'}>
-                  {item.label}
-                </Tag>
-              ))}
-            </div>
-            <Link to={`/admin/hr/employees/${row.staffId}`}>
-              <Button size="small">Complete setup</Button>
+              <span className="hr-faint"> · {row.position ?? 'No position recorded'}</span>
+            </span>
+          ),
+        },
+        {
+          title: 'Missing',
+          key: 'missing',
+          render: (_: unknown, row) => (
+            <span className="hr-dots">
+              {row.readiness.items
+                .filter((item) => !item.done)
+                .map((item) => (
+                  <StatusChip key={item.key} tone={item.severity === 'BLOCKING' ? 'block' : 'attn'}>
+                    {item.label}
+                  </StatusChip>
+                ))}
+            </span>
+          ),
+        },
+        {
+          title: '',
+          key: 'go',
+          width: 150,
+          render: (_: unknown, row) => (
+            <Link className="hr-btn hr-btn--sm" to={`/admin/hr/employees/${row.staffId}`}>
+              Complete setup
             </Link>
-          </div>
-        );
-      })}
-      {/* No link on the overflow. Readiness used to have a page of its own; it
-          now sits on each person's register row, so there is nowhere further
-          to send somebody than the month itself — which is the screen they are
-          already on. */}
-      {rows.length > 8 ? (
-        <p className="kw-adminSection__desc kw-muted">and {rows.length - 8} more</p>
-      ) : null}
-    </div>
+          ),
+        },
+      ]}
+    />
   );
 }

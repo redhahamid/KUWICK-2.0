@@ -489,6 +489,13 @@ export class PayrollJourneyService {
       // under. `statutory` above is EPF+SOCSO+EIS added together and is what
       // the month header reads; a column headed EPF must foot on EPF.
       epf: 0, socso: 0, eis: 0,
+      // THE GRID'S OWN COLUMNS (Piece 3d). Claims are the reimbursed claims on
+      // the line; "other income" is everything that reached gross which is
+      // not basic, overtime or a claim — allowances, incentives, bonus,
+      // commission, recurring items — the white cell the grid lets a person
+      // edit. Hours and days ride along so the grid can show OT h and Unpaid
+      // d from the records without the browser reading the timesheet twice.
+      claims: 0, otherIncome: 0, overtimeHours: 0, unpaidDays: 0,
     };
     /*
      * WHO THIS PERSON IS, AND WHETHER THEY ARE READY — carried on the pay row.
@@ -522,6 +529,16 @@ export class PayrollJourneyService {
       const netCents = toCents(line.netPay);
       const salaryEarnedCents = basicCents - unpaidCents;
       const otherEarningsCents = grossCents - salaryEarnedCents - allowanceCents - overtimeCents - incentiveCents;
+      // Reimbursed claims, from the components the engine itemised on this
+      // line — the one earning the grid keeps out of "other income", because
+      // it is not pay and the person editing the row must not be able to
+      // change it here.
+      const claimsCents = (((line.breakdown ?? {}) as { components?: { code: string; kind: string; amount: unknown }[] }).components ?? [])
+        .filter((component) => component.code === 'CLAIM_REIMBURSEMENT' && component.kind === 'EARNING')
+        .reduce((sum, component) => sum + toCents(component.amount as never), 0);
+      const otherIncomeCents = grossCents - salaryEarnedCents - overtimeCents - claimsCents;
+      const overtimeHoursOnLine = line.overtimeHours === null ? 0 : Number(line.overtimeHours);
+      const unpaidDaysOnLine = line.unpaidDays === null ? 0 : Number(line.unpaidDays);
       // ANY unknown makes the subtotal unknown — null in, null out. This was
       // `&&`, so an employee with EPF null but SOCSO and EIS computed had
       // their unknown EPF summed as RM0.00 on the review screen: a
@@ -558,6 +575,10 @@ export class PayrollJourneyService {
       sums.employerCost += employerCostCents;
       sums.employerContributions += employerContributionCents;
       sums.additionalEarnings += allowanceCents + otherEarningsCents;
+      sums.claims += claimsCents;
+      sums.otherIncome += otherIncomeCents;
+      sums.overtimeHours += overtimeHoursOnLine;
+      sums.unpaidDays += unpaidDaysOnLine;
       // Same null rule as the row: one unknown scheme makes the pair unknown,
       // and it is counted rather than summed as nil.
       if (line.socsoEmployee === null || line.eisEmployee === null) sums.socsoEisNotCalculated += 1;
@@ -682,6 +703,11 @@ export class PayrollJourneyService {
         incentive: formatCents(incentiveCents),
         otherEarnings: formatCents(otherEarningsCents),
         deductionTotal: formatCents(deductionCents),
+        /** THE GRID'S COLUMNS — see the note on `sums`. */
+        claims: formatCents(claimsCents),
+        otherIncome: formatCents(otherIncomeCents),
+        overtimeHours: overtimeHoursOnLine,
+        unpaidDays: unpaidDaysOnLine,
         items: own.map((row) => ({
           id: row.id,
           componentCode: row.componentCode,
@@ -736,6 +762,10 @@ export class PayrollJourneyService {
       epfEmployee: formatCents(sums.epf),
       socsoEmployee: formatCents(sums.socso),
       eisEmployee: formatCents(sums.eis),
+      claims: formatCents(sums.claims),
+      otherIncome: formatCents(sums.otherIncome),
+      overtimeHours: Math.round(sums.overtimeHours * 100) / 100,
+      unpaidDays: Math.round(sums.unpaidDays * 100) / 100,
       addsUp: paysAddUp,
       discrepancy: paysAddUp
         ? null

@@ -2258,6 +2258,31 @@ async function seedWorkforce(ids: Ids) {
     });
 
     /*
+     * §6 PLACEHOLDER (Piece 3d). Doctors are paid a fixed RM500 a public-holiday
+     * shift — a clinic rate, above the First Schedule so no floor applies —
+     * and everybody else stays on the Act through the default rule set above.
+     * The owner replaces the figure in Settings › Payroll policies; the seed
+     * only has to show the two modes side by side.
+     */
+    await tx.payrollPolicy.create({
+      data: {
+        tenantId: tenant.id,
+        legalEmployerId: null,
+        name: 'Doctors',
+        workforceCategory: 'DOCTOR',
+        overtimeMode: 'CLINIC_RATE',
+        clinicPublicHolidayShift: 500,
+        salaryProrationBasis: 'CALENDAR_DAYS',
+        overtimeBasis: 'FIXED_DAYS',
+        overtimeDays: 26,
+        overtimeHoursPerDay: 7.5,
+        unpaidLeaveBasis: 'CALENDAR_DAYS',
+        unpaidLeaveDays: 31,
+        isDefault: false,
+      },
+    });
+
+    /*
      * `contractor` IS THE FIELD THAT KEEPS SOMEBODY OUT OF PAYROLL.
      *
      * It did not exist here, so every profile took the schema default of
@@ -2449,6 +2474,32 @@ async function seedWorkforce(ids: Ids) {
       }
       // The panel claims executive gets NO salary row at all — that absence is
       // what the payroll run's blocking exception is about.
+    }
+
+    /*
+     * RECURRING ITEMS (Piece 3c/3d) on the resident doctor's record, as
+     * employee-record.html shows them: a housing allowance and a phone
+     * allowance in force, and an advance recovery dated for later in the
+     * year. The run carries the ones in force into each month as RECURRING
+     * inputs; the seeded August lines below predate that and are what the
+     * engine wrote before the items existed, so the first recalculation on
+     * screen adds RM900 to the resident's gross — deliberately visible.
+     */
+    for (const item of [
+      { componentCode: 'ALLOWANCE', label: 'housing', amount: 800, effectiveFrom: new Date(Date.UTC(2025, 3, 1)), effectiveTo: null, note: 'Per employment contract' },
+      { componentCode: 'ALLOWANCE', label: 'phone', amount: 100, effectiveFrom: new Date(Date.UTC(2026, 0, 1)), effectiveTo: null, note: null },
+      {
+        componentCode: 'ADVANCE_RECOVERY',
+        label: 'Salary advance, 4 instalments',
+        amount: 200,
+        effectiveFrom: new Date(Date.UTC(2026, 8, 1)),
+        effectiveTo: new Date(Date.UTC(2026, 11, 1)),
+        note: 'RM800 advanced in August 2026',
+      },
+    ]) {
+      await tx.employeeRecurringItem.create({
+        data: { tenantId: tenant.id, staffId: staff.resident, createdByStaffId: staff.owner, ...item },
+      });
     }
 
     // --- STAGE 2.5: locum sessions — a payable, never a payslip ------------
