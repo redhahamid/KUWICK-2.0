@@ -4,6 +4,7 @@ import {
   materialiseClaim,
   materialiseIncentives,
   materialiseOvertimeDays,
+  materialiseRecurringItems,
   materialiseUnpaidLeave,
   planMaterialisation,
 } from './payroll-materialisation';
@@ -174,5 +175,64 @@ describe('the materialisation plan is idempotent', () => {
     );
     expect(plan.remove).toEqual(['b']);
     expect(plan.unchanged).toBe(1);
+  });
+});
+
+describe('materialising recurring items', () => {
+  const housing = {
+    staffId: 's1',
+    itemId: 'ri-1',
+    componentCode: 'ALLOWANCE',
+    componentName: 'Allowance',
+    label: 'Housing',
+    amountCents: 80000,
+    effectiveFrom: new Date('2025-04-01T00:00:00.000Z'),
+    effectiveTo: null,
+    recordedBy: 'Rohana Yusof',
+  };
+
+  it('makes one RECURRING input per item, idempotent on the item id', () => {
+    const [out] = materialiseRecurringItems([housing]);
+    expect(out).toMatchObject({
+      componentCode: 'ALLOWANCE',
+      label: 'Housing',
+      amountCents: 80000,
+      source: 'RECURRING',
+      sourceRecordId: 'ri-1',
+      kind: 'RECURRING',
+      approvedBy: 'Rohana Yusof',
+    });
+    expect(out.provenance).toBe('Recurring allowance (Housing) of 800.00 a month from 1 Apr 2025, on the employee record, recorded by Rohana Yusof');
+  });
+
+  it('labels an unlabelled item by its component, and names an end date', () => {
+    const [out] = materialiseRecurringItems([
+      { ...housing, itemId: 'ri-2', componentCode: 'ADVANCE_RECOVERY', componentName: 'Salary advance recovery', label: null, amountCents: 20000, effectiveTo: new Date('2026-12-01T00:00:00.000Z') },
+    ]);
+    expect(out.label).toBe('Salary advance recovery');
+    expect(out.provenance).toMatch(/from 1 Apr 2025 to 1 Dec 2026/);
+  });
+
+  it('is removed by the plan when the item is ended, like any other derived input', () => {
+    const existing: ExistingInput[] = [
+      { id: 'in-1', componentCode: 'ALLOWANCE', source: 'RECURRING', amountCents: 80000, sourceRecordId: 'ri-1', label: 'Housing' },
+      { id: 'in-2', componentCode: 'ALLOWANCE', source: 'MANUAL', amountCents: 5000, sourceRecordId: null, label: 'Typed' },
+    ];
+    const plan = planMaterialisation([], existing);
+    expect(plan.remove).toEqual(['in-1']);
+  });
+
+  it('rewrites a row whose label moved, even at the same amount', () => {
+    // "Overtime and day-rate work" becoming "Public holiday pay" is a change
+    // the payslip has to show; the amount alone would not have caught it.
+    const want: MaterialisedInput = {
+      staffId: 's1', componentCode: 'OVERTIME', label: 'Public holiday pay', amountCents: 24000,
+      source: 'ATTENDANCE', sourceRecordId: 'att-9', earnedPeriod: null, provenance: 'x', approvedBy: null,
+    };
+    const plan = planMaterialisation([want], [
+      { id: 'in-9', componentCode: 'OVERTIME', source: 'ATTENDANCE', amountCents: 24000, sourceRecordId: 'att-9', label: 'Overtime and day-rate work' },
+    ]);
+    expect(plan.update.map((row) => row.id)).toEqual(['in-9']);
+    expect(plan.unchanged).toBe(0);
   });
 });

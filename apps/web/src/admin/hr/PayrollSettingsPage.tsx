@@ -1,15 +1,19 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { App, Switch } from 'antd';
+import { App, Input, Select, Switch } from 'antd';
 import dayjs from 'dayjs';
+import { useCan } from '../../core/hooks/useCan';
 import {
   usePayrollApprovalPolicy,
   usePayrollPolicies,
   useSetPayrollApprovalPolicy,
   useStatutoryRates,
+  useUpsertPayrollPolicy,
 } from '../hooks/useAdmin';
-import { HrPage, Panel, PanelHead, StatusChip } from './ui';
+import { Drawer, HrPage, Panel, PanelHead, StatusChip } from './ui';
 import { Table } from './ui/Table';
-import type { PayrollPolicyRow } from '../types';
+import { IconEdit, IconPlus } from './ui/icons';
+import type { OvertimeMode, PayrollPolicyRow } from '../types';
 
 /**
  * PAYROLL POLICIES — one settings area, reached from the Settings landing.
@@ -24,8 +28,13 @@ import type { PayrollPolicyRow } from '../types';
  * (Payroll items), the statutory tables (Statutory rates). Each was a second
  * copy of a fact that has one home, and this page points at the home.
  *
- * The overtime and public-holiday pricing modes — statutory versus clinic rate
- * — are a later piece of work and arrive on this page when they do.
+ * HOW EXTRA HOURS ARE PRICED lives here too (§6): each rule set is either
+ * the Employment Act's arithmetic or the clinic's own fixed rates, applies to
+ * a group of the workforce, and — for anybody on RM4,000 or less — is held
+ * to the Act as a floor. The server works the floor out against the
+ * employees the rule set actually prices and says who it would underpay; the
+ * gold notice under the table is that answer, and the payroll run blocks the
+ * same people until the rate is corrected.
  */
 const CHOICES = [
   {
@@ -48,6 +57,51 @@ const CHOICES = [
 const basisLabel = (basis: string, days: number | null) =>
   basis === 'CALENDAR_DAYS' ? 'calendar days' : basis === 'FIXED_DAYS' && days ? `${days}-day month` : basis.toLowerCase().replace(/_/g, ' ');
 
+const rm = (value: string) => `RM${Number(value).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/** One line naming how a rule set prices extra hours. */
+const pricingLine = (row: PayrollPolicyRow) => {
+  if (row.overtimeMode !== 'CLINIC_RATE' || !row.clinicRates) return 'Employment Act: 1.5× · rest day 2.0× · public holiday 3.0×';
+  const parts = [
+    row.clinicRates.overtimeHourly ? `${rm(row.clinicRates.overtimeHourly)} an hour` : null,
+    row.clinicRates.publicHolidayShift ? `${rm(row.clinicRates.publicHolidayShift)} a public holiday shift` : null,
+    row.clinicRates.restDayShift ? `${rm(row.clinicRates.restDayShift)} a rest day shift` : null,
+    row.clinicRates.session ? `${rm(row.clinicRates.session)} a session` : null,
+  ].filter((part): part is string => part !== null);
+  return `Clinic rate: ${parts.join(' · ')}`;
+};
+
+/**
+ * THE ACT'S FIGURES FOR A RM4,000 WAGE, the highest the First Schedule
+ * reaches — so the person typing a clinic rate can see the floor before the
+ * server checks it against real employees. Same arithmetic as the server:
+ * a day is the wage over 26, an hour is a day over the normal hours, rounded
+ * to the sen before the multiplier.
+ */
+const actFloorAt4000 = (hoursPerDay: number) => {
+  const daily = 400000 / 26;
+  const hourly = Math.round(daily / hoursPerDay);
+  const money = (cents: number) => rm((cents / 100).toFixed(2));
+  return {
+    hour: money(Math.round(hourly * 1.5)),
+    holiday: money(Math.round(daily * 2)),
+    restDay: money(Math.round(daily)),
+  };
+};
+
+const MODES: { value: OvertimeMode; title: string; detail: string }[] = [
+  {
+    value: 'STATUTORY',
+    title: 'Employment Act 1955',
+    detail: 'A day is the monthly salary over 26 and an hour is a day over the normal hours. Overtime at 1.5×, a rest day at 2.0×, a public holiday at 3.0× with two days’ wages for the day itself.',
+  },
+  {
+    value: 'CLINIC_RATE',
+    title: 'Clinic rate',
+    detail: 'Fixed amounts set here, never typed into the payroll grid. A kind of day left blank is priced by the Act. For anybody on RM4,000 or less the Act is a floor.',
+  },
+];
+
 export function PayrollSettingsPage() {
   const { message } = App.useApp();
   const approval = usePayrollApprovalPolicy();
@@ -63,6 +117,105 @@ export function PayrollSettingsPage() {
 
   const check = rates.data?.check ?? null;
   const error = [approval, policies].find((query) => query.error)?.error;
+
+  const mayManage = useCan('hr.statutory.manage');
+  const upsert = useUpsertPayrollPolicy();
+  const [editing, setEditing] = useState<PayrollPolicyRow | 'new' | null>(null);
+  const [name, setName] = useState('');
+  const [appliesTo, setAppliesTo] = useState<string>('__hand');
+  const [mode, setMode] = useState<OvertimeMode>('STATUTORY');
+  const [hourly, setHourly] = useState('');
+  const [holiday, setHoliday] = useState('');
+  const [restDay, setRestDay] = useState('');
+  const [session, setSession] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const openNew = () => {
+    setName('');
+    setAppliesTo('__hand');
+    setMode('STATUTORY');
+    setHourly('');
+    setHoliday('');
+    setRestDay('');
+    setSession('');
+    setProblem(null);
+    setEditing('new');
+  };
+  const openEdit = (row: PayrollPolicyRow) => {
+    setName(row.name);
+    setAppliesTo(row.workforceCategory ?? (row.isDefault ? '__default' : '__hand'));
+    setMode(row.overtimeMode);
+    setHourly(row.clinicRates?.overtimeHourly ?? '');
+    setHoliday(row.clinicRates?.publicHolidayShift ?? '');
+    setRestDay(row.clinicRates?.restDayShift ?? '');
+    setSession(row.clinicRates?.session ?? '');
+    setProblem(null);
+    setEditing(row);
+  };
+  const close = () => setEditing(null);
+
+  const clean = (value: string) => value.trim().replace(/^RM\s*/i, '').replace(/,/g, '');
+  const save = () => {
+    const amounts = { clinicOvertimeHourly: clean(hourly), clinicPublicHolidayShift: clean(holiday), clinicRestDayShift: clean(restDay), clinicSessionRate: clean(session) };
+    if (name.trim().length < 2) {
+      setProblem('Give the rule set a name.');
+      return;
+    }
+    if (mode === 'CLINIC_RATE') {
+      for (const value of Object.values(amounts)) {
+        if (value !== '' && (!/^\d{1,10}(\.\d{1,2})?$/.test(value) || Number(value) <= 0)) {
+          setProblem('Enter each amount as a number above zero, with at most two decimal places, or leave it blank.');
+          return;
+        }
+      }
+      if (Object.values(amounts).every((value) => value === '')) {
+        setProblem('A clinic-rate rule set needs at least one amount.');
+        return;
+      }
+    }
+    const existing = editing !== 'new' && editing ? editing : null;
+    // THE BASES ARE CARRIED THROUGH UNCHANGED. The server replaces every
+    // field it is not sent with its default, so an edit that only touched
+    // the mode must resend what the rule set already has.
+    upsert.mutate(
+      {
+        ...(existing ? { id: existing.id } : {}),
+        name: name.trim(),
+        ...(existing
+          ? {
+              legalEmployerId: existing.legalEmployerId,
+              salaryProrationBasis: existing.salaryProration.basis,
+              salaryProrationDays: existing.salaryProration.days ?? undefined,
+              overtimeBasis: existing.overtime.basis,
+              overtimeDays: existing.overtime.days ?? undefined,
+              overtimeHoursPerDay: existing.overtime.hoursPerDay,
+              unpaidLeaveBasis: existing.unpaidLeave.basis,
+              unpaidLeaveDays: existing.unpaidLeave.days ?? undefined,
+              leavePayBasis: existing.leavePay.basis,
+              leavePayDays: existing.leavePay.days ?? undefined,
+              terminationBasis: existing.termination.basis,
+              terminationDays: existing.termination.days ?? undefined,
+            }
+          : {}),
+        overtimeMode: mode,
+        ...(mode === 'CLINIC_RATE'
+          ? Object.fromEntries(Object.entries(amounts).map(([key, value]) => [key, value === '' ? null : value]))
+          : {}),
+        workforceCategory: appliesTo.startsWith('__') ? null : appliesTo,
+        isDefault: appliesTo === '__default',
+      },
+      {
+        onSuccess: () => {
+          message.success(existing ? 'Rule set updated' : 'Rule set added');
+          close();
+        },
+        onError: (mutationError: Error) => setProblem(mutationError.message),
+      },
+    );
+  };
+
+  const floorGuide = actFloorAt4000(editing !== 'new' && editing ? editing.overtime.hoursPerDay : 7.5);
+  const underpaying = (policies.data?.policies ?? []).filter((row) => (row.floor?.below.length ?? 0) > 0);
 
   return (
     <HrPage
@@ -163,21 +316,29 @@ export function PayrollSettingsPage() {
       <Panel className="hr-mt">
         <PanelHead
           title="How pay is worked out"
-          sub="What a day and an hour are, per rule set. Frozen into each run, so a later change cannot reprice a past month."
+          sub="Which rule set prices overtime, rest days and public holidays for each group, and what a day and an hour are. Frozen into each run, so a later change cannot reprice a past month."
           actions={
-            policies.data?.policies.length ? (
-              <span className="hr-eff">
-                Changed {dayjs([...policies.data.policies.map((row) => row.updatedAt)].sort().reverse()[0]).format('D MMM YYYY')}
-              </span>
-            ) : null
+            <>
+              {policies.data?.policies.length ? (
+                <span className="hr-eff">
+                  Changed {dayjs([...policies.data.policies.map((row) => row.updatedAt)].sort().reverse()[0]).format('D MMM YYYY')}
+                </span>
+              ) : null}
+              {mayManage ? (
+                <button type="button" className="hr-btn hr-btn--sm hr-btn--primary" onClick={openNew}>
+                  <IconPlus />
+                  Add rule set
+                </button>
+              ) : null}
+            </>
           }
         />
         <Table<PayrollPolicyRow>
           rowKey="id"
           loading={policies.isLoading}
           rows={policies.data?.policies}
-          emptyText="No pay rules are recorded."
-          emptyHint="Kuwick's defaults apply until a rule set is added."
+          emptyText="No rule sets are recorded."
+          emptyHint="Everybody is priced by the Employment Act until a rule set is added."
           columns={[
             {
               title: 'Rule set',
@@ -188,18 +349,172 @@ export function PayrollSettingsPage() {
                 </span>
               ),
             },
-            { title: 'Salary proration', key: 'sp', render: (_: unknown, row) => basisLabel(row.salaryProration.basis, row.salaryProration.days) },
             {
-              title: 'Overtime',
-              key: 'ot',
-              render: (_: unknown, row) => `${basisLabel(row.overtime.basis, row.overtime.days)} · ${row.overtime.hoursPerDay} h/day`,
+              title: 'Applies to',
+              key: 'applies',
+              render: (_: unknown, row) => (
+                <span title={row.employeeNames.join(', ')}>
+                  {row.appliesTo}
+                  {row.employeeCount > 0 ? (
+                    <span className="hr-faint"> · {row.employeeCount} {row.employeeCount === 1 ? 'employee' : 'employees'}</span>
+                  ) : null}
+                </span>
+              ),
             },
-            { title: 'Unpaid leave', key: 'ul', render: (_: unknown, row) => basisLabel(row.unpaidLeave.basis, row.unpaidLeave.days) },
-            { title: 'Employees', dataIndex: 'employeeCount', num: true, width: 110 },
+            {
+              title: 'Overtime and holidays',
+              key: 'ot',
+              render: (_: unknown, row) => (
+                <span>
+                  {pricingLine(row)}
+                  {row.floor && row.floor.below.length > 0 ? (
+                    <>
+                      {' '}
+                      <StatusChip tone="attn">Below the Act for {row.floor.below.length}</StatusChip>
+                    </>
+                  ) : null}
+                </span>
+              ),
+            },
+            { title: 'Unpaid leave', key: 'ul', width: 140, render: (_: unknown, row) => basisLabel(row.unpaidLeave.basis, row.unpaidLeave.days) },
+            ...(mayManage
+              ? [
+                  {
+                    title: '',
+                    key: 'edit',
+                    width: 90,
+                    render: (_: unknown, row: PayrollPolicyRow) => (
+                      <button type="button" className="hr-btn hr-btn--sm" onClick={() => openEdit(row)}>
+                        <IconEdit />
+                        Edit
+                      </button>
+                    ),
+                  },
+                ]
+              : []),
           ]}
         />
+        {/*
+          * THE FLOOR, IN GOLD. Worked out by the server against the employees
+          * each clinic-rate rule set actually prices, on their salary today.
+          * Payroll blocks the same people on the month's real days, so this
+          * is the same fact a month early.
+          */}
+        {underpaying.map((row) => (
+          <div key={row.id} className="hr-notice hr-notice--attn" style={{ margin: '12px 22px 0' }}>
+            <strong>
+              {row.name} pays below the Employment Act for {row.floor?.below.length}{' '}
+              {row.floor?.below.length === 1 ? 'employee' : 'employees'} on RM4,000 or less.
+            </strong>
+            <ul>
+              {row.floor?.below.map((employee) => (
+                <li key={employee.staffId}>
+                  <Link className="hr-link" to={`/admin/hr/employees/${employee.staffId}`}>
+                    {employee.name}
+                  </Link>{' '}
+                  ({employee.wages} a month): {employee.shortfalls.join(' ')}
+                </li>
+              ))}
+            </ul>
+            <div>Payroll will block these employees until the rate is raised or they are moved to a rule set on the Act.</div>
+          </div>
+        ))}
         {policies.data?.notice ? <div className="hr-panelNote">{policies.data.notice}</div> : null}
       </Panel>
+
+      <Drawer
+        open={editing !== null}
+        title={editing === 'new' ? 'Add rule set' : 'Edit rule set'}
+        sub="How a group's extra hours are priced. Applies from the next calculation; approved months keep the figures they were approved with."
+        onClose={close}
+        footer={
+          <>
+            <button type="button" className="hr-btn" onClick={close}>
+              Cancel
+            </button>
+            <button type="button" className="hr-btn hr-btn--primary" disabled={upsert.isPending} onClick={save}>
+              {editing === 'new' ? 'Add rule set' : 'Save changes'}
+            </button>
+          </>
+        }
+      >
+        {problem ? <div className="hr-notice hr-notice--attn">{problem}</div> : null}
+        <div className="hr-form">
+          <div>
+            <label htmlFor="ruleset-name">Name</label>
+            <Input id="ruleset-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Doctors, Clinical staff…" />
+          </div>
+          <div>
+            <label htmlFor="ruleset-applies">Applies to</label>
+            <Select
+              id="ruleset-applies"
+              value={appliesTo}
+              onChange={setAppliesTo}
+              style={{ width: '100%' }}
+              options={[
+                { value: '__default', label: 'Everyone no other rule set covers (the default)' },
+                ...(policies.data?.categories ?? []).map((category) => ({ value: category.key, label: category.label })),
+                { value: '__hand', label: 'Only employees assigned to it by hand' },
+              ]}
+            />
+            <div className="hr-form__help">
+              An employee assigned a rule set on their record is on that one. Otherwise the rule set for their group applies, then the default.
+            </div>
+          </div>
+          <div>
+            <label>Overtime, rest days and public holidays</label>
+            <div className="hr-form__choices">
+            {MODES.map((choice) => {
+              const on = mode === choice.value;
+              return (
+                <label key={choice.value} className={`hr-choice${on ? ' hr-choice--on' : ''}`}>
+                  <input
+                    type="radio"
+                    name="overtime-mode"
+                    value={choice.value}
+                    checked={on}
+                    onChange={() => setMode(choice.value)}
+                    style={{ marginTop: 4, accentColor: 'var(--hr-teal)' }}
+                  />
+                  <span>
+                    <span className="hr-choice__title">{choice.title}</span>
+                    <span className="hr-choice__detail">{choice.detail}</span>
+                  </span>
+                </label>
+              );
+            })}
+            </div>
+          </div>
+          {mode === 'CLINIC_RATE' ? (
+            <div className="hr-form">
+              <div className="hr-form__row">
+                <div>
+                  <label htmlFor="ruleset-hourly">Per hour of overtime</label>
+                  <Input id="ruleset-hourly" prefix="RM" inputMode="decimal" value={hourly} onChange={(e) => setHourly(e.target.value)} placeholder="Blank: the Act" />
+                </div>
+                <div>
+                  <label htmlFor="ruleset-holiday">Per public holiday shift</label>
+                  <Input id="ruleset-holiday" prefix="RM" inputMode="decimal" value={holiday} onChange={(e) => setHoliday(e.target.value)} placeholder="Blank: the Act" />
+                </div>
+              </div>
+              <div className="hr-form__row">
+                <div>
+                  <label htmlFor="ruleset-restday">Per rest day shift</label>
+                  <Input id="ruleset-restday" prefix="RM" inputMode="decimal" value={restDay} onChange={(e) => setRestDay(e.target.value)} placeholder="Blank: the Act" />
+                </div>
+                <div>
+                  <label htmlFor="ruleset-session">Per session</label>
+                  <Input id="ruleset-session" prefix="RM" inputMode="decimal" value={session} onChange={(e) => setSession(e.target.value)} placeholder="Blank: shift rate" />
+                </div>
+              </div>
+              <div className="hr-form__help">
+                A session is a rest day or public holiday worked for at most half the normal hours. For an employee on RM4,000 the Act’s figures are{' '}
+                {floorGuide.hour} an hour, {floorGuide.holiday} a public holiday and {floorGuide.restDay} a rest day; a clinic rate below them is not applied to anybody on RM4,000 or less.
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </Drawer>
 
       <Panel className="hr-mt">
         <PanelHead title="Also decided in Settings" sub="Each of these has one home. Payroll reads them; it does not set them." />

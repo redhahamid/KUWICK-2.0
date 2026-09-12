@@ -104,6 +104,8 @@ describe('payroll exceptions', () => {
       '/admin/hr/claims',
       '/admin/hr/locum',
       '/admin/hr/settings',
+      // Piece 3d — the rule sets a clinic-rate floor exception points at.
+      '/admin/hr/settings/payroll',
       // Parameterised routes are listed as PATTERNS, so a link to one person
       // proves the route exists rather than being waved through by a literal.
       '/admin/hr/employees/:staffId',

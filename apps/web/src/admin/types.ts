@@ -2917,6 +2917,16 @@ export interface StatutoryRates {
 }
 
 /** One of the clinic's pay-rule sets ("How pay is worked out"). */
+export type OvertimeMode = 'STATUTORY' | 'CLINIC_RATE';
+
+/** Mode B's amounts, ringgit strings; null where the rule set fixes none. */
+export interface ClinicRateFields {
+  overtimeHourly: string | null;
+  publicHolidayShift: string | null;
+  restDayShift: string | null;
+  session: string | null;
+}
+
 export interface PayrollPolicyRow {
   id: string;
   name: string;
@@ -2926,9 +2936,29 @@ export interface PayrollPolicyRow {
   unpaidLeave: { basis: string; days: number | null };
   leavePay: { basis: string; days: number | null };
   termination: { basis: string; days: number | null };
+  /** §6 — how extra hours, rest days and public holidays are priced. */
+  overtimeMode: OvertimeMode;
+  clinicRates: ClinicRateFields | null;
+  /** DOCTOR, CLINICAL, ADMIN, MANAGEMENT, OTHER, or null. */
+  workforceCategory: string | null;
+  /** "Doctors", "Everyone no other rule set covers", "Employees assigned by hand". */
+  appliesTo: string | null;
   isDefault: boolean;
+  /** Employees this rule set prices, resolved as the run resolves it. */
   employeeCount: number;
+  employeeNames: string[];
+  /**
+   * The Act's floor, checked in advance for a clinic-rate rule set: how many
+   * employees within the First Schedule it prices, and who it would underpay.
+   */
+  floor: { assessed: number; below: { staffId: string; name: string; wages: string; shortfalls: string[] }[] } | null;
   updatedAt: string;
+}
+
+export interface PayrollPoliciesResponse {
+  policies: PayrollPolicyRow[];
+  categories: { key: string; label: string }[];
+  notice: string;
 }
 
 /** A pay component's monthly amount for one employee, from a date. */

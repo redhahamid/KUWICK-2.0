@@ -263,6 +263,34 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
   },
   /*
+   * A CLINIC RATE BELOW THE ACT, for somebody the Act reaches.
+   *
+   * Settings lets a rule set price a public-holiday shift at RM500 or an hour
+   * of overtime at RM40, because that is how a clinic pays its doctors. For an
+   * employee within the First Schedule (wages of RM4,000 or less) s.60I(2)
+   * makes the Act's own figure a floor. The run prices every such day both
+   * ways: the Act's figure is what is PAID, the clinic's is what is named
+   * here, and the run blocks until the rule set is corrected — an
+   * underpayment written into policy is still an underpayment.
+   *
+   * Not overridable. A reason typed here would be a reason for paying below
+   * the Act, and there is no such reason.
+   */
+  CLINIC_RATE_BELOW_STATUTORY: {
+    code: 'CLINIC_RATE_BELOW_STATUTORY',
+    severity: 'BLOCKING',
+    overridable: false,
+    cause: (c) =>
+      `The "${String(c.ruleSet)}" rule set prices ${String(c.days)} day${Number(c.days) === 1 ? '' : 's'} of extra work at ` +
+      `${String(c.clinic)} where the Employment Act's formula gives ${String(c.statutory)}, on wages of ${String(c.wages)} a month.`,
+    consequence:
+      'Wages of RM4,000 a month or less are within the First Schedule, so ss.60, 60A and 60D apply and section 60I(2) ' +
+      'makes the Act’s rates a floor under any clinic rate. The month is priced at the Act’s figure, not the rule set’s.',
+    remediation:
+      'Raise the clinic rate to at least the Act’s figure, or put this employee on a statutory rule set, then recalculate.',
+    deepLink: () => '/admin/hr/settings/payroll',
+  },
+  /*
    * LINDUNG 24 JAM with no participation recorded.
    *
    * BLOCKING, and the reason is the distinction the scheme itself turns on:

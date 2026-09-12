@@ -8012,6 +8012,12 @@ enum ProrationBasis {
   CALENDAR_DAYS
 }
 
+/// How a rule set prices extra hours, rest days and public holidays.
+enum OvertimeMode {
+  STATUTORY
+  CLINIC_RATE
+}
+
 /// THE PRORATION ENGINE, AS ONE OBJECT.
 ///
 /// Five independent bases. PayrollPanda has four; the fifth — termination — is
@@ -8040,6 +8046,29 @@ model PayrollPolicy {
   /// The fifth basis.
   terminationBasis     ProrationBasis @default(CALENDAR_DAYS) @map("termination_basis")
   terminationDays      Int            @default(31) @map("termination_days")
+
+  /// HOW EXTRA HOURS, REST DAYS AND PUBLIC HOLIDAYS ARE PRICED. STATUTORY is
+  /// the Employment Act's arithmetic; CLINIC_RATE prices from the fixed
+  /// amounts below, and a kind of day with no amount falls back to the Act.
+  /// For an employee within the First Schedule (wages of RM4,000 or less)
+  /// the Act's rates are a floor: a clinic rate below them warns in Settings
+  /// and blocks the run. Enforced in code against the month's actual days.
+  overtimeMode             OvertimeMode @default(STATUTORY) @map("overtime_mode")
+  /// RM per hour of approved overtime on a normal working day.
+  clinicOvertimeHourly     Decimal?     @map("clinic_overtime_hourly") @db.Decimal(12, 2)
+  /// RM per public holiday worked, whatever the hours.
+  clinicPublicHolidayShift Decimal?     @map("clinic_public_holiday_shift") @db.Decimal(12, 2)
+  /// RM per rest day worked beyond half the normal hours.
+  clinicRestDayShift       Decimal?     @map("clinic_rest_day_shift") @db.Decimal(12, 2)
+  /// RM per session: a rest day or public holiday worked for at most half the normal hours.
+  clinicSessionRate        Decimal?     @map("clinic_session_rate") @db.Decimal(12, 2)
+  /// Which group this rule set applies to unless an employee is assigned one
+  /// directly: DOCTOR, CLINICAL, ADMIN, MANAGEMENT or OTHER — the derived
+  /// `WorkforceCategory`, so it is text here and validated in code. NULL means
+  /// no group; the default rule set covers whoever no group claims.
+  /// UNIQUE per (tenant, category) and per (tenant, employer, category) by two
+  /// partial indexes that live in the migration, not expressible here.
+  workforceCategory        String?      @map("workforce_category")
 
   isDefault Boolean  @default(false) @map("is_default")
   createdAt DateTime @default(now()) @map("created_at")

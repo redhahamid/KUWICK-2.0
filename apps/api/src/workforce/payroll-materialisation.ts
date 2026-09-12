@@ -1,4 +1,5 @@
-import { PayrollInputSource } from '@prisma/client';
+import { PayrollInputKind, PayrollInputSource } from '@prisma/client';
+import { DayType, dayTypeLabel } from './overtime-pricing';
 
 /**
  * MATERIALISATION — carrying an approved upstream fact into a payroll period.
@@ -45,12 +46,23 @@ export interface MaterialisedInput {
   provenance: string;
   /** Who approved the upstream fact, where the upstream has an approver. */
   approvedBy: string | null;
+  /**
+   * RECURRING for a standing monthly item, ADDITIONAL for everything that is
+   * earned in the month — the PCB discriminator. Absent means ADDITIONAL.
+   */
+  kind?: PayrollInputKind;
 }
 
 export interface PricedDayFact {
   staffId: string;
   /** The attendance row this day's pay came from. One input per day. */
   attendanceId: string;
+  /**
+   * Which kind of day it was, so the line reads "Overtime", "Rest day pay" or
+   * "Public holiday pay" rather than one label for three different things.
+   * Absent means a normal day.
+   */
+  dayType?: DayType;
   amountCents: number;
   /** One line of plain English naming the section of the Act that priced it. */
   description: string;
@@ -111,7 +123,7 @@ export function materialiseOvertimeDays(days: readonly PricedDayFact[]): Materia
     .map((day) => ({
       staffId: day.staffId,
       componentCode: 'OVERTIME',
-      label: 'Overtime and day-rate work',
+      label: dayTypeLabel(day.dayType ?? 'NORMAL_DAY'),
       amountCents: day.amountCents,
       source: 'ATTENDANCE' as const,
       sourceRecordId: day.attendanceId,
@@ -209,6 +221,53 @@ export function materialiseClaim(fact: ClaimFact): MaterialisedInput | null {
   };
 }
 
+/**
+ * RECURRING ITEMS — what the employee's record says they get every month.
+ *
+ * The item lives on the employee (`employee_recurring_items`, dated), and the
+ * run carries it into the period as an input like any other derived fact: one
+ * row per item, idempotent on the item's id, removed again when the item is
+ * ended or dated out of the month. The COMPONENT decides the statutory
+ * treatment; the item only says how much. A month is never prorated: an item
+ * in force on any day of the month is paid in full for that month.
+ */
+export interface RecurringItemFact {
+  staffId: string;
+  itemId: string;
+  componentCode: string;
+  componentName: string;
+  label: string | null;
+  amountCents: number;
+  effectiveFrom: Date;
+  effectiveTo: Date | null;
+  recordedBy: string | null;
+}
+
+const longDate = (date: Date) =>
+  date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+
+export function materialiseRecurringItems(facts: readonly RecurringItemFact[]): MaterialisedInput[] {
+  return facts
+    .filter((fact) => fact.amountCents > 0)
+    .map((fact) => ({
+      staffId: fact.staffId,
+      componentCode: fact.componentCode,
+      label: fact.label ?? fact.componentName,
+      amountCents: fact.amountCents,
+      source: 'RECURRING' as const,
+      sourceRecordId: fact.itemId,
+      earnedPeriod: null,
+      provenance:
+        `Recurring ${fact.componentName.toLowerCase()}${fact.label ? ` (${fact.label})` : ''} of ` +
+        `${(fact.amountCents / 100).toFixed(2)} a month from ${longDate(fact.effectiveFrom)}` +
+        (fact.effectiveTo ? ` to ${longDate(fact.effectiveTo)}` : '') +
+        ', on the employee record' +
+        (fact.recordedBy ? `, recorded by ${fact.recordedBy}` : ''),
+      approvedBy: fact.recordedBy,
+      kind: 'RECURRING' as const,
+    }));
+}
+
 export function claimCategoryLabel(category: string): string {
   switch (category) {
     case 'MEDICAL': return 'Medical';
@@ -240,6 +299,8 @@ export interface ExistingInput {
   source: PayrollInputSource;
   amountCents: number;
   sourceRecordId: string | null;
+  /** When supplied, a changed label is a change too — a rest day relabelled is rewritten. */
+  label?: string | null;
 }
 
 export interface MaterialisationPlan {
@@ -250,7 +311,7 @@ export interface MaterialisationPlan {
   unchanged: number;
 }
 
-const DERIVED_SOURCES: PayrollInputSource[] = ['ATTENDANCE', 'LEAVE', 'INCENTIVE', 'CLAIM'];
+const DERIVED_SOURCES: PayrollInputSource[] = ['ATTENDANCE', 'LEAVE', 'INCENTIVE', 'CLAIM', 'RECURRING'];
 
 /**
  * The identity of a materialised input is the component it is an instance of
@@ -285,7 +346,7 @@ export function planMaterialisation(
       continue;
     }
     matched.add(found.id);
-    if (found.amountCents !== want.amountCents) {
+    if (found.amountCents !== want.amountCents || (found.label !== undefined && found.label !== want.label)) {
       plan.update.push({ id: found.id, input: want });
     } else {
       plan.unchanged += 1;

@@ -88,6 +88,7 @@ import type {
   EffectiveAttendancePolicy,
   StatutoryRates,
   StatutoryCheck,
+  PayrollPoliciesResponse,
   PayrollPolicyRow,
   PayComponentRow,
   RecurringItemRow,
@@ -807,8 +808,15 @@ export function useMarkStatutoryChecked() {
 export function usePayrollPolicies() {
   return useQuery({
     queryKey: ['admin-hr', 'payroll-policies'],
-    queryFn: () => apiClient.get<{ policies: PayrollPolicyRow[]; notice: string }>('/workforce/payroll-policies'),
+    queryFn: () => apiClient.get<PayrollPoliciesResponse>('/workforce/payroll-policies'),
   });
+}
+
+export function useUpsertPayrollPolicy() {
+  return useAdminMutation(
+    (body: Record<string, unknown>) => apiClient.post<PayrollPolicyRow>('/workforce/payroll-policies', body),
+    ['admin-hr'],
+  );
 }
 
 export function useStatutoryRuleSets() {

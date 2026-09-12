@@ -1,0 +1,80 @@
+import { ClinicRates } from './overtime-pricing';
+import { WorkforceCategory } from './workforce-category';
+import { MoneyLike, toCents } from '../finance/money';
+
+/**
+ * WHICH RULE SET PRICES AN EMPLOYEE'S EXTRA HOURS.
+ *
+ * Settings › Payroll policies holds one rule set per group of the workforce
+ * — doctors on clinic rates, everybody else on the Act — and an employee can
+ * be put on a particular rule set by hand. Resolved in this order, and the
+ * order is the whole point:
+ *
+ *   1. ASSIGNED  — `employee_profiles.payroll_policy_id`. The person's own
+ *                  record is the most specific answer there is.
+ *   2. CATEGORY  — the rule set naming their workforce category, for their
+ *                  employing company first and then tenant-wide.
+ *   3. DEFAULT   — the tenant's default rule set.
+ *   4. NONE      — no rule set: the Act's formula, as every run did before.
+ *
+ * Pure, so the same function answers both the payroll run and the Settings
+ * screen's "n employees on this rule set" — two surfaces that must not count
+ * differently.
+ */
+export interface ResolvablePolicy {
+  readonly id: string;
+  readonly name: string;
+  readonly isDefault: boolean;
+  readonly legalEmployerId: string | null;
+  readonly workforceCategory: string | null;
+  readonly overtimeMode: 'STATUTORY' | 'CLINIC_RATE';
+  readonly clinicOvertimeHourly: MoneyLike | null;
+  readonly clinicPublicHolidayShift: MoneyLike | null;
+  readonly clinicRestDayShift: MoneyLike | null;
+  readonly clinicSessionRate: MoneyLike | null;
+}
+
+export type PolicyResolutionHow = 'ASSIGNED' | 'CATEGORY' | 'DEFAULT' | 'NONE';
+
+export interface PolicyResolution<P extends ResolvablePolicy> {
+  readonly policy: P | null;
+  readonly how: PolicyResolutionHow;
+}
+
+export function resolvePayrollPolicy<P extends ResolvablePolicy>(
+  policies: readonly P[],
+  employee: {
+    readonly payrollPolicyId: string | null;
+    readonly legalEmployerId: string | null;
+    readonly category: WorkforceCategory;
+  },
+): PolicyResolution<P> {
+  if (employee.payrollPolicyId) {
+    const assigned = policies.find((policy) => policy.id === employee.payrollPolicyId);
+    if (assigned) return { policy: assigned, how: 'ASSIGNED' };
+  }
+  const forCategory = policies.filter((policy) => policy.workforceCategory === employee.category);
+  const forEmployer = employee.legalEmployerId
+    ? forCategory.find((policy) => policy.legalEmployerId === employee.legalEmployerId)
+    : undefined;
+  if (forEmployer) return { policy: forEmployer, how: 'CATEGORY' };
+  const tenantWide = forCategory.find((policy) => policy.legalEmployerId === null);
+  if (tenantWide) return { policy: tenantWide, how: 'CATEGORY' };
+  const fallback = policies.find((policy) => policy.isDefault);
+  if (fallback) return { policy: fallback, how: 'DEFAULT' };
+  return { policy: null, how: 'NONE' };
+}
+
+const cents = (value: MoneyLike | null): number | null => (value === null || value === undefined ? null : toCents(value));
+
+/** Mode B's amounts, in cents, or null when the rule set is on the Act's formula. */
+export function clinicRatesOf(policy: ResolvablePolicy | null): ClinicRates | null {
+  if (!policy || policy.overtimeMode !== 'CLINIC_RATE') return null;
+  return {
+    ruleSet: policy.name,
+    overtimeHourlyCents: cents(policy.clinicOvertimeHourly),
+    publicHolidayShiftCents: cents(policy.clinicPublicHolidayShift),
+    restDayShiftCents: cents(policy.clinicRestDayShift),
+    sessionCents: cents(policy.clinicSessionRate),
+  };
+}

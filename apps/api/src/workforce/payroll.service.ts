@@ -51,12 +51,15 @@ import {
   materialiseClaim,
   materialiseIncentives,
   materialiseOvertimeDays,
+  materialiseRecurringItems,
   materialiseUnpaidLeave,
   planMaterialisation,
 } from './payroll-materialisation';
 import { leaveDaysInYear } from './leave-balance';
 import { describeProration, proratedBasicCents, prorationFor } from './proration';
 import { classifyDay, describePricedDay, priceOvertime } from './overtime-pricing';
+import { clinicRatesOf, resolvePayrollPolicy } from './payroll-policy-resolution';
+import { workforceCategoryOf } from './workforce-category';
 import { LINDUNG_EFFECTIVE_FROM } from '../statutory/lindung-24-jam';
 import { CatalogueRow, ResolvedComponent, catalogueFor, checkOrdinaryRateBase } from './component-liability';
 import {
@@ -64,6 +67,7 @@ import {
   MAX_HOURS_PER_DAY,
   checkOrdinaryRatePolicy,
   overtimeScope,
+  OvertimeScope,
 } from '../statutory/employment-act';
 import { CreatePayrollRunDto } from './dto/create-payroll-run.dto';
 import { PayrollAdjustmentDto } from './dto/payroll-adjustment.dto';
@@ -662,7 +666,9 @@ export class PayrollService {
           employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
           ...(run.clinicId ? { staff: { clinicId: run.clinicId } } : {}),
         },
-        include: { staff: { select: { id: true, fullName: true, active: true, clinicId: true, role: true } } },
+        include: {
+          staff: { select: { id: true, fullName: true, active: true, clinicId: true, role: true, professionalType: true } },
+        },
         // Deterministic order, so two calculations of the same run produce the
         // same exception list in the same sequence.
         orderBy: { staffId: 'asc' },
@@ -840,6 +846,11 @@ export class PayrollService {
       );
 
       const lastDayOfPeriod = new Date(periodEnd.getTime() - 86400000);
+
+      // WHICH RULE SET PRICES EACH EMPLOYEE'S EXTRA HOURS (§6). Read once for
+      // the run and resolved per employee below: assigned by hand, then the
+      // rule set for their workforce category, then the default, then the Act.
+      const payrollPolicies = await tx.payrollPolicy.findMany();
 
       /*
        * THE EMPLOYER'S OWN DATED STANDING — today that is the HRD Corp
@@ -1031,7 +1042,7 @@ export class PayrollService {
         }
         const classification = classificationOutcome.row;
 
-        const [attendance, leave, incentives, inputs, claims] = await Promise.all([
+        const [attendance, leave, incentives, inputs, claims, recurringItems] = await Promise.all([
           tx.attendanceRecord.findMany({
             where: { staffId: employee.staffId, workDate: { gte: period, lt: periodEnd } },
           }),
@@ -1065,6 +1076,18 @@ export class PayrollService {
               payrollPeriod: period,
             },
             include: { decidedBy: { select: { fullName: true } } },
+          }),
+          // RECURRING ITEMS in force on any day of the month — what the
+          // employee's record says they get every month. Read here, carried
+          // into the period as inputs below, so the grid's "other income" is
+          // the record and not a figure somebody retyped.
+          tx.employeeRecurringItem.findMany({
+            where: {
+              staffId: employee.staffId,
+              effectiveFrom: { lte: lastDayOfPeriod },
+              OR: [{ effectiveTo: null }, { effectiveTo: { gte: period } }],
+            },
+            include: { createdBy: { select: { fullName: true } } },
           }),
         ]);
 
@@ -1236,9 +1259,33 @@ export class PayrollService {
         // that, anything paid is the employer's undertaking rather than the
         // Act's requirement, and the two must not be presented as the same
         // thing on a payslip or in a dispute.
-        const scope = overtimeScope(fullMonthlyCents, statutoryResolutionDay, classification.overtimeContractPolicy);
+        // THE RULE SET (§6). An explicit "not paid" on the employee's own
+        // standing wins over a group rule set: the person's record is the more
+        // specific answer, and a doctor contracted with no overtime is not
+        // put on clinic rates by being a doctor.
+        const policyResolution = resolvePayrollPolicy(payrollPolicies, {
+          payrollPolicyId: employee.payrollPolicyId,
+          legalEmployerId: employee.legalEmployerId,
+          category: workforceCategoryOf(employee.staff),
+        });
+        const clinicRates =
+          classification.overtimeContractPolicy === 'NOT_PAID' ? null : clinicRatesOf(policyResolution.policy);
+        const actScope = overtimeScope(fullMonthlyCents, statutoryResolutionDay, classification.overtimeContractPolicy);
+        // A clinic-rate rule set IS the employer's undertaking for somebody the
+        // Act does not reach, so the question OVERTIME_ENTITLEMENT_UNRECORDED
+        // asks is answered by the rule set.
+        const scope: OvertimeScope =
+          clinicRates && !actScope.withinFirstSchedule && actScope.basis === 'NONE'
+            ? {
+                withinFirstSchedule: false,
+                basis: 'CONTRACTUAL',
+                reason:
+                  'Wages exceed the First Schedule limit of RM4,000 a month, so the Act’s overtime provisions do not apply. ' +
+                  `Extra hours are paid at the clinic’s own rates under the "${clinicRates.ruleSet}" rule set.`,
+              }
+            : actScope;
         const workedAnyDay = attendance.some((row) => (row.workedMinutes ?? 0) > 0);
-        if (!isBonusRun && workedAnyDay && !scope.withinFirstSchedule && !classification.overtimeContractPolicy) {
+        if (!isBonusRun && workedAnyDay && !scope.withinFirstSchedule && !classification.overtimeContractPolicy && !clinicRates) {
           raise('OVERTIME_ENTITLEMENT_UNRECORDED', employee, {
             wages: formatCents(fullMonthlyCents),
           });
@@ -1259,9 +1306,23 @@ export class PayrollService {
             normalHoursPerDay: orpConfig.hoursPerDay,
             dailyOrpCents: rates.overtimeDailyCents,
             hourlyOrpCents: rates.overtimeHourlyCents,
+            clinicRates,
           },
         );
         const overtimeHours = pricing.normalDayHours;
+
+        // THE FLOOR. Within the First Schedule a clinic rate below the Act is
+        // paid at the Act's figure and blocks the run until the rule set is
+        // corrected — see CLINIC_RATE_BELOW_STATUTORY.
+        if (clinicRates && pricing.belowStatutoryFloor.length > 0) {
+          raise('CLINIC_RATE_BELOW_STATUTORY', employee, {
+            ruleSet: clinicRates.ruleSet,
+            days: pricing.belowStatutoryFloor.length,
+            clinic: formatCents(pricing.belowStatutoryFloor.reduce((sum, day) => sum + (day.clinicRateCents ?? 0), 0)),
+            statutory: formatCents(pricing.belowStatutoryFloor.reduce((sum, day) => sum + day.totalCents, 0)),
+            wages: formatCents(fullMonthlyCents),
+          });
+        }
 
         // A BONUS RUN CARRIES NO ATTENDANCE. Overtime, unpaid leave and
         // incentives belong to the month's regular payroll and are already on
@@ -1273,6 +1334,7 @@ export class PayrollService {
             pricing.days.map((row) => ({
               staffId: employee.staffId,
               attendanceId: row.attendanceId,
+              dayType: row.dayType,
               amountCents: row.totalCents,
               description: describePricedDay(row),
               approverName: overtimeApprover ? (approverNames.get(overtimeApprover) ?? null) : null,
@@ -1300,6 +1362,19 @@ export class PayrollService {
               approverName: row.incentiveRun.approvedBy?.fullName ?? null,
             })),
           ),
+          ...materialiseRecurringItems(
+            recurringItems.map((item) => ({
+              staffId: employee.staffId,
+              itemId: item.id,
+              componentCode: item.componentCode,
+              componentName: catalogue.get(item.componentCode)?.label ?? item.componentCode,
+              label: item.label,
+              amountCents: toCents(item.amount),
+              effectiveFrom: item.effectiveFrom,
+              effectiveTo: item.effectiveTo,
+              recordedBy: item.createdBy?.fullName ?? null,
+            })),
+          ),
           ...claims.map((claim) =>
             materialiseClaim({
               staffId: employee.staffId,
@@ -1320,6 +1395,7 @@ export class PayrollService {
             source: row.source,
             amountCents: toCents(row.amount),
             sourceRecordId: row.sourceRecordId,
+            label: row.label,
           })),
         );
 
@@ -1335,7 +1411,7 @@ export class PayrollService {
               amount: fromCents(want.amountCents),
               source: want.source,
               sourceRecordId: want.sourceRecordId,
-              kind: 'ADDITIONAL',
+              kind: want.kind ?? 'ADDITIONAL',
               reason: want.provenance,
               earnedPeriod: want.earnedPeriod,
               createdByStaffId: actor.id,
@@ -1844,6 +1920,23 @@ export class PayrollService {
                 unpaidLeaveDaily: fromCents(rates.unpaidLeaveDailyCents),
                 overtimeHourly: fromCents(rates.overtimeHourlyCents),
               },
+              // WHICH RULE SET PRICED THE EXTRA HOURS, and how it was chosen
+              // (§6). A payslip that says "RM500" has to be able to say "per
+              // public holiday shift, Doctors rule set" a year later.
+              overtimePolicy: {
+                ruleSet: policyResolution.policy?.name ?? null,
+                how: policyResolution.how,
+                mode: clinicRates ? 'CLINIC_RATE' : 'STATUTORY',
+                clinicRates: clinicRates
+                  ? {
+                      overtimeHourly: clinicRates.overtimeHourlyCents === null ? null : fromCents(clinicRates.overtimeHourlyCents),
+                      publicHolidayShift:
+                        clinicRates.publicHolidayShiftCents === null ? null : fromCents(clinicRates.publicHolidayShiftCents),
+                      restDayShift: clinicRates.restDayShiftCents === null ? null : fromCents(clinicRates.restDayShiftCents),
+                      session: clinicRates.sessionCents === null ? null : fromCents(clinicRates.sessionCents),
+                    }
+                  : null,
+              },
               // ONE ROW PER DAY, naming the section that priced it. This used
               // to be a single synthesised "Normal day (1.5x)" line, which
               // could not explain why a two-hour public holiday is worth two
@@ -1861,7 +1954,10 @@ export class PayrollService {
                   }`,
                   hours: Math.round(row.excessHours * 100) / 100,
                   ordinaryRateDays: row.ordinaryRateDays,
-                  hourlyRate: fromCents(Math.round(rates.overtimeHourlyCents * row.excessMultiplier)),
+                  hourlyRate: fromCents(row.excessHourlyRateCents),
+                  dayPay: fromCents(row.dayPayCents),
+                  dayType: row.dayType,
+                  pricedBy: row.pricedBy,
                   total: fromCents(row.totalCents),
                   provision: row.provision,
                 })),

@@ -1143,6 +1143,7 @@
 .hr-eff {
   font-size: 12px;
   color: var(--hr-ink3);
+  white-space: nowrap;
 }
 
 /* ── Page tabs (inside a panel) ───────────────────────────────────────────── */
@@ -1193,6 +1194,21 @@
 .hr-choice__title {
   font-weight: 600;
   display: block;
+}
+/* A choice list inside a form: boxed, and still a flex row — `.hr-form label`
+   would otherwise stack the radio above its words. */
+.hr-form__choices {
+  border: 1px solid var(--hr-line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.hr-form .hr-choice {
+  display: flex;
+  margin-bottom: 0;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--hr-ink);
 }
 .hr-choice__detail {
   font-size: 13px;

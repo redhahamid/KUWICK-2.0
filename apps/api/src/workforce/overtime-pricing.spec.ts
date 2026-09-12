@@ -232,3 +232,114 @@ describe('who the Act actually reaches — the First Schedule', () => {
     expect(scope.reason).toMatch(/predates/);
   });
 });
+
+/*
+ * MODE B — CLINIC RATES (§6). The same RM3,120 wage: ORP RM120 a day, RM15
+ * an hour, so the Act's figures above are the floor the clinic rate is held
+ * to. A doctor on RM9,500 is outside the First Schedule and has no floor.
+ */
+import { clinicRateShortfalls, dayTypeLabel } from './overtime-pricing';
+
+describe('a clinic-rate rule set', () => {
+  const doctors = { ruleSet: 'Doctors', overtimeHourlyCents: null, publicHolidayShiftCents: 50000, restDayShiftCents: 30000, sessionCents: 15000 };
+  const staff = { ruleSet: 'Clinical staff', overtimeHourlyCents: 3000, publicHolidayShiftCents: 30000, restDayShiftCents: 15000, sessionCents: null };
+  const withRates = (clinicRates: typeof staff) => ({ ...ctx, clinicRates });
+
+  it('pays approved overtime at the clinic hourly rate when it is at least the Act’s', () => {
+    // RM30 an hour against the Act's RM22.50 (15 × 1.5).
+    const priced = priceDay(day({ overtimeMinutes: 120, overtimeApproved: true }), 'NORMAL_DAY', withRates(staff));
+    expect(priced.pricedBy).toBe('CLINIC_RATE');
+    expect(priced.totalCents).toBe(6000);
+    expect(priced.excessHourlyRateCents).toBe(3000);
+    expect(priced.statutoryFloorCents).toBe(4500);
+    expect(priced.belowStatutoryFloor).toBe(false);
+    expect(priced.entitlement).toBe('STATUTORY');
+    expect(priced.provision).toMatch(/Clinic rate, Clinical staff: RM30\.00 an hour/);
+  });
+
+  it('holds a clinic rate to the Act’s floor for somebody the First Schedule reaches', () => {
+    // RM20 an hour is below the Act's RM22.50: the Act's figure is paid, the
+    // clinic's is kept for the exception to name, and the run blocks.
+    const priced = priceDay(
+      day({ overtimeMinutes: 120, overtimeApproved: true }),
+      'NORMAL_DAY',
+      withRates({ ...staff, overtimeHourlyCents: 2000 }),
+    );
+    expect(priced.belowStatutoryFloor).toBe(true);
+    expect(priced.totalCents).toBe(4500);
+    expect(priced.clinicRateCents).toBe(4000);
+    expect(priced.statutoryFloorCents).toBe(4500);
+    expect(priced.provision).toMatch(/below the Employment Act's RM45\.00/);
+    expect(describePricedDay(priced)).toMatch(/^2026-08-12: Clinical staff pays RM40\.00/);
+  });
+
+  it('prices a public holiday per shift, whatever the hours, and a short day as a session', () => {
+    const shift = priceDay(day({ workedMinutes: 480 }), 'PUBLIC_HOLIDAY', withRates(doctors as never));
+    expect(shift.totalCents).toBe(50000);
+    expect(shift.provision).toMatch(/RM500\.00 per public holiday shift/);
+    const session = priceDay(day({ workedMinutes: 240 }), 'PUBLIC_HOLIDAY', withRates(doctors as never));
+    expect(session.totalCents).toBe(24000); // the Act's two days (RM240) outranks a RM150 session
+    expect(session.belowStatutoryFloor).toBe(true);
+    // On a rest day the same session clears the Act's half day (RM60).
+    const restSession = priceDay(day({ workedMinutes: 240, date: new Date('2026-08-16T00:00:00.000Z') }), 'REST_DAY', withRates(doctors as never));
+    expect(restSession.totalCents).toBe(15000);
+    expect(restSession.provision).toMatch(/per rest day session/);
+  });
+
+  it('prices a kind of day the rule set gives no amount for by the Act', () => {
+    // Doctors' rule set fixes no hourly rate: a normal day's overtime is the Act's.
+    const priced = priceDay(day({ overtimeMinutes: 60, overtimeApproved: true }), 'NORMAL_DAY', withRates(doctors as never));
+    expect(priced.pricedBy).toBe('ACT');
+    expect(priced.totalCents).toBe(2250);
+  });
+
+  it('is a company benefit above the First Schedule, with no floor', () => {
+    // RM9,500: the Act does not reach the doctor, and the rule set is the
+    // employer's undertaking — CONTRACTUAL, no floor, RM500 as set.
+    const contractual = { ...ctx, scope: overtimeScope(950000, AUGUST, null), clinicRates: doctors as never };
+    const priced = priceDay(day({ workedMinutes: 300 }), 'PUBLIC_HOLIDAY', contractual);
+    expect(priced.entitlement).toBe('CONTRACTUAL');
+    expect(priced.totalCents).toBe(50000);
+    expect(priced.statutoryFloorCents).toBeNull();
+    expect(priced.belowStatutoryFloor).toBe(false);
+  });
+
+  it('collects the days a clinic rate would have underpaid, and labels each kind of day', () => {
+    const pricing = priceOvertime(
+      [day({ overtimeMinutes: 120, overtimeApproved: true }), day({ attendanceId: 'a2', date: new Date('2026-08-31T00:00:00.000Z'), workedMinutes: 480 })],
+      (date) => classifyDay(date, { publicHolidayDates: new Set(['2026-08-31']), restDayOfWeek: 0 }),
+      withRates({ ...staff, overtimeHourlyCents: 2000 }),
+    );
+    expect(pricing.belowStatutoryFloor.map((row) => row.attendanceId)).toEqual(['a1']);
+    expect(pricing.totalCents).toBe(4500 + 30000);
+    expect(dayTypeLabel('NORMAL_DAY')).toBe('Overtime');
+    expect(dayTypeLabel('REST_DAY')).toBe('Rest day pay');
+    expect(dayTypeLabel('PUBLIC_HOLIDAY')).toBe('Public holiday pay');
+  });
+});
+
+describe('the Settings-time check of clinic rates against the Act', () => {
+  it('names each rate below the Act for a RM4,000 wage on an 8-hour day', () => {
+    // Daily RM153.85, hourly RM19.23 → overtime floor RM28.85; a holiday two
+    // days RM307.69; a rest day RM153.85.
+    const out = clinicRateShortfalls(
+      { ruleSet: 'Staff', overtimeHourlyCents: 2000, publicHolidayShiftCents: 50000, restDayShiftCents: 10000, sessionCents: null },
+      400000,
+      8,
+    );
+    expect(out.map((row) => row.rate)).toEqual(['OVERTIME_HOURLY', 'REST_DAY_SHIFT']);
+    expect(out[0].actCents).toBe(2885);
+    expect(out[0].sentence).toBe("An hour of overtime: RM20.00 against the Act's RM28.85.");
+    expect(out[1].actCents).toBe(15385);
+  });
+
+  it('holds a session rate to the public-holiday floor, the stricter day it can price', () => {
+    const out = clinicRateShortfalls({ ruleSet: 'Staff', overtimeHourlyCents: null, publicHolidayShiftCents: null, restDayShiftCents: null, sessionCents: 15000 }, 312000, 8);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ rate: 'SESSION', actCents: 24000 });
+  });
+
+  it('has nothing to say above the First Schedule limit', () => {
+    expect(clinicRateShortfalls({ ruleSet: 'Doctors', overtimeHourlyCents: 100, publicHolidayShiftCents: 100, restDayShiftCents: 100, sessionCents: 100 }, 950000, 8)).toEqual([]);
+  });
+});
