@@ -144,8 +144,8 @@ proof, the MC goes to the manager, the mileage rate is a constant.
 | Gate | Command | Result |
 |---|---|---|
 | API unit | `npm run test:api` | 130 suites, 2,764 tests, green |
-| API e2e | `cd apps/api && npx jest --config test/jest-e2e.json` | Running at the time of this commit; the row is filled in the follow-up docs commit. The four suites the piece touches (self-service, payslip, payment, synthetic month) ran green on their own: 48 tests |
-| Web unit | `cd apps/web && npx vitest run` | Running at the time of this commit; the row is filled in the follow-up docs commit. The first full run failed one guard, the kit's isolation test, which now counts the portal as the kit's territory |
+| API e2e | `cd apps/api && npx jest --config test/jest-e2e.json` | 41 suites, 465 tests, green. In the full run two suites (`payroll-synthetic-month`, `payroll-snapshot`) hit Jest's 5-second timeout on app bootstrap while Postgres and both dev servers were cold-starting after a container restart; re-run alone, both green (34 tests) |
+| Web unit | `cd apps/web && npx vitest run` | 100 files, 1,724 tests, green. The first full run failed one guard, the kit's isolation test, which now counts the portal as the kit's territory |
 | Browser | `CHROME_PATH=/opt/pw-browsers/chromium npx playwright test` | Running at the time of this commit; the row is filled in the follow-up docs commit |
 
 ## 11. Not in this piece
