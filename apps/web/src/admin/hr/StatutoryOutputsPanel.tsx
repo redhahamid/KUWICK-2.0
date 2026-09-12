@@ -6,7 +6,7 @@ import { DataTable, money } from '../components/DataTable';
 import { apiClient, downloadFile } from '../../core/api-client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-interface OutputRow {
+export interface OutputRow {
   staffId: string;
   name: string;
   identifier: string | null;
@@ -19,7 +19,7 @@ interface OutputRow {
   basisNote: string | null;
 }
 
-interface SchemeBlock {
+export interface SchemeBlock {
   scheme: string;
   rows: OutputRow[];
   employeeTotalCents: number | null;
@@ -36,7 +36,7 @@ interface SchemeBlock {
   } | null;
 }
 
-interface StatutoryOutputs {
+export interface StatutoryOutputs {
   runId: string;
   period: string;
   employerName: string | null;
@@ -62,6 +62,20 @@ const SCHEME_LABEL: Record<string, string> = {
 };
 
 /**
+ * WHAT THE MONTH OWES EACH AUTHORITY, as data. The run's own panel and the
+ * reports shelf ask the same question, so they ask it through one hook and
+ * share one cache entry — two queries would be two answers.
+ */
+export function useStatutoryOutputs(runId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'statutory-outputs', runId],
+    queryFn: () => apiClient.get<StatutoryOutputs>(`/workforce/payroll/runs/${runId}/statutory-outputs`),
+    enabled: Boolean(runId),
+    retry: false,
+  });
+}
+
+/**
  * WHAT THE MONTH OWES EACH AUTHORITY — prepared from the approved snapshot,
  * reconciled, and never called submitted until a person records the filing
  * they actually made, with the portal's own reference.
@@ -69,11 +83,7 @@ const SCHEME_LABEL: Record<string, string> = {
 export function StatutoryOutputsPanel({ runId }: { runId: string }) {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
-  const query = useQuery({
-    queryKey: ['admin-hr', 'statutory-outputs', runId],
-    queryFn: () => apiClient.get<StatutoryOutputs>(`/workforce/payroll/runs/${runId}/statutory-outputs`),
-    retry: false,
-  });
+  const query = useStatutoryOutputs(runId);
   const [recordFor, setRecordFor] = useState<string | null>(null);
   const [submittedDate, setSubmittedDate] = useState<Dayjs | null>(dayjs());
   const [reference, setReference] = useState('');

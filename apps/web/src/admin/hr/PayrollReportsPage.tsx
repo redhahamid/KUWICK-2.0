@@ -1,12 +1,17 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Button, Input, Select, Tag } from 'antd';
+import { App, Select, Tag } from 'antd';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
+import { AdminNotice, AdminSection, firstError } from '../components/AdminShell';
 import { DataTable, DataTableTotalRow, ringgit } from '../components/DataTable';
-import { FilterBar, Filter } from '../components/FilterBar';
-import { EmptyState } from '../components/Panel';
+import { downloadFile } from '../../core/api-client';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
+import { HrPage, Panel, PanelHead, SegControl, StatusChip, type ChipTone } from './ui';
+import { Table } from './ui/Table';
+import { ToolbarSearch } from './ui/Toolbar';
+import { IconDownload } from './ui/icons';
+import { initialsOf } from './ui/who';
+import { useStatutoryOutputs } from './StatutoryOutputsPanel';
 import {
   useEmployees,
   useLegalEmployers,
@@ -25,6 +30,8 @@ import {
   usePayrollStatutoryReport,
   usePayrollUnpaidLeaveReport,
   usePayrollYtdReport,
+  usePayslips,
+  payslipPdfPath,
 } from '../hooks/useAdmin';
 import type {
   PayrollCostBucket,
@@ -39,6 +46,7 @@ import type {
   PayrollStatutoryReport,
   PayrollUnpaidLeaveReport,
   PayrollYtdReport,
+  PayslipListEntry,
 } from '../types';
 
 /**
@@ -74,34 +82,7 @@ type ReportKey =
   | 'EXCEPTIONS'
   | 'PAYMENT_STATUS';
 
-/**
- * WHICH CATEGORY EACH REPORT BELONGS TO.
- *
- * Keyed by the API's own report keys, so the catalogue stays the source of
- * truth for WHAT exists and this map only decides where it sits. Anything the
- * server serves that is not named here lands in Payroll rather than vanishing
- * — a report that exists and is unreachable is worse than one in the wrong
- * drawer.
- */
-const CATEGORY_OF: Record<string, ReportCategory> = {
-  PAYROLL_REGISTER: 'Payroll',
-  EMPLOYER_COST: 'Payroll',
-  VARIANCE: 'Payroll',
-  PAYMENT_STATUS: 'Payroll',
-  STATUTORY_TOTALS: 'Statutory',
-  PCB_SUMMARY: 'Statutory',
-  YTD: 'Statutory',
-  OVERTIME: 'Time & leave',
-  UNPAID_LEAVE: 'Time & leave',
-  CLAIMS: 'Claims & incentives',
-  INCENTIVES: 'Claims & incentives',
-  PAYROLL_HISTORY: 'People',
-  EXCEPTIONS: 'Payroll',
-};
-
 type ReportCategory = 'Payroll' | 'Statutory' | 'Time & leave' | 'Claims & incentives' | 'People';
-
-const CATEGORIES: ReportCategory[] = ['Payroll', 'Statutory', 'Time & leave', 'Claims & incentives', 'People'];
 
 /**
  * WHAT LIVES ON ANOTHER SCREEN.
@@ -153,175 +134,199 @@ const ELSEWHERE: { title: string; description: string; to: string; category: Rep
  * and the honestly-labelled absences keep their reason.
  */
 export function PayrollReportsPage() {
+  const { message } = App.useApp();
   const { clinicId } = useClinicFilter();
   const catalogue = usePayrollReportCatalogue();
   const runs = usePayrollRuns({ clinicId });
   const employees = useEmployees({ clinicId, status: 'ACTIVE' });
   const employers = useLegalEmployers();
+
   /*
-   * A REPORT IS LINKABLE.
-   *
-   * Finalise offers the month's outputs — the register export, the cost
-   * report — and "go to Reports, then find the report, then pick the month"
-   * is three steps for something the linking page already knows. `?report=` and
-   * `?run=` seed the picker; everything after that is ordinary local state, so
-   * browsing does not rewrite the URL on every click.
+   * `?report=` and `?run=` seed the picker, because arriving from "see the
+   * overtime behind this figure" and then being asked to pick the report and
+   * the run again is three steps for something the linking page already knows.
    */
   const [search] = useSearchParams();
   const [report, setReport] = useState<ReportKey | null>((search.get('report') as ReportKey) ?? null);
-  const [category, setCategory] = useState<ReportCategory | 'All'>('All');
-  const [query, setQuery] = useState('');
   const [runId, setRunId] = useState<string | undefined>(search.get('run') ?? undefined);
   const [staffId, setStaffId] = useState<string | undefined>();
   const [year, setYear] = useState<number>(dayjs().year());
   const [employerId, setEmployerId] = useState<string | undefined>();
+  const [from, setFrom] = useState(dayjs().startOf('month').format('YYYY-MM-DD'));
+  const [to, setTo] = useState(dayjs().endOf('month').format('YYYY-MM-DD'));
+  const [payslipQuery, setPayslipQuery] = useState('');
+  const [downloading, setDownloading] = useState(false);
 
   const runOptions = useMemo(
     () =>
-      (runs.data ?? [])
-        .filter((run) => run.status !== 'DRAFT' && run.status !== 'CANCELLED')
-        .map((run) => ({
-          value: run.id,
-          label: `${dayjs(run.period).format('MMMM YYYY')} · ${run.clinicName}`,
-        })),
+      (runs.data ?? []).map((run) => ({
+        value: run.id,
+        label: `${dayjs(run.period).format('MMMM YYYY')} · ${run.clinicName} · ${run.status.toLowerCase()}`,
+      })),
     [runs.data],
   );
-  const selectedRun = runId ?? runOptions[0]?.value;
+
   const employeeOptions = useMemo(
-    () =>
-      (employees.data ?? [])
-        .filter((row) => row.hasProfile)
-        .map((row) => ({ value: row.staffId, label: row.fullName })),
+    () => (employees.data ?? []).map((row) => ({ value: row.staffId, label: row.fullName })),
     [employees.data],
   );
+
   const yearOptions = useMemo(() => {
     const current = dayjs().year();
-    return [current + 1, current, current - 1, current - 2].map((value) => ({ value, label: String(value) }));
+    return [current, current - 1, current - 2].map((value) => ({ value, label: String(value) }));
   }, []);
-  // THE SCOPE COMES FROM THE CATALOGUE — the API says what each report is a
-  // view of, and the picker row follows it rather than a second list here.
+
+  /*
+   * THE MONTH IS THE PAGE'S SUBJECT, as it is on the mockup: three runs, the
+   * newest on the right. Everything under it — the payroll reports, what each
+   * authority is owed, the payslips — is that month's.
+   */
+  const months = useMemo(() => (runs.data ?? []).slice(0, 3).reverse(), [runs.data]);
+  const selectedRun = runId ?? months[months.length - 1]?.id;
+  const run = (runs.data ?? []).find((row) => row.id === selectedRun) ?? null;
+  const approved = run ? run.status === 'APPROVED' || run.status === 'PAID' : false;
+
   const entry = catalogue.data?.available.find((row) => row.key === report);
-  const scope = entry?.scope ?? 'RUN';
+  const scope = entry?.scope;
 
-  const [from, setFrom] = useState(dayjs().startOf('month').format('YYYY-MM-DD'));
-  const [to, setTo] = useState(dayjs().endOf('month').format('YYYY-MM-DD'));
+  const statutory = useStatutoryOutputs(approved ? selectedRun : undefined);
+  const payslips = usePayslips(approved ? selectedRun : undefined);
 
-  const cards = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return (catalogue.data?.available ?? [])
-      .map((row) => ({ ...row, category: CATEGORY_OF[row.key] ?? ('Payroll' as ReportCategory) }))
-      .filter((row) => category === 'All' || row.category === category)
-      .filter(
-        (row) =>
-          !needle ||
-          row.title.toLowerCase().includes(needle) ||
-          row.description.toLowerCase().includes(needle),
+  const payslipRows = useMemo(() => {
+    const needle = payslipQuery.trim().toLowerCase();
+    const rows = payslips.data?.payslips ?? [];
+    return needle ? rows.filter((row) => row.name.toLowerCase().includes(needle)) : rows;
+  }, [payslips.data, payslipQuery]);
+
+  /**
+   * DOWNLOAD ALL is the same authorised download, one employee at a time.
+   * There is no bulk endpoint and inventing one would put a second door on
+   * the payslip the audit trail already watches, so this walks the list and
+   * each PDF is fetched, audited and named exactly as it is singly.
+   */
+  const downloadEveryPayslip = async () => {
+    if (!selectedRun || payslipRows.length === 0) return;
+    setDownloading(true);
+    let done = 0;
+    try {
+      for (const row of payslipRows) {
+        await downloadFile(
+          payslipPdfPath(selectedRun, row.staffId),
+          `payslip-${payslips.data?.period ?? ''}-${row.name.replace(/\s+/g, '-').toLowerCase()}.pdf`,
+        );
+        done += 1;
+      }
+      message.success(`${done} payslip${done === 1 ? '' : 's'} downloaded.`);
+    } catch (error) {
+      message.error(
+        `${done} of ${payslipRows.length} downloaded. ${error instanceof Error ? error.message : 'The rest were not.'}`,
       );
-  }, [catalogue.data, category, query]);
-
-  const elsewhere = ELSEWHERE.filter((row) => category === 'All' || row.category === category).filter(
-    (row) => !query.trim() || row.title.toLowerCase().includes(query.trim().toLowerCase()),
-  );
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   // A CHOSEN REPORT TAKES OVER THE PAGE, with a way back to the shelf. Showing
   // the library above a full report means the report starts below the fold.
   if (report && entry) {
     return (
-      <AdminShell
-        error={firstError(catalogue, runs)}
+      <HrPage
+        error={errorText(firstError(catalogue, runs))}
         title={entry.title}
-        subtitle={entry.description}
+        sub={entry.description}
+        crumb={
+          <button type="button" className="hr-linkButton" onClick={() => setReport(null)}>
+            Reports
+          </button>
+        }
         actions={
-          <Button size="small" onClick={() => setReport(null)}>
-            ← All reports
-          </Button>
+          <button type="button" className="hr-btn" onClick={() => setReport(null)}>
+            All reports
+          </button>
         }
       >
-        <FilterBar>
-          {scope === 'RUN' ? (
-            <Filter label="Payroll run">
-              <Select
-                size="small"
-                aria-label="Payroll run"
-                style={{ minWidth: 280 }}
-                value={selectedRun}
-                onChange={setRunId}
-                options={runOptions}
-                placeholder="No calculated runs yet"
-              />
-            </Filter>
-          ) : null}
-          {scope === 'DATE_RANGE' ? (
-            <>
-              <Filter label="From">
-                <input
-                  aria-label="From"
-                  className="kw-dateInput"
-                  type="date"
-                  value={from}
-                  onChange={(event) => setFrom(event.target.value)}
-                />
-              </Filter>
-              <Filter label="To">
-                <input
-                  aria-label="To"
-                  className="kw-dateInput"
-                  type="date"
-                  value={to}
-                  onChange={(event) => setTo(event.target.value)}
-                />
-              </Filter>
-            </>
-          ) : null}
-          {scope === 'EMPLOYEE' ? (
-            <>
-              <Filter label="Employee">
+        <Panel>
+          <div className="hr-toolbar">
+            {scope === 'RUN' ? (
+              <label className="hr-fld__inline">
+                <span>Payroll run</span>
                 <Select
                   size="small"
-                  aria-label="Employee"
-                  showSearch
-                  optionFilterProp="label"
-                  style={{ minWidth: 260 }}
-                  value={staffId}
-                  onChange={setStaffId}
-                  options={employeeOptions}
-                  placeholder="Choose an employee"
+                  aria-label="Payroll run"
+                  style={{ minWidth: 280 }}
+                  value={selectedRun}
+                  onChange={setRunId}
+                  options={runOptions}
+                  placeholder="No calculated runs yet"
                 />
-              </Filter>
-              <Filter label="Year">
-                <Select size="small" aria-label="Year" style={{ minWidth: 110 }} value={year} onChange={setYear} options={yearOptions} />
-              </Filter>
-            </>
-          ) : null}
-          {scope === 'YEAR' ? (
-            <>
-              <Filter label="Year">
-                <Select size="small" aria-label="Year" style={{ minWidth: 110 }} value={year} onChange={setYear} options={yearOptions} />
-              </Filter>
-              <Filter label="Employer">
-                <Select
-                  size="small"
-                  aria-label="Legal employer"
-                  allowClear
-                  style={{ minWidth: 240 }}
-                  value={employerId}
-                  onChange={setEmployerId}
-                  options={(employers.data ?? []).map((row) => ({ value: row.id, label: row.name }))}
-                  placeholder="Every employer"
-                />
-              </Filter>
-            </>
-          ) : null}
-        </FilterBar>
+              </label>
+            ) : null}
+            {scope === 'DATE_RANGE' ? (
+              <>
+                <label className="hr-fld__inline">
+                  <span>From</span>
+                  <input aria-label="From" className="hr-f" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+                </label>
+                <label className="hr-fld__inline">
+                  <span>To</span>
+                  <input aria-label="To" className="hr-f" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+                </label>
+              </>
+            ) : null}
+            {scope === 'EMPLOYEE' ? (
+              <>
+                <label className="hr-fld__inline">
+                  <span>Employee</span>
+                  <Select
+                    size="small"
+                    aria-label="Employee"
+                    showSearch
+                    optionFilterProp="label"
+                    style={{ minWidth: 260 }}
+                    value={staffId}
+                    onChange={setStaffId}
+                    options={employeeOptions}
+                    placeholder="Choose an employee"
+                  />
+                </label>
+                <label className="hr-fld__inline">
+                  <span>Year</span>
+                  <Select size="small" aria-label="Year" style={{ minWidth: 110 }} value={year} onChange={setYear} options={yearOptions} />
+                </label>
+              </>
+            ) : null}
+            {scope === 'YEAR' ? (
+              <>
+                <label className="hr-fld__inline">
+                  <span>Year</span>
+                  <Select size="small" aria-label="Year" style={{ minWidth: 110 }} value={year} onChange={setYear} options={yearOptions} />
+                </label>
+                <label className="hr-fld__inline">
+                  <span>Employer</span>
+                  <Select
+                    size="small"
+                    aria-label="Legal employer"
+                    allowClear
+                    style={{ minWidth: 240 }}
+                    value={employerId}
+                    onChange={setEmployerId}
+                    options={(employers.data ?? []).map((row) => ({ value: row.id, label: row.name }))}
+                    placeholder="Every employer"
+                  />
+                </label>
+              </>
+            ) : null}
+          </div>
+        </Panel>
 
         {scope === 'RUN' && !selectedRun ? (
-          <AdminNotice tone="info">
+          <div className="hr-notice hr-notice--info">
             <strong>No payroll has been calculated yet.</strong> A report is a view of a run, so there is nothing to
-            report on until one exists. <Link to="/admin/hr/payroll">Start this month’s payroll</Link>.
-          </AdminNotice>
+            report on until one exists. <Link to="/admin/hr/payroll">Start this month&rsquo;s payroll</Link>.
+          </div>
         ) : null}
         {scope === 'EMPLOYEE' && !staffId ? (
-          <AdminNotice tone="info">Choose an employee to see their payroll history.</AdminNotice>
+          <div className="hr-notice hr-notice--info">Choose an employee to see their payroll history.</div>
         ) : null}
 
         {report === 'PAYROLL_REGISTER' && selectedRun ? <RegisterReport runId={selectedRun} /> : null}
@@ -337,86 +342,280 @@ export function PayrollReportsPage() {
         {report === 'INCENTIVES' && selectedRun ? <IncentivesReport runId={selectedRun} /> : null}
         {report === 'EXCEPTIONS' && selectedRun ? <ExceptionsReport runId={selectedRun} /> : null}
         {report === 'PAYMENT_STATUS' && selectedRun ? <PaymentStatusReport runId={selectedRun} /> : null}
-      </AdminShell>
+      </HrPage>
     );
   }
 
-  return (
-    <AdminShell
-      error={firstError(catalogue, runs)}
-      title="Reports"
-      subtitle="Read-only views of what payroll has already recorded. Every figure comes from the run itself."
-    >
-      <FilterBar
-        right={
-          <Input
-            allowClear
-            size="small"
-            style={{ width: 240 }}
-            placeholder="Search reports…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        }
-      >
-        <div className="kw-chipRow" role="group" aria-label="Report categories">
-          {(['All', ...CATEGORIES] as const).map((name) => (
-            <button
-              key={name}
-              type="button"
-              className={`kw-catChip${category === name ? ' kw-catChip--on' : ''}`}
-              onClick={() => setCategory(name)}
-            >
-              {name}
-            </button>
-          ))}
-        </div>
-      </FilterBar>
+  const named = new Set(['PAYROLL_REGISTER', 'VARIANCE', 'PAYMENT_STATUS']);
+  const rest = (catalogue.data?.available ?? []).filter((row) => !named.has(row.key));
+  const openReport = (key: string) => setReport(key as ReportKey);
+  const monthLabel = run ? dayjs(run.period).format('MMMM YYYY') : 'this month';
 
-      {cards.length === 0 && elsewhere.length === 0 ? (
-        <AdminSection padded={false}>
-          <EmptyState title="No report matches that" hint="Try another category, or clear the search." />
-        </AdminSection>
+  return (
+    <HrPage
+      error={errorText(firstError(catalogue, runs))}
+      title="Reports"
+      sub="Everything you hand to the accountant, the bank or the authorities."
+      actions={
+        months.length > 0 ? (
+          <SegControl<string>
+            label="Payroll month"
+            value={selectedRun ?? ''}
+            onChange={setRunId}
+            options={months.map((row) => ({ value: row.id, label: dayjs(row.period).format('MMM YYYY') }))}
+          />
+        ) : null
+      }
+    >
+      {months.length === 0 ? (
+        <div className="hr-notice hr-notice--info">
+          <strong>No payroll has been run yet.</strong> Every report on this page is a view of a month, so the shelf
+          fills up the first time a month is calculated. <Link to="/admin/hr/payroll">Start this month</Link>.
+        </div>
       ) : null}
 
-      {cards.length > 0 ? (
-        <div className="kw-reportGrid">
-          {cards.map((row) => (
-            <button key={row.key} type="button" className="kw-reportCard" onClick={() => setReport(row.key as ReportKey)}>
-              <span className="kw-reportCard__cat">{row.category}</span>
-              <span className="kw-reportCard__title">{row.title}</span>
-              <span className="kw-reportCard__desc">{row.description}</span>
-              <span className="kw-reportCard__scope">
-                {row.scope === 'RUN'
+      <Panel>
+        <PanelHead title="Payroll reports" sub={`What the clinic paid in ${monthLabel}, and what the bank needs.`} />
+        <ReportRow
+          title="Payroll summary"
+          detail="Gross, deductions, employer cost and net by employee."
+          state={run ? { tone: statusTone(run.status), label: `${dayjs(run.period).format('MMM')} ${run.status.toLowerCase()}` } : null}
+          action={selectedRun ? <button type="button" className="hr-btn hr-btn--sm" onClick={() => openReport('PAYROLL_REGISTER')}>Open</button> : null}
+        />
+        <ReportRow
+          title="Month comparison"
+          detail="This month against last, line by line. Flags anybody whose pay moved."
+          state={run ? { tone: 'info', label: 'Against the month before' } : null}
+          action={selectedRun ? <button type="button" className="hr-btn hr-btn--sm" onClick={() => openReport('VARIANCE')}>Open</button> : null}
+        />
+        <ReportRow
+          title="Bank payment listing"
+          detail="Net pay per employee with account numbers, for keying at the bank's own portal. Prepared in the run's Pay step so the listing and the payment are one act."
+          state={
+            run
+              ? run.status === 'PAID'
+                ? { tone: 'muted', label: 'Paid' }
+                : approved
+                  ? { tone: 'done', label: 'Ready to prepare' }
+                  : { tone: 'attn', label: 'After approval' }
+              : null
+          }
+          action={
+            selectedRun ? (
+              <Link className="hr-btn hr-btn--sm" to={`/admin/hr/payroll/${selectedRun}`}>
+                Open the run
+              </Link>
+            ) : null
+          }
+        />
+      </Panel>
+
+      <Panel className="hr-mt">
+        <PanelHead
+          title="Government reports"
+          sub="Prepared from the approved month and reconciled here. Kuwick never files anything: you upload at the authority's own portal and record what it issued."
+        />
+        {!approved ? (
+          <div className="hr-notice hr-notice--attn">
+            A statutory listing is made from an <strong>approved</strong> month, so these appear once
+            {run ? ` ${dayjs(run.period).format('MMMM')}` : ' the month'} is approved.
+          </div>
+        ) : statutory.isError ? (
+          <div className="hr-notice hr-notice--info">
+            {statutory.error instanceof Error ? statutory.error.message : 'Statutory outputs are unavailable.'}
+          </div>
+        ) : null}
+        {(statutory.data?.schemes ?? []).map((block) => (
+          <ReportRow
+            key={block.scheme}
+            title={SCHEME_TITLE[block.scheme] ?? block.scheme}
+            detail={SCHEME_DETAIL[block.scheme] ?? 'Employee and employer contributions for the month.'}
+            state={
+              block.submission
+                ? { tone: 'muted', label: `Filed ${dayjs(block.submission.submittedDate).format('D MMM')} · ${block.submission.reference}` }
+                : block.notComputed > 0
+                  ? { tone: 'attn', label: `${block.notComputed} employee${block.notComputed === 1 ? '' : 's'} unanswered` }
+                  : { tone: 'done', label: 'Ready' }
+            }
+            action={
+              <span className="hr-dots">
+                <button
+                  type="button"
+                  className="hr-btn hr-btn--sm"
+                  onClick={() =>
+                    downloadFile(
+                      `/workforce/payroll/runs/${selectedRun}/statutory-outputs/${block.scheme.toLowerCase()}/listing`,
+                      `${block.scheme.toLowerCase()}-listing-${statutory.data?.period ?? ''}.csv`,
+                    ).catch((error) => message.error(error instanceof Error ? error.message : 'Could not download that.'))
+                  }
+                >
+                  <IconDownload />
+                  CSV
+                </button>
+                <Link className="hr-btn hr-btn--sm" to={`/admin/hr/payroll/${selectedRun}`}>
+                  Record filing
+                </Link>
+              </span>
+            }
+          />
+        ))}
+        <ReportRow
+          title="EA forms"
+          detail="Year-end statement of remuneration, one per employee. Built from the year's approved months."
+          state={{ tone: 'muted', label: `From January ${dayjs().year() + 1}` }}
+          action={
+            <button type="button" className="hr-btn hr-btn--sm" onClick={() => openReport('YTD')}>
+              Year to date
+            </button>
+          }
+        />
+        <ReportRow
+          title="Borang E"
+          detail="The employer's annual return to LHDN, due in March."
+          state={{ tone: 'muted', label: `March ${dayjs().year() + 1}` }}
+          action={null}
+        />
+      </Panel>
+
+      <Panel className="hr-mt">
+        <PanelHead
+          title="Payslips"
+          sub={
+            approved
+              ? `${payslips.data?.payslips.length ?? 0} for ${monthLabel}, from the approved month's frozen snapshot.`
+              : 'A payslip comes from an approved month, so this fills once the month is approved.'
+          }
+          actions={
+            approved && payslipRows.length > 0 ? (
+              <button type="button" className="hr-btn hr-btn--sm" onClick={downloadEveryPayslip} disabled={downloading}>
+                <IconDownload />
+                Download all ({payslipRows.length})
+              </button>
+            ) : null
+          }
+        />
+        {approved ? (
+          <Table<PayslipListEntry>
+            rows={payslipRows}
+            loading={payslips.isLoading}
+            rowKey="staffId"
+            emptyText="No payslips in this month"
+            toolbar={
+              <ToolbarSearch
+                value={payslipQuery}
+                onChange={setPayslipQuery}
+                placeholder="Search employee"
+                label="Search employee"
+              />
+            }
+            columns={[
+              {
+                title: 'Employee',
+                dataIndex: 'name',
+                render: (value: string) => (
+                  <div className="hr-who">
+                    <span className="hr-who__avatar">{initialsOf(value)}</span>
+                    <div className="hr-who__name">{value}</div>
+                  </div>
+                ),
+              },
+              {
+                title: 'Gross',
+                dataIndex: 'grossCents',
+                num: true,
+                width: 140,
+                render: (value: number) => ringgit((value / 100).toFixed(2)),
+              },
+              {
+                title: 'Net pay',
+                dataIndex: 'netCents',
+                num: true,
+                width: 140,
+                render: (value: number) => <b>{ringgit((value / 100).toFixed(2))}</b>,
+              },
+              {
+                title: 'Itemised',
+                dataIndex: 'itemised',
+                width: 150,
+                render: (value: boolean) =>
+                  value ? (
+                    <StatusChip tone="done">Line by line</StatusChip>
+                  ) : (
+                    <StatusChip tone="muted">Totals only</StatusChip>
+                  ),
+              },
+              {
+                title: '',
+                key: 'pdf',
+                width: 90,
+                render: (_: unknown, row) => (
+                  <button
+                    type="button"
+                    className="hr-btn hr-btn--sm"
+                    onClick={() =>
+                      downloadFile(
+                        payslipPdfPath(selectedRun ?? '', row.staffId),
+                        `payslip-${payslips.data?.period ?? ''}-${row.name.replace(/\s+/g, '-').toLowerCase()}.pdf`,
+                      ).catch((error) => message.error(error instanceof Error ? error.message : 'Could not download that.'))
+                    }
+                  >
+                    PDF
+                  </button>
+                ),
+              },
+            ]}
+          />
+        ) : null}
+        <div className="hr-tableFoot">
+          <span>
+            An employee also has every payslip in their own portal, the day the month is paid. Kuwick does not email
+            them: there is no mail sender in the product, and a payslip is not something to guess at.
+          </span>
+        </div>
+      </Panel>
+
+      <Panel className="hr-mt">
+        <PanelHead
+          title="Everything else"
+          sub="The rest of what the server serves, from the same run and the same figures."
+        />
+        {rest.map((row) => (
+          <ReportRow
+            key={row.key}
+            title={row.title}
+            detail={row.description}
+            state={{
+              tone: 'muted',
+              label:
+                row.scope === 'RUN'
                   ? 'One payroll run'
                   : row.scope === 'DATE_RANGE'
                     ? 'A date range'
                     : row.scope === 'EMPLOYEE'
                       ? 'One employee, one year'
-                      : 'A tax year'}
-              </span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      {elsewhere.length > 0 ? (
-        <AdminSection
-          title="Elsewhere in HR"
-          description="Real, working views that are screens rather than report endpoints."
-        >
-          <div className="kw-reportGrid">
-            {elsewhere.map((row) => (
-              <Link key={row.title} className="kw-reportCard kw-reportCard--link" to={row.to}>
-                <span className="kw-reportCard__cat">{row.category}</span>
-                <span className="kw-reportCard__title">{row.title}</span>
-                <span className="kw-reportCard__desc">{row.description}</span>
-                <span className="kw-reportCard__scope">Opens the screen →</span>
+                      : 'A tax year',
+            }}
+            action={
+              <button type="button" className="hr-btn hr-btn--sm" onClick={() => openReport(row.key)}>
+                Open
+              </button>
+            }
+          />
+        ))}
+        {ELSEWHERE.map((row) => (
+          <ReportRow
+            key={row.title}
+            title={row.title}
+            detail={row.description}
+            state={{ tone: 'info', label: 'A screen, not a report' }}
+            action={
+              <Link className="hr-btn hr-btn--sm" to={row.to}>
+                Open
               </Link>
-            ))}
-          </div>
-        </AdminSection>
-      ) : null}
+            }
+          />
+        ))}
+      </Panel>
 
       {/*
         * WHAT DOES NOT EXIST, listed rather than left to be discovered on the
@@ -424,23 +623,78 @@ export function PayrollReportsPage() {
         * yet, not a promise about when it will be.
         */}
       {catalogue.data && catalogue.data.notAvailableYet.length > 0 ? (
-        <AdminSection
-          title="Not available yet"
-          description="Reports the payroll specification names that this build does not serve, and why."
-        >
-          <div className="kw-reportGrid">
-            {catalogue.data.notAvailableYet.map((row) => (
-              <div key={row.key} className="kw-reportCard kw-reportCard--off">
-                <span className="kw-reportCard__cat">Not built</span>
-                <span className="kw-reportCard__title">{row.title}</span>
-                <span className="kw-reportCard__desc">{row.why}</span>
-              </div>
-            ))}
-          </div>
-        </AdminSection>
+        <Panel className="hr-mt">
+          <PanelHead
+            title="Not available yet"
+            sub="Reports the payroll specification names that this build does not serve, and why."
+          />
+          {catalogue.data.notAvailableYet.map((row) => (
+            <ReportRow key={row.key} title={row.title} detail={row.why} state={{ tone: 'muted', label: 'Not built' }} action={null} />
+          ))}
+        </Panel>
       ) : null}
-    </AdminShell>
+    </HrPage>
   );
+}
+
+/** An error object as the one sentence the page can show. */
+function errorText(error: unknown): string | null {
+  if (!error) return null;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = String((error as { message?: unknown }).message ?? '').trim();
+    if (message) return message;
+  }
+  return 'Something went wrong loading this.';
+}
+
+/** One shelf row: what it is, what it says, where it stands, and the way in. */
+function ReportRow({
+  title,
+  detail,
+  state,
+  action,
+}: {
+  title: string;
+  detail: string;
+  state: { tone: ChipTone; label: string } | null;
+  action: ReactNode;
+}) {
+  return (
+    <div className="hr-setupRow hr-setupRow--plain">
+      <div>
+        <div className="hr-setupRow__title">{title}</div>
+        <div className="hr-setupRow__detail">{detail}</div>
+      </div>
+      {state ? <StatusChip tone={state.tone}>{state.label}</StatusChip> : <span />}
+      {action ?? <span />}
+    </div>
+  );
+}
+
+const SCHEME_TITLE: Record<string, string> = {
+  EPF: 'EPF — KWSP i-Akaun',
+  SOCSO: 'SOCSO — PERKESO Assist',
+  EIS: 'EIS / SIP — PERKESO Assist',
+  LINDUNG: 'LINDUNG 24 JAM — PERKESO',
+  PCB: 'PCB / MTD — LHDN e-PCB',
+  HRD: 'HRD Corp levy',
+};
+
+const SCHEME_DETAIL: Record<string, string> = {
+  EPF: "Employee and employer contributions, with each person's membership number and the wages they were assessed on.",
+  SOCSO: 'Contributions by category, for the PERKESO portal.',
+  EIS: 'Employment insurance contributions, filed with SOCSO.',
+  LINDUNG: 'LINDUNG 24 JAM contributions, where the clinic subscribes.',
+  PCB: 'Monthly tax deduction per employee, for the LHDN portal.',
+  HRD: 'The levy on eligible wages, where the clinic is registered.',
+};
+
+/** A run's status as a chip tone — paid is done with, approved is done. */
+function statusTone(status: string): ChipTone {
+  if (status === 'PAID') return 'muted';
+  if (status === 'APPROVED') return 'done';
+  if (status === 'CANCELLED') return 'block';
+  return 'attn';
 }
 
 /** The provisional warning travels WITH the figures, on every report. */

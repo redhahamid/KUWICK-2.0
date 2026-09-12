@@ -2210,3 +2210,27 @@ textarea.hr-f {
   stroke: currentColor;
   stroke-width: 1.6;
 }
+
+/* ── The reports shelf (reports.html) ─────────────────────────────────────── */
+.hr-fld__inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--hr-ink2);
+}
+/* A shelf row has no step number: what it is, where it stands, the way in. */
+.hr-setupRow--plain {
+  grid-template-columns: 1fr auto auto;
+}
+.hr-linkButton {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--hr-teal);
+  cursor: pointer;
+}
+.hr-linkButton:hover {
+  text-decoration: underline;
+}
