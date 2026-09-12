@@ -455,6 +455,21 @@
   background: transparent;
   width: 100%;
 }
+.hr-lock {
+  display: inline-flex;
+  vertical-align: -2px;
+  margin-left: 6px;
+  color: var(--hr-ink3);
+}
+.hr-lock svg {
+  width: 13px;
+  height: 13px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .hr-search svg {
   width: 15px;
   height: 15px;

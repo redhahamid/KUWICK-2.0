@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { App, DatePicker, Input, Switch } from 'antd';
+import { App, DatePicker, Input, Switch, Tooltip } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useCan } from '../../core/hooks/useCan';
 import { usePayComponents, useSeedPayComponents, useUpsertPayComponent } from '../hooks/useAdmin';
 import { HrPage, Panel, StatusChip } from './ui';
 import { Table } from './ui/Table';
+import { IconLock } from './ui/icons';
 import type { PayComponentRow } from '../types';
 
 /**
@@ -28,7 +29,7 @@ import type { PayComponentRow } from '../types';
  *
  * A system component (basic pay, overtime, the statutory deductions) may be
  * switched on or off, never re-treated. Its switches are drawn disabled, and
- * the row says why.
+ * a lock beside its name says why.
  */
 type Flag = 'epfLiable' | 'socsoLiable' | 'eisLiable' | 'pcbLiable' | 'hrdLiable' | 'prorated' | 'includeInOrpBase' | 'includeInUnpaidLeaveBase';
 
@@ -112,12 +113,28 @@ export function PayrollItemsPage() {
       },
     );
 
-  const derived = (row: PayComponentRow) => {
-    const chips = [];
-    if (row.type === 'ADDITION' && row.includeIn === 'NET_ONLY') chips.push(<StatusChip key="r" tone="info">Reimbursement</StatusChip>);
-    if (row.type === 'DEDUCTION') chips.push(<StatusChip key="d" tone="muted">Deduction</StatusChip>);
-    return chips.length > 0 ? <span style={{ display: 'inline-flex', gap: 4 }}>{chips}</span> : <span className="hr-faint">—</span>;
-  };
+  /** What a row IS, read off the row: nothing a person sets here. */
+  const kinds = (row: PayComponentRow) =>
+    row.type === 'ADDITION' && row.includeIn === 'NET_ONLY' ? [<StatusChip key="r" tone="info">Reimbursement</StatusChip>] : [];
+  /** A seeded catalogue has no reimbursement, and a column of dashes says nothing — so it is not drawn. */
+  const showKind = rows.some((row) => kinds(row).length > 0);
+
+  /**
+   * ONE VERDICT FOR THE LIST, not one per row. Every seeded row is DRAFT
+   * until somebody reads the authority's schedule against it, and a column of
+   * seventeen "Unchecked" chips was the same sentence seventeen times.
+   */
+  const checkedCount = rows.filter((row) => row.verificationStatus === 'VERIFIED').length;
+  const listCheck =
+    rows.length === 0 ? null : checkedCount === rows.length ? (
+      <StatusChip tone="done">Checked</StatusChip>
+    ) : checkedCount === 0 ? (
+      <StatusChip tone="attn">Unchecked</StatusChip>
+    ) : (
+      <StatusChip tone="attn">
+        {checkedCount} of {rows.length} checked
+      </StatusChip>
+    );
 
   return (
     <HrPage
@@ -130,30 +147,26 @@ export function PayrollItemsPage() {
       sub="What the clinic can pay or deduct, and what each one counts towards."
       error={components.error instanceof Error ? components.error.message : null}
       actions={
-        mayManage && rows.length === 0 ? (
-          <button
-            type="button"
-            className="hr-btn hr-btn--primary"
-            disabled={seed.isPending}
-            onClick={() =>
-              seed.mutate(undefined, {
-                onSuccess: () => message.success('Catalogue seeded — every flag unchecked'),
-                onError: (e: Error) => message.error(e.message),
-              })
-            }
-          >
-            Seed the catalogue
-          </button>
-        ) : null
+        <>
+          {listCheck}
+          {mayManage && rows.length === 0 ? (
+            <button
+              type="button"
+              className="hr-btn hr-btn--primary"
+              disabled={seed.isPending}
+              onClick={() =>
+                seed.mutate(undefined, {
+                  onSuccess: () => message.success('Catalogue seeded — every flag unchecked'),
+                  onError: (e: Error) => message.error(e.message),
+                })
+              }
+            >
+              Seed the catalogue
+            </button>
+          ) : null}
+        </>
       }
     >
-
-      {components.data ? (
-        <div className="hr-notice hr-notice--attn" style={{ margin: '0 0 14px' }}>
-          {components.data.verificationNotice.statement}
-        </div>
-      ) : null}
-
       <Panel>
         <Table<PayComponentRow>
           rows={rows}
@@ -170,11 +183,17 @@ export function PayrollItemsPage() {
               dataIndex: 'name',
               render: (value: string, row) => (
                 <div>
-                  <div className="hr-strong">{value}</div>
-                  <span className="hr-faint hr-small">
-                    {row.code}
-                    {row.systemControlled ? ' · system item — on/off only' : ''}
-                  </span>
+                  <div className="hr-strong">
+                    {value}
+                    {row.systemControlled ? (
+                      <Tooltip title="System item: it can be switched on or off, but its statutory treatment is not editable here.">
+                        <span className="hr-lock" role="img" aria-label="System item, on/off only">
+                          <IconLock />
+                        </span>
+                      </Tooltip>
+                    ) : null}
+                  </div>
+                  <span className="hr-faint hr-small">{row.code}</span>
                 </div>
               ),
             },
@@ -252,14 +271,17 @@ export function PayrollItemsPage() {
                 );
               },
             })),
-            { title: 'Kind', key: 'kind', width: 130, render: (_: unknown, row: PayComponentRow) => derived(row) },
-            {
-              title: 'Checked',
-              dataIndex: 'verificationStatus',
-              width: 100,
-              render: (status: string) =>
-                status === 'VERIFIED' ? <StatusChip tone="done">Checked</StatusChip> : <StatusChip tone="attn">Unchecked</StatusChip>,
-            },
+            ...(showKind
+              ? [
+                  {
+                    title: 'Kind',
+                    key: 'kind',
+                    width: 130,
+                    render: (_: unknown, row: PayComponentRow) =>
+                      kinds(row).length > 0 ? <span style={{ display: 'inline-flex', gap: 4 }}>{kinds(row)}</span> : <span className="hr-faint">—</span>,
+                  },
+                ]
+              : []),
             {
               title: 'In use',
               dataIndex: 'active',
@@ -277,6 +299,7 @@ export function PayrollItemsPage() {
             },
           ]}
         />
+        {components.data ? <div className="hr-panelNote">{components.data.verificationNotice.statement}</div> : null}
       </Panel>
     </HrPage>
   );

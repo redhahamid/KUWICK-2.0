@@ -20,7 +20,7 @@ node apps/web/compose-side-by-side.mjs docs/design/hr-slate/slate-settings-statu
 | 02 | `02-statutory-rates--side-by-side.png` | **The acceptance evidence.** Left: `slate-settings-statutory.png`, the mockup. Right: the new Statutory rates page — the clinic's check in the head, the four panels, the per-employer HRD block. |
 | 02 | `02-statutory-rates.png` | The result on its own, full height. |
 | 01 | `01-settings-landing.png` | The landing after the check: *Statutory rates checked* is Done with who and when, *One to go* is the SOCSO employer number. |
-| 03 | `03-payroll-items.png` | Per-row switches. Every demo row is a system item, so its treatment switches are disabled and only *In use* is live. |
+| 03 | `03-payroll-items.png` | Per-row switches, one *Unchecked* chip for the list in the head, the verification note as a grey line under the table. Every demo row is a system item — the lock beside its name says so — so its treatment switches are disabled and only *In use* is live. |
 | 04 | `04-company-statutory.png` | The employer table on the kit's table; *Could it file?* with what is missing. |
 | 05 | `05-payroll-policies.png` | The three approval sentences, the self-approval switch, the inert-rule notice, the pay bases, the links to the other homes. |
 | 06 | `06-attendance-leave-policies.png` | `AttendanceRulesPanel` restyled in place. |

@@ -222,6 +222,13 @@ describe('Synthetic payroll month (e2e)', () => {
     await app.close();
   });
 
+  /**
+   * One sequence per run. The tenant is new each run, so a counter cannot
+   * collide inside it; a random draw from a million once did, and took the
+   * whole suite down in beforeAll.
+   */
+  let employeeSeq = 0;
+
   async function makeEmployee(
     name: string,
     salary: string,
@@ -244,7 +251,7 @@ describe('Synthetic payroll month (e2e)', () => {
       .post(`/workforce/employees/${staff.id}`)
       .set('Authorization', bearer)
       .send({
-        employeeNo: `S-${Math.floor(Math.random() * 1000000)}`,
+        employeeNo: `S-${String((employeeSeq += 1)).padStart(3, '0')}`,
         position: 'Clinic Assistant',
         employmentType: 'PERMANENT',
         employmentStatus: 'ACTIVE',

@@ -102,20 +102,27 @@ field.
 
 **System items are on/off only.** `[D]` the server allows a `systemControlled`
 row to change only `active`. Their treatment switches are drawn disabled with
-the reason in the tooltip, and the row's second line says *system item —
-on/off only*. Every seeded catalogue row is system-controlled, so in the demo
-tenant every treatment switch is disabled; a clinic-defined component gets
-live switches.
+the reason in the tooltip, and a lock beside the item's name carries the same
+sentence on hover. Every seeded catalogue row is system-controlled, so in the
+demo tenant every treatment switch is disabled; a clinic-defined component
+gets live switches.
 
 **Recurring and Reimbursement are derived chips, read-only**, as decided.
 `[D]` *Reimbursement* is an addition that reaches net pay only
 (`includeIn === 'NET_ONLY'`); *Recurring* is not a property of a component
 at all — it is a fact about an employee's record — so no chip at component
-level, and the column reads *Kind* rather than claiming more than it knows.
+level. The *Kind* column is drawn only when some row has a chip to show: the
+seeded catalogue has none, and a column of dashes says nothing. (An earlier
+draft also put a *Deduction* chip there; it repeated the *Adds or deducts*
+column and is gone.)
 
-The page keeps the catalogue's own verification notice at the top: no
-treatment on the page has been checked against KWSP, PERKESO, LHDN or HRD
-Corp. That sentence is the server's, not the page's.
+**One verdict for the list.** The page head carries one chip — *Unchecked*,
+*Checked*, or *n of m checked* — from the rows' `verificationStatus`, in the
+place Statutory rates keeps its own. The per-row *Checked* column of the
+first build was the same sentence seventeen times. The catalogue's own
+verification notice — no treatment on the page has been checked against
+KWSP, PERKESO, LHDN or HRD Corp — is one grey line under the table, in the
+server's words, not a banner over it.
 
 ## 4. Payroll policies
 
@@ -228,7 +235,9 @@ immediately afterwards. What is not established is how five numbers in a
 million-wide space met a sixth by chance — the odds are long enough that
 the mechanism deserves a look rather than a shrug. Proposed, not done here:
 give the spec a per-run counter for the employee number instead of
-`Math.random`, which removes the possibility whatever the cause.
+`Math.random`, which removes the possibility whatever the cause. Done on
+acceptance: `makeEmployee` now numbers its employees from a per-run counter,
+and the suite is green with it.
 
 ## 10. Not in this piece
 
