@@ -48,7 +48,9 @@ export class StaffClaimService {
         staff: { select: { fullName: true } },
         submittedBy: { select: { fullName: true } },
         decidedBy: { select: { fullName: true } },
-        attachments: { select: { id: true, fileName: true, mimeType: true, fileSize: true } },
+        // `filePath` is how the screen reads the receipt back (Piece 3g):
+        // `/me/files/<id>`, fetched by HR through its own route.
+        attachments: { select: { id: true, fileName: true, mimeType: true, fileSize: true, filePath: true } },
       },
     });
 
@@ -72,6 +74,11 @@ export class StaffClaimService {
       payrollPeriod: row.payrollPeriod?.toISOString().slice(0, 10) ?? null,
       financeReference: row.financeReference,
       paidAt: row.paidAt?.toISOString() ?? null,
+      // What the clinic priced a journey at when it was sent (Piece 3g). The
+      // rate is frozen on the claim, so a later change to the policy does not
+      // rewrite what was approved.
+      distanceKm: row.distanceKm === null ? null : String(row.distanceKm),
+      mileageRate: row.mileageRate === null ? null : String(row.mileageRate),
       attachments: row.attachments,
       // Said in words on every row, because "where is this being paid from" is
       // the question a duplicate payment turns on.

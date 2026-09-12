@@ -1,241 +1,546 @@
 import { useMemo, useState } from 'react';
-import { App, Button, DatePicker, Select } from 'antd';
+import { App } from 'antd';
+import { Link, useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
-import { ATTENDANCE_VIEWS, WorkAreaTabs } from '../components/WorkAreaTabs';
-import { StatStrip } from '../components/StatStrip';
-import { DataTable, exportRowsAsCsv } from '../components/DataTable';
-import { FilterBar, Filter } from '../components/FilterBar';
-import { PersonCell } from '../components/Person';
-import { StatusChip, humanise } from '../components/Chip';
-import { DetailDrawer, DrawerSection } from '../components/DetailDrawer';
-import { EmptyState } from '../components/Panel';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useRosterRange } from '../../appointment/hooks/useRoster';
-import { useApproveOvertime, useCorrectionRequests, useDecideCorrection, useTimesheet } from '../hooks/useAdmin';
-import { formatClinicTime } from '../../clinical/clinicTime';
+import { useLeaveRequests } from '../../hr/hooks/useLeaveRequests';
+import {
+  useApproveOvertime,
+  useAttendancePolicy,
+  useClockStaff,
+  useCorrectAttendance,
+  useCorrectionRequests,
+  useDecideCorrection,
+  useEmployees,
+  useTimesheet,
+} from '../hooks/useAdmin';
+import { clinicDayjs, clinicDayjsAtWall, formatClinicTime } from '../../clinical/clinicTime';
+import { AuthImage, Drawer, HrPage, Panel, SegControl, StatCard, StatRow, StatusChip } from './ui';
+import { Table } from './ui/Table';
+import { IconClock, IconDownload, IconEdit } from './ui/icons';
+import { initialsOf } from './ui/who';
+import { downloadCsv } from './ui/csv';
 import type { TimesheetReport } from '../types';
 
+type Tab = 'timesheet' | 'roster' | 'corrections' | 'summary';
 type StaffRow = TimesheetReport['staff'][number];
+type Day = StaffRow['days'][number];
 
-function hhmm(minutes: number | null | undefined): string {
-  if (minutes === null || minutes === undefined) return '—';
-  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
+/** A row on the day sheet: what was rostered, what was punched, what was decided. */
+interface DayRow {
+  staffId: string;
+  name: string;
+  record: Day | null;
+  shiftStart: string | null;
+  shiftEnd: string | null;
+  leaveType: string | null;
+  /** Clocked in, no clock-out yet, and the shift has not ended. Not a missing punch. */
+  onDuty: boolean;
+}
+
+const hours = (minutes: number | null | undefined) =>
+  minutes === null || minutes === undefined ? '—' : (minutes / 60).toFixed(1);
+
+/** The file id inside `/me/files/<id>`, read back by HR from its own route. */
+function proofPath(path: string | null): string | null {
+  const id = path?.startsWith('/me/files/') ? path.slice('/me/files/'.length) : null;
+  return id ? `/workforce/staff-files/${id}` : null;
 }
 
 /**
- * ATTENDANCE — the operational workspace, in the reference sheet's own order:
- * the four Time & Leave views, then period / branch / status / Export, then
- * five summary figures, then the people.
+ * ATTENDANCE, after `attendance.html` — one day at a time.
  *
- * THE UNAPPROVED-OVERTIME COLUMN IS STILL THE POINT of the screen. Overtime
- * nobody has approved is NOT paid, and showing it beside the approved one is
- * what stops that being a surprise on payday.
+ * THE DAY IS THE UNIT, because "who is late this morning" and "who never
+ * clocked out yesterday" are the two questions this screen is opened for, and
+ * a month-long list answers neither without arithmetic. The month is still
+ * here, as the fourth tab, for the payroll conversation.
  *
- * THE DAY-BY-DAY DETAIL IS A DRAWER NOW. It used to be a second table that
- * appeared BELOW the first when you clicked a row, so opening somebody's days
- * pushed the list you were comparing them against off the bottom of the
- * screen. The drawer leaves the list where it is.
+ * THE SHEET IS EVERYBODY EXPECTED, not everybody who punched. A person who
+ * was rostered and never clocked in has no attendance row at all, so a sheet
+ * built from records alone is a sheet that cannot show the one thing it is
+ * for. Rows come from three places — the punches, the roster and approved
+ * leave — and each row says which.
+ *
+ * WHAT IS NEW IN 3g IS ON THE ROW: the selfie kept with each punch (fetched
+ * with the manager's own token, never a bare URL), and a gold *Outside
+ * clinic* chip with the distance when the phone was further from the branch
+ * than the radius allows. Neither refuses a punch. The manager decides.
+ *
+ * THE ROSTER IS NOT REDRAWN HERE. There is one shift board in this product,
+ * shared with the appointment calendar, and the Roster tab goes to it rather
+ * than forking it.
  */
 export function TimesheetPage() {
   const { message } = App.useApp();
+  const navigate = useNavigate();
   const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
-  const [range, setRange] = useState<[string, string]>([
-    dayjs().startOf('month').format('YYYY-MM-DD'),
-    dayjs().endOf('month').format('YYYY-MM-DD'),
-  ]);
-  const [filter, setFilter] = useState('ALL');
-  const [open, setOpen] = useState<string | undefined>();
-  const { data, isLoading, isError, error } = useTimesheet({ from: range[0], to: range[1], clinicId });
-  const approveOvertime = useApproveOvertime();
+
+  const [tab, setTab] = useState<Tab>('timesheet');
+  const [day, setDay] = useState(clinicDayjs(new Date()).format('YYYY-MM-DD'));
+  const [month, setMonth] = useState(clinicDayjs(new Date()).startOf('month'));
+  const [fixing, setFixing] = useState<DayRow | null>(null);
+  const [clockIn, setClockIn] = useState('');
+  const [clockOut, setClockOut] = useState('');
+  const [why, setWhy] = useState('');
+
+  const today = useTimesheet({ from: day, to: day, clinicId });
+  const monthSheet = useTimesheet({
+    from: month.format('YYYY-MM-DD'),
+    to: month.endOf('month').format('YYYY-MM-DD'),
+    clinicId,
+  });
   const corrections = useCorrectionRequests(clinicId);
   const decideCorrection = useDecideCorrection();
-  // SCHEDULED comes from the roster, which is one branch's — so on "All
-  // branches" this reads "—" rather than a number that silently means one
-  // branch. See the tooltip on the tile.
-  const roster = useRosterRange(clinicId, range[0], range[1]);
+  const approveOvertime = useApproveOvertime();
+  const correct = useCorrectAttendance();
+  const clockStaff = useClockStaff();
+  const policy = useAttendancePolicy(clinicId);
+  // A roster belongs to one branch, so the "rostered but never clocked in"
+  // rows only exist once a branch is chosen. The sheet says so rather than
+  // quietly showing fewer people.
+  const roster = useRosterRange(clinicId, day, day);
+  const employees = useEmployees({});
+  const leave = useLeaveRequests();
 
-  const staff = data?.staff ?? [];
-  const unapproved = staff.reduce((total, row) => total + row.unapprovedOvertimeMinutes, 0);
-  const missing = staff.reduce((total, row) => total + row.daysMissingPunch, 0);
-  const present = staff.reduce((total, row) => total + row.daysPresent, 0);
-  const late = staff.reduce((total, row) => total + row.lateOccasions, 0);
-  const selected = staff.find((row) => row.staffId === open);
+  const nameOf = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of employees.data ?? []) map.set(row.staffId, row.fullName);
+    return map;
+  }, [employees.data]);
 
-  const rows = useMemo(
-    () =>
-      staff.filter((row) => {
-        if (filter === 'LATE') return row.lateOccasions > 0;
-        if (filter === 'MISSING') return row.daysMissingPunch > 0;
-        if (filter === 'OT') return row.unapprovedOvertimeMinutes > 0;
-        if (filter === 'ABSENT') return row.daysAbsent > 0;
-        return true;
-      }),
-    [staff, filter],
+  const rows = useMemo<DayRow[]>(() => {
+    const byStaff = new Map<string, DayRow>();
+    for (const person of today.data?.staff ?? []) {
+      const record = person.days.find((row) => row.workDate === day) ?? null;
+      byStaff.set(person.staffId, {
+        staffId: person.staffId,
+        name: person.name,
+        record,
+        shiftStart: record?.scheduledStart ?? null,
+        shiftEnd: record?.scheduledEnd ?? null,
+        leaveType: null,
+        onDuty: false,
+      });
+    }
+    for (const shift of roster.data ?? []) {
+      const existing = byStaff.get(shift.staffId);
+      if (existing) {
+        existing.shiftStart = existing.shiftStart ?? shift.startsAt;
+        existing.shiftEnd = existing.shiftEnd ?? shift.endsAt;
+        continue;
+      }
+      byStaff.set(shift.staffId, {
+        staffId: shift.staffId,
+        name: nameOf.get(shift.staffId) ?? 'Not on the employee list',
+        record: null,
+        shiftStart: shift.startsAt,
+        shiftEnd: shift.endsAt,
+        leaveType: null,
+        onDuty: false,
+      });
+    }
+    for (const request of leave.data ?? []) {
+      if (request.status !== 'APPROVED') continue;
+      if (request.startDate.slice(0, 10) > day || request.endDate.slice(0, 10) < day) continue;
+      const existing = byStaff.get(request.staffId);
+      if (existing) {
+        existing.leaveType = request.leaveType;
+        continue;
+      }
+      byStaff.set(request.staffId, {
+        staffId: request.staffId,
+        name: request.staff?.fullName ?? nameOf.get(request.staffId) ?? '—',
+        record: null,
+        shiftStart: null,
+        shiftEnd: null,
+        leaveType: request.leaveType,
+        onDuty: false,
+      });
+    }
+    /*
+     * ON DUTY IS NOT A MISSING PUNCH. Somebody who clocked in this morning and
+     * is still on the floor has no clock-out, and counting them as a missing
+     * punch turns every normal working day into an exception list. The shift's
+     * end — or the end of the day when nothing was rostered — is the line.
+     */
+    const now = clinicDayjs(new Date());
+    const stillToday = day === now.format('YYYY-MM-DD');
+    for (const row of byStaff.values()) {
+      if (!row.record?.clockInAt || row.record.clockOutAt) continue;
+      const endsAt = row.shiftEnd ? clinicDayjs(row.shiftEnd) : null;
+      row.onDuty = stillToday && (endsAt ? now.isBefore(endsAt) : true);
+    }
+    return [...byStaff.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [today.data, roster.data, leave.data, nameOf, day]);
+
+  const onLeave = rows.filter((row) => row.leaveType !== null).length;
+  const expected = rows.length - onLeave;
+  const punched = rows.filter((row) => row.record?.clockInAt);
+  // "On time" is about the arrival, so somebody still on the floor counts.
+  const onTime = punched.filter((row) => (row.record?.lateMinutes ?? 0) === 0).length;
+  const lateRows = punched.filter((row) => (row.record?.lateMinutes ?? 0) > 0);
+  const lateMinutes = lateRows.reduce((total, row) => total + (row.record?.lateMinutes ?? 0), 0);
+  const missing = punched.filter((row) => row.record && !row.record.clockOutAt && !row.onDuty);
+  const otMinutes = punched.reduce((total, row) => total + (row.record?.overtimeMinutes ?? 0), 0);
+  const otPending = punched.filter((row) => (row.record?.overtimeMinutes ?? 0) > 0 && !row.record?.overtimeApproved).length;
+  // Approved and unapproved overtime are never one figure: what is unapproved
+  // is what payroll will NOT pay, and that is the number a manager acts on.
+  const otPendingMinutes = punched
+    .filter((row) => !row.record?.overtimeApproved)
+    .reduce((total, row) => total + (row.record?.overtimeMinutes ?? 0), 0);
+  const monthOtMinutes = (monthSheet.data?.staff ?? []).reduce(
+    (total, person) => total + person.approvedOvertimeMinutes + person.unapprovedOvertimeMinutes,
+    0,
   );
 
-  return (
-    <AdminShell
-      error={firstError({ isError, error })}
-      title="Attendance"
-      subtitle="What payroll will read. Overtime nobody has approved is not paid."
-    >
-      <WorkAreaTabs views={ATTENDANCE_VIEWS} />
+  const rules = policy.data?.policy;
+  const waiting = corrections.data?.length ?? 0;
 
-      <FilterBar
-        right={
-          <Button
-            size="small"
-            onClick={() =>
-              exportRowsAsCsv(`attendance-${range[0]}-to-${range[1]}`, rows, [
-                { title: 'Name', dataIndex: 'name', key: 'name' },
-                { title: 'Present', dataIndex: 'daysPresent', key: 'daysPresent' },
-                { title: 'Absent', dataIndex: 'daysAbsent', key: 'daysAbsent' },
-                { title: 'On leave', dataIndex: 'daysOnLeave', key: 'daysOnLeave' },
-                { title: 'Missing punch', dataIndex: 'daysMissingPunch', key: 'daysMissingPunch' },
-                { title: 'Worked hours', dataIndex: 'workedHours', key: 'workedHours' },
-                { title: 'Late occasions', dataIndex: 'lateOccasions', key: 'lateOccasions' },
-                { title: 'OT approved (h)', dataIndex: 'approvedOvertimeHours', key: 'approvedOvertimeHours' },
-                { title: 'OT pending (h)', dataIndex: 'unapprovedOvertimeHours', key: 'unapprovedOvertimeHours' },
-              ])
-            }
-          >
-            Export
-          </Button>
+  const openFix = (row: DayRow) => {
+    setFixing(row);
+    setClockIn(row.record?.clockInAt ? formatClinicTime(row.record.clockInAt) : '');
+    setClockOut(row.record?.clockOutAt ? formatClinicTime(row.record.clockOutAt) : '');
+    setWhy('');
+  };
+
+  const at = (hhmm: string) => (hhmm ? clinicDayjsAtWall(`${day} ${hhmm}`).toISOString() : undefined);
+
+  const saveFix = async () => {
+    if (!fixing) return;
+    if (why.trim().length < 5) {
+      message.error('Say why the record is being changed. The employee sees it too.');
+      return;
+    }
+    try {
+      if (fixing.record) {
+        await correct.mutateAsync({
+          id: fixing.record.id,
+          clockInAt: at(clockIn),
+          clockOutAt: at(clockOut),
+          reason: why.trim(),
+        });
+        message.success('Corrected. The original punch stays on the record.');
+      } else {
+        if (!clockIn) {
+          message.error('A clock-in time is needed.');
+          return;
         }
-      >
-        <Filter label="Period">
-          <DatePicker.RangePicker
-            allowClear={false}
-            size="small"
-            value={[dayjs(range[0]), dayjs(range[1])]}
-            onChange={(dates) =>
-              dates?.[0] && dates?.[1] && setRange([dates[0].format('YYYY-MM-DD'), dates[1].format('YYYY-MM-DD')])
-            }
-          />
-        </Filter>
-        {showSelector ? (
-          <Filter label="Branch">
-            <Select
-              size="small"
-              style={{ width: 180 }}
-              allowClear
-              placeholder="All branches"
-              value={clinicId}
-              onChange={(value) => setClinicId(value)}
-              options={(clinics ?? []).map((clinic) => ({ value: clinic.id, label: clinic.name }))}
+        await clockStaff.mutateAsync({ staffId: fixing.staffId, clinicId, at: at(clockIn) });
+        message.success(`Clocked ${fixing.name} in. The punch is marked as entered by HR.`);
+      }
+      setFixing(null);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Could not save that.');
+    }
+  };
+
+  const exportDay = () =>
+    downloadCsv(
+      `attendance-${day}`,
+      ['Employee', 'Shift', 'Clock in', 'Clock out', 'Result', 'Hours', 'OT hours', 'OT status', 'Recorded by'],
+      rows.map((row) => [
+        row.name,
+        row.shiftStart ? `${formatClinicTime(row.shiftStart)}–${formatClinicTime(row.shiftEnd)}` : '',
+        row.record?.clockInAt ? formatClinicTime(row.record.clockInAt) : '',
+        row.record?.clockOutAt ? formatClinicTime(row.record.clockOutAt) : '',
+        resultText(row),
+        row.record ? hours(row.record.workedMinutes) : '',
+        row.record ? hours(row.record.overtimeMinutes) : '',
+        row.record?.overtimeMinutes ? (row.record.overtimeApproved ? 'Approved' : 'Pending') : '',
+        row.record ? (row.record.source === 'MANUAL' ? 'HR' : 'The employee') : '',
+      ]),
+    );
+
+  return (
+    <HrPage
+      title="Attendance"
+      sub="Clock-ins against the roster. Late and early-leave minutes, overtime and total hours are worked out for you."
+      error={today.isError ? 'The timesheet could not be loaded.' : null}
+      actions={
+        <>
+          {showSelector ? (
+            <SegControl<string>
+              label="Branch"
+              value={clinicId ?? ''}
+              onChange={(value) => setClinicId(value === '' ? undefined : value)}
+              options={[
+                { value: '', label: 'All branches' },
+                ...(clinics ?? []).map((clinic) => ({ value: clinic.id, label: clinic.name })),
+              ]}
             />
-          </Filter>
+          ) : null}
+          <button type="button" className="hr-btn" onClick={exportDay}>
+            <IconDownload />
+            Export
+          </button>
+        </>
+      }
+    >
+      <StatRow>
+        <StatCard
+          label="On time today"
+          value={`${onTime} of ${expected}`}
+          sub={onLeave > 0 ? `${onLeave} on leave` : 'Nobody on leave'}
+        />
+        <StatCard
+          label="Late / left early"
+          value={lateRows.length}
+          tone={lateRows.length > 0 ? 'gold' : 'plain'}
+          sub={lateMinutes > 0 ? `${lateMinutes} minutes in total` : 'Nothing to look at'}
+        />
+        <StatCard
+          label="Missing clock-out"
+          value={missing.length}
+          tone={missing.length > 0 ? 'red' : 'plain'}
+          sub={missing.length > 0 ? missing.map((row) => row.name).join(', ') : 'Every punch is a pair'}
+        />
+        <StatCard
+          label="OT today"
+          value={`${hours(otMinutes)} h`}
+          tone={otPending > 0 ? 'gold' : 'plain'}
+          sub={`${otPendingMinutes > 0 ? `${hours(otPendingMinutes)} h` : 'none'} pending approval · ${hours(monthOtMinutes)} h this month`}
+        />
+      </StatRow>
+
+      <Panel className="hr-mt">
+        <div className="hr-tabs" role="tablist" aria-label="Attendance views">
+          <button type="button" role="tab" aria-selected={tab === 'timesheet'} className={tab === 'timesheet' ? 'is-active' : undefined} onClick={() => setTab('timesheet')}>
+            Timesheet
+          </button>
+          <button type="button" role="tab" aria-selected={false} onClick={() => navigate('/admin/hr/attendance/roster')}>
+            Roster
+          </button>
+          <button type="button" role="tab" aria-selected={tab === 'corrections'} className={tab === 'corrections' ? 'is-active' : undefined} onClick={() => setTab('corrections')}>
+            Corrections
+            {waiting > 0 ? <span className="hr-tabs__n">{waiting}</span> : null}
+          </button>
+          <button type="button" role="tab" aria-selected={tab === 'summary'} className={tab === 'summary' ? 'is-active' : undefined} onClick={() => setTab('summary')}>
+            Monthly summary
+          </button>
+        </div>
+
+        {tab === 'timesheet' ? (
+          <>
+            <Table<DayRow>
+              rows={rows}
+              loading={today.isLoading}
+              rowKey="staffId"
+              searchFields={['name']}
+              searchPlaceholder="Search employee"
+              searchLabel="Search employee"
+              emptyText="Nothing recorded for this day"
+              emptyHint={
+                clinicId
+                  ? 'Nobody is rostered and nobody has clocked in.'
+                  : 'Choose a branch to see who was rostered as well as who punched.'
+              }
+              toolbar={
+                <div className="hr-seg" role="group" aria-label="Day">
+                  <button type="button" aria-label="Previous day" onClick={() => setDay(dayjs(day).subtract(1, 'day').format('YYYY-MM-DD'))}>
+                    ‹
+                  </button>
+                  <button type="button" className="is-active" onClick={() => setDay(clinicDayjs(new Date()).format('YYYY-MM-DD'))}>
+                    {dayjs(day).format('ddd D MMM YYYY')}
+                  </button>
+                  <button type="button" aria-label="Next day" onClick={() => setDay(dayjs(day).add(1, 'day').format('YYYY-MM-DD'))}>
+                    ›
+                  </button>
+                </div>
+              }
+              toolbarRight={
+                <span className="hr-legend">
+                  <span className="hr-tg">● On time</span>
+                  <span className="hr-ts">● Late / early</span>
+                  <span className="hr-teal">● Overtime</span>
+                </span>
+              }
+              columns={[
+                {
+                  title: 'Employee',
+                  dataIndex: 'name',
+                  render: (value: string, row) => (
+                    <div className="hr-who">
+                      <span className="hr-who__avatar">{initialsOf(value)}</span>
+                      <div>
+                        <div className="hr-who__name">{value}</div>
+                        {row.record?.source === 'MANUAL' ? <div className="hr-who__role">Entered by HR</div> : null}
+                      </div>
+                    </div>
+                  ),
+                },
+                {
+                  title: 'Shift',
+                  key: 'shift',
+                  width: 130,
+                  render: (_: unknown, row) =>
+                    row.shiftStart ? (
+                      <span className="hr-tn">
+                        {formatClinicTime(row.shiftStart)}–{formatClinicTime(row.shiftEnd)}
+                      </span>
+                    ) : (
+                      <span className="hr-tn">No shift</span>
+                    ),
+                },
+                {
+                  title: 'Clock in',
+                  key: 'in',
+                  width: 130,
+                  render: (_: unknown, row) => <Punch at={row.record?.clockInAt ?? null} proof={row.record?.proofUrl ?? null} late={(row.record?.lateMinutes ?? 0) > 0} alt="Clock-in selfie" />,
+                },
+                {
+                  title: 'Clock out',
+                  key: 'out',
+                  width: 130,
+                  render: (_: unknown, row) => (
+                    <Punch
+                      at={row.record?.clockOutAt ?? null}
+                      proof={row.record?.clockOutProofUrl ?? null}
+                      late={(row.record?.earlyOutMinutes ?? 0) > 0}
+                      alt="Clock-out selfie"
+                    />
+                  ),
+                },
+                {
+                  title: 'Result',
+                  key: 'result',
+                  width: 230,
+                  render: (_: unknown, row) => <Result row={row} />,
+                },
+                { title: 'Hours', key: 'hours', num: true, width: 80, render: (_: unknown, row) => (row.record ? hours(row.record.workedMinutes) : '—') },
+                {
+                  title: 'OT h',
+                  key: 'ot',
+                  num: true,
+                  width: 80,
+                  render: (_: unknown, row) =>
+                    row.record && row.record.overtimeMinutes > 0 ? (
+                      <span className="hr-teal">{hours(row.record.overtimeMinutes)}</span>
+                    ) : (
+                      <span className="hr-tn">0.0</span>
+                    ),
+                },
+                {
+                  title: 'OT status',
+                  key: 'otStatus',
+                  width: 150,
+                  render: (_: unknown, row) => {
+                    if (!row.record || row.record.overtimeMinutes === 0) return null;
+                    if (row.record.overtimeApproved) return <StatusChip tone="done">Approved</StatusChip>;
+                    const id = row.record.id;
+                    return (
+                      <button
+                        type="button"
+                        className="hr-btn hr-btn--sm"
+                        disabled={approveOvertime.isPending}
+                        onClick={() =>
+                          approveOvertime.mutate(
+                            { id },
+                            {
+                              onSuccess: () => message.success('Overtime approved. It reaches the payroll month.'),
+                              onError: (error: Error) => message.error(error.message),
+                            },
+                          )
+                        }
+                      >
+                        Pending · approve
+                      </button>
+                    );
+                  },
+                },
+                {
+                  title: '',
+                  key: 'fix',
+                  width: 80,
+                  render: (_: unknown, row) =>
+                    row.leaveType && !row.record ? null : (
+                      <button type="button" className="hr-btn hr-btn--sm" onClick={() => openFix(row)}>
+                        <IconEdit />
+                        Fix
+                      </button>
+                    ),
+                },
+              ]}
+            />
+            <div className="hr-tableFoot">
+              <span>
+                <b>Rules in force:</b>{' '}
+                {rules
+                  ? `${rules.lateGraceMinutes}-min grace · OT counts after ${rules.overtimeMinimumMinutes} min past shift, ${rules.overtimeRoundingMinutes > 0 ? `rounded down to ${rules.overtimeRoundingMinutes} min` : 'not rounded'} · ${rules.overtimeRequiresApproval ? 'needs approval before payroll' : 'reaches payroll without approval'}`
+                  : 'loading'}
+                {rules?.geofenceLat !== null && rules?.geofenceLat !== undefined
+                  ? ` · portal punches judged within ${rules.geofenceRadiusMetres} m of the branch`
+                  : ''}
+              </span>
+              <span className="hr-tn">Overtime nobody has approved is not paid.</span>
+              <Link className="hr-link" to="/admin/hr/settings/attendance-leave">
+                Change in Settings
+              </Link>
+            </div>
+          </>
         ) : null}
-        <Filter label="Status">
-          <Select
-            size="small"
-            style={{ width: 180 }}
-            value={filter}
-            onChange={setFilter}
-            options={[
-              { value: 'ALL', label: 'Everybody' },
-              { value: 'LATE', label: 'Late at least once' },
-              { value: 'MISSING', label: 'Missing a punch' },
-              { value: 'OT', label: 'Overtime pending' },
-              { value: 'ABSENT', label: 'Absent at least once' },
-            ]}
-          />
-        </Filter>
-      </FilterBar>
 
-      <StatStrip
-        stats={[
-          {
-            label: 'Scheduled shifts',
-            // A ROSTER BELONGS TO ONE BRANCH, so this figure only exists once
-            // one is chosen. The dash carries the reason rather than looking
-            // like a figure that failed to load.
-            value: clinicId ? (roster.data?.length ?? 0) : '—',
-            hint: clinicId ? 'from the roster' : 'choose a branch',
-            explain: clinicId
-              ? 'From the roster — the one scheduling domain. Attendance reads it and never writes to it.'
-              : 'A roster is drawn for one branch at a time, so shifts cannot be counted across all of them here.',
-          },
-          { label: 'Days present', value: present, tone: 'good' },
-          { label: 'Late', value: late, tone: late > 0 ? 'warn' : 'neutral', hint: `${staff.length} staff with records` },
-          { label: 'Missing punch', value: missing, tone: missing > 0 ? 'bad' : 'good' },
-          {
-            label: 'OT pending',
-            value: hhmm(unapproved),
-            tone: unapproved > 0 ? 'warn' : 'neutral',
-            explain: 'Claimed but not approved. It will NOT appear on a payslip until somebody approves it.',
-          },
-        ]}
-      />
-
-      {/*
-        * WHAT STAFF HAVE ASKED TO HAVE PUT RIGHT.
-        *
-        * Above the sheet when there is any, because it is the only thing here
-        * that somebody is waiting on. Approving one applies the correction
-        * through the ordinary path — the original punch survives and the
-        * approver is named — so this is a decision, not an edit.
-        */}
-      {(corrections.data?.length ?? 0) > 0 ? (
-        <AdminSection
-          title="Attendance fixes requested"
-          description="Nothing changes until you decide, and the original stays on the record either way."
-          padded={false}
-        >
-          <DataTable
+        {tab === 'corrections' ? (
+          <Table
             rows={corrections.data}
             loading={corrections.isLoading}
             rowKey="id"
             emptyText="Nothing waiting"
+            emptyHint="Employees ask for a fix from their portal. Nothing changes until you decide, and the original stays on the record."
             columns={[
               {
                 title: 'Who',
                 dataIndex: 'staffName',
-                key: 'staffName',
-                render: (value: string, row) => <PersonCell name={value} meta={dayjs(row.record.workDate).format('ddd D MMM')} />,
+                render: (value: string, row) => (
+                  <div className="hr-who">
+                    <span className="hr-who__avatar">{initialsOf(value)}</span>
+                    <div>
+                      <div className="hr-who__name">{value}</div>
+                      <div className="hr-who__role">{dayjs(row.record.workDate).format('ddd D MMM YYYY')}</div>
+                    </div>
+                  </div>
+                ),
               },
               {
                 title: 'Recorded',
                 key: 'recorded',
+                width: 150,
                 render: (_: unknown, row) =>
-                  `${row.record.clockInAt ? formatClinicTime(row.record.clockInAt) : '—'} → ${
-                    row.record.clockOutAt ? formatClinicTime(row.record.clockOutAt) : '—'
-                  }`,
+                  `${row.record.clockInAt ? formatClinicTime(row.record.clockInAt) : '—'} – ${row.record.clockOutAt ? formatClinicTime(row.record.clockOutAt) : '—'}`,
               },
               {
                 title: 'Asked for',
                 key: 'asked',
+                width: 150,
                 render: (_: unknown, row) =>
-                  `${row.requestedClockInAt ? formatClinicTime(row.requestedClockInAt) : 'unchanged'} → ${
-                    row.requestedClockOutAt ? formatClinicTime(row.requestedClockOutAt) : 'unchanged'
-                  }`,
+                  `${row.requestedClockInAt ? formatClinicTime(row.requestedClockInAt) : 'unchanged'} – ${row.requestedClockOutAt ? formatClinicTime(row.requestedClockOutAt) : 'unchanged'}`,
               },
-              { title: 'Why', dataIndex: 'reason', key: 'reason' },
+              { title: 'Why', dataIndex: 'reason' },
               {
                 title: '',
                 key: 'decide',
-                width: 160,
-                noExport: true,
+                width: 180,
                 render: (_: unknown, row) => (
-                  <span style={{ display: 'flex', gap: 6 }}>
-                    <Button
-                      size="small"
-                      type="primary"
-                      loading={decideCorrection.isPending}
+                  <span className="hr-dots">
+                    <button
+                      type="button"
+                      className="hr-btn hr-btn--sm hr-btn--primary"
+                      disabled={decideCorrection.isPending}
                       onClick={async () => {
                         try {
                           await decideCorrection.mutateAsync({ id: row.id, approve: true });
-                          message.success(`${row.staffName}'s ${row.record.workDate} corrected.`);
+                          message.success(`${row.staffName}'s ${dayjs(row.record.workDate).format('D MMM')} corrected.`);
                         } catch (error) {
                           message.error(error instanceof Error ? error.message : 'Could not apply that.');
                         }
                       }}
                     >
                       Approve
-                    </Button>
-                    <Button
-                      size="small"
+                    </button>
+                    <button
+                      type="button"
+                      className="hr-btn hr-btn--sm"
+                      disabled={decideCorrection.isPending}
                       onClick={async () => {
                         try {
                           await decideCorrection.mutateAsync({ id: row.id, approve: false });
@@ -246,212 +551,239 @@ export function TimesheetPage() {
                       }}
                     >
                       Refuse
-                    </Button>
+                    </button>
                   </span>
                 ),
               },
             ]}
           />
-        </AdminSection>
-      ) : null}
+        ) : null}
 
-      {unapproved > 0 ? (
-        <AdminNotice tone="warn">
-          {hhmm(unapproved)} of overtime is claimed and unapproved. A long day is not automatically overtime —
-          approve what is genuine before the payroll run, or it will not be paid.
-        </AdminNotice>
-      ) : null}
-
-      <AdminSection padded={false}>
-        <DataTable<StaffRow>
-          rows={rows}
-          loading={isLoading}
-          rowKey="staffId"
-          searchFields={['name' as never]}
-          searchPlaceholder="Search staff…"
-          emptyText={filter === 'ALL' ? 'No attendance recorded in this period' : 'Nobody matches that filter'}
-          emptyHint={filter === 'ALL' ? 'Attendance is punches, not inferences — nobody has clocked in.' : undefined}
-          scrollY={520}
-          onRow={(row) => ({ onClick: () => setOpen(row.staffId) })}
-          columns={[
-            {
-              title: 'Employee',
-              dataIndex: 'name',
-              key: 'name',
-              width: 220,
-              sorter: (a, b) => a.name.localeCompare(b.name),
-              render: (value: string, row) => (
-                <PersonCell name={value} meta={`${row.days.length} day${row.days.length === 1 ? '' : 's'} recorded`} />
-              ),
-            },
-            { title: 'Present', dataIndex: 'daysPresent', key: 'daysPresent', width: 90, className: 'kw-num' },
-            { title: 'Absent', dataIndex: 'daysAbsent', key: 'daysAbsent', width: 90, className: 'kw-num' },
-            { title: 'On leave', dataIndex: 'daysOnLeave', key: 'daysOnLeave', width: 95, className: 'kw-num' },
-            {
-              title: 'Missing punch',
-              dataIndex: 'daysMissingPunch',
-              key: 'daysMissingPunch',
-              width: 125,
-              className: 'kw-num',
-              render: (count: number) => (count > 0 ? <span className="kw-bad">{count}</span> : <span className="kw-muted">0</span>),
-            },
-            {
-              title: 'Worked',
-              dataIndex: 'workedMinutes',
-              key: 'workedMinutes',
-              width: 105,
-              className: 'kw-num',
-              render: (value: number) => hhmm(value),
-            },
-            {
-              title: 'Late',
-              dataIndex: 'lateOccasions',
-              key: 'lateOccasions',
-              width: 130,
-              className: 'kw-num',
-              render: (count: number, row) =>
-                count === 0 ? (
-                  <span className="kw-muted">0</span>
-                ) : (
-                  <span className="kw-warn">
-                    {count}× ({hhmm(row.lateMinutes)})
-                  </span>
+        {tab === 'summary' ? (
+          <Table<StaffRow>
+            rows={monthSheet.data?.staff}
+            loading={monthSheet.isLoading}
+            rowKey="staffId"
+            searchFields={['name']}
+            searchPlaceholder="Search employee"
+            searchLabel="Search employee"
+            emptyText="No attendance recorded this month"
+            toolbar={
+              <div className="hr-seg" role="group" aria-label="Month">
+                <button type="button" aria-label="Previous month" onClick={() => setMonth(month.subtract(1, 'month'))}>
+                  ‹
+                </button>
+                <button type="button" className="is-active" onClick={() => setMonth(clinicDayjs(new Date()).startOf('month'))}>
+                  {month.format('MMMM YYYY')}
+                </button>
+                <button type="button" aria-label="Next month" onClick={() => setMonth(month.add(1, 'month'))}>
+                  ›
+                </button>
+              </div>
+            }
+            toolbarRight={
+              <button
+                type="button"
+                className="hr-btn hr-btn--sm"
+                onClick={() =>
+                  downloadCsv(
+                    `attendance-${month.format('YYYY-MM')}`,
+                    ['Employee', 'Present', 'Absent', 'On leave', 'Missing punch', 'Worked hours', 'Late occasions', 'Late minutes', 'OT approved (h)', 'OT pending (h)'],
+                    (monthSheet.data?.staff ?? []).map((person) => [
+                      person.name,
+                      person.daysPresent,
+                      person.daysAbsent,
+                      person.daysOnLeave,
+                      person.daysMissingPunch,
+                      person.workedHours,
+                      person.lateOccasions,
+                      person.lateMinutes,
+                      person.approvedOvertimeHours,
+                      person.unapprovedOvertimeHours,
+                    ]),
+                  )
+                }
+              >
+                <IconDownload />
+                Export
+              </button>
+            }
+            columns={[
+              {
+                title: 'Employee',
+                dataIndex: 'name',
+                render: (value: string, row) => (
+                  <div className="hr-who">
+                    <span className="hr-who__avatar">{initialsOf(value)}</span>
+                    <div>
+                      <div className="hr-who__name">{value}</div>
+                      <div className="hr-who__role">
+                        {row.days.length} day{row.days.length === 1 ? '' : 's'} recorded
+                      </div>
+                    </div>
+                  </div>
                 ),
-            },
-            {
-              title: 'OT approved',
-              dataIndex: 'approvedOvertimeHours',
-              key: 'approvedOvertimeHours',
-              width: 115,
-              className: 'kw-num',
-              render: (value: number) =>
-                value === 0 ? <span className="kw-muted">—</span> : <span className="kw-good">{value}h</span>,
-            },
-            {
-              title: 'OT pending',
-              dataIndex: 'unapprovedOvertimeHours',
-              key: 'unapprovedOvertimeHours',
-              width: 110,
-              className: 'kw-num',
-              render: (value: number) =>
-                value === 0 ? <span className="kw-muted">—</span> : <span className="kw-warn">{value}h</span>,
-            },
-            {
-              title: '',
-              key: 'action',
-              width: 90,
-              noExport: true,
-              render: () => (
-                <Button size="small" type="text" className="kw-rowAction">
-                  View →
-                </Button>
-              ),
-            },
-          ]}
-        />
-      </AdminSection>
+              },
+              { title: 'Present', dataIndex: 'daysPresent', num: true, width: 90 },
+              { title: 'Absent', dataIndex: 'daysAbsent', num: true, width: 85 },
+              { title: 'On leave', dataIndex: 'daysOnLeave', num: true, width: 95 },
+              {
+                title: 'Missing punch',
+                dataIndex: 'daysMissingPunch',
+                num: true,
+                width: 125,
+                render: (count: number) => (count > 0 ? <span className="hr-ts">{count}</span> : <span className="hr-tn">0</span>),
+              },
+              { title: 'Worked', dataIndex: 'workedHours', num: true, width: 95, render: (value: number) => `${value.toFixed(1)} h` },
+              {
+                title: 'Late',
+                dataIndex: 'lateOccasions',
+                num: true,
+                width: 120,
+                render: (count: number, row) =>
+                  count === 0 ? <span className="hr-tn">0</span> : <span className="hr-ts">{count}× · {row.lateMinutes} min</span>,
+              },
+              {
+                title: 'OT approved',
+                dataIndex: 'approvedOvertimeHours',
+                num: true,
+                width: 120,
+                render: (value: number) => (value === 0 ? <span className="hr-tn">—</span> : <span className="hr-tg">{value.toFixed(1)} h</span>),
+              },
+              {
+                title: 'OT pending',
+                dataIndex: 'unapprovedOvertimeHours',
+                num: true,
+                width: 115,
+                render: (value: number) => (value === 0 ? <span className="hr-tn">—</span> : <span className="hr-gold">{value.toFixed(1)} h</span>),
+              },
+            ]}
+          />
+        ) : null}
+      </Panel>
 
-      <DetailDrawer
-        open={Boolean(selected)}
-        onClose={() => setOpen(undefined)}
-        name={selected?.name ?? ''}
-        subtitle={`${dayjs(range[0]).format('D MMM')} – ${dayjs(range[1]).format('D MMM YYYY')}`}
-        width={560}
-        tags={
-          selected ? (
-            <>
-              <StatusChip tone="ok" dot>
-                {selected.daysPresent} present
-              </StatusChip>
-              {selected.daysAbsent > 0 ? <StatusChip tone="blocked" dot>{selected.daysAbsent} absent</StatusChip> : null}
-              {selected.daysMissingPunch > 0 ? (
-                <StatusChip tone="blocked" dot>
-                  {selected.daysMissingPunch} missing punch
-                </StatusChip>
-              ) : null}
-              {selected.unapprovedOvertimeMinutes > 0 ? (
-                <StatusChip tone="attention" dot>
-                  {selected.unapprovedOvertimeHours}h overtime pending
-                </StatusChip>
-              ) : null}
-            </>
-          ) : null
+      <Drawer
+        open={fixing !== null}
+        title={fixing?.record ? `Fix ${fixing.name}'s day` : `Record a punch for ${fixing?.name ?? ''}`}
+        sub={dayjs(day).format('dddd D MMMM YYYY')}
+        onClose={() => setFixing(null)}
+        footer={
+          <>
+            <button type="button" className="hr-btn" onClick={() => setFixing(null)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="hr-btn hr-btn--primary"
+              onClick={saveFix}
+              disabled={correct.isPending || clockStaff.isPending}
+            >
+              {fixing?.record ? 'Save the correction' : 'Record the clock-in'}
+            </button>
+          </>
         }
       >
-        {selected ? (
-          <DrawerSection title="Day by day">
-            {selected.days.length === 0 ? (
-              <EmptyState title="No days recorded in this period" />
-            ) : (
-              <div className="kw-dayList">
-                {selected.days.map((day) => (
-                  <div key={day.id} className="kw-dayRow">
-                    <div className="kw-dayRow__date">
-                      <span className="kw-dayRow__dow">{dayjs(day.workDate).format('ddd')}</span>
-                      <span className="kw-dayRow__num">{dayjs(day.workDate).format('D MMM')}</span>
-                    </div>
-                    <div className="kw-dayRow__body">
-                      <div className="kw-dayRow__top">
-                        <StatusChip
-                          tone={
-                            day.status === 'PRESENT'
-                              ? 'ok'
-                              : day.status === 'LATE'
-                                ? 'attention'
-                                : day.status === 'MISSING_PUNCH'
-                                  ? 'blocked'
-                                  : 'neutral'
-                          }
-                          dot
-                        >
-                          {humanise(day.status)}
-                        </StatusChip>
-                        <span className="kw-dayRow__times">
-                          {day.clockInAt ? dayjs(day.clockInAt).format('HH:mm') : '—'} →{' '}
-                          {day.clockOutAt ? dayjs(day.clockOutAt).format('HH:mm') : '—'}
-                        </span>
-                        <span className="kw-dayRow__worked">{hhmm(day.workedMinutes)}</span>
-                      </div>
-                      {day.lateMinutes || day.overtimeMinutes > 0 || day.corrected ? (
-                        <div className="kw-dayRow__notes">
-                          {day.lateMinutes ? <span className="kw-warn">{day.lateMinutes}m late</span> : null}
-                          {day.overtimeMinutes > 0 ? (
-                            <span className={day.overtimeApproved ? 'kw-good' : 'kw-warn'}>
-                              {hhmm(day.overtimeMinutes)} overtime {day.overtimeApproved ? 'approved' : 'pending'}
-                            </span>
-                          ) : null}
-                          {day.corrected ? (
-                            <span className="kw-muted" title={day.correctionReason ?? ''}>
-                              corrected
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                    {day.overtimeMinutes > 0 && !day.overtimeApproved ? (
-                      <Button
-                        size="small"
-                        loading={approveOvertime.isPending}
-                        onClick={() =>
-                          approveOvertime.mutate(
-                            { id: day.id },
-                            {
-                              onSuccess: () => message.success('Overtime approved'),
-                              onError: (error: Error) => message.error(error.message),
-                            },
-                          )
-                        }
-                      >
-                        Approve OT
-                      </Button>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            )}
-          </DrawerSection>
+        <div className="hr-pform">
+          <div>
+            <label htmlFor="fix-in">Clock in</label>
+            <input id="fix-in" type="time" className="hr-f" value={clockIn} onChange={(event) => setClockIn(event.target.value)} />
+          </div>
+          <div>
+            <label htmlFor="fix-out">Clock out</label>
+            <input
+              id="fix-out"
+              type="time"
+              className="hr-f"
+              value={clockOut}
+              disabled={!fixing?.record}
+              onChange={(event) => setClockOut(event.target.value)}
+            />
+          </div>
+          {fixing?.record ? (
+            <div className="hr-pform__full">
+              <label htmlFor="fix-why">Why</label>
+              <textarea
+                id="fix-why"
+                className="hr-f"
+                placeholder="e.g. Clocked in at reception, phone was flat"
+                value={why}
+                onChange={(event) => setWhy(event.target.value)}
+              />
+            </div>
+          ) : null}
+        </div>
+        {fixing?.record ? (
+          <div className="hr-notice hr-notice--info">
+            The original punch stays on the record with your name and the reason against it. The employee sees both.
+          </div>
+        ) : (
+          <div className="hr-notice hr-notice--attn">
+            <IconClock /> There is no punch for this day. Recording one here marks it as <b>entered by HR</b>, never as
+            the employee's own.
+          </div>
+        )}
+        {fixing?.record?.outsideClinic ? (
+          <div className="hr-notice hr-notice--attn">
+            This punch was {fixing.record.distanceMetres !== null ? `${fixing.record.distanceMetres} m` : 'further than the radius'} from the
+            branch.
+          </div>
         ) : null}
-      </DetailDrawer>
-    </AdminShell>
+      </Drawer>
+    </HrPage>
+  );
+}
+
+/** A punch: the selfie kept with it, then the time. */
+function Punch({ at, proof, late, alt }: { at: string | null; proof: string | null; late: boolean; alt: string }) {
+  const path = proofPath(proof);
+  if (!at) return <span className="hr-tn">—</span>;
+  return (
+    <span className="hr-dots">
+      {path ? <AuthImage path={path} alt={alt} className="hr-proof" /> : null}
+      <span className={late ? 'hr-ts' : 'hr-tg'}>{formatClinicTime(at)}</span>
+    </span>
+  );
+}
+
+/** What the day amounted to, in the same words the employee's portal uses. */
+function resultText(row: DayRow): string {
+  if (row.record) {
+    const record = row.record;
+    if (row.onDuty) return record.lateMinutes ? `On duty · late ${record.lateMinutes} min` : 'On duty';
+    if (record.status === 'MISSING_PUNCH' || !record.clockOutAt)
+      return `${record.lateMinutes ? `Late ${record.lateMinutes} min · ` : ''}no clock-out`;
+    if (record.status === 'ON_LEAVE') return 'Leave';
+    if (record.status === 'ABSENT') return 'Absent';
+    if ((record.lateMinutes ?? 0) > 0) return `Late ${record.lateMinutes} min`;
+    if ((record.earlyOutMinutes ?? 0) > 0) return `Left ${record.earlyOutMinutes} min early`;
+    return 'On time';
+  }
+  if (row.leaveType) return `${row.leaveType.toLowerCase()} leave`;
+  if (row.shiftStart) return 'Rostered, no clock-in';
+  return '—';
+}
+
+function Result({ row }: { row: DayRow }) {
+  const text = resultText(row);
+  const record = row.record;
+  const bad = record
+    ? (!row.onDuty && (record.status === 'MISSING_PUNCH' || !record.clockOutAt)) ||
+      (record.lateMinutes ?? 0) > 0 ||
+      (record.earlyOutMinutes ?? 0) > 0
+    : Boolean(row.shiftStart);
+  return (
+    <span className="hr-dots">
+      {row.leaveType && !record ? (
+        <StatusChip tone="attn">{text}</StatusChip>
+      ) : (
+        <span className={bad ? 'hr-ts' : 'hr-tg'}>{text}</span>
+      )}
+      {record?.outsideClinic ? (
+        <StatusChip tone="attn">
+          Outside clinic{record.distanceMetres !== null ? ` · ${record.distanceMetres >= 1000 ? `${(record.distanceMetres / 1000).toFixed(1)} km` : `${record.distanceMetres} m`}` : ''}
+        </StatusChip>
+      ) : null}
+      {record?.corrected ? <StatusChip tone="info">Corrected</StatusChip> : null}
+    </span>
   );
 }

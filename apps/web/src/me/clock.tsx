@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { App } from 'antd';
-import { ApiError, fetchBlobUrl } from '../core/api-client';
+import { ApiError } from '../core/api-client';
 import { Drawer } from '../admin/hr/ui';
 import { IconClock } from '../admin/hr/ui/icons';
 import { useClockSelf, useGiveSelfieConsent, useMyProfile, uploadMyFile } from './hooks/useMe';
@@ -231,35 +231,4 @@ export function ClockButton({ onDuty, disabled }: { onDuty: boolean; disabled?: 
       </Drawer>
     </>
   );
-}
-
-/**
- * AN IMAGE BEHIND THE BEARER TOKEN. `<img src>` cannot send a header, so the
- * bytes are fetched into a blob URL and shown from there; nothing about a
- * person's file is ever a bare URL a browser could be pointed at.
- */
-export function AuthImage({ path, alt, className }: { path: string; alt: string; className?: string }) {
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    let objectUrl: string | null = null;
-    fetchBlobUrl(path)
-      .then((value) => {
-        if (alive) {
-          objectUrl = value;
-          setUrl(value);
-        } else {
-          URL.revokeObjectURL(value);
-        }
-      })
-      .catch(() => {
-        if (alive) setUrl(null);
-      });
-    return () => {
-      alive = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [path]);
-  if (!url) return <span className={className} aria-label={alt} />;
-  return <img className={className} src={url} alt={alt} />;
 }

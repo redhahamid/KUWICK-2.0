@@ -218,8 +218,19 @@ test.describe('Attendance carries the roster', () => {
     // It used to be four: Attendance, Roster, Leave, Claims, behind one rail
     // entry called "Time & Leave". Leave and Claims are separate decisions and
     // have their own entries now, so two of the three stopped being invisible.
-    const views = page.locator('.kw-workAreaTabs label');
-    expect((await views.allInnerTexts()).map((label) => label.trim())).toEqual(['Timesheet', 'Roster']);
+    //
+    // Piece 3e put the screen on the Slate kit, where the views are the
+    // panel's own tabs and there are four of them: the day's timesheet, the
+    // roster, the corrections queue and the month. The roster is still the
+    // one shift board in the product, so its tab goes there rather than
+    // drawing a second one.
+    const views = page.locator('.hr-tabs button');
+    expect((await views.allInnerTexts()).map((label) => label.replace(/\s+/g, ' ').trim())).toEqual([
+      'Timesheet',
+      'Roster',
+      expect.stringContaining('Corrections'),
+      'Monthly summary',
+    ]);
 
     await views.filter({ hasText: 'Roster' }).click();
     await expect(page).toHaveURL(/\/admin\/hr\/attendance\/roster$/);

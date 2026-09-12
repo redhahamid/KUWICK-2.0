@@ -71,6 +71,8 @@ export interface LeaveRequest {
   rejectReason: string | null;
   staff?: Staff;
   approvedBy?: Staff;
+  /** The MC or other certificate sent with the request (Piece 3g). */
+  attachments?: { id: string; fileName: string; mimeType: string; fileSize: number; filePath: string }[];
   createdAt: string;
 }
 

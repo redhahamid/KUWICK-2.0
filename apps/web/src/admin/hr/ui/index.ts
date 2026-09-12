@@ -1,3 +1,4 @@
+export { AuthImage } from './AuthImage';
 export { Drawer } from './Drawer';
 export { HrPage } from './HrPage';
 export { IconButton } from './IconButton';

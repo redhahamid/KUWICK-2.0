@@ -12,6 +12,9 @@ import { DecideLeaveRequestDto } from './dto/decide-leave-request.dto';
 // balances or leave-type quotas yet (out of MVP scope per
 // PRODUCT_REQUIREMENTS.md §14's "leave request and approval workflow"
 // wording, not a richer balance-tracking system).
+/** What a manager needs to see an attachment: its name, its type and where to read it. */
+const ATTACHMENT = { select: { id: true, fileName: true, mimeType: true, fileSize: true, filePath: true } } as const;
+
 @Injectable()
 export class LeaveRequestService {
   constructor(
@@ -35,7 +38,10 @@ export class LeaveRequestService {
   findAll(staffId?: string, status?: LeaveStatus) {
     return this.prisma.leaveRequest.findMany({
       where: { staffId, status },
-      include: { staff: true, approvedBy: true },
+      // The certificate the leave policy asked for travels with the request
+      // (Piece 3g): a manager deciding a medical leave has to be able to see
+      // it without leaving the queue. The bytes stay behind `hr.view`.
+      include: { staff: true, approvedBy: true, attachments: ATTACHMENT },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -43,7 +49,7 @@ export class LeaveRequestService {
   async findById(id: string) {
     const request = await this.prisma.leaveRequest.findUnique({
       where: { id },
-      include: { staff: true, approvedBy: true },
+      include: { staff: true, approvedBy: true, attachments: ATTACHMENT },
     });
     if (!request) {
       throw new NotFoundException('Leave request not found');

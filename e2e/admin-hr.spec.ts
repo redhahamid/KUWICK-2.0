@@ -106,10 +106,21 @@ test.describe('HR', () => {
      * guarantee is unchanged — approved and unapproved overtime are never one
      * number — and this pins it where it now lives.
      */
-    await expect(statValue(page, 'OT PENDING')).toBeVisible();
+    /*
+     * Piece 3e put the screen on the Slate kit and made the DAY the unit, so
+     * the two figures live in two places now and both are pinned here:
+     *
+     *   - the day sheet names what is waiting on a manager, per person, in its
+     *     own column, with the approval as the control ("Pending · approve");
+     *   - the month, behind the fourth tab, keeps approved and unapproved
+     *     overtime in two columns, which is the guarantee itself.
+     */
+    await expect(page.getByText(/pending approval ·/i)).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'OT status' })).toBeVisible();
+
+    await page.getByRole('tab', { name: 'Monthly summary' }).click();
     await expect(page.getByRole('columnheader', { name: 'OT approved' })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'OT pending' })).toBeVisible();
-    await expect(page.getByText(/A long day is not automatically overtime/i)).toBeVisible();
 
     expect(errors).toEqual([]);
   });

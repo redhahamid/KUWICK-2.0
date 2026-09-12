@@ -751,6 +751,18 @@ export function useDecideCorrection() {
   );
 }
 
+/**
+ * A PUNCH RECORDED BY HR, for somebody who did not clock in themselves. The
+ * server marks it MANUAL whatever is sent, so the timesheet always says who
+ * made the punch.
+ */
+export function useClockStaff() {
+  return useAdminMutation(
+    (body: { staffId: string; clinicId?: string; at?: string }) => apiClient.post('/workforce/attendance/clock', body),
+    ['admin-hr'],
+  );
+}
+
 export function useApproveOvertime() {
   return useAdminMutation(
     ({ id, minutes }: { id: string; minutes?: number }) =>

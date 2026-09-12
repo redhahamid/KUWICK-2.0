@@ -475,8 +475,13 @@ export class AttendanceRecordService {
             workDate: row.workDate.toISOString().slice(0, 10),
             clockInAt: row.clockInAt,
             clockOutAt: row.clockOutAt,
+            // The shift the punch is judged against, so a day view can show
+            // "09:00–17:00" beside it without going back to the roster.
+            scheduledStart: row.scheduledStart,
+            scheduledEnd: row.scheduledEnd,
             status: row.status,
             lateMinutes: row.lateMinutes,
+            earlyOutMinutes: row.earlyOutMinutes,
             workedMinutes: row.workedMinutes,
             overtimeMinutes: row.overtimeMinutes,
             overtimeApproved: row.overtimeApproved,

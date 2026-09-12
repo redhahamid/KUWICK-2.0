@@ -4,7 +4,8 @@ import dayjs from 'dayjs';
 import { clinicDayjs, formatClinicTime } from '../clinical/clinicTime';
 import { ApiError } from '../core/api-client';
 import { Drawer, Panel, PanelHead, StatusChip } from '../admin/hr/ui';
-import { AuthImage, ClockButton } from './clock';
+import { AuthImage } from '../admin/hr/ui';
+import { ClockButton } from './clock';
 import { myFilePath, useMyAttendance, useMyHome, useMySchedule, useRequestCorrection, type MyAttendanceDay } from './hooks/useMe';
 import { PortalEmpty } from './portal';
 

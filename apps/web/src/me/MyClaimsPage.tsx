@@ -4,7 +4,7 @@ import dayjs from 'dayjs';
 import { ApiError } from '../core/api-client';
 import { Panel, PanelHead, StatusChip } from '../admin/hr/ui';
 import { IconDoc } from '../admin/hr/ui/icons';
-import { AuthImage } from './clock';
+import { AuthImage } from '../admin/hr/ui';
 import { myFilePath, uploadMyFile, useMyBenefits, useMyClaimPolicy, useMyClaims, useSubmitClaim, type MyClaim } from './hooks/useMe';
 import { IconCheckCircle, PortalEmpty, monthShort, rm } from './portal';
 

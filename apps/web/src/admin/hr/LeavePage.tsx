@@ -1,15 +1,9 @@
 import { useMemo, useState } from 'react';
-import { App, Button, DatePicker, Drawer, Form, Input, Segmented, Select } from 'antd';
-import dayjs, { Dayjs } from 'dayjs';
-import { AdminSection, AdminShell, firstError } from '../components/AdminShell';
-import { StatStrip } from '../components/StatStrip';
-import { DataTable } from '../components/DataTable';
-import { FilterBar, Filter } from '../components/FilterBar';
-import { PersonCell } from '../components/Person';
-import { StatusChip, humanise } from '../components/Chip';
-import { EmptyState } from '../components/Panel';
+import { App } from 'antd';
+import dayjs from 'dayjs';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
-import { useLeaveBalances } from '../hooks/useAdmin';
+import { useCan, permissionHint } from '../../core/hooks/useCan';
+import { useEmployees, useLeaveBalances } from '../hooks/useAdmin';
 import { useStaff } from '../../hr/hooks/useStaff';
 import {
   useApproveLeaveRequest,
@@ -17,555 +11,666 @@ import {
   useLeaveRequests,
   useRejectLeaveRequest,
 } from '../../hr/hooks/useLeaveRequests';
-import { CreateLeaveRequestDto, LeaveRequest, LeaveStatus, LeaveType } from '../../hr/types';
+import type { LeaveRequest, LeaveStatus, LeaveType } from '../../hr/types';
 import { ApiError } from '../../core/api-client';
-import { permissionHint, useCan } from '../../core/hooks/useCan';
+import { clinicDayjs } from '../../clinical/clinicTime';
+import { AuthImage, Drawer, HrPage, Panel, SegControl, StatCard, StatRow, StatusChip } from './ui';
+import { Table } from './ui/Table';
+import { IconCalendar, IconDoc, IconPlus } from './ui/icons';
+import { initialsOf } from './ui/who';
+import { LeaveCalendar } from './LeaveCalendar';
 
-const LEAVE_TYPE_OPTIONS: { value: LeaveType; label: string }[] = [
+const TYPES: { value: LeaveType; label: string }[] = [
   { value: 'ANNUAL', label: 'Annual' },
   { value: 'MEDICAL', label: 'Medical' },
   { value: 'EMERGENCY', label: 'Emergency' },
   { value: 'UNPAID', label: 'Unpaid' },
   { value: 'OTHER', label: 'Other' },
 ];
+const TYPE_LABEL = (value: LeaveType) => TYPES.find((type) => type.value === value)?.label ?? value;
 
-const TYPE_LABEL = (value: LeaveType) => LEAVE_TYPE_OPTIONS.find((option) => option.value === value)?.label ?? value;
-
-const STATUS_TONE: Record<LeaveStatus, 'ok' | 'attention' | 'blocked'> = {
-  PENDING: 'attention',
-  APPROVED: 'ok',
-  REJECTED: 'blocked',
+const STATUS: Record<LeaveStatus, { tone: 'attn' | 'done' | 'block'; label: string }> = {
+  PENDING: { tone: 'attn', label: 'Waiting' },
+  APPROVED: { tone: 'done', label: 'Approved' },
+  REJECTED: { tone: 'block', label: 'Rejected' },
 };
 
-interface LeaveRequestFormValues {
-  staffId: string;
-  leaveType: LeaveType;
-  dateRange: [Dayjs, Dayjs];
-  reason?: string;
+type Tab = 'requests' | 'calendar' | 'balances';
+type Filter = 'ALL' | LeaveStatus;
+
+const daysOf = (row: Pick<LeaveRequest, 'startDate' | 'endDate'>) =>
+  dayjs(row.endDate).diff(dayjs(row.startDate), 'day') + 1;
+
+const dateRange = (row: Pick<LeaveRequest, 'startDate' | 'endDate'>) => {
+  const from = dayjs(row.startDate);
+  const to = dayjs(row.endDate);
+  if (from.isSame(to, 'day')) return from.format('ddd D MMM YYYY');
+  return from.isSame(to, 'month')
+    ? `${from.format('ddd D')} – ${to.format('ddd D MMM YYYY')}`
+    : `${from.format('ddd D MMM')} – ${to.format('ddd D MMM YYYY')}`;
+};
+
+/** The file id inside `/me/files/<id>`, read back by HR from its own route. */
+function staffFilePath(filePath: string): string | null {
+  const id = filePath.startsWith('/me/files/') ? filePath.slice('/me/files/'.length) : null;
+  return id ? `/workforce/staff-files/${id}` : null;
 }
 
-type View = 'requests' | 'calendar' | 'balances';
-
 /**
- * LEAVE — three views of one subject, in the reference sheet's order:
- * Requests (the default, because a decision is what somebody is waiting on),
- * Calendar (who is away when), Balances (how many days are left).
+ * LEAVE, after `leave.html` — the queue, then the archive.
  *
- * This replaces a Management-era page whose most telling control was a
- * dropdown headed **"Approving/Rejecting as:"**, where a manager picked which
- * colleague to record as the approver. It was not a convenience: the server
- * took that id from the request body and wrote it down as fact, with no
- * permission check and no audit row. The server now reads the approver from
- * the session (`hr.leave.approve`, audited, never your own request), and the
- * question is gone from the screen because it was never the manager's to
- * answer.
+ * A DECISION IS MADE IN A DRAWER, against the list it came from. Everything
+ * the decision turns on is in it: what was asked for, what it leaves in the
+ * balance, who else is away over the same days, the certificate the policy
+ * asked for, and what it does to payroll. A manager who has to open three
+ * screens to answer "can I spare her" approves without answering it.
+ *
+ * THE APPROVER IS THE SESSION, never a dropdown. This screen once had a
+ * control headed "Approving/Rejecting as:" where you picked a colleague to
+ * record as the approver; the server wrote it down as fact with no permission
+ * check. The server now reads the approver from the session (`hr.leave.approve`,
+ * audited, never your own request), so the question is gone.
  */
 export function LeavePage() {
   const { message } = App.useApp();
   const { clinicId } = useClinicFilter();
   const { data: staff } = useStaff();
-  const { data: requests, isLoading, isError, error } = useLeaveRequests();
+  const requests = useLeaveRequests();
+  // The job title is on the employment record, not on the staff row, and the
+  // mockup names it under every person. One list, read once.
+  const employees = useEmployees({});
   const balances = useLeaveBalances({ clinicId, year: dayjs().year() });
-  const createLeaveRequest = useCreateLeaveRequest();
-  const approveLeaveRequest = useApproveLeaveRequest();
-  const rejectLeaveRequest = useRejectLeaveRequest();
+  const createRequest = useCreateLeaveRequest();
+  const approve = useApproveLeaveRequest();
+  const reject = useRejectLeaveRequest();
   const canApprove = useCan('hr.leave.approve');
 
-  const [view, setView] = useState<View>('requests');
-  const [status, setStatus] = useState<'ALL' | LeaveStatus>('ALL');
+  const [tab, setTab] = useState<Tab>('requests');
+  const [filter, setFilter] = useState<Filter>('ALL');
   const [month, setMonth] = useState(dayjs().startOf('month'));
-  const [open, setOpen] = useState(false);
-  const [rejecting, setRejecting] = useState<LeaveRequest | null>(null);
-  const [form] = Form.useForm<LeaveRequestFormValues>();
-  const [rejectForm] = Form.useForm<{ rejectReason: string }>();
+  const [reviewing, setReviewing] = useState<LeaveRequest | null>(null);
+  const [note, setNote] = useState('');
+  const [recording, setRecording] = useState(false);
+  const [form, setForm] = useState({ staffId: '', leaveType: 'ANNUAL' as LeaveType, startDate: dayjs().format('YYYY-MM-DD'), endDate: dayjs().format('YYYY-MM-DD'), reason: '' });
 
-  const today = dayjs().format('YYYY-MM-DD');
-  const rows = useMemo(() => requests ?? [], [requests]);
-  const pending = rows.filter((row) => row.status === 'PENDING');
-  const onLeaveToday = rows.filter(
+  const positionOf = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of employees.data ?? []) if (row.position) map.set(row.staffId, row.position);
+    return map;
+  }, [employees.data]);
+  const role = (row: LeaveRequest) =>
+    positionOf.get(row.staffId) ?? (row.staff?.role ? row.staff.role.toLowerCase().replace(/_/g, ' ') : 'No position recorded');
+
+  const today = clinicDayjs(new Date()).format('YYYY-MM-DD');
+  const rows = useMemo(() => requests.data ?? [], [requests.data]);
+  const waiting = rows.filter((row) => row.status === 'PENDING');
+  const awayToday = rows.filter(
     (row) => row.status === 'APPROVED' && row.startDate.slice(0, 10) <= today && row.endDate.slice(0, 10) >= today,
   );
-  const upcoming = rows.filter((row) => row.status === 'APPROVED' && row.startDate.slice(0, 10) > today);
-
-  const filtered = useMemo(
-    () => (status === 'ALL' ? rows : rows.filter((row) => row.status === status)),
-    [rows, status],
+  const nextWeek = clinicDayjs(new Date()).add(7, 'day').format('YYYY-MM-DD');
+  const awaySoon = rows.filter(
+    (row) => row.status === 'APPROVED' && row.startDate.slice(0, 10) > today && row.startDate.slice(0, 10) <= nextWeek,
+  );
+  const unpaidThisMonth = rows.filter(
+    (row) =>
+      row.status === 'APPROVED' &&
+      row.leaveType === 'UNPAID' &&
+      row.startDate.slice(0, 7) === today.slice(0, 7),
+  );
+  const unpaidDays = unpaidThisMonth.reduce((total, row) => total + daysOf(row), 0);
+  const oldest = waiting.reduce<LeaveRequest | null>(
+    (oldestSoFar, row) => (!oldestSoFar || row.createdAt < oldestSoFar.createdAt ? row : oldestSoFar),
+    null,
   );
 
-  const submit = async (values: LeaveRequestFormValues) => {
-    const dto: CreateLeaveRequestDto = {
-      staffId: values.staffId,
-      leaveType: values.leaveType,
-      startDate: values.dateRange[0].format('YYYY-MM-DD'),
-      endDate: values.dateRange[1].format('YYYY-MM-DD'),
-      reason: values.reason,
-    };
+  const filtered = useMemo(
+    () => (filter === 'ALL' ? rows : rows.filter((row) => row.status === filter)),
+    [rows, filter],
+  );
+
+  /** What the balance looks like after this request, from the server's own figures. */
+  const balanceAfter = (row: LeaveRequest) => {
+    const person = balances.data?.employees.find((entry) => entry.staffId === row.staffId);
+    const balance = person?.balances.find((entry) => entry.leaveType === row.leaveType);
+    if (!balance || !balance.paid) return null;
+    return { remaining: balance.remaining, available: balance.available, after: balance.remaining - daysOf(row) };
+  };
+
+  /** Who else is away over the same days — the question a manager actually asks. */
+  const clashes = (row: LeaveRequest) =>
+    rows.filter(
+      (other) =>
+        other.id !== row.id &&
+        other.staffId !== row.staffId &&
+        other.status !== 'REJECTED' &&
+        other.startDate.slice(0, 10) <= row.endDate.slice(0, 10) &&
+        other.endDate.slice(0, 10) >= row.startDate.slice(0, 10),
+    );
+
+  const decide = async (accept: boolean) => {
+    if (!reviewing) return;
+    if (!accept && note.trim().length < 3) {
+      message.error('A refusal carries its reason. The employee sees it.');
+      return;
+    }
     try {
-      await createLeaveRequest.mutateAsync(dto);
-      message.success('Leave request submitted.');
-      form.resetFields();
-      setOpen(false);
-    } catch (err) {
-      message.error(err instanceof ApiError ? err.message : 'Could not submit the request.');
+      if (accept) {
+        await approve.mutateAsync({ id: reviewing.id, dto: {} });
+        message.success(`Approved ${reviewing.staff?.fullName ?? 'the request'}.`);
+      } else {
+        await reject.mutateAsync({ id: reviewing.id, dto: { rejectReason: note.trim() } });
+        message.success('Rejected, and the reason is on the record.');
+      }
+      setReviewing(null);
+      setNote('');
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : 'Could not record that.');
     }
   };
 
-  const approve = async (row: LeaveRequest) => {
+  const record = async () => {
+    if (!form.staffId) {
+      message.error('Choose who this is for.');
+      return;
+    }
+    if (form.endDate < form.startDate) {
+      message.error('Leave cannot end before it starts.');
+      return;
+    }
     try {
-      await approveLeaveRequest.mutateAsync({ id: row.id, dto: {} });
-      message.success(`Approved ${row.staff?.fullName ?? 'the request'}.`);
-    } catch (err) {
-      message.error(err instanceof ApiError ? err.message : 'Could not approve.');
+      await createRequest.mutateAsync({
+        staffId: form.staffId,
+        leaveType: form.leaveType,
+        startDate: form.startDate,
+        endDate: form.endDate,
+        reason: form.reason.trim() || undefined,
+      });
+      message.success('Recorded. It still needs a decision.');
+      setRecording(false);
+      setForm({ staffId: '', leaveType: 'ANNUAL', startDate: today, endDate: today, reason: '' });
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : 'Could not record that.');
     }
   };
 
-  const reject = async (values: { rejectReason: string }) => {
-    if (!rejecting) return;
-    try {
-      await rejectLeaveRequest.mutateAsync({ id: rejecting.id, dto: { rejectReason: values.rejectReason } });
-      message.success('Rejected, and the reason is on the record.');
-      rejectForm.resetFields();
-      setRejecting(null);
-    } catch (err) {
-      message.error(err instanceof ApiError ? err.message : 'Could not reject.');
-    }
-  };
+  const after = reviewing ? balanceAfter(reviewing) : null;
+  const alsoAway = reviewing ? clashes(reviewing) : [];
 
   return (
-    <AdminShell
-      error={firstError({ isError, error })}
+    <HrPage
       title="Leave"
-      subtitle="What staff have asked for, and what was decided."
+      sub="Requests come in from the staff portal. Balances are entitlement minus what's taken."
+      error={requests.isError ? 'Leave requests could not be loaded.' : null}
       actions={
-        <Button type="primary" onClick={() => setOpen(true)}>
-          + Record leave
-        </Button>
+        <button type="button" className="hr-btn hr-btn--primary" onClick={() => setRecording(true)}>
+          <IconPlus />
+          Record leave
+        </button>
       }
     >
+      <StatRow>
+        <StatCard
+          label="Waiting for decision"
+          value={waiting.length}
+          tone={waiting.length > 0 ? 'gold' : 'plain'}
+          sub={oldest ? `Oldest applied ${dayjs(oldest.createdAt).format('D MMM')}` : 'Nothing waiting'}
+        />
+        <StatCard
+          label="Away today"
+          value={awayToday.length}
+          sub={
+            awayToday.length > 0
+              ? awayToday.map((row) => `${row.staff?.fullName ?? '—'}, ${TYPE_LABEL(row.leaveType).toLowerCase()}`).join(' · ')
+              : 'Everybody is in'
+          }
+        />
+        <StatCard
+          label="Away next 7 days"
+          value={awaySoon.length}
+          sub={
+            awaySoon.length > 0
+              ? `${awaySoon[0].staff?.fullName ?? '—'} from ${dayjs(awaySoon[0].startDate).format('ddd D')}`
+              : 'Nobody booked'
+          }
+        />
+        <StatCard
+          label={`Unpaid leave, ${clinicDayjs(new Date()).format('MMM')}`}
+          value={`${unpaidDays} ${unpaidDays === 1 ? 'day' : 'days'}`}
+          tone={unpaidDays > 0 ? 'gold' : 'plain'}
+          sub="Feeds into payroll deductions"
+        />
+      </StatRow>
 
-      <StatStrip
-        stats={[
-          { label: 'Waiting for you', value: pending.length, tone: pending.length > 0 ? 'warn' : 'good' },
-          { label: 'On leave today', value: onLeaveToday.length },
-          { label: 'Upcoming', value: upcoming.length },
-          { label: 'Decided', value: rows.length - pending.length },
-        ]}
-      />
+      <Panel className="hr-mt">
+        <div className="hr-tabs" role="tablist" aria-label="Leave views">
+          {([
+            ['requests', `Requests`, rows.length],
+            ['calendar', 'Calendar', 0],
+            ['balances', 'Balances', 0],
+          ] as [Tab, string, number][]).map(([key, label, count]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={tab === key}
+              className={tab === key ? 'is-active' : undefined}
+              onClick={() => setTab(key)}
+            >
+              {label}
+              {count > 0 ? <span className="hr-tabs__n">{count}</span> : null}
+            </button>
+          ))}
+        </div>
 
-      <FilterBar
-        right={
-          <Segmented
-            className="kw-workAreaTabs"
-            value={view}
-            onChange={(value) => setView(value as View)}
-            options={[
-              { value: 'requests', label: 'Requests' },
-              { value: 'calendar', label: 'Calendar' },
-              { value: 'balances', label: 'Balances' },
-            ]}
-          />
-        }
-      >
-        {view === 'requests' ? (
-          <Filter label="Status">
-            <Select
-              size="small"
-              style={{ width: 170 }}
-              value={status}
-              onChange={setStatus}
-              options={[
-                { value: 'ALL', label: 'All requests' },
-                { value: 'PENDING', label: 'Waiting for a decision' },
-                { value: 'APPROVED', label: 'Approved' },
-                { value: 'REJECTED', label: 'Rejected' },
-              ]}
-            />
-          </Filter>
-        ) : null}
-        {view === 'calendar' ? (
-          <Filter label="Month">
-            <DatePicker
-              picker="month"
-              size="small"
-              allowClear={false}
-              value={month}
-              onChange={(value) => value && setMonth(value.startOf('month'))}
-            />
-          </Filter>
-        ) : null}
-        {view === 'balances' ? (
-          <Filter label="Year">
-            <span className="kw-filter__static">{balances.data?.year ?? dayjs().year()}</span>
-          </Filter>
-        ) : null}
-      </FilterBar>
-
-      {view === 'requests' ? (
-        <>
-          {/* WAITING FIRST, and only when there is anything waiting. The queue
-              somebody is blocked in is not a filter of the archive. */}
-          {pending.length > 0 && status === 'ALL' ? (
-            <AdminSection title={`${pending.length} waiting for a decision`} padded={false}>
-              <DataTable
-                rows={pending}
-                loading={isLoading}
-                rowKey="id"
-                emptyText="Nothing waiting"
-                columns={[
-                  {
-                    title: 'Employee',
-                    key: 'staff',
-                    width: 220,
-                    render: (_: unknown, row) => (
-                      <PersonCell name={row.staff?.fullName ?? '—'} meta={TYPE_LABEL(row.leaveType)} />
-                    ),
-                  },
-                  {
-                    title: 'Dates',
-                    key: 'dates',
-                    width: 210,
-                    render: (_: unknown, row) => (
-                      <span>
-                        {dayjs(row.startDate).format('ddd D MMM')} – {dayjs(row.endDate).format('ddd D MMM YYYY')}
-                        <span className="kw-cellMeta">
-                          {dayjs(row.endDate).diff(dayjs(row.startDate), 'day') + 1} day(s)
-                        </span>
-                      </span>
-                    ),
-                  },
-                  {
-                    title: 'Reason',
-                    dataIndex: 'reason',
-                    key: 'reason',
-                    render: (value: string | null) => value ?? <span className="kw-muted">—</span>,
-                  },
-                  {
-                    title: '',
-                    key: 'decide',
-                    width: 160,
-                    noExport: true,
-                    render: (_: unknown, row) => (
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <Button
-                          size="small"
-                          type="primary"
-                          disabled={!canApprove}
-                          title={canApprove ? '' : permissionHint('approve leave')}
-                          loading={approveLeaveRequest.isPending}
-                          onClick={() => approve(row)}
-                        >
-                          Approve
-                        </Button>
-                        <Button size="small" danger disabled={!canApprove} onClick={() => setRejecting(row)}>
-                          Reject
-                        </Button>
-                      </div>
-                    ),
-                  },
+        {tab === 'requests' ? (
+          <Table<LeaveRequest>
+            rows={filtered}
+            loading={requests.isLoading}
+            rowKey="id"
+            searchFields={['reason']}
+            searchPlaceholder="Search employee"
+            searchLabel="Search employee"
+            emptyText="No leave has been requested"
+            emptyHint="Staff apply from their portal; you can also record one here."
+            toolbar={
+              <SegControl<Filter>
+                label="Status"
+                value={filter}
+                onChange={setFilter}
+                options={[
+                  { value: 'ALL', label: `All ${rows.length}` },
+                  { value: 'PENDING', label: `Waiting ${waiting.length}` },
+                  { value: 'APPROVED', label: 'Approved' },
+                  { value: 'REJECTED', label: 'Rejected' },
                 ]}
               />
-            </AdminSection>
-          ) : null}
-
-          <AdminSection title={status === 'ALL' ? 'All requests' : `${humanise(status)} requests`} padded={false}>
-            <DataTable
-              rows={filtered}
-              loading={isLoading}
-              rowKey="id"
-              exportName="leave"
-              searchFields={['reason' as never]}
-              emptyText="No leave has been requested"
-              emptyHint="Staff request leave from My Kuwick; you can also record one here."
-              columns={[
-                {
-                  title: 'Employee',
-                  key: 'staff',
-                  width: 220,
-                  render: (_: unknown, row) => (
-                    <PersonCell name={row.staff?.fullName ?? '—'} meta={TYPE_LABEL(row.leaveType)} />
+            }
+            columns={[
+              {
+                title: 'Employee',
+                key: 'who',
+                render: (_: unknown, row) => (
+                  <div className="hr-who">
+                    <span className="hr-who__avatar">{initialsOf(row.staff?.fullName ?? '—')}</span>
+                    <div>
+                      <div className="hr-who__name">{row.staff?.fullName ?? '—'}</div>
+                      <div className="hr-who__role">{role(row)}</div>
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                title: 'Type',
+                key: 'type',
+                width: 110,
+                render: (_: unknown, row) => (
+                  <span className="hr-dots">
+                    {TYPE_LABEL(row.leaveType)}
+                    {row.attachments?.length ? <IconDoc /> : null}
+                  </span>
+                ),
+              },
+              { title: 'Dates', key: 'dates', width: 220, render: (_: unknown, row) => dateRange(row) },
+              { title: 'Days', key: 'days', num: true, width: 70, render: (_: unknown, row) => daysOf(row) },
+              {
+                title: 'Applied',
+                key: 'applied',
+                width: 110,
+                render: (_: unknown, row) => dayjs(row.createdAt).format('D MMM'),
+              },
+              {
+                title: 'Decided · by',
+                key: 'decided',
+                width: 200,
+                render: (_: unknown, row) =>
+                  row.status === 'PENDING' ? (
+                    <span className="hr-tn">—</span>
+                  ) : (
+                    <span>
+                      {row.approvedAt ? `${dayjs(row.approvedAt).format('D MMM')} · ` : ''}
+                      {row.approvedBy?.fullName ?? '—'}
+                    </span>
                   ),
-                },
-                {
-                  title: 'Dates',
-                  key: 'dates',
-                  width: 200,
-                  render: (_: unknown, row) =>
-                    `${dayjs(row.startDate).format('D MMM')} – ${dayjs(row.endDate).format('D MMM YYYY')}`,
-                },
-                {
-                  title: 'Status',
-                  key: 'status',
-                  width: 130,
-                  render: (_: unknown, row) => (
-                    <StatusChip tone={STATUS_TONE[row.status]} dot>
-                      {humanise(row.status)}
-                    </StatusChip>
-                  ),
-                },
-                {
-                  title: 'Decided by',
-                  key: 'decidedBy',
-                  width: 180,
-                  render: (_: unknown, row) =>
-                    row.status === 'PENDING' ? (
-                      <span className="kw-muted">—</span>
-                    ) : (
-                      <span>
-                        {row.approvedBy?.fullName ?? '—'}
-                        {row.approvedAt ? <span className="kw-cellMeta">{dayjs(row.approvedAt).format('D MMM')}</span> : null}
-                      </span>
-                    ),
-                },
-                {
-                  title: 'Why refused',
-                  dataIndex: 'rejectReason',
-                  key: 'rejectReason',
-                  render: (value: string | null) => value ?? <span className="kw-muted">—</span>,
-                },
-                {
-                  title: '',
-                  key: 'act',
-                  width: 150,
-                  noExport: true,
-                  render: (_: unknown, row) =>
-                    row.status === 'PENDING' ? (
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <Button size="small" type="primary" disabled={!canApprove} onClick={() => approve(row)}>
-                          Approve
-                        </Button>
-                        <Button size="small" danger disabled={!canApprove} onClick={() => setRejecting(row)}>
-                          Reject
-                        </Button>
-                      </div>
-                    ) : null,
-                },
-              ]}
-            />
-          </AdminSection>
-        </>
-      ) : null}
+              },
+              {
+                title: 'Status',
+                key: 'status',
+                width: 120,
+                render: (_: unknown, row) => <StatusChip tone={STATUS[row.status].tone}>{STATUS[row.status].label}</StatusChip>,
+              },
+              {
+                title: '',
+                key: 'review',
+                width: 90,
+                render: (_: unknown, row) => (
+                  <button
+                    type="button"
+                    className="hr-btn hr-btn--sm"
+                    onClick={() => {
+                      setReviewing(row);
+                      setNote('');
+                    }}
+                  >
+                    Review
+                  </button>
+                ),
+              },
+            ]}
+          />
+        ) : null}
 
-      {view === 'calendar' ? <LeaveCalendar month={month} requests={rows} /> : null}
+        {tab === 'calendar' ? (
+          <>
+            <div className="hr-toolbar">
+              <div className="hr-seg" role="group" aria-label="Month">
+                <button type="button" aria-label="Previous month" onClick={() => setMonth(month.subtract(1, 'month'))}>
+                  ‹
+                </button>
+                <button type="button" className="is-active" onClick={() => setMonth(dayjs().startOf('month'))}>
+                  {month.format('MMMM YYYY')}
+                </button>
+                <button type="button" aria-label="Next month" onClick={() => setMonth(month.add(1, 'month'))}>
+                  ›
+                </button>
+              </div>
+              <span className="hr-toolbar__right hr-legend">
+                <StatusChip tone="done">Approved</StatusChip>
+                <StatusChip tone="attn">Waiting</StatusChip>
+              </span>
+            </div>
+            <LeaveCalendar month={month} requests={rows} />
+          </>
+        ) : null}
 
-      {view === 'balances' ? (
-        <AdminSection
-          title={`Balances — ${balances.data?.year ?? dayjs().year()}`}
-          description="Taken is computed from approved requests, so a cancelled leave returns its days by itself."
-          padded={false}
-        >
-          <DataTable
+        {tab === 'balances' ? (
+          <Table
             rows={balances.data?.employees}
             loading={balances.isLoading}
             rowKey="staffId"
-            exportName="leave-balances"
-            searchFields={['name' as never]}
+            searchFields={['name']}
+            searchPlaceholder="Search employee"
+            searchLabel="Search employee"
             emptyText="Nobody has a leave policy yet"
-            emptyHint="Assign a leave policy on an employee's record, or create one in Settings."
+            emptyHint="Assign a leave policy on an employee's record, or write one in Settings."
             columns={[
               {
                 title: 'Employee',
                 dataIndex: 'name',
-                key: 'name',
-                width: 230,
                 render: (value: string, row) => (
-                  <PersonCell name={value} meta={row.policyName ?? 'No leave policy assigned'} />
+                  <div className="hr-who">
+                    <span className="hr-who__avatar">{initialsOf(value)}</span>
+                    <div>
+                      <div className="hr-who__name">{value}</div>
+                      <div className="hr-who__role">{row.policyName ?? 'No leave policy assigned'}</div>
+                    </div>
+                  </div>
                 ),
               },
-              ...LEAVE_TYPE_OPTIONS.map((option) => ({
-                title: option.label,
-                key: option.value,
+              ...TYPES.map((type) => ({
+                title: type.label,
+                key: type.value,
+                num: true,
                 width: 130,
-                align: 'right' as const,
                 render: (_: unknown, row: NonNullable<typeof balances.data>['employees'][number]) => {
-                  const balance = row.balances.find((entry) => entry.leaveType === option.value);
-                  if (!balance) return <span className="kw-muted">—</span>;
+                  const balance = row.balances.find((entry) => entry.leaveType === type.value);
+                  if (!balance) return <span className="hr-tn">—</span>;
                   /*
-                   * UNPAID LEAVE HAS NO BALANCE TO BE OVERDRAWN ON.
-                   *
-                   * Its entitlement is zero by design, so the ordinary
-                   * arithmetic made one day off read as "−1" in red — a
-                   * warning about a rule nobody broke. What a manager wants
-                   * from an unpaid row is how many days were taken, because
-                   * that is what reduces the month's wages.
+                   * UNPAID LEAVE HAS NO BALANCE TO BE OVERDRAWN ON. Its
+                   * entitlement is zero by design, so the ordinary arithmetic
+                   * made one day off read as "−1" in red — a warning about a
+                   * rule nobody broke. What matters for unpaid is how many
+                   * days were taken, because that is what reduces the wages.
                    */
                   if (!balance.paid) {
                     return balance.taken === 0 ? (
-                      <span className="kw-muted">none</span>
+                      <span className="hr-tn">none</span>
                     ) : (
-                      <span className="kw-balanceCell">
-                        <strong>{balance.taken}</strong>
-                        <span className="kw-cellMeta">days taken · reduces pay</span>
+                      <span>
+                        <b>{balance.taken}</b>
+                        <div className="hr-tdSub">taken · reduces pay</div>
                       </span>
                     );
                   }
                   return (
-                    <span className="kw-balanceCell">
-                      <strong className={balance.overdrawn ? 'kw-bad' : undefined}>{balance.remaining}</strong>
-                      <span className="kw-cellMeta">
-                        {balance.taken} taken of {balance.available}
-                        {balance.pending > 0 ? ` · ${balance.pending} pending` : ''}
-                      </span>
+                    <span>
+                      <b className={balance.remaining < 0 ? 'hr-ts' : undefined}>{balance.remaining}</b>
+                      <div className="hr-tdSub">
+                        {balance.taken} of {balance.available} taken
+                        {balance.pending > 0 ? ` · ${balance.pending} waiting` : ''}
+                      </div>
                     </span>
                   );
                 },
               })),
             ]}
           />
-        </AdminSection>
-      ) : null}
+        ) : null}
+      </Panel>
 
-      <Drawer title="Record leave" open={open} onClose={() => setOpen(false)} destroyOnHidden width={420}>
-        <Form form={form} layout="vertical" onFinish={submit}>
-          <Form.Item name="staffId" label="Employee" rules={[{ required: true, message: 'Choose who this is for' }]}>
-            <Select
-              showSearch
-              filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-              options={staff?.map((person) => ({ value: person.id, label: person.fullName }))}
-            />
-          </Form.Item>
-          <Form.Item name="leaveType" label="Type" rules={[{ required: true, message: 'Choose a leave type' }]}>
-            <Select options={LEAVE_TYPE_OPTIONS} />
-          </Form.Item>
-          <Form.Item name="dateRange" label="Dates" rules={[{ required: true, message: 'Choose the dates' }]}>
-            <DatePicker.RangePicker style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="reason" label="Reason">
-            <Input.TextArea rows={3} maxLength={500} />
-          </Form.Item>
-          <Button type="primary" htmlType="submit" loading={createLeaveRequest.isPending}>
-            Submit
-          </Button>
-        </Form>
-      </Drawer>
-
-      {/* A refusal carries its reason. Somebody reading it later needs to know
-          why, and the employee is told. */}
+      {/* THE DECISION, beside the list. */}
       <Drawer
-        title={`Reject ${rejecting?.staff?.fullName ?? 'this request'}`}
-        open={rejecting !== null}
-        onClose={() => setRejecting(null)}
-        destroyOnHidden
-        width={420}
+        open={reviewing !== null}
+        title={
+          <span className="hr-who">
+            <span className="hr-who__avatar">{initialsOf(reviewing?.staff?.fullName ?? '—')}</span>
+            <span>
+              <span className="hr-who__name">{reviewing?.staff?.fullName ?? '—'}</span>
+              <span className="hr-who__role">{reviewing ? role(reviewing) : ''}</span>
+            </span>
+          </span>
+        }
+        sub={reviewing ? STATUS[reviewing.status].label : undefined}
+        onClose={() => setReviewing(null)}
+        footer={
+          reviewing?.status === 'PENDING' ? (
+            <>
+              <button
+                type="button"
+                className="hr-btn"
+                disabled={!canApprove || reject.isPending}
+                title={canApprove ? undefined : permissionHint('decide leave')}
+                onClick={() => decide(false)}
+              >
+                Reject
+              </button>
+              <button
+                type="button"
+                className="hr-btn hr-btn--primary"
+                disabled={!canApprove || approve.isPending}
+                title={canApprove ? undefined : permissionHint('decide leave')}
+                onClick={() => decide(true)}
+              >
+                Approve
+              </button>
+            </>
+          ) : (
+            <button type="button" className="hr-btn" onClick={() => setReviewing(null)}>
+              Close
+            </button>
+          )
+        }
       >
-        <Form form={rejectForm} layout="vertical" onFinish={reject}>
-          <Form.Item
-            name="rejectReason"
-            label="Why"
-            extra="The employee sees this."
-            rules={[{ required: true, min: 3, message: 'A short reason is required' }]}
-          >
-            <Input.TextArea rows={3} maxLength={500} />
-          </Form.Item>
-          <Button danger type="primary" htmlType="submit" loading={rejectLeaveRequest.isPending}>
-            Reject
-          </Button>
-        </Form>
-      </Drawer>
-    </AdminShell>
-  );
-}
+        {reviewing ? (
+          <>
+            <div className="hr-kv2">
+              <span className="hr-kv2__k">Type</span>
+              <span className="hr-kv2__v">{TYPE_LABEL(reviewing.leaveType)} leave</span>
+              <span className="hr-kv2__k">Dates</span>
+              <span className="hr-kv2__v">
+                {dateRange(reviewing)} · {daysOf(reviewing)} {daysOf(reviewing) === 1 ? 'day' : 'days'}
+              </span>
+              <span className="hr-kv2__k">Applied</span>
+              <span className="hr-kv2__v">{dayjs(reviewing.createdAt).format('D MMM YYYY, HH:mm')}</span>
+              <span className="hr-kv2__k">Reason</span>
+              <span className="hr-kv2__v">{reviewing.reason ?? <span className="hr-tn">None given</span>}</span>
+              <span className="hr-kv2__k">Balance after</span>
+              <span className="hr-kv2__v">
+                {after ? (
+                  <>
+                    {after.after} of {after.available} days left
+                    {after.after < 0 ? <span className="hr-ts"> · overdrawn</span> : null}
+                  </>
+                ) : (
+                  <span className="hr-tn">No balance for this kind of leave</span>
+                )}
+              </span>
+              <span className="hr-kv2__k">Also away</span>
+              <span className="hr-kv2__v">
+                {alsoAway.length === 0 ? (
+                  <span className="hr-tn">Nobody else</span>
+                ) : (
+                  alsoAway
+                    .map((row) => `${row.staff?.fullName ?? '—'} on ${dayjs(row.startDate).format('D MMM')}`)
+                    .join(' · ')
+                )}
+              </span>
+            </div>
 
-/**
- * WHO IS AWAY WHEN — people down, days across.
- *
- * The same shape as the roster deliberately: a manager comparing "who is off
- * next week" against "who is rostered next week" is reading two grids, and two
- * grids with different geometry are two things to learn.
- *
- * Approved leave is solid; a pending request is hatched, because a request
- * nobody has decided is not yet an absence — drawing them the same way is how
- * a manager rosters around leave that never happens.
- */
-function LeaveCalendar({ month, requests }: { month: Dayjs; requests: LeaveRequest[] }) {
-  const days = useMemo(() => {
-    const count = month.daysInMonth();
-    return Array.from({ length: count }, (_, index) => month.add(index, 'day'));
-  }, [month]);
-
-  const people = useMemo(() => {
-    const from = month.format('YYYY-MM-DD');
-    const to = month.endOf('month').format('YYYY-MM-DD');
-    const map = new Map<string, { name: string; spans: LeaveRequest[] }>();
-    for (const row of requests) {
-      if (row.status === 'REJECTED') continue;
-      if (row.endDate.slice(0, 10) < from || row.startDate.slice(0, 10) > to) continue;
-      const key = row.staffId;
-      const bucket = map.get(key) ?? { name: row.staff?.fullName ?? '—', spans: [] };
-      bucket.spans.push(row);
-      map.set(key, bucket);
-    }
-    return [...map.entries()]
-      .map(([staffId, value]) => ({ staffId, ...value }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [requests, month]);
-
-  if (people.length === 0) {
-    return (
-      <AdminSection padded={false}>
-        <EmptyState title={`Nobody is on leave in ${month.format('MMMM YYYY')}`} />
-      </AdminSection>
-    );
-  }
-
-  return (
-    <AdminSection padded={false}>
-      <div className="kw-leaveCal">
-        <table className="kw-leaveCal__grid">
-          <thead>
-            <tr>
-              <th className="kw-leaveCal__nameHead">Employee</th>
-              {days.map((day) => (
-                <th
-                  key={day.format('YYYY-MM-DD')}
-                  className={day.day() === 0 || day.day() === 6 ? 'kw-leaveCal__day kw-leaveCal__day--weekend' : 'kw-leaveCal__day'}
-                >
-                  <span className="kw-leaveCal__dayNum">{day.format('D')}</span>
-                  <span className="kw-leaveCal__dayName">{day.format('dd')}</span>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {people.map((person) => (
-              <tr key={person.staffId}>
-                <th className="kw-leaveCal__name">
-                  <PersonCell name={person.name} size={24} />
-                </th>
-                {days.map((day) => {
-                  const key = day.format('YYYY-MM-DD');
-                  const span = person.spans.find(
-                    (row) => row.startDate.slice(0, 10) <= key && row.endDate.slice(0, 10) >= key,
-                  );
+            {reviewing.attachments?.length ? (
+              <>
+                <h3 className="hr-drawer__h3">Attachments</h3>
+                {reviewing.attachments.map((file) => {
+                  const path = staffFilePath(file.filePath);
                   return (
-                    <td
-                      key={key}
-                      className={[
-                        'kw-leaveCal__cell',
-                        day.day() === 0 || day.day() === 6 ? 'kw-leaveCal__cell--weekend' : '',
-                        span ? `kw-leaveCal__cell--${span.status === 'APPROVED' ? 'approved' : 'pending'}` : '',
-                      ]
-                        .filter(Boolean)
-                        .join(' ')}
-                      title={span ? `${TYPE_LABEL(span.leaveType)} · ${humanise(span.status)}` : undefined}
-                    >
-                      {span ? <span className="kw-leaveCal__mark">{TYPE_LABEL(span.leaveType)[0]}</span> : null}
-                    </td>
+                    <div className="hr-rcpt" key={file.id}>
+                      {path && file.mimeType.startsWith('image/') ? (
+                        <AuthImage path={path} alt={file.fileName} className="hr-rcpt__th" />
+                      ) : (
+                        <span className="hr-rcpt__th" aria-hidden="true" />
+                      )}
+                      <div>
+                        <span className="hr-rcpt__name">{file.fileName}</span>
+                        <span className="hr-rcpt__meta">{(file.fileSize / (1024 * 1024)).toFixed(1)} MB</span>
+                      </div>
+                    </div>
                   );
                 })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="kw-leaveCal__key">
-        <StatusChip tone="info" dot>
-          Approved
-        </StatusChip>
-        <StatusChip tone="attention" dot>
-          Waiting for a decision
-        </StatusChip>
-        <span className="kw-muted">A · annual · M · medical · E · emergency · U · unpaid</span>
-      </div>
-    </AdminSection>
+              </>
+            ) : null}
+
+            <div className="hr-tl">
+              <div className="hr-tl__row is-done">
+                <b>Applied</b> · {dayjs(reviewing.createdAt).format('D MMM, HH:mm')}
+              </div>
+              <div className={reviewing.status === 'PENDING' ? 'hr-tl__row' : 'hr-tl__row is-done'}>
+                <b>Decision</b> ·{' '}
+                {reviewing.status === 'PENDING'
+                  ? 'pending — you'
+                  : `${STATUS[reviewing.status].label.toLowerCase()} by ${reviewing.approvedBy?.fullName ?? '—'}`}
+              </div>
+              <div className="hr-tl__row">
+                <b>Feeds payroll</b> ·{' '}
+                {reviewing.leaveType === 'UNPAID'
+                  ? `${dayjs(reviewing.startDate).format('MMM')} run, deducted as unpaid leave`
+                  : `${dayjs(reviewing.startDate).format('MMM')} run, no deduction (paid leave)`}
+              </div>
+            </div>
+
+            {reviewing.status === 'PENDING' ? (
+              <div className="hr-pform">
+                <div className="hr-pform__full">
+                  <label htmlFor="leave-note">Note to employee (required if rejecting)</label>
+                  <textarea id="leave-note" className="hr-f" value={note} onChange={(event) => setNote(event.target.value)} />
+                </div>
+              </div>
+            ) : reviewing.rejectReason ? (
+              <div className="hr-notice hr-notice--block">{reviewing.rejectReason}</div>
+            ) : null}
+          </>
+        ) : null}
+      </Drawer>
+
+      {/* LEAVE THE CLINIC RECORDS ITSELF — somebody rang in, somebody is on a
+          form the portal cannot take. It still needs a decision. */}
+      <Drawer
+        open={recording}
+        title="Record leave"
+        sub="For leave asked for away from the portal. It joins the queue like any other."
+        onClose={() => setRecording(false)}
+        footer={
+          <>
+            <button type="button" className="hr-btn" onClick={() => setRecording(false)}>
+              Cancel
+            </button>
+            <button type="button" className="hr-btn hr-btn--primary" onClick={record} disabled={createRequest.isPending}>
+              <IconCalendar />
+              Record it
+            </button>
+          </>
+        }
+      >
+        <div className="hr-pform">
+          <div className="hr-pform__full">
+            <label htmlFor="rec-staff">Employee</label>
+            <select
+              id="rec-staff"
+              className="hr-f"
+              value={form.staffId}
+              onChange={(event) => setForm((current) => ({ ...current, staffId: event.target.value }))}
+            >
+              <option value="">Choose…</option>
+              {(staff ?? []).map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.fullName}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="rec-type">Type</label>
+            <select
+              id="rec-type"
+              className="hr-f"
+              value={form.leaveType}
+              onChange={(event) => setForm((current) => ({ ...current, leaveType: event.target.value as LeaveType }))}
+            >
+              {TYPES.map((type) => (
+                <option key={type.value} value={type.value}>
+                  {type.label} leave
+                </option>
+              ))}
+            </select>
+          </div>
+          <div />
+          <div>
+            <label htmlFor="rec-from">From</label>
+            <input
+              id="rec-from"
+              type="date"
+              className="hr-f"
+              value={form.startDate}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  startDate: event.target.value,
+                  endDate: current.endDate < event.target.value ? event.target.value : current.endDate,
+                }))
+              }
+            />
+          </div>
+          <div>
+            <label htmlFor="rec-to">To</label>
+            <input
+              id="rec-to"
+              type="date"
+              className="hr-f"
+              min={form.startDate}
+              value={form.endDate}
+              onChange={(event) => setForm((current) => ({ ...current, endDate: event.target.value }))}
+            />
+          </div>
+          <div className="hr-pform__full">
+            <label htmlFor="rec-reason">Reason</label>
+            <textarea
+              id="rec-reason"
+              className="hr-f"
+              placeholder="Optional"
+              value={form.reason}
+              onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
+            />
+          </div>
+        </div>
+      </Drawer>
+    </HrPage>
   );
 }

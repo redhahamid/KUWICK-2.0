@@ -691,13 +691,22 @@ export interface TimesheetReport {
       workDate: string;
       clockInAt: string | null;
       clockOutAt: string | null;
+      scheduledStart: string | null;
+      scheduledEnd: string | null;
       status: string;
       lateMinutes: number | null;
+      earlyOutMinutes: number | null;
       workedMinutes: number | null;
       overtimeMinutes: number;
       overtimeApproved: boolean;
       corrected: boolean;
       correctionReason: string | null;
+      /** Piece 3g: how the punch was made, and what it carried. */
+      source: 'PORTAL' | 'QR' | 'DEVICE' | 'MANUAL';
+      proofUrl: string | null;
+      clockOutProofUrl: string | null;
+      outsideClinic: boolean;
+      distanceMetres: number | null;
     }[];
   }[];
 }
@@ -1955,7 +1964,10 @@ export interface StaffClaimRow {
   payrollPeriod: string | null;
   financeReference: string | null;
   paidAt: string | null;
-  attachments: { id: string; fileName: string; mimeType: string; fileSize: number }[];
+  /** Piece 3g: the journey and the rate it was priced at, when it was a mileage claim. */
+  distanceKm: string | null;
+  mileageRate: string | null;
+  attachments: { id: string; fileName: string; mimeType: string; fileSize: number; filePath: string }[];
   /** Where this claim is being paid from, said in words. */
   routeExplanation: string;
 }
