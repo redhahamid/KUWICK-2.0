@@ -173,7 +173,8 @@ side by side.
 
 ## 8. What the browser gate caught
 
-Two things the screenshots showed that nothing else did.
+Two things the screenshots showed that nothing else did, and two the full
+Playwright run added.
 
 **The search glyph.** The kit's icons are unsized SVGs that take their size
 from the container's rule, and `.hr-search` had none — so the first
@@ -185,6 +186,26 @@ a magnifying glass. One rule, `.hr-search svg`, and the box is the mockup's
 the title; the mockup's `<main>` draws it above. `HrPage` gained a `crumb`
 prop that renders before the head, and the seven pages moved their
 breadcrumb into it.
+
+**The frame the walk waits for.** `gotoAdmin` in `e2e/support/admin.ts`
+waited for `.kw-admin`, the wrapper `AdminShell` draws, and a page rebuilt
+on `HrPage` draws none — so the route walk over the five modules, the
+three sideways-scroll walks and the two attendance-rules tests all timed
+out on Payroll items and Attendance & leave, screens the failure
+screenshots show fully rendered. 3a never met this: the Settings landing
+is not on the walk's route list, and `hr-navigation.spec.ts` waits for the
+rail. The helper now accepts `.kw-admin` or `.hr-pageHead` — the same
+promise, a titled page rather than a spinner — and the spec files are
+untouched. `.hr-table` also gained `overflow-x: auto`, so the twelve
+columns of Payroll items scroll inside their panel at iPad widths; the
+three sideways-scroll walks are green with the table in place.
+
+**A seed that is a day old.** `[D]` The demo tenant's open trading day and
+today's clock-ins are dated when `seed-admin-uat.ts` runs. This run began
+after midnight UTC, so *Day-end closing* found no takings and the Today
+page found nobody on duty — both tests say to re-run the seed, and both
+passed once it was, with nothing in this piece changed. The seed's reset
+needs the database owner (`ADMIN_UAT_RESET_URL`), which the container has.
 
 ## 9. Gates
 
