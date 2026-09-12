@@ -336,8 +336,17 @@ describe('counts are not the filter', () => {
    * apply is worse than no count.
    */
   it('counts every claim, not the ones the current tab fetched', () => {
-    expect(code(claimsSource)).toMatch(/const everyClaim = useStaffClaims\(\{\}\)/);
-    expect(code(claimsSource)).toMatch(/const all = everyClaim\.data \?\? \[\]/);
+    /*
+     * Piece 3e made this structural rather than careful: the page asks for
+     * every claim ONCE and the tab is applied to the rows in memory, so a
+     * count cannot be computed from a filtered fetch even by accident. What
+     * is pinned here is that shape — one unfiltered query, and the status
+     * never reaching it.
+     */
+    expect(code(claimsSource)).toMatch(/const claims = useStaffClaims\(\{\}\)/);
+    expect(code(claimsSource)).toMatch(/const rows = useMemo\(\(\) => claims\.data \?\? \[\]/);
+    expect(code(claimsSource)).not.toMatch(/useStaffClaims\(\{\s*status/);
+    expect(code(claimsSource)).toMatch(/const waiting = rows\.filter/);
   });
 });
 
