@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '../../core/api-client';
+import { apiClient, uploadFile } from '../../core/api-client';
 
 /**
  * MY KUWICK — the staff-facing queries.
@@ -16,6 +16,8 @@ export interface MyProfile {
   category: string;
   branch: { id: string; name: string } | null;
   hasEmploymentProfile: boolean;
+  /** When the person agreed to a clock-in selfie being kept as proof; null until they do. */
+  selfieConsentAt: string | null;
   employment: {
     employeeNo: string | null;
     position: string | null;
@@ -89,6 +91,8 @@ export interface MyLeaveBalance {
   taken: number;
   pending: number;
   remaining: number;
+  /** The policy asks for an attachment (the MC) with this kind of leave. */
+  requiresAttachment: boolean;
 }
 
 export interface MyLeaveBalances {
@@ -106,6 +110,23 @@ export interface MyLeavePreview {
   ownClash: { startDate: string; endDate: string; status: string } | null;
   clashes: { name: string; startDate: string; endDate: string; status: string; firstDay: string }[];
   publicHolidays: { date: string; name: string }[];
+}
+
+export interface MyClaimPolicy {
+  mileageRatePerKm: string;
+  receiptRequired: boolean;
+  updatedAt: string;
+}
+
+export type StaffFileKind = 'RECEIPT' | 'MEDICAL_CERTIFICATE' | 'SELFIE';
+
+export interface UploadedStaffFile {
+  id: string;
+  kind: StaffFileKind;
+  fileName: string;
+  contentType: string;
+  byteSize: number;
+  path: string;
 }
 
 export interface MyBenefits {
@@ -135,6 +156,12 @@ export interface MyAttendanceDay {
   extraMinutesRecorded: number;
   overtimeApproved: boolean;
   corrected: boolean;
+  /** Where the punch came from, and its proof — Piece 3g. */
+  source: 'PORTAL' | 'QR' | 'DEVICE' | 'MANUAL';
+  proofUrl: string | null;
+  clockOutProofUrl: string | null;
+  outsideClinic: boolean;
+  distanceMetres: number | null;
   correctionRequest: {
     id: string;
     status: string;
@@ -144,9 +171,19 @@ export interface MyAttendanceDay {
   } | null;
 }
 
+export interface StaffFileRef {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  /** `/me/files/<id>` — fetched with the bearer token, never a bare image URL. */
+  filePath: string;
+}
+
 export interface MyLeave {
   id: string;
   leaveType: string;
+  attachments: StaffFileRef[];
   startDate: string;
   endDate: string;
   status: string;
@@ -167,7 +204,10 @@ export interface MyClaim {
   whereTheMoneyIs: string;
   /** YYYY-MM of the payroll it is (or was) paid with, when routed to payroll. */
   payrollPeriod: string | null;
-  attachments: { id: string; fileName: string; mimeType: string; fileSize: number }[];
+  /** Mileage: the kilometres and the rate frozen on the claim. */
+  distanceKm: string | null;
+  mileageRate: string | null;
+  attachments: StaffFileRef[];
   submittedAt: string;
   createdAt: string;
 }
@@ -265,6 +305,22 @@ export function useMyLeavePreview(params: { leaveType: string; startDate: string
   });
 }
 
+export function useMyClaimPolicy() {
+  return useQuery({ queryKey: [...MY, 'claim-policy'], queryFn: () => apiClient.get<MyClaimPolicy>('/me/claim-policy') });
+}
+
+/** The path a stored file is read back from, with the bearer token (see `AuthImage`). */
+export function myFilePath(id: string): string {
+  return `/me/files/${id}`;
+}
+
+/** Upload a receipt, an MC or a selfie as the person's own file. Returns its id and path. */
+export async function uploadMyFile(kind: StaffFileKind, file: Blob, fileName: string): Promise<UploadedStaffFile> {
+  const form = new FormData();
+  form.append('file', file, fileName);
+  return uploadFile<UploadedStaffFile>(`/me/files?kind=${kind}`, form);
+}
+
 export function useMyBenefits() {
   return useQuery({ queryKey: [...MY, 'benefits'], queryFn: () => apiClient.get<MyBenefits>('/me/benefits') });
 }
@@ -283,7 +339,14 @@ function useMyMutation<TBody, TResult>(fn: (body: TBody) => Promise<TResult>) {
 }
 
 export function useClockSelf() {
-  return useMyMutation((body: { clinicId?: string }) => apiClient.post('/me/attendance/clock', body));
+  return useMyMutation((body: { clinicId?: string; lat?: number; lng?: number; proofFileId?: string }) =>
+    apiClient.post('/me/attendance/clock', body),
+  );
+}
+
+/** Agree, once, to a clock-in selfie being kept as proof. */
+export function useGiveSelfieConsent() {
+  return useMyMutation((_body: Record<string, never>) => apiClient.post<{ selfieConsentAt: string | null }>('/me/consent/selfie', {}));
 }
 
 export function useRequestCorrection() {
@@ -299,7 +362,7 @@ export function useRequestCorrection() {
 
 export function useRequestLeave() {
   return useMyMutation(
-    (body: { leaveType: string; startDate: string; endDate: string; reason?: string; halfDay?: boolean }) =>
+    (body: { leaveType: string; startDate: string; endDate: string; reason?: string; halfDay?: boolean; attachmentFileId?: string }) =>
       apiClient.post('/me/leave', body),
   );
 }
@@ -311,7 +374,9 @@ export function useSubmitClaim() {
       amountClaimed: string;
       claimDate: string;
       description: string;
-    }) => apiClient.post<{ id: string }>('/me/claims', body),
+      distanceKm?: number;
+      receiptFileId?: string;
+    }) => apiClient.post<{ id: string; amountClaimed: string }>('/me/claims', body),
   );
 }
 

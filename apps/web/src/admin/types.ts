@@ -2880,6 +2880,17 @@ export interface AttendancePolicy {
   unpaidBreakMinutes: number;
   breakAfterMinutes: number;
   maximumShiftHours: number;
+  /** Where the branch is; a portal punch further than the radius is flagged "outside clinic", never refused. Both or neither. */
+  geofenceLat: number | null;
+  geofenceLng: number | null;
+  geofenceRadiusMetres: number;
+}
+
+/** How the clinic prices and polices claims (Settings › Claims). */
+export interface ClaimPolicy {
+  mileageRatePerKm: string;
+  receiptRequired: boolean;
+  updatedAt: string;
 }
 
 export interface EffectiveAttendancePolicy {

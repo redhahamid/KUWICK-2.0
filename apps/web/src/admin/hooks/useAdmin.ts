@@ -85,6 +85,7 @@ import type {
   PayrollVarianceReport,
   PayrollJourney,
   AttendancePolicy,
+  ClaimPolicy,
   EffectiveAttendancePolicy,
   StatutoryRates,
   StatutoryCheck,
@@ -1528,6 +1529,22 @@ export function useAttendancePolicy(clinicId?: string) {
       apiClient.get<EffectiveAttendancePolicy>(
         `/workforce/attendance/policy${clinicId ? `?clinicId=${clinicId}` : ''}`,
       ),
+  });
+}
+
+export function useClaimPolicy() {
+  return useQuery({
+    queryKey: ['admin-hr', 'claim-policy'],
+    queryFn: () => apiClient.get<ClaimPolicy>('/workforce/claim-policy'),
+  });
+}
+
+export function useSaveClaimPolicy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { mileageRatePerKm?: string; receiptRequired?: boolean; reason?: string }) =>
+      apiClient.put<ClaimPolicy>('/workforce/claim-policy', body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-hr', 'claim-policy'] }),
   });
 }
 

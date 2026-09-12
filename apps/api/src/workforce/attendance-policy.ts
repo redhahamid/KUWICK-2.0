@@ -28,6 +28,10 @@ export interface AttendancePolicy {
   breakAfterMinutes: number;
   /** Longer than this and the record is flagged rather than believed. */
   maximumShiftHours: number;
+  /** The branch's point for portal clock-ins; null means the distance is not checked. */
+  geofenceLat: number | null;
+  geofenceLng: number | null;
+  geofenceRadiusMetres: number;
 }
 
 /**
@@ -48,10 +52,21 @@ export const DEFAULT_ATTENDANCE_POLICY: AttendancePolicy = {
   unpaidBreakMinutes: 0,
   breakAfterMinutes: 360,
   maximumShiftHours: 16,
+  geofenceLat: null,
+  geofenceLng: null,
+  geofenceRadiusMetres: 150,
 };
 
 /** A stored row, with every field optional so a partial row still resolves. */
-export type AttendancePolicyRow = Partial<AttendancePolicy> & { clinicId?: string | null };
+/**
+ * A stored row, as Prisma hands it back: the point arrives as Decimal, so it
+ * is typed loosely here and read through Number() in one place.
+ */
+export type AttendancePolicyRow = Partial<Omit<AttendancePolicy, 'geofenceLat' | 'geofenceLng'>> & {
+  clinicId?: string | null;
+  geofenceLat?: number | string | { toString(): string } | null;
+  geofenceLng?: number | string | { toString(): string } | null;
+};
 
 /**
  * CLINIC ROW, THEN TENANT DEFAULT, THEN THE BUILT-IN.
@@ -83,7 +98,26 @@ export function resolveAttendancePolicy(
     unpaidBreakMinutes: pick('unpaidBreakMinutes'),
     breakAfterMinutes: pick('breakAfterMinutes'),
     maximumShiftHours: pick('maximumShiftHours'),
+    // The point is one fact, not two: a branch that recorded a latitude but
+    // no longitude has recorded nothing. Read from the same row, or not at all.
+    ...pickPoint(forClinic, tenantDefault),
+    geofenceRadiusMetres: pick('geofenceRadiusMetres'),
   };
+}
+
+function pickPoint(
+  forClinic: AttendancePolicyRow | undefined,
+  tenantDefault: AttendancePolicyRow | undefined,
+): { geofenceLat: number | null; geofenceLng: number | null } {
+  for (const row of [forClinic, tenantDefault]) {
+    const lat = row?.geofenceLat;
+    const lng = row?.geofenceLng;
+    if (lat !== undefined && lat !== null && lng !== undefined && lng !== null) {
+      const point = { geofenceLat: Number(String(lat)), geofenceLng: Number(String(lng)) };
+      if (Number.isFinite(point.geofenceLat) && Number.isFinite(point.geofenceLng)) return point;
+    }
+  }
+  return { geofenceLat: null, geofenceLng: null };
 }
 
 /**

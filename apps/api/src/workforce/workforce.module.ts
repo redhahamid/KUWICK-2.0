@@ -11,6 +11,8 @@ import { BenefitService } from './benefit.service';
 import { LegalEmployerService } from './legal-employer.service';
 import { EmployeeSalaryService } from './employee-salary.service';
 import { EmployeeRecurringItemService } from './employee-recurring-item.service';
+import { StaffFileService } from './staff-file.service';
+import { ClaimPolicyService } from './claim-policy.service';
 import { ContributionBasisService } from './contribution-basis.service';
 import { StatutoryClassificationService } from './statutory-classification.service';
 import { PayComponentService } from './pay-component.service';
@@ -54,6 +56,8 @@ import { PayrollFinanceService } from './payroll-finance.service';
     LegalEmployerService,
     EmployeeSalaryService,
     EmployeeRecurringItemService,
+    StaffFileService,
+    ClaimPolicyService,
     ContributionBasisService,
     StatutoryClassificationService,
     PayComponentService,
@@ -82,6 +86,8 @@ import { PayrollFinanceService } from './payroll-finance.service';
     LegalEmployerService,
     EmployeeSalaryService,
     EmployeeRecurringItemService,
+    StaffFileService,
+    ClaimPolicyService,
     ContributionBasisService,
     StatutoryClassificationService,
     PayComponentService,

@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { AttendanceCorrectionStatus, AttendanceStatus } from '@prisma/client';
+import { AttendanceCorrectionStatus, AttendanceSource, AttendanceStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
@@ -12,6 +12,8 @@ import { clinicDateKey } from '../appointment/time.util';
 import { workforceCategoryOf } from './workforce-category';
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
 import { ClockDto } from './dto/clock.dto';
+import { isPlausiblePoint, judgeGeofence } from './attendance-geofence';
+import { staffFilePath } from './staff-file.service';
 import { DecideCorrectionDto } from './dto/decide-correction.dto';
 
 /**
@@ -153,6 +155,57 @@ export class AttendanceRecordService {
       const scheduledEnd = shift?.endsAt ?? existing?.scheduledEnd ?? null;
       const computed = computeAttendance({ clockInAt, clockOutAt, scheduledStart, scheduledEnd }, policy);
 
+      // WHERE THE PUNCH CAME FROM, AND WHERE IT STOOD. The portal sends the
+      // phone's position and, with consent on record, a selfie already stored
+      // as the person's own staff file. HR clocking somebody in is MANUAL and
+      // carries neither. Outside the branch's radius the record is still
+      // saved — the flag is for the manager, not a refusal.
+      const forSomebodyElse = staffId !== actor.id;
+      const source: AttendanceSource = forSomebodyElse ? 'MANUAL' : (dto.source ?? 'PORTAL');
+      const point = isPlausiblePoint(dto.lat, dto.lng) ? { lat: dto.lat as number, lng: dto.lng as number } : null;
+      const fence = judgeGeofence(point, {
+        lat: policy.geofenceLat,
+        lng: policy.geofenceLng,
+        radiusMetres: policy.geofenceRadiusMetres,
+      });
+      let proofPath: string | null = null;
+      if (dto.proofFileId) {
+        if (forSomebodyElse) throw new BadRequestException('A selfie is the employee’s own to give.');
+        const profile = await tx.employeeProfile.findUnique({ where: { staffId }, select: { selfieConsentAt: true } });
+        if (!profile?.selfieConsentAt) {
+          throw new BadRequestException('A selfie can be kept only after you have agreed to it. Give consent first.');
+        }
+        const file = await tx.staffFile.findFirst({
+          where: { id: dto.proofFileId, staffId, kind: 'SELFIE' },
+          select: { id: true },
+        });
+        if (!file) throw new NotFoundException('That selfie is not yours, or does not exist.');
+        proofPath = staffFilePath(file.id);
+      }
+      const isClockOut = Boolean(existing?.clockInAt);
+      // One distance per day: the furthest punch from the clinic, so the
+      // "outside clinic" flag always has the number that earned it.
+      const furthest =
+        fence.distanceMetres !== null && (existing?.distanceMetres == null || fence.distanceMetres > existing.distanceMetres)
+          ? fence.distanceMetres
+          : (existing?.distanceMetres ?? null);
+      const punchFields = isClockOut
+        ? {
+            clockOutLat: point?.lat ?? null,
+            clockOutLng: point?.lng ?? null,
+            clockOutProofUrl: proofPath,
+            distanceMetres: furthest,
+            outsideClinic: Boolean(existing?.outsideClinic) || fence.outside,
+          }
+        : {
+            source,
+            lat: point?.lat ?? null,
+            lng: point?.lng ?? null,
+            proofUrl: proofPath,
+            distanceMetres: fence.distanceMetres,
+            outsideClinic: fence.outside,
+          };
+
       const data = {
         clinicId,
         clockInAt,
@@ -169,6 +222,7 @@ export class AttendanceRecordService {
         // approves and payroll pays. The raw excess stays derivable from the
         // clock-out and the scheduled end, both of which are on this row.
         overtimeMinutes: computed.overtimeCandidateMinutes,
+        ...punchFields,
       };
 
       return existing
@@ -428,6 +482,11 @@ export class AttendanceRecordService {
             overtimeApproved: row.overtimeApproved,
             corrected: row.correctedAt !== null,
             correctionReason: row.correctionReason,
+            source: row.source,
+            proofUrl: row.proofUrl,
+            clockOutProofUrl: row.clockOutProofUrl,
+            outsideClinic: row.outsideClinic,
+            distanceMetres: row.distanceMetres,
           })),
         };
       }),

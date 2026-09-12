@@ -766,7 +766,7 @@ async function reset() {
     // Stage 2.5. Claims point AT payroll inputs, so the claim's children and
     // the claims themselves go before the inputs — otherwise the second run of
     // this seed fails on `staff_claims.payroll_input_entry_id`, and only then.
-    'staff_claim_events', 'staff_claim_attachments', 'staff_claims', 'locum_sessions',
+    'staff_claim_events', 'staff_claim_attachments', 'staff_claims', 'claim_policies', 'locum_sessions',
     // Approvals point AT the run, so they go before it; the tenant-level
     // approval rule points at nothing but the tenant.
     'payroll_run_approvals', 'payroll_approval_policies',
@@ -816,7 +816,7 @@ async function reset() {
     'supplier_payment_allocations', 'supplier_payments', 'supplier_invoices',
     'suppliers', 'tax_rates', 'tax_codes', 'patient_alerts', 'patient_identity_changes', 'patients',
     'staff_role_assignments', 'staff_permission_grants', 'clinic_custom_roles',
-    'staff_professional_audits', 'leave_requests', 'public_holidays', 'audit_logs',
+    'staff_professional_audits', 'leave_request_attachments', 'leave_requests', 'staff_files', 'public_holidays', 'audit_logs',
     'chat_messages', 'chat_channels', 'rooms', 'queue_display_configs', 'staff_notifications',
     'notification_logs', 'media_assets', 'global_settings', 'visit_number_counters',
     'user_clinic_access', 'staff', 'users', 'clinics', 'tenants',

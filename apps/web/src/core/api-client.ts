@@ -116,6 +116,14 @@ async function requestFile<T>(path: string, formData: FormData): Promise<T> {
   return (await response.json()) as T;
 }
 
+/**
+ * A multipart upload with the bearer token — a receipt, an MC, a clock-in
+ * selfie — returning the JSON the server answers with.
+ */
+export async function uploadFile<T>(path: string, formData: FormData): Promise<T> {
+  return requestFile<T>(path, formData);
+}
+
 export async function downloadFile(path: string, fileName: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}${path}`, { headers: authHeader() });
   if (response.status === 401) {

@@ -1,4 +1,7 @@
-import { Body, Controller, Get, Param, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { MAX_STAFF_FILE_BYTES, StaffFileService } from '../workforce/staff-file.service';
 import type { Response } from 'express';
 import { renderPayslipPdf } from '../workforce/payroll-payslip-pdf';
 import { MeService } from './me.service';
@@ -25,7 +28,10 @@ import {
  */
 @Controller('me')
 export class MeController {
-  constructor(private readonly me: MeService) {}
+  constructor(
+    private readonly me: MeService,
+    private readonly files: StaffFileService,
+  ) {}
 
   @Get()
   profile() {
@@ -44,6 +50,39 @@ export class MeController {
   }
 
   // --- Attendance -----------------------------------------------------------
+
+  // --- Files and consent --------------------------------------------------
+  //
+  // A receipt, an MC or a selfie is uploaded first, as the person's own
+  // file, and then named on the thing it belongs to. Served back only to the
+  // person (here) and to HR (workforce/staff-files).
+
+  @Post('files')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: MAX_STAFF_FILE_BYTES } }))
+  uploadFile(@Query('kind') kind?: string, @UploadedFile() file?: Express.Multer.File) {
+    return this.files.upload(kind ?? '', file);
+  }
+
+  @Get('files/:id')
+  async readFile(@Param('id') id: string, @Res() res: Response) {
+    const row = await this.files.readOwn(id);
+    res.setHeader('Content-Type', row.contentType);
+    res.setHeader('Content-Disposition', `inline; filename="${row.fileName.replace(/["\\]/g, '')}"`);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(Buffer.from(row.data));
+  }
+
+  /** Agree, once, to a clock-in selfie being kept as proof. */
+  @Post('consent/selfie')
+  selfieConsent() {
+    return this.me.giveSelfieConsent();
+  }
+
+  /** The mileage rate and the receipt rule the portal prices and checks with. */
+  @Get('claim-policy')
+  claimPolicy() {
+    return this.me.claimPolicyForPortal();
+  }
 
   @Post('attendance/clock')
   clock(@Body() dto: ClockSelfDto) {

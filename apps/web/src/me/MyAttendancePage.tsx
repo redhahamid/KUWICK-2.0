@@ -4,8 +4,8 @@ import dayjs from 'dayjs';
 import { clinicDayjs, formatClinicTime } from '../clinical/clinicTime';
 import { ApiError } from '../core/api-client';
 import { Drawer, Panel, PanelHead, StatusChip } from '../admin/hr/ui';
-import { IconClock } from '../admin/hr/ui/icons';
-import { useClockSelf, useMyAttendance, useMyHome, useMySchedule, useRequestCorrection, type MyAttendanceDay } from './hooks/useMe';
+import { AuthImage, ClockButton } from './clock';
+import { myFilePath, useMyAttendance, useMyHome, useMySchedule, useRequestCorrection, type MyAttendanceDay } from './hooks/useMe';
 import { PortalEmpty } from './portal';
 
 /**
@@ -22,7 +22,6 @@ export function MyAttendancePage() {
   const { data, isLoading } = useMyAttendance(from, to);
   const { data: schedule } = useMySchedule(from, to);
   const { data: home } = useMyHome();
-  const clock = useClockSelf();
   const request = useRequestCorrection();
 
   const [asking, setAsking] = useState<MyAttendanceDay | null>(null);
@@ -33,14 +32,11 @@ export function MyAttendancePage() {
   const onDuty = home?.clock.onDuty ?? false;
   const time = (value: string | null | undefined) => (value ? formatClinicTime(value) : '—');
   const hours = (minutes: number | null) => (minutes === null ? '—' : `${(minutes / 60).toFixed(2)} h`);
-
-  const onClock = async () => {
-    try {
-      await clock.mutateAsync({});
-      message.success(onDuty ? 'Clocked out.' : 'Clocked in.');
-    } catch (error) {
-      message.error(error instanceof ApiError ? error.message : 'Could not record that.');
-    }
+  const distance = (metres: number) => (metres >= 1000 ? `${(metres / 1000).toFixed(1)} km away` : `${metres} m away`);
+  // The selfie kept with a punch, read back through the person's own token.
+  const proof = (path: string | null, alt: string) => {
+    const id = path?.startsWith('/me/files/') ? path.slice('/me/files/'.length) : null;
+    return id ? <AuthImage path={myFilePath(id)} alt={alt} className="hr-proof" /> : null;
   };
 
   const at = (day: string, hhmm: string) =>
@@ -96,10 +92,7 @@ export function MyAttendancePage() {
         </div>
         <div className="hr-pageHead__actions">
           {onDuty ? <span className="hr-clockState">On duty since {time(home?.clock.since)}</span> : null}
-          <button type="button" className={onDuty ? 'hr-btn' : 'hr-btn hr-btn--primary'} onClick={onClock} disabled={clock.isPending}>
-            <IconClock />
-            {onDuty ? 'Clock out' : 'Clock in'}
-          </button>
+          <ClockButton onDuty={onDuty} />
         </div>
       </div>
 
@@ -154,13 +147,29 @@ export function MyAttendancePage() {
                       ) : null}
                     </td>
                     <td>{day.scheduledStart ? `${time(day.scheduledStart)}–${time(day.scheduledEnd)}` : <span className="hr-faint">No shift</span>}</td>
-                    <td>{time(day.clockInAt)}</td>
-                    <td>{time(day.clockOutAt)}</td>
+                    <td>
+                      <span className="hr-dots">
+                        {proof(day.proofUrl, 'Clock-in selfie')}
+                        {time(day.clockInAt)}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="hr-dots">
+                        {proof(day.clockOutProofUrl, 'Clock-out selfie')}
+                        {time(day.clockOutAt)}
+                      </span>
+                    </td>
                     <td className="hr-num">{hours(day.workedMinutes)}</td>
                     <td>
                       <span className="hr-dots">
                         {statusChip(day)}
                         {day.corrected ? <StatusChip tone="info">Corrected</StatusChip> : null}
+                        {day.outsideClinic ? (
+                          <StatusChip tone="attn">
+                            Outside clinic{day.distanceMetres !== null ? ` · ${distance(day.distanceMetres)}` : ''}
+                          </StatusChip>
+                        ) : null}
+                        {day.source === 'MANUAL' ? <StatusChip tone="muted">Entered by HR</StatusChip> : null}
                       </span>
                     </td>
                     <td className="hr-num">

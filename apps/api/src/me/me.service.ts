@@ -9,6 +9,8 @@ import { clinicDateKey } from '../appointment/time.util';
 import { AttendanceRecordService } from '../workforce/attendance-record.service';
 import { LeaveService } from '../workforce/leave.service';
 import { PayrollPayslipService } from '../workforce/payroll-payslip.service';
+import { StaffFileService } from '../workforce/staff-file.service';
+import { ClaimPolicyService } from '../workforce/claim-policy.service';
 import { leaveDays, leaveDaysInYear } from '../workforce/leave-balance';
 import { workforceCategoryOf } from '../workforce/workforce-category';
 import {
@@ -48,6 +50,8 @@ export class MeService {
     private readonly attendance: AttendanceRecordService,
     private readonly leaveService: LeaveService,
     private readonly payslipService: PayrollPayslipService,
+    private readonly files: StaffFileService,
+    private readonly claimPolicies: ClaimPolicyService,
   ) {}
 
   /** The signed-in staff member, or a refusal. Never a staffId from a caller. */
@@ -91,6 +95,7 @@ export class MeService {
           startDate: true,
           phone: true,
           email: true,
+          selfieConsentAt: true,
         },
       }),
       actor.clinicId
@@ -108,6 +113,8 @@ export class MeService {
       // an account exists before HR completes it — and the honest answer is to
       // say so rather than to render an employee card full of blanks.
       hasEmploymentProfile: Boolean(employment),
+      // When the person agreed to a selfie being kept as clock-in proof.
+      selfieConsentAt: employment?.selfieConsentAt?.toISOString() ?? null,
       employment: employment
         ? {
             employeeNo: employment.employeeNo,
@@ -383,7 +390,46 @@ export class MeService {
    */
   async clock(dto: ClockSelfDto) {
     const actor = await this.me();
-    return this.attendance.clock({ staffId: actor.id, clinicId: dto.clinicId ?? actor.clinicId ?? undefined });
+    return this.attendance.clock({
+      staffId: actor.id,
+      clinicId: dto.clinicId ?? actor.clinicId ?? undefined,
+      lat: dto.lat,
+      lng: dto.lng,
+      proofFileId: dto.proofFileId,
+    });
+  }
+
+  /**
+   * CONSENT TO THE SELFIE, once. Dated on the profile; a clock-in with a
+   * photo is refused until it is there. The portal asks in plain words: the
+   * picture is kept as proof that you were at the clinic, shown to HR, and
+   * used for nothing else — no recognition, no matching.
+   */
+  async giveSelfieConsent() {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      const profile = await tx.employeeProfile.findUnique({
+        where: { staffId: actor.id },
+        select: { id: true, selfieConsentAt: true },
+      });
+      if (!profile) {
+        throw new BadRequestException('Your employment record is not complete yet. Ask HR to finish it before a selfie can be kept.');
+      }
+      if (profile.selfieConsentAt) return { selfieConsentAt: profile.selfieConsentAt.toISOString() };
+      const updated = await tx.employeeProfile.update({
+        where: { staffId: actor.id },
+        data: { selfieConsentAt: new Date() },
+        select: { selfieConsentAt: true },
+      });
+      await recordAudit(tx, actor, {
+        action: 'selfieConsent.given',
+        entityType: 'EmployeeProfile',
+        entityId: profile.id,
+        after: { selfieConsentAt: updated.selfieConsentAt },
+        source: 'me.attendance',
+      });
+      return { selfieConsentAt: updated.selfieConsentAt?.toISOString() ?? null };
+    });
   }
 
   /** My own attendance, with what the system made of each day. */
@@ -409,6 +455,11 @@ export class MeService {
       clockInAt: row.clockInAt,
       clockOutAt: row.clockOutAt,
       status: row.status,
+      source: row.source,
+      proofUrl: row.proofUrl,
+      clockOutProofUrl: row.clockOutProofUrl,
+      outsideClinic: row.outsideClinic,
+      distanceMetres: row.distanceMetres,
       lateMinutes: row.lateMinutes,
       earlyOutMinutes: row.earlyOutMinutes,
       workedMinutes: row.workedMinutes,
@@ -505,11 +556,15 @@ export class MeService {
     const requests = await this.prisma.leaveRequest.findMany({
       where: { staffId: actor.id },
       orderBy: { startDate: 'desc' },
-      include: { approvedBy: { select: { fullName: true } } },
+      include: {
+        approvedBy: { select: { fullName: true } },
+        attachments: { select: { id: true, fileName: true, mimeType: true, fileSize: true, filePath: true } },
+      },
     });
     return requests.map((row) => ({
       id: row.id,
       leaveType: row.leaveType,
+      attachments: row.attachments,
       startDate: row.startDate.toISOString().slice(0, 10),
       endDate: row.endDate.toISOString().slice(0, 10),
       status: row.status,
@@ -546,6 +601,23 @@ export class MeService {
         throw new BadRequestException('You already have leave requested or approved over those dates.');
       }
 
+      // WHAT THE POLICY ASKS FOR WITH THIS KIND OF LEAVE — the MC, for medical.
+      const withPolicy = await tx.employeeProfile.findUnique({
+        where: { staffId: actor.id },
+        select: {
+          leavePolicy: {
+            select: { entitlements: { where: { leaveType: dto.leaveType }, select: { requiresAttachment: true } } },
+          },
+        },
+      });
+      const requiresAttachment = withPolicy?.leavePolicy?.entitlements[0]?.requiresAttachment ?? false;
+      if (requiresAttachment && !dto.attachmentFileId) {
+        throw new BadRequestException('This kind of leave needs the MC attached. Add it and send again.');
+      }
+      const attachment = dto.attachmentFileId
+        ? await this.files.claimOwn(tx, actor.id, dto.attachmentFileId, 'MEDICAL_CERTIFICATE')
+        : null;
+
       const saved = await tx.leaveRequest.create({
         data: {
           tenantId: currentTenantId(),
@@ -556,6 +628,11 @@ export class MeService {
           reason: dto.halfDay ? `Half day. ${dto.reason ?? ''}`.trim() : dto.reason,
         },
       });
+      if (attachment) {
+        await tx.leaveRequestAttachment.create({
+          data: { tenantId: currentTenantId(), leaveRequestId: saved.id, ...attachment, uploadedByStaffId: actor.id },
+        });
+      }
 
       await recordAudit(tx, actor, {
         action: 'leaveRequest.submitted',
@@ -586,7 +663,7 @@ export class MeService {
     const rows = await this.prisma.staffClaim.findMany({
       where: { staffId: actor.id },
       orderBy: { claimDate: 'desc' },
-      include: { attachments: { select: { id: true, fileName: true, mimeType: true, fileSize: true } } },
+      include: { attachments: { select: { id: true, fileName: true, mimeType: true, fileSize: true, filePath: true } } },
     });
     return rows.map((row) => ({
       id: row.id,
@@ -598,6 +675,8 @@ export class MeService {
       status: row.status,
       whereTheMoneyIs: this.claimPlainEnglish(row),
       payrollPeriod: row.payrollPeriod ? yearMonth(row.payrollPeriod) : null,
+      distanceKm: row.distanceKm,
+      mileageRate: row.mileageRate,
       attachments: row.attachments,
       submittedAt: row.submittedAt ?? row.createdAt,
       createdAt: row.createdAt,
@@ -635,7 +714,20 @@ export class MeService {
           'Your employment record is not complete yet, so a claim has nowhere to be paid from. Ask HR to finish your profile.',
         );
       }
-      if (Number(dto.amountClaimed) <= 0) throw new BadRequestException('A claim must be for more than nothing.');
+      // MILEAGE IS PRICED HERE, at the clinic's rate, and the rate is frozen
+      // on the claim: the kilometres are the fact and the rate on the day is
+      // the price, whatever the phone showed.
+      const policy = await this.claimPolicies.current();
+      const mileage = dto.distanceKm !== undefined && dto.distanceKm !== null;
+      const rate = Number(policy.mileageRatePerKm);
+      const amountClaimed = mileage
+        ? (Math.round((dto.distanceKm as number) * rate * 100) / 100).toFixed(2)
+        : dto.amountClaimed;
+      if (Number(amountClaimed) <= 0) throw new BadRequestException('A claim must be for more than nothing.');
+      if (policy.receiptRequired && !dto.receiptFileId) {
+        throw new BadRequestException('A receipt is needed before a claim can be sent. Attach it and send again.');
+      }
+      const receipt = dto.receiptFileId ? await this.files.claimOwn(tx, actor.id, dto.receiptFileId, 'RECEIPT') : null;
 
       const saved = await tx.staffClaim.create({
         data: {
@@ -643,7 +735,9 @@ export class MeService {
           clinicId: dto.clinicId ?? actor.clinicId ?? null,
           staffId: actor.id,
           category: dto.category,
-          amountClaimed: dto.amountClaimed,
+          amountClaimed,
+          distanceKm: mileage ? (dto.distanceKm as number) : null,
+          mileageRate: mileage ? rate.toFixed(2) : null,
           claimDate: new Date(`${dto.claimDate.slice(0, 10)}T00:00:00.000Z`),
           description: dto.description,
           status: 'SUBMITTED',
@@ -651,6 +745,11 @@ export class MeService {
           submittedAt: new Date(),
         },
       });
+      if (receipt) {
+        await tx.staffClaimAttachment.create({
+          data: { tenantId: currentTenantId(), staffClaimId: saved.id, ...receipt, uploadedByStaffId: actor.id },
+        });
+      }
 
       await tx.staffClaimEvent.create({
         data: {
@@ -658,7 +757,7 @@ export class MeService {
           staffClaimId: saved.id,
           actorStaffId: actor.id,
           event: 'submitted',
-          detail: `${dto.category} claim for ${dto.amountClaimed} on ${dto.claimDate.slice(0, 10)}`,
+          detail: `${dto.category} claim for ${amountClaimed} on ${dto.claimDate.slice(0, 10)}${mileage ? ` (${dto.distanceKm} km at ${rate.toFixed(2)})` : ''}`,
           toStatus: 'SUBMITTED',
         },
       });
@@ -668,7 +767,7 @@ export class MeService {
         entityType: 'StaffClaim',
         entityId: saved.id,
         reason: dto.description,
-        after: { category: dto.category, amountClaimed: dto.amountClaimed, submittedBy: 'self' },
+        after: { category: dto.category, amountClaimed, distanceKm: dto.distanceKm ?? null, submittedBy: 'self' },
         source: 'me.claims',
       });
 
@@ -686,16 +785,11 @@ export class MeService {
         // Once a claim has been decided, its evidence is part of the decision.
         throw new BadRequestException('That claim has already been decided — its receipts cannot change.');
       }
+      const meta = dto.fileId
+        ? await this.files.claimOwn(tx, actor.id, dto.fileId, 'RECEIPT')
+        : { fileName: dto.fileName, filePath: dto.filePath, mimeType: dto.mimeType, fileSize: dto.fileSize };
       return tx.staffClaimAttachment.create({
-        data: {
-          tenantId: currentTenantId(),
-          staffClaimId: claim.id,
-          fileName: dto.fileName,
-          filePath: dto.filePath,
-          mimeType: dto.mimeType,
-          fileSize: dto.fileSize,
-          uploadedByStaffId: actor.id,
-        },
+        data: { tenantId: currentTenantId(), staffClaimId: claim.id, ...meta, uploadedByStaffId: actor.id },
       });
     });
   }
@@ -800,7 +894,7 @@ export class MeService {
   async leaveBalances() {
     const actor = await this.me();
     const year = new Date().getUTCFullYear();
-    const [row, unpaid] = await Promise.all([
+    const [row, unpaid, withPolicy] = await Promise.all([
       this.leaveService.balancesForSelf(actor.id, year),
       this.prisma.leaveRequest.findMany({
         where: {
@@ -812,7 +906,14 @@ export class MeService {
         },
         orderBy: { startDate: 'desc' },
       }),
+      this.prisma.employeeProfile.findUnique({
+        where: { staffId: actor.id },
+        select: { leavePolicy: { select: { entitlements: { select: { leaveType: true, requiresAttachment: true } } } } },
+      }),
     ]);
+    const needsAttachment = new Map(
+      (withPolicy?.leavePolicy?.entitlements ?? []).map((row) => [row.leaveType, row.requiresAttachment] as const),
+    );
     const unpaidDays = unpaid.reduce((sum, request) => sum + leaveDaysInYear(request, year), 0);
     return {
       year,
@@ -824,6 +925,7 @@ export class MeService {
         taken: balance.taken,
         pending: balance.pending,
         remaining: balance.remaining,
+        requiresAttachment: needsAttachment.get(balance.leaveType) ?? false,
       })),
       unpaidTaken: { days: unpaidDays, lastMonth: unpaid[0] ? monthShort(unpaid[0].startDate) : null },
     };
@@ -918,6 +1020,12 @@ export class MeService {
       year,
       medical: { allowance: allowance.toFixed(2), used: used.toFixed(2), remaining: Math.max(0, allowance - used).toFixed(2) },
     };
+  }
+
+  /** The mileage rate and the receipt rule, so the portal prices a journey the way the server will. */
+  async claimPolicyForPortal() {
+    await this.me();
+    return this.claimPolicies.current();
   }
 
   /** The composed payslip of a PAID month, for the PDF. Identity-checked in the payslip service. */

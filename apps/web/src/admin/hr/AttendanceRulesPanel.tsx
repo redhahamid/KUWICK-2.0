@@ -104,14 +104,47 @@ export function AttendanceRulesPanel() {
   // The form is legible either way; what changes is whether it can be saved,
   // and it says so BEFORE the click rather than failing after it.
   const canManage = useCan('hr.attendance.manage');
+  const [locating, setLocating] = useState(false);
+
+  // Where the clinic is, read off the phone or laptop of whoever is standing
+  // in it: the one way these six-decimal numbers get typed correctly.
+  const useMyPosition = () => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      message.info('This browser will not say where it is. Type the point from a map instead.');
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        form.setFieldsValue({
+          geofenceLat: Number(position.coords.latitude.toFixed(6)),
+          geofenceLng: Number(position.coords.longitude.toFixed(6)),
+        });
+        setLocating(false);
+      },
+      () => {
+        message.info('No position from this device. Type the point from a map instead.');
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 },
+    );
+  };
 
   useEffect(() => {
     if (data) form.setFieldsValue(data.policy);
   }, [data, form]);
 
   const onSave = async (values: PolicyForm) => {
+    // The fence is a point and a radius. Half a point is nothing, and the
+    // server says so too; this just says it before the round trip.
+    const lat = values.geofenceLat ?? null;
+    const lng = values.geofenceLng ?? null;
+    if ((lat === null) !== (lng === null)) {
+      message.error('A geofence needs both a latitude and a longitude, or neither.');
+      return;
+    }
     try {
-      await save.mutateAsync({ ...values, clinicId: editing });
+      await save.mutateAsync({ ...values, geofenceLat: lat, geofenceLng: lng, clinicId: editing });
       // The reason belongs to THIS change, not to the policy, so it does not
       // linger in the box to be attached to the next one by accident.
       form.setFieldValue('reason', undefined);
@@ -201,6 +234,36 @@ export function AttendanceRulesPanel() {
             <Switch />
           </Form.Item>
         </div>
+        {/*
+          * WHERE THE CLINIC IS. A punch from the portal carries the phone's
+          * position; further than the radius from this point it is kept and
+          * marked "outside clinic" on the timesheet for the manager to judge.
+          * Nothing is refused: a phone with no position clocks in unmarked.
+          */}
+        <div className="hr-notice hr-notice--info">
+          <strong>Clock-in from the portal.</strong> A punch further than the radius from this point is recorded and
+          marked <em>outside clinic</em> on the timesheet; it is never refused. Leave the point empty and no punch is
+          judged.
+        </div>
+        <div className="hr-grid3">
+          <Form.Item name="geofenceLat" label="Clinic latitude" extra="Six decimals, like 3.139003. Empty means no geofence.">
+            <InputNumber min={-90} max={90} precision={6} step={0.000001} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="geofenceLng" label="Clinic longitude" extra="Six decimals, like 101.686855.">
+            <InputNumber min={-180} max={180} precision={6} step={0.000001} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item
+            name="geofenceRadiusMetres"
+            label="Counts as at the clinic within"
+            extra="Phones are rarely more exact than 30 m indoors; 150 m suits most shoplots."
+            rules={[{ required: true, message: 'A number is required' }]}
+          >
+            <InputNumber min={20} max={5000} addonAfter="m" style={{ width: '100%' }} />
+          </Form.Item>
+        </div>
+        <Button size="small" onClick={useMyPosition} loading={locating} disabled={!canManage} style={{ marginBottom: 18 }}>
+          Use where this device is now
+        </Button>
         {/* Changing what "late" means changes how tomorrow judges today's
             punches. The audit trail records who and when on its own; this is
             the half only the person making the change can supply. */}

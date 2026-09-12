@@ -4,7 +4,8 @@ import dayjs from 'dayjs';
 import { ApiError } from '../core/api-client';
 import { Panel, PanelHead, StatusChip } from '../admin/hr/ui';
 import { IconDoc } from '../admin/hr/ui/icons';
-import { useMyLeave, useMyLeaveBalances, useMyLeavePreview, useRequestLeave } from './hooks/useMe';
+import { AuthImage } from './clock';
+import { myFilePath, uploadMyFile, useMyLeave, useMyLeaveBalances, useMyLeavePreview, useRequestLeave } from './hooks/useMe';
 import { IconCheckCircle, PortalEmpty, dayRange } from './portal';
 
 const LEAVE_TYPES = [
@@ -22,6 +23,11 @@ const TYPE_WORD: Record<string, string> = {
   UNPAID: 'Unpaid',
   OTHER: 'Other',
 };
+
+/** A stored file's id from the path the API keeps on the attachment (`/me/files/<id>`). */
+function fileIdOf(filePath: string): string | null {
+  return filePath.startsWith('/me/files/') ? filePath.slice('/me/files/'.length) : null;
+}
 
 const STATUS: Record<string, { tone: 'attn' | 'done' | 'block' | 'muted'; label: string }> = {
   PENDING: { tone: 'attn', label: 'Waiting' },
@@ -52,6 +58,8 @@ export function MyLeavePage() {
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
   const [reason, setReason] = useState('');
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [sending, setSending] = useState(false);
 
   const validRange = Boolean(startDate && endDate && endDate >= startDate);
   const preview = useMyLeavePreview(validRange ? { leaveType, startDate, endDate, halfDay } : null);
@@ -63,25 +71,44 @@ export function MyLeavePage() {
     setStartDate(today);
     setEndDate(today);
     setReason('');
+    setAttachment(null);
   };
+
+  // [D] The leave policy says which kinds need a certificate (the
+  // entitlement's requiresAttachment); the server refuses a request without
+  // one, so the button waits for the file rather than letting the refusal
+  // be the first anyone hears of it.
+  const needsAttachment = balances?.balances.find((row) => row.leaveType === leaveType)?.requiresAttachment ?? false;
+  const attachmentOffered = needsAttachment || leaveType === 'MEDICAL';
 
   const submit = async () => {
     if (!validRange) {
       message.error('Leave cannot end before it starts.');
       return;
     }
+    if (needsAttachment && !attachment) {
+      message.error('This kind of leave needs the MC attached.');
+      return;
+    }
+    setSending(true);
     try {
+      // The certificate goes up first, as the person's own file; the request
+      // then points at it. A failed upload leaves no request behind.
+      const uploaded = attachment ? await uploadMyFile('MEDICAL_CERTIFICATE', attachment, attachment.name) : null;
       await request.mutateAsync({
         leaveType,
         startDate,
         endDate,
         reason: reason.trim() || undefined,
         halfDay: halfDay || undefined,
+        attachmentFileId: uploaded?.id,
       });
       message.success('Sent to your manager.');
       reset();
     } catch (error) {
       message.error(error instanceof ApiError ? error.message : 'Could not send that.');
+    } finally {
+      setSending(false);
     }
   };
 
@@ -89,8 +116,6 @@ export function MyLeavePage() {
     const rows = (balances?.balances ?? []).filter((row) => row.leaveType !== 'UNPAID');
     return rows;
   }, [balances]);
-
-  const needsAttachment = leaveType === 'MEDICAL';
 
   return (
     <>
@@ -162,16 +187,25 @@ export function MyLeavePage() {
                 />
               </div>
               <div className="hr-pform__full">
-                <label>Attachment (needed for medical leave)</label>
-                {/* [D] No attachment lives on a leave request in the schema
-                    yet, so nothing can be stored here; the field says so
-                    instead of pretending to take a file. */}
-                <div className="hr-drop" aria-disabled="true" style={{ cursor: 'default' }}>
-                  <IconDoc />
-                  {needsAttachment
-                    ? 'Bring the MC to your manager. Attaching it here is not available yet.'
-                    : 'Not needed for this kind of leave'}
-                </div>
+                <label htmlFor="leave-attachment">Attachment (needed for medical leave)</label>
+                {attachmentOffered ? (
+                  <label className={needsAttachment ? 'hr-drop is-required' : 'hr-drop'} htmlFor="leave-attachment">
+                    <IconDoc />
+                    {attachment ? attachment.name : needsAttachment ? 'Drop MC or photo here — required' : 'Drop MC or photo here'}
+                    <input
+                      id="leave-attachment"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,application/pdf"
+                      hidden
+                      onChange={(event) => setAttachment(event.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                ) : (
+                  <div className="hr-drop" aria-disabled="true" style={{ cursor: 'default' }}>
+                    <IconDoc />
+                    Not needed for this kind of leave
+                  </div>
+                )}
               </div>
             </div>
 
@@ -219,7 +253,7 @@ export function MyLeavePage() {
                 type="button"
                 className="hr-btn hr-btn--primary"
                 onClick={submit}
-                disabled={request.isPending || !validRange || Boolean(p?.ownClash)}
+                disabled={sending || request.isPending || !validRange || Boolean(p?.ownClash) || (needsAttachment && !attachment)}
               >
                 <IconCheckCircle />
                 Submit request
@@ -270,6 +304,19 @@ export function MyLeavePage() {
                       <td>
                         <b>{TYPE_WORD[row.leaveType] ?? row.leaveType}</b> · {dayRange(row.startDate, row.endDate)}
                         {row.decidedBy ? <div className="hr-tdSub">Decided by {row.decidedBy}</div> : null}
+                        {row.attachments.length > 0 ? (
+                          <div className="hr-tdSub hr-dots">
+                            {row.attachments.map((file) =>
+                              file.mimeType.startsWith('image/') ? (
+                                <AuthImage key={file.id} path={myFilePath(fileIdOf(file.filePath) ?? file.id)} alt={file.fileName} className="hr-proof" />
+                              ) : (
+                                <span key={file.id}>
+                                  <IconDoc /> {file.fileName}
+                                </span>
+                              ),
+                            )}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="hr-num">{days}</td>
                       <td>

@@ -39,7 +39,8 @@ angka rekaan. `[D]` = diperhatikan dalam kod/DB, `[A]` = andaian.
 | Apa | Di mana | Nilai sekarang |
 |---|---|---|
 | Kadar doktor untuk syif cuti umum (mod B) | `/admin/hr/settings/payroll` → rule set *Doctors* | RM500 satu syif; jam OT, syif hari rehat dan sesi kosong (jatuh ke formula Akta) |
-| Kadar mileage tuntutan | Pemalar dalam kod portal (`MILEAGE_RATE_RM` dalam `apps/web/src/me/MyClaimsPage.tsx`) | RM0.60 sekilometer `[A]` — tiada medan skema untuk kadar ini; lihat soalan di §4 |
+| Kadar mileage tuntutan dan peraturan resit | `/admin/hr/settings/attendance-leave` → panel *Claims* | RM0.60 sekilometer, resit wajib `[A]` — ubah di sini; kadar dibekukan pada setiap tuntutan semasa dihantar |
+| Titik dan radius klinik untuk clock in (geofence) | `/admin/hr/settings/attendance-leave` → *Rules for: Contoh Central* → *Clinic latitude / longitude* | 3.139, 101.6869 (titik placeholder di Kuala Lumpur), 150 m `[A]` — tekan **Use where this device is now** sambil berada di klinik |
 | Tarikh cuti umum kalendar lunar | `/admin/hr/settings/public-holidays` | Tarikh kebiasaan, ditanda *(placeholder date)*; sahkan dengan warta |
 
 ## 1. Aliran
@@ -48,9 +49,11 @@ Tanda ☐ apabila keputusan sepadan.
 
 | # | Siapa | URL | Buat | Yang patut kelihatan |
 |---|---|---|---|---|
-| ☐ 1 | Doktor | `/my` | Tekan **Clock in** | Butang bertukar *Clock out*; *On duty since HH:MM*. Tab Attendance menunjukkan hari ini dengan masa masuk. `[D]` Selfie dan GPS belum ada — memerlukan medan `source`, `proofUrl`, `lat/lng` pada AttendanceRecord (skema, menunggu OK) |
+| ☐ 1 | Doktor (telefon, di klinik) | `/my` | Tekan **Clock in** → skrin *A photo with each punch* → **I agree** → benarkan lokasi dan kamera → **Take photo and clock in** | Mesej *Clocked in.*; butang bertukar *Clock out*; *On duty since HH:MM*. Tab Attendance: hari ini dengan masa masuk dan **thumbnail selfie** di sebelahnya. Jika telefon lebih 150 m dari titik klinik: chip emas *Outside clinic · N m away* (punch tetap direkod, tidak ditolak). Tanpa kamera atau lokasi: punch direkod dan mesej menyebut apa yang tiada. **Skip the photo** / **Not now** merekod punch tanpa foto. Consent ditanya sekali sahaja. `[D]` Hafiz Osman sudah *clock in* (lewat 24 min) hari ini oleh seed asas — uji sebagai Dr Meera atau Puteri, atau *Clock out* dahulu sebagai Hafiz |
+| ☐ 1b | Doktor | `/my/attendance` | Tekan **Clock out** dari jauh (atau **Skip the photo**) | Masa keluar direkod; jika di luar radius, chip *Outside clinic* dengan jarak terjauh hari itu |
 | ☐ 2 | Doktor | `/my/leave` | Type *Annual leave*, From 21 Sep, To 23 Sep, **Submit request** | Jalur pratonton sebelum hantar: *3 days · Balance after: 11 of 14*; jika rakan sekerja cuti hari sama, nama mereka dalam warna emas. Selepas hantar: *Waiting* dalam *My requests*; tab Leave bertanda 1 |
-| ☐ 3 | Doktor | `/my/claims` | Type *Mileage*, From *Contoh Central*, To *Contoh Bandar (return)*, Distance 42, Purpose, **lampirkan foto resit** (wajib), **Submit claim** | Amount dikira sendiri *RM 25.20 · 42 × RM 0.60*; butang Submit kelabu sehingga resit dilampirkan; selepas hantar: *Waiting* dalam *My claims* |
+| ☐ 2b | Doktor | `/my/leave` | Type *Medical leave*, satu hari, **tanpa** lampiran, cuba Submit; kemudian lampirkan foto/PDF MC, **Submit request** | Zon *Drop MC or photo here — required*; butang Submit kelabu sehingga MC dipilih `[D]` polisi cuti menetapkan MC wajib untuk cuti sakit. Selepas hantar: baris *Medical* dengan thumbnail/nama fail MC |
+| ☐ 3 | Doktor | `/my/claims` | Type *Mileage*, From *Contoh Central*, To *Contoh Bandar (return)*, Distance 42, Purpose, **lampirkan foto resit** (wajib), **Submit claim** | Amount dikira sendiri *RM 25.20 · 42 × RM 0.60* (kadar dari Settings › Claims); butang Submit kelabu sehingga resit dilampirkan; selepas hantar: *Waiting* dalam *My claims*, baris menunjukkan *42 km × RM 0.60* dan thumbnail resit. Pelayan mengira semula amaun dari jarak × kadar `[D]` |
 | ☐ 4 | Manager | `/admin/hr/leave` | Buka permintaan Dr Meera → **Approve** | Portal doktor: *Approved*; *Recent* di Home menunjukkan *Leave 21 to 23 Sep approved* |
 | ☐ 5 | Manager | `/admin/hr/claims` | Buka tuntutan mileage → **Approve**, laluan *Payroll* | Portal doktor: kad *Claims* bertambah, *pays with Sep payroll* |
 | ☐ 6 | Manager | `/admin/hr/attendance` | Timesheet: luluskan jam lebih (OT) yang *Pending* | Baris OT bertukar *Approved*; portal pekerja: *approved as overtime* |
@@ -60,6 +63,7 @@ Tanda ☐ apabila keputusan sepadan.
 | ☐ 10 | Owner | (sama, langkah *Pay*) | **Prepare payment listing** → muat turun CSV → **Record paid** (tarikh, rujukan bank) | Status *Paid*; tuntutan yang dibayar dengan gaji bertukar *Paid* |
 | ☐ 11 | Doktor | `/my` dan `/my/payslips` | Kad *Latest payslip* → **Download PDF** | PDF September muncul hanya selepas *Paid* `[D]`; angka sama dengan `/admin/hr/payroll/<run>/employees/<staff>` |
 | ☐ 12 | Owner | `/admin/hr/reports` | Jana laporan kerajaan: EPF Borang A, SOCSO & EIS 8A, PCB CP39, HRD, EA, Borang E | Setiap laporan dibuka untuk run September; deep-link `?report=…&run=…` kekal |
+| ☐ 13 | Owner | `/admin/hr/settings/attendance-leave` | *Rules for: Contoh Central* → **Use where this device is now** (atau taip lat/long) → **Save attendance rules**; panel *Claims*: tukar kadar → **Save claim rules** | Geofence disimpan untuk cawangan itu sahaja (lat dan long kedua-duanya, atau kosong kedua-duanya); portal mengira mileage dengan kadar baharu untuk tuntutan seterusnya; tuntutan lama kekal pada kadar lama |
 
 Bulan yang sudah berbayar (Jun, Julai, Ogos) boleh dilihat di
 `/admin/hr/payroll/history` dan dalam portal setiap pekerja.
@@ -99,11 +103,13 @@ diluluskan, tiga hari cuti tahunan menunggu, satu hari tanpa gaji bulan lepas,
 tuntutan pergigian RM180 diluluskan untuk payroll bulan ini, makan RM30
 dibayar dengan payroll bulan lepas, manfaat perubatan RM1,000 (RM380 digunakan).
 
-## 4. Belum tersedia — menunggu jawapan
+## 4. Jawapan pemilik, dan apa yang kini ada
 
-| Perkara | Sebab | Cadangan |
-|---|---|---|
-| Selfie + GPS semasa clock in, radius klinik, tarikh consent | `[D]` Tiada `source`, `proofUrl`, `lat/lng` pada AttendanceRecord; tiada lat/lng klinik atau radius pada polisi; tiada tarikh consent pada profil | Satu migrasi 3g merangkumi kesemuanya — soalan (a) dalam laporan 3d |
-| Lampiran MC pada permohonan cuti | `[D]` Tiada model lampiran pada LeaveRequest | Sama — migrasi 3g |
-| Kadar mileage boleh ubah | `[D]` Tiada medan kadar pada polisi tuntutan | Sama — migrasi 3g, atau kekal pemalar |
-| Tukar akaun bank sendiri dari portal | `[D]` Tiada endpoint; sengaja — akaun bank ditukar melalui HR | Kekal melalui HR |
+| Perkara | Keadaan |
+|---|---|
+| Selfie + GPS semasa clock in, radius klinik, tarikh consent | **Ada** — migrasi 3g `20260912160000_attendance_proof_leave_attachments_mileage`. Foto disimpan sebagai fail pekerja (dibaca hanya dengan token sendiri atau `hr.view`), lokasi dinilai di pelayan; di luar radius ditanda, tidak ditolak `[A]` |
+| Lampiran MC pada permohonan cuti | **Ada** — `leave_request_attachments`; wajib bila polisi cuti menetapkannya |
+| Kadar mileage boleh ubah | **Ada** — `/admin/hr/settings/attendance-leave` › *Claims* |
+| Tukar akaun bank sendiri dari portal | **Kekal melalui HR** — keputusan pemilik |
+| Clock in melalui QR atau peranti | Belum — enum `source` ada nilai QR dan DEVICE, tiada yang menulisnya lagi (fasa 1: portal sahaja) |
+| Jejak audit | Muat naik fail, consent dan simpanan polisi tuntutan direkod (`staffFile.uploaded`, `selfieConsent.given`, `claimPolicy.saved`); jejak audit tidak boleh dipadam `[D]` |

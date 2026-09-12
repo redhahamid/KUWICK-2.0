@@ -5,7 +5,8 @@ import { clinicDayjs, formatClinicTime } from '../clinical/clinicTime';
 import { ApiError, downloadFile } from '../core/api-client';
 import { Panel, PanelHead, StatCard } from '../admin/hr/ui';
 import { IconCalendar, IconClaims, IconClock, IconDoc, IconEdit, IconPlus } from '../admin/hr/ui/icons';
-import { myPayslipPdfPath, useClockSelf, useMyHome, type MyPaidPayslip } from './hooks/useMe';
+import { ClockButton } from './clock';
+import { myPayslipPdfPath, useMyHome, type MyPaidPayslip } from './hooks/useMe';
 import { IconCard, PortalEmpty, greetingName, monthLabel, monthShort, rm } from './portal';
 
 /**
@@ -19,19 +20,9 @@ import { IconCard, PortalEmpty, greetingName, monthLabel, monthShort, rm } from 
 export function MyHomePage() {
   const { message } = App.useApp();
   const { data, isLoading } = useMyHome();
-  const clock = useClockSelf();
 
   const onDuty = data?.clock.onDuty ?? false;
   const time = (value: string | null | undefined) => (value ? formatClinicTime(value) : '—');
-
-  const onClock = async () => {
-    try {
-      await clock.mutateAsync({});
-      message.success(onDuty ? 'Clocked out.' : 'Clocked in.');
-    } catch (error) {
-      message.error(error instanceof ApiError ? error.message : 'Could not record that.');
-    }
-  };
 
   const download = (slip: MyPaidPayslip) =>
     downloadFile(myPayslipPdfPath(slip.runId), `payslip-${slip.period}.pdf`).catch((error) =>
@@ -67,15 +58,7 @@ export function MyHomePage() {
         </div>
         <div className="hr-pageHead__actions">
           {onDuty ? <span className="hr-clockState">On duty since {time(data?.clock.since)}</span> : null}
-          <button
-            type="button"
-            className={onDuty ? 'hr-btn' : 'hr-btn hr-btn--primary'}
-            onClick={onClock}
-            disabled={clock.isPending || isLoading}
-          >
-            <IconClock />
-            {onDuty ? 'Clock out' : 'Clock in'}
-          </button>
+          <ClockButton onDuty={onDuty} disabled={isLoading} />
         </div>
       </div>
 

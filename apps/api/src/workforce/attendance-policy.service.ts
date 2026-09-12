@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
@@ -88,11 +88,21 @@ export class AttendancePolicyService {
         unpaidBreakMinutes: dto.unpaidBreakMinutes,
         breakAfterMinutes: dto.breakAfterMinutes,
         maximumShiftHours: dto.maximumShiftHours,
+        geofenceRadiusMetres: dto.geofenceRadiusMetres,
       };
-      // Undefined means "leave it alone"; the resolver treats a missing field
-      // as inheritance, so writing undefined into the row would be a different
-      // and much more surprising thing than not writing it.
-      const data = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
+      const data: Record<string, unknown> = Object.fromEntries(
+        Object.entries(fields).filter(([, value]) => value !== undefined),
+      );
+      // The point is one fact: written together, cleared together.
+      if (dto.geofenceLat !== undefined || dto.geofenceLng !== undefined) {
+        const lat = dto.geofenceLat ?? null;
+        const lng = dto.geofenceLng ?? null;
+        if ((lat === null) !== (lng === null)) {
+          throw new BadRequestException('A geofence needs both a latitude and a longitude, or neither.');
+        }
+        data.geofenceLat = lat;
+        data.geofenceLng = lng;
+      }
 
       const saved = before
         ? await tx.attendancePolicy.update({

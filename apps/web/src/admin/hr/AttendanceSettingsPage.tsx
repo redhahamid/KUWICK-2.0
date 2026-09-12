@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { HrPage } from './ui';
 import { AttendanceRulesPanel } from './AttendanceRulesPanel';
+import { ClaimPolicyPanel } from './ClaimPolicyPanel';
 
 /**
  * ATTENDANCE & LEAVE POLICIES — its own settings area.
@@ -17,7 +18,7 @@ export function AttendanceSettingsPage() {
   return (
     <HrPage
       title="Attendance & leave policies"
-      sub="What counts as late, and what counts as a full day."
+      sub="What counts as late, what counts as a full day, and what a claim needs."
       crumb={
         <>
           <Link to="/admin/hr/settings">Settings</Link> &nbsp;/&nbsp; Attendance &amp; leave policies
@@ -25,6 +26,11 @@ export function AttendanceSettingsPage() {
       }
     >
       <AttendanceRulesPanel />
+      {/* Claims sit with attendance and leave: the three things an employee
+          sends from the portal, and the three rules a manager judges them by. */}
+      <div className="hr-mt">
+        <ClaimPolicyPanel />
+      </div>
     </HrPage>
   );
 }

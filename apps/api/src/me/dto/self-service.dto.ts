@@ -1,17 +1,5 @@
 import { LeaveType, StaffClaimCategory } from '@prisma/client';
-import {
-  IsBoolean,
-  IsDateString,
-  IsEnum,
-  IsInt,
-  IsISO8601,
-  IsOptional,
-  IsUUID,
-  Length,
-  Matches,
-  Max,
-  Min,
-} from 'class-validator';
+import { IsBoolean, IsDateString, IsEnum, IsISO8601, IsInt, IsNumber, IsOptional, IsUUID, Length, Matches, Max, Min, ValidateIf } from 'class-validator';
 
 /**
  * NOTHING HERE TAKES A `staffId`.
@@ -26,6 +14,11 @@ import {
 export class ClockSelfDto {
   /** Which branch they are at, when they work at more than one. */
   @IsOptional() @IsUUID() clinicId?: string;
+  /** Where the phone said it was. Both or neither. */
+  @IsOptional() @IsNumber() @Min(-90) @Max(90) lat?: number;
+  @IsOptional() @IsNumber() @Min(-180) @Max(180) lng?: number;
+  /** The selfie, uploaded first as a staff file of kind SELFIE. */
+  @IsOptional() @IsUUID() proofFileId?: string;
 }
 
 export class RequestAttendanceCorrectionDto {
@@ -51,6 +44,8 @@ export class RequestLeaveDto {
   @IsOptional() @Length(3, 500) reason?: string;
   /** A half day is still a leave request; the flag is what makes it half. */
   @IsOptional() @IsBoolean() halfDay?: boolean;
+  /** The MC, uploaded first as a staff file of kind MEDICAL_CERTIFICATE. Required when the policy says so. */
+  @IsOptional() @IsUUID() attachmentFileId?: string;
 }
 
 export class SubmitClaimDto {
@@ -60,13 +55,19 @@ export class SubmitClaimDto {
   @IsDateString() claimDate!: string;
   @Length(3, 500) description!: string;
   @IsOptional() @IsUUID() clinicId?: string;
+  /** Mileage: the kilometres. The server prices them at the clinic's rate and ignores the amount sent. */
+  @IsOptional() @IsNumber() @Min(0.1) @Max(5000) distanceKm?: number;
+  /** The receipt, uploaded first as a staff file of kind RECEIPT. Required when the policy says so. */
+  @IsOptional() @IsUUID() receiptFileId?: string;
 }
 
 export class AttachReceiptDto {
-  @Length(1, 200) fileName!: string;
+  /** A receipt already uploaded as a staff file. With it, the metadata below is read from the file. */
+  @IsOptional() @IsUUID() fileId?: string;
+  @ValidateIf((o) => !o.fileId) @Length(1, 200) fileName!: string;
   /** Where the file was stored. The upload itself is the storage layer's job. */
-  @Length(1, 500) filePath!: string;
-  @Length(1, 100) mimeType!: string;
+  @ValidateIf((o) => !o.fileId) @Length(1, 500) filePath!: string;
+  @ValidateIf((o) => !o.fileId) @Length(1, 100) mimeType!: string;
   /**
    * Decorated, not merely typed. The validation pipe runs with `whitelist`,
    * which strips any property no decorator claims — an undecorated field is
@@ -74,5 +75,5 @@ export class AttachReceiptDto {
    *
    * 15MB is a phone photograph of a receipt with room to spare.
    */
-  @IsInt() @Min(1) @Max(15 * 1024 * 1024) fileSize!: number;
+  @ValidateIf((o) => !o.fileId) @IsInt() @Min(1) @Max(15 * 1024 * 1024) fileSize!: number;
 }

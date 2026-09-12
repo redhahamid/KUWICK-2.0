@@ -200,6 +200,28 @@ async function main() {
     });
     if (taxed.count > 0) summary.push(`${taxed.count} tax standings recorded (resident, category 1) so PCB is computed, not blocked`);
 
+    // The branch's geofence for portal clock-ins and the claims policy —
+    // Piece 3g. [A] The point is a placeholder in central Kuala Lumpur; the
+    // owner replaces it with the clinic's own on Settings › Attendance &
+    // leave policies. 150 m is the prompt's default radius.
+    const fence = await tx.attendancePolicy.findFirst({ where: { tenantId, clinicId: central } });
+    if (!fence) {
+      await tx.attendancePolicy.create({
+        data: { tenantId, clinicId: central, geofenceLat: 3.139, geofenceLng: 101.6869, geofenceRadiusMetres: 150, updatedByStaffId: staff.owner.id },
+      });
+      summary.push('Contoh Central: geofence 150 m around a placeholder point in Kuala Lumpur (replace in Settings)');
+    } else if (fence.geofenceLat === null) {
+      await tx.attendancePolicy.update({
+        where: { id: fence.id },
+        data: { geofenceLat: 3.139, geofenceLng: 101.6869, geofenceRadiusMetres: 150 },
+      });
+      summary.push('Contoh Central: geofence 150 m around a placeholder point in Kuala Lumpur (replace in Settings)');
+    }
+    if (!(await tx.claimPolicy.findUnique({ where: { tenantId } }))) {
+      await tx.claimPolicy.create({ data: { tenantId, mileageRatePerKm: 0.6, receiptRequired: true, updatedByStaffId: staff.owner.id } });
+      summary.push('Claims policy: RM0.60 a kilometre (placeholder), receipt required');
+    }
+
     // Public holidays for the year.
     let holidays = 0;
     for (const holiday of PUBLIC_HOLIDAYS_2026) {

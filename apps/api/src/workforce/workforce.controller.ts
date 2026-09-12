@@ -62,6 +62,9 @@ import { UpsertPayComponentDto } from './dto/upsert-pay-component.dto';
 import { UpsertPayrollPolicyDto } from './dto/upsert-payroll-policy.dto';
 import { UpsertPayrollInputDto } from './dto/upsert-payroll-input.dto';
 import { SetApprovalPolicyDto } from './dto/set-approval-policy.dto';
+import { SaveClaimPolicyDto } from './dto/save-claim-policy.dto';
+import { StaffFileService } from './staff-file.service';
+import { ClaimPolicyService } from './claim-policy.service';
 
 @Controller('workforce')
 export class WorkforceController {
@@ -92,6 +95,8 @@ export class WorkforceController {
     private readonly tax: PayrollTaxService,
     private readonly reports: PayrollReportService,
     private readonly financeContract: PayrollFinanceService,
+    private readonly staffFiles: StaffFileService,
+    private readonly claimPolicies: ClaimPolicyService,
   ) {}
 
   // =========================================================================
@@ -577,6 +582,27 @@ export class WorkforceController {
    * Readable by anybody who may open HR, because every screen showing a late
    * arrival has to be able to say what late means here.
    */
+  /** A file an employee handed in — the timesheet's selfie, the claims drawer's receipt, the MC. `hr.view`. */
+  @Get('staff-files/:id')
+  async staffFile(@Param('id') id: string, @Res() res: Response) {
+    const row = await this.staffFiles.readForHr(id);
+    res.setHeader('Content-Type', row.contentType);
+    res.setHeader('Content-Disposition', `inline; filename="${row.fileName.replace(/["\\]/g, '')}"`);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(Buffer.from(row.data));
+  }
+
+  /** How the clinic prices and polices claims: the mileage rate, whether a receipt is required. */
+  @Get('claim-policy')
+  claimPolicy() {
+    return this.claimPolicies.read();
+  }
+
+  @Put('claim-policy')
+  saveClaimPolicy(@Body() dto: SaveClaimPolicyDto) {
+    return this.claimPolicies.save(dto);
+  }
+
   @Get('attendance/policy')
   attendancePolicy(@Query('clinicId') clinicId?: string) {
     return this.attendancePolicies.effective(clinicId);

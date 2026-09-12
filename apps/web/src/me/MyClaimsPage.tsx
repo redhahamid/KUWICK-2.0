@@ -4,7 +4,8 @@ import dayjs from 'dayjs';
 import { ApiError } from '../core/api-client';
 import { Panel, PanelHead, StatusChip } from '../admin/hr/ui';
 import { IconDoc } from '../admin/hr/ui/icons';
-import { useAttachReceipt, useMyBenefits, useMyClaims, useSubmitClaim, type MyClaim } from './hooks/useMe';
+import { AuthImage } from './clock';
+import { myFilePath, uploadMyFile, useMyBenefits, useMyClaimPolicy, useMyClaims, useSubmitClaim, type MyClaim } from './hooks/useMe';
 import { IconCheckCircle, PortalEmpty, monthShort, rm } from './portal';
 
 /**
@@ -25,12 +26,18 @@ const TYPES = [
 ] as const;
 
 /**
- * [A] RM per kilometre. The mockup prices 42 km at RM 25.20 — RM 0.60 a km —
- * and nothing in the schema holds a mileage rate, so it is a placeholder here
- * until the owner says where the clinic's rate should live (Settings › Claims
- * would need a column). Reported in the 3g notes.
+ * [D] RM per kilometre comes from the clinic's claim policy (Settings ›
+ * Claims, `ClaimPolicy.mileageRatePerKm`); the server prices the claim with
+ * the same rate and freezes it on the row. This default only stands in
+ * while the policy is still loading, and matches the policy's own default
+ * (the mockup's 42 km at RM 25.20).
  */
-export const MILEAGE_RATE_RM = 0.6;
+export const DEFAULT_MILEAGE_RATE_RM = 0.6;
+
+/** A stored file's id from the path the API keeps on the attachment (`/me/files/<id>`). */
+function fileIdOf(filePath: string): string | null {
+  return filePath.startsWith('/me/files/') ? filePath.slice('/me/files/'.length) : null;
+}
 
 const CATEGORY_WORD: Record<string, string> = {
   MEDICAL: 'Medical',
@@ -57,16 +64,17 @@ export function claimChip(claim: Pick<MyClaim, 'status' | 'whereTheMoneyIs' | 'p
   return { tone: 'done', label: 'Approved' };
 }
 
-export function mileageAmount(km: number): number {
-  return Math.round(km * MILEAGE_RATE_RM * 100) / 100;
+export function mileageAmount(km: number, ratePerKm: number = DEFAULT_MILEAGE_RATE_RM): number {
+  return Math.round(km * ratePerKm * 100) / 100;
 }
 
 export function MyClaimsPage() {
   const { message } = App.useApp();
   const { data: claims, isLoading } = useMyClaims();
   const { data: benefits } = useMyBenefits();
+  const { data: policy } = useMyClaimPolicy();
   const submit = useSubmitClaim();
-  const attach = useAttachReceipt();
+  const [sending, setSending] = useState(false);
 
   const [type, setType] = useState<(typeof TYPES)[number]['value']>('MILEAGE');
   const [claimDate, setClaimDate] = useState(dayjs().format('YYYY-MM-DD'));
@@ -80,7 +88,9 @@ export function MyClaimsPage() {
 
   const mileage = type === 'MILEAGE';
   const km = Number(distance);
-  const computed = mileage && Number.isFinite(km) && km > 0 ? mileageAmount(km) : null;
+  const ratePerKm = policy ? Number(policy.mileageRatePerKm) : DEFAULT_MILEAGE_RATE_RM;
+  const receiptRequired = policy?.receiptRequired ?? true;
+  const computed = mileage && Number.isFinite(km) && km > 0 ? mileageAmount(km, ratePerKm) : null;
 
   useEffect(() => {
     if (!receipt || !receipt.type.startsWith('image/')) {
@@ -105,40 +115,40 @@ export function MyClaimsPage() {
 
   const finalAmount = computed ?? Number(amount);
   const canSubmit =
-    Boolean(receipt) &&
+    (Boolean(receipt) || !receiptRequired) &&
     purpose.trim().length >= 3 &&
     Number.isFinite(finalAmount) &&
     finalAmount > 0 &&
     (!mileage || (fromPlace.trim() && toPlace.trim()));
 
   const send = async () => {
-    if (!canSubmit || !receipt) return;
+    if (!canSubmit) return;
     const category = TYPES.find((row) => row.value === type)?.category ?? 'OTHER';
     const description = mileage
       ? `Mileage ${km} km, ${fromPlace.trim()} to ${toPlace.trim()}: ${purpose.trim()}`
       : purpose.trim();
+    setSending(true);
     try {
+      // The receipt goes up first as the person's own file (bytes and all);
+      // the claim then points at it, so a failed upload leaves no claim
+      // behind. [D] Mileage is priced by the server from the distance and
+      // the clinic's rate; the amount shown here is the same sum, for the
+      // person to see before they send it.
+      const uploaded = receipt ? await uploadMyFile('RECEIPT', receipt, receipt.name) : null;
       const claim = await submit.mutateAsync({
         category,
         amountClaimed: finalAmount.toFixed(2),
         claimDate,
         description,
+        distanceKm: mileage ? km : undefined,
+        receiptFileId: uploaded?.id,
       });
-      // The receipt follows the claim, so a failed attach leaves a claim a
-      // manager can still see and ask about rather than nothing at all.
-      // [D] The API keeps the receipt's name, type and size against the
-      // claim; the bytes have no store yet.
-      await attach.mutateAsync({
-        claimId: claim.id,
-        fileName: receipt.name,
-        filePath: `claims/${claim.id}/${receipt.name}`,
-        mimeType: receipt.type || 'application/octet-stream',
-        fileSize: Math.max(1, receipt.size),
-      });
-      message.success('Sent to your manager.');
+      message.success(`Sent to your manager: ${rm(claim.amountClaimed)}.`);
       reset();
     } catch (error) {
       message.error(error instanceof ApiError ? error.message : 'Could not send that.');
+    } finally {
+      setSending(false);
     }
   };
 
@@ -214,7 +224,7 @@ export function MyClaimsPage() {
                     <div id="claim-amount" className="hr-f hr-f--auto" aria-live="polite">
                       {computed !== null ? (
                         <>
-                          {rm(computed)} <small>· {km} × RM {MILEAGE_RATE_RM.toFixed(2)}</small>
+                          {rm(computed)} <small>· {km} × RM {ratePerKm.toFixed(2)}</small>
                         </>
                       ) : (
                         <small>Worked out from the distance</small>
@@ -247,13 +257,13 @@ export function MyClaimsPage() {
               </div>
               <div className="hr-pform__full">
                 <label htmlFor="claim-receipt">Receipts / photos</label>
-                <label className="hr-drop is-required" htmlFor="claim-receipt">
+                <label className={receiptRequired ? 'hr-drop is-required' : 'hr-drop'} htmlFor="claim-receipt">
                   <IconDoc />
-                  Drop receipt, invoice or odometer photo here — required
+                  {receiptRequired ? 'Drop receipt, invoice or odometer photo here — required' : 'Drop receipt, invoice or odometer photo here'}
                   <input
                     id="claim-receipt"
                     type="file"
-                    accept="image/*,application/pdf"
+                    accept="image/jpeg,image/png,image/webp,application/pdf"
                     onChange={(event) => setReceipt(event.target.files?.[0] ?? null)}
                   />
                 </label>
@@ -284,7 +294,7 @@ export function MyClaimsPage() {
                 type="button"
                 className="hr-btn hr-btn--primary"
                 onClick={send}
-                disabled={!canSubmit || submit.isPending || attach.isPending}
+                disabled={!canSubmit || sending || submit.isPending}
               >
                 <IconCheckCircle />
                 Submit claim
@@ -307,7 +317,19 @@ export function MyClaimsPage() {
                     <tr key={claim.id}>
                       <td>
                         <b>{CATEGORY_WORD[claim.category] ?? claim.category}</b> · {rest.length ? rest.join(', ') : head}
-                        <div className="hr-tdSub">Submitted {dayjs(claim.submittedAt ?? claim.createdAt).format('D MMM')}</div>
+                        <div className="hr-tdSub hr-dots">
+                          Submitted {dayjs(claim.submittedAt ?? claim.createdAt).format('D MMM')}
+                          {claim.distanceKm && claim.mileageRate ? ` · ${Number(claim.distanceKm)} km × RM ${Number(claim.mileageRate).toFixed(2)}` : ''}
+                          {claim.attachments.map((file) =>
+                            file.mimeType.startsWith('image/') ? (
+                              <AuthImage key={file.id} path={myFilePath(fileIdOf(file.filePath) ?? file.id)} alt={file.fileName} className="hr-proof" />
+                            ) : (
+                              <span key={file.id}>
+                                <IconDoc /> {file.fileName}
+                              </span>
+                            ),
+                          )}
+                        </div>
                       </td>
                       <td className="hr-num hr-strong">{rm(claim.amountApproved ?? claim.amountClaimed)}</td>
                       <td>

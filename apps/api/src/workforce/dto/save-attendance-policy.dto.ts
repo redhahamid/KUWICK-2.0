@@ -1,4 +1,4 @@
-import { IsBoolean, IsInt, IsOptional, IsUUID, Length, Max, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsNumber, IsOptional, IsUUID, Length, Max, Min, ValidateIf } from 'class-validator';
 
 /**
  * Every field optional: a clinic may adjust one rule without restating the
@@ -23,6 +23,13 @@ export class SaveAttendancePolicyDto {
   @IsOptional() @IsInt() @Min(0) @Max(1440) breakAfterMinutes?: number;
 
   @IsOptional() @IsInt() @Min(4) @Max(24) maximumShiftHours?: number;
+  /**
+   * The branch's point for portal clock-ins. Both or neither: null clears
+   * the point, and with it the check. A radius stays a radius.
+   */
+  @ValidateIf((o) => o.geofenceLat !== null) @IsOptional() @IsNumber() @Min(-90) @Max(90) geofenceLat?: number | null;
+  @ValidateIf((o) => o.geofenceLng !== null) @IsOptional() @IsNumber() @Min(-180) @Max(180) geofenceLng?: number | null;
+  @IsOptional() @IsInt() @Min(20) @Max(5000) geofenceRadiusMetres?: number;
 
   @IsOptional() @Length(3, 500) reason?: string;
 }
