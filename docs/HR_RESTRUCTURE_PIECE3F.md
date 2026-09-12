@@ -99,3 +99,15 @@ keeps the API's own two absences and the reason for each.
 |---|---|
 | `src/admin/hr/payrollJourney.test.tsx` | Unchanged and still passing: the month-on-month movement is the API's subtraction, never two numbers subtracted on screen. |
 | `e2e/hr-navigation.spec.ts` | Unchanged: Reports is its own rail entry and its page loads under that entry. |
+
+## 8. Gates
+
+| Gate | Command | Result |
+|---|---|---|
+| API unit | `npm run test:api` | 131 suites, 2,768 tests, green |
+| API e2e | `npm run test:api:e2e` | 41 suites, 470 tests, green |
+| Web unit | `cd apps/web && npx vitest run` | 100 files, 1,728 tests, green |
+| Browser | `CHROME_PATH=/opt/pw-browsers/chromium npx playwright test` | 102 tests: 98 passed, 3 skipped, 1 failed — `canvas-appointment.spec.ts:40`, pre-existing since Piece 1 and identical on master |
+
+Screenshots: `docs/screenshots/hr-slate-3f/` (the shelf beside its mockup, and
+a report opened from it).
