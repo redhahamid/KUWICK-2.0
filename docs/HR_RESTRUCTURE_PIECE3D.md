@@ -302,7 +302,7 @@ rules: `.hr-eff` and segmented buttons no longer wrap, `a.hr-who` is a link,
 | API unit | `npm run test:api` | 130 suites, 2,764 tests, green |
 | API e2e | `cd apps/api && npx jest --config test/jest-e2e.json` | 41 suites, 462 tests, green. One wording fix on the way: `payroll-stage2` reads the Settings notice for *NOT yet applied*, which the rewritten notice had lower-cased; restored, suite re-run green |
 | Web unit | `cd apps/web && npx vitest run` | 99 files, 1,718 tests, green. Run alongside the API unit gate it timed out once in a clinical modal test that passes alone and in the clean run |
-| Browser | `CHROME_PATH=/opt/pw-browsers/chromium npx playwright test` | Running at the time of this commit; the row is filled in the follow-up docs commit |
+| Browser | `CHROME_PATH=/opt/pw-browsers/chromium npx playwright test` | 101 tests: 98 green, 2 skipped (the two scaffolds), 1 failed — `canvas-appointment.spec.ts:40`, pre-existing since Piece 1 and identical on master. *Day-end closing* ran this time because the world had just been re-seeded |
 
 ## 12. Not in this piece
 
