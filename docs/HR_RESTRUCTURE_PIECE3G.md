@@ -101,6 +101,8 @@ bootstrapping was tried first and fails under `tsx`, which emits no decorator
 metadata; the API must be running against the database when the seed runs,
 which is the UAT's situation anyway.
 
+The HR UAT world is not the world the browser suite asserts on: `admin-hr.spec.ts` expects the base seed's August, calculated and blocked. Seed the base world before `npx playwright test`; seed the HR world for the owner.
+
 `docs/HR_UAT_CHECKLIST.md` (in Malay, for the owner) carries the accounts
 and their passwords, the twelve steps with a URL each, the placeholder
 values to replace, the worked-cases table from 3d, and what is not yet
@@ -146,7 +148,7 @@ proof, the MC goes to the manager, the mileage rate is a constant.
 | API unit | `npm run test:api` | 130 suites, 2,764 tests, green |
 | API e2e | `cd apps/api && npx jest --config test/jest-e2e.json` | 41 suites, 465 tests, green. In the full run two suites (`payroll-synthetic-month`, `payroll-snapshot`) hit Jest's 5-second timeout on app bootstrap while Postgres and both dev servers were cold-starting after a container restart; re-run alone, both green (34 tests) |
 | Web unit | `cd apps/web && npx vitest run` | 100 files, 1,724 tests, green. The first full run failed one guard, the kit's isolation test, which now counts the portal as the kit's territory |
-| Browser | `CHROME_PATH=/opt/pw-browsers/chromium npx playwright test` | Running at the time of this commit; the row is filled in the follow-up docs commit |
+| Browser | `CHROME_PATH=/opt/pw-browsers/chromium npx playwright test` | 101 tests: 97 green, 2 skipped (the two scaffolds), 3 failed in the full run, none a regression: `canvas-appointment.spec.ts:40`, pre-existing since Piece 1 and identical on master; `admin-hr.spec.ts:117`, which asserts the base seed's August (calculated, with the contract executive's salary blocker) and was run against the HR UAT world, where that month is paid and the salary recorded — green once the base world CI uses is seeded; `appointment-module.spec.ts:364`, whose fixture day on the staging tenant was full of the appointments today's three earlier runs had booked (that tenant is not reset by either seed) — green once that residue was cancelled. Run the browser suite on the base world, not after `seed-hr-uat.ts` |
 
 ## 11. Not in this piece
 
