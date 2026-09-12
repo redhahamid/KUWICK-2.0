@@ -192,7 +192,7 @@ breadcrumb into it.
 |---|---|---|
 | API unit | `npm run test:api` | 127 suites, 2727 tests, green |
 | API e2e | `cd apps/api && npx jest --config test/jest-e2e.json --runInBand` | 40 suites: 39 green on the full run; `payroll-synthetic-month` failed in its `beforeAll` and passed 14/14 on its own — see below |
-| Web unit | `cd apps/web && npx vitest run` | see the report |
+| Web unit | `cd apps/web && npx vitest run` | 99 files, 1714 tests, green — including the 3a isolation guards and the card-label-equals-title guard, both re-pointed at `HrPage` |
 | Browser | `CHROME_PATH=/opt/pw-browsers/chromium npx playwright test` | see the report |
 
 **The one red suite, and why it is not this piece's.** `[D]` The full API
