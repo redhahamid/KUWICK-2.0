@@ -139,7 +139,21 @@ Finance's own reference, in the same drawer.
 | `e2e/admin-hr.spec.ts` | Unapproved overtime is named as unpaid and is never merged with approved overtime — pinned where it now lives: the day's *OT status* column and the month's two columns. |
 | `e2e/hr-workforce.spec.ts` | Untouched: the roster board, its filters and its branch question are the same component and the same route. |
 
-## 7. Not in this piece
+## 7. Gates
+
+| Gate | Command | Result |
+|---|---|---|
+| API unit | `npm run test:api` | 131 suites, 2,768 tests, green |
+| API e2e | `npm run test:api:e2e` | 41 suites, 470 tests, green |
+| Web unit | `cd apps/web && npx vitest run` | 100 files, 1,728 tests, green. One guard changed with the screen it pins: the claims-count guarantee now pins the shape that makes it structural — one unfiltered query, the tab applied in memory |
+| Browser | `CHROME_PATH=/opt/pw-browsers/chromium npx playwright test` | 102 tests: 98 passed, 3 skipped, 1 failed — `canvas-appointment.spec.ts:40`, pre-existing since Piece 1 and identical on master. Every HR spec green, including the two updated here |
+
+`[D]` Running the four gates at once on this container turns a green suite
+into a wall of five-second timeouts: the first attempt showed 147 API e2e
+failures and 29 web unit failures, all bootstrap or render timeouts, and all
+green when run one at a time. The gates are run sequentially.
+
+## 8. Not in this piece
 
 Reports (3f). QR and device clock-in. A claim's receipt as a PDF preview
 rather than a download (`[D]` the drawer shows images; a PDF is named and
