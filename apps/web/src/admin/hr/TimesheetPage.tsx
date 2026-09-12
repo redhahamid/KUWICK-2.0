@@ -335,7 +335,7 @@ export function TimesheetPage() {
                   ? 'Nobody is rostered and nobody has clocked in.'
                   : 'Choose a branch to see who was rostered as well as who punched.'
               }
-              toolbar={
+              toolbarLead={
                 <div className="hr-seg" role="group" aria-label="Day">
                   <button type="button" aria-label="Previous day" onClick={() => setDay(dayjs(day).subtract(1, 'day').format('YYYY-MM-DD'))}>
                     ‹
@@ -568,7 +568,7 @@ export function TimesheetPage() {
             searchPlaceholder="Search employee"
             searchLabel="Search employee"
             emptyText="No attendance recorded this month"
-            toolbar={
+            toolbarLead={
               <div className="hr-seg" role="group" aria-label="Month">
                 <button type="button" aria-label="Previous month" onClick={() => setMonth(month.subtract(1, 'month'))}>
                   ‹

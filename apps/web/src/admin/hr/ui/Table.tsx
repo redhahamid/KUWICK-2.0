@@ -30,6 +30,7 @@ export function Table<T extends object>({
   searchFields,
   searchPlaceholder = 'Search…',
   searchLabel = 'Search',
+  toolbarLead,
   toolbar,
   toolbarRight,
   emptyText = 'Nothing to show',
@@ -46,6 +47,8 @@ export function Table<T extends object>({
   searchFields?: (keyof T)[];
   searchPlaceholder?: string;
   searchLabel?: string;
+  /** Controls that belong BEFORE the search box — a day or month pager, which the mockups put first. */
+  toolbarLead?: ReactNode;
   /** Extra controls beside the search box. */
   toolbar?: ReactNode;
   toolbarRight?: ReactNode;
@@ -66,12 +69,13 @@ export function Table<T extends object>({
     );
   }, [rows, query, searchFields]);
 
-  const hasToolbar = Boolean(searchFields?.length || toolbar || toolbarRight);
+  const hasToolbar = Boolean(searchFields?.length || toolbarLead || toolbar || toolbarRight);
 
   return (
     <div className="hr-table">
       {hasToolbar ? (
         <div className="hr-toolbar">
+          {toolbarLead}
           {searchFields?.length ? (
             <ToolbarSearch value={query} onChange={setQuery} placeholder={searchPlaceholder} label={searchLabel} />
           ) : null}
