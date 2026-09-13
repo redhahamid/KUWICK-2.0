@@ -135,7 +135,29 @@ anyone listening to it.
 | `apps/web/src/admin/hr/ui/authImage.test.tsx` | The thumbnail is a button; it opens the same bytes, not a second fetch; Escape and the area around it close it; exactly one control named Close |
 | `apps/web/src/admin/hr/attendanceFocus.test.tsx` | Arriving with a `staffId` shows one person and not the others; the days are listed; overtime is approved from there; the way back; a tab press leaves the person |
 
-## 6. Not done here
+## 6. Gates
+
+`[D]` Run **sequentially**, on 2026-09-13, against the code that shipped.
+
+| Gate | Result |
+|---|---|
+| API unit | 131 suites, **2775 passed**, 0 failed |
+| API e2e | 41 suites, **470 passed**, 0 failed |
+| Web unit | 103 files, **1747 passed**, 0 failed |
+| Browser | 102 collected, **99 passed**, 0 failed, 3 skipped |
+
+`[D]` The web figures add up: 100 files → 103 (three new test files), 1728 →
+1747 (+19 new tests). Nothing among the 1728 that already existed fell over.
+
+`[D]` The third browser skip is the one Piece 1 §9.2 describes:
+`admin-integration.spec.ts:153`, *counting short forces an explanation, and
+closing freezes the day*, which calls `test.skip` on itself when the day-end
+status is not `Open` — an earlier browser run in the same session had closed
+the day. I confirmed it by running that spec on its own rather than inferring
+it from the count. It has nothing to do with this piece: no attendance, no
+formatting, no images.
+
+## 7. Not done here
 
 `[D]` `npm run lint` fails in this repository with *ESLint couldn't find an
 eslint.config.js* — there is no ESLint configuration anywhere in the tree. It
