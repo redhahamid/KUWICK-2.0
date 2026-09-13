@@ -402,14 +402,79 @@ describe('Malaysia payroll: employer, salary history, inputs and snapshots (e2e)
       .expect(400);
   });
 
-  it('refuses to redefine a system preset’s statutory treatment', async () => {
+  /*
+   * THIS USED TO ASSERT THAT A PRESET'S TREATMENT COULD NOT BE CHANGED AT ALL.
+   *
+   * That was wrong, and a real clinic found it: whether an allowance attracts
+   * EPF is a POLICY the clinic sets within what the law permits, not a fact
+   * Kuwick can ship, and clinics differ — one contributes on basic pay only,
+   * the next contributes on allowances too. Freezing the seeded guess made the
+   * product wrong at half its customers.
+   *
+   * What the old rule was really protecting was the word SILENTLY. So the
+   * three tests below keep that protection and drop the rest: identity fixed,
+   * evidence required, and only then the change.
+   */
+  const basicRow = async () => {
     const list = await request(server()).get('/workforce/pay-components').set('Authorization', bearer).expect(200);
-    const basic = list.body.components.find((c: { code: string }) => c.code === 'BASIC');
+    return list.body.components.find((c: { code: string }) => c.code === 'BASIC');
+  };
+
+  it('refuses to redefine what a system preset IS, because the arithmetic reads that', async () => {
+    const basic = await basicRow();
+    const refused = await request(server())
+      .post('/workforce/pay-components')
+      .set('Authorization', bearer)
+      // ALLOWANCE rather than REMUNERATION: that is the year-end classification,
+      // not a policy about contributions.
+      .send({
+        id: basic.id,
+        code: 'BASIC',
+        name: 'Basic pay',
+        type: 'ADDITION',
+        category: 'ALLOWANCE',
+        epfLiable: false,
+        effectiveFrom: '2026-12-01',
+        reason: 'Trying to reclassify basic pay.',
+      })
+      .expect(409);
+    expect(refused.body.message).toMatch(/cannot be redefined/);
+  });
+
+  it('refuses to change a preset’s treatment SILENTLY — no date, no reason, no change', async () => {
+    const basic = await basicRow();
     await request(server())
       .post('/workforce/pay-components')
       .set('Authorization', bearer)
-      .send({ id: basic.id, code: 'BASIC', name: 'Renamed', type: 'ADDITION', category: 'REMUNERATION', epfLiable: false })
-      .expect(409);
+      .send({ id: basic.id, code: 'BASIC', name: 'Basic pay', type: 'ADDITION', category: 'REMUNERATION', epfLiable: false })
+      .expect(400);
+    expect((await basicRow()).epfLiable).toBe(true);
+  });
+
+  it('lets the clinic change a preset’s treatment when it says when and why', async () => {
+    const basic = await basicRow();
+    await request(server())
+      .post('/workforce/pay-components')
+      .set('Authorization', bearer)
+      .send({
+        id: basic.id,
+        code: 'BASIC',
+        name: 'Basic pay',
+        type: 'ADDITION',
+        category: 'REMUNERATION',
+        epfLiable: false,
+        socsoLiable: true,
+        eisLiable: true,
+        pcbLiable: true,
+        effectiveFrom: '2026-12-01',
+        reason: 'Clinic policy, recorded for the auditor.',
+      })
+      .expect(201);
+    const after = await basicRow();
+    expect(after.epfLiable).toBe(false);
+    // And it is marked as the CLINIC's decision, never as one Kuwick shipped.
+    expect(after.clinicOverride).toBe(true);
+    expect(after.changeReason).toBe('Clinic policy, recorded for the auditor.');
   });
 
   // === 6 · Policy ==========================================================

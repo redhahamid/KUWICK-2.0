@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { App, DatePicker, Input, Switch, Tooltip } from 'antd';
+import { App, DatePicker, Input, Select, Switch, Tooltip } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useCan } from '../../core/hooks/useCan';
-import { usePayComponents, useSeedPayComponents, useUpsertPayComponent } from '../hooks/useAdmin';
-import { HrPage, Panel, StatusChip } from './ui';
+import { usePayComponentHistory, usePayComponents, useSeedPayComponents, useUpsertPayComponent } from '../hooks/useAdmin';
+import { Drawer, HrPage, Panel, StatusChip } from './ui';
 import { Table } from './ui/Table';
 import { IconLock } from './ui/icons';
-import type { PayComponentRow } from '../types';
+import type { PayComponentRow, PayComponentVersion } from '../types';
 
 /**
  * PAYROLL ITEMS — what a clinic can pay or deduct, and what each one counts
@@ -27,9 +27,16 @@ import type { PayComponentRow } from '../types';
  * is what a component IS (paid to net, outside wages), not a flag on it. Both
  * are shown as read-only chips derived from the row.
  *
- * A system component (basic pay, overtime, the statutory deductions) may be
- * switched on or off, never re-treated. Its switches are drawn disabled, and
- * a lock beside its name says why.
+ * A SYSTEM COMPONENT'S IDENTITY IS FIXED; ITS TREATMENT IS THE CLINIC'S.
+ * Basic pay, overtime and the statutory deductions cannot be redefined into
+ * something else — the calculation reads their type and the year-end forms
+ * read their category — but whether an allowance attracts EPF is a POLICY this
+ * clinic sets, not a fact Kuwick can ship, and clinics differ. The switches are
+ * live on every row; the lock beside a system name says what is still fixed.
+ *
+ * A row the clinic has decided says so, with the reason underneath. "Why is
+ * EPF off on allowances" must be answerable from this screen, by the person
+ * who has to answer it, without opening an audit log.
  */
 type Flag = 'epfLiable' | 'socsoLiable' | 'eisLiable' | 'pcbLiable' | 'hrdLiable' | 'prorated' | 'includeInOrpBase' | 'includeInUnpaidLeaveBase';
 
@@ -65,6 +72,40 @@ const whole = (row: PayComponentRow) => ({
   active: row.active,
 });
 
+/**
+ * A NEW COMPONENT STARTS LIABLE TO NOTHING IT HAS NOT BEEN TOLD ABOUT.
+ *
+ * Every flag off except PCB, which is on because pay is taxable unless
+ * something says otherwise. A blank form that pre-ticked EPF, SOCSO and EIS
+ * would be Kuwick guessing at a clinic's policy and calling it a default.
+ */
+const BLANK = {
+  code: '',
+  name: '',
+  type: 'ADDITION' as const,
+  category: 'ALLOWANCE',
+  includeIn: 'GROSS_AND_NET',
+  pcbLiable: true,
+  epfLiable: false,
+  socsoLiable: false,
+  eisLiable: false,
+  hrdLiable: false,
+  includeInOrpBase: false,
+  includeInUnpaidLeaveBase: false,
+  additionalRemuneration: false,
+  prorated: false,
+  employerSide: false,
+  active: true,
+};
+
+/** What this version changed from the one before it — the only part worth reading twice. */
+const moved = (version: PayComponentVersion, previous: PayComponentVersion | undefined): string[] => {
+  if (!previous) return [];
+  return FLAGS.filter((flag) => version[flag.key] !== previous[flag.key]).map(
+    (flag) => `${flag.title} ${version[flag.key] ? 'on' : 'off'}`,
+  );
+};
+
 export function PayrollItemsPage() {
   const { message } = App.useApp();
   const components = usePayComponents();
@@ -78,6 +119,37 @@ export function PayrollItemsPage() {
   const [from, setFrom] = useState<Dayjs>(dayjs().add(1, 'month').startOf('month'));
   const [reason, setReason] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
+
+  /** Which component's versions are open, and the blank form for a new one. */
+  const [historyOf, setHistoryOf] = useState<string | null>(null);
+  const history = usePayComponentHistory(historyOf);
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState(BLANK);
+  const [addProblem, setAddProblem] = useState<string | null>(null);
+
+  const addComponent = () => {
+    const code = draft.code.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+    if (code.length < 2 || draft.name.trim().length < 2) {
+      setAddProblem('A code and a name, both at least two characters.');
+      return;
+    }
+    if (rows.some((row) => row.code === code)) {
+      setAddProblem(`"${code}" already exists. Change the existing one instead of adding a second.`);
+      return;
+    }
+    upsert.mutate(
+      { ...draft, code, name: draft.name.trim() },
+      {
+        onSuccess: () => {
+          message.success(`${draft.name.trim()} added. Nothing about it has been checked against an authority.`);
+          setAdding(false);
+          setDraft(BLANK);
+          setAddProblem(null);
+        },
+        onError: (error: Error) => setAddProblem(error.message),
+      },
+    );
+  };
 
   const cancel = () => {
     setPending(null);
@@ -149,6 +221,11 @@ export function PayrollItemsPage() {
       actions={
         <>
           {listCheck}
+          {mayManage && rows.length > 0 ? (
+            <button type="button" className="hr-btn" onClick={() => { setAdding(true); setDraft(BLANK); setAddProblem(null); }}>
+              Add an item
+            </button>
+          ) : null}
           {mayManage && rows.length === 0 ? (
             <button
               type="button"
@@ -186,14 +263,24 @@ export function PayrollItemsPage() {
                   <div className="hr-strong">
                     {value}
                     {row.systemControlled ? (
-                      <Tooltip title="System item: it can be switched on or off, but its statutory treatment is not editable here.">
-                        <span className="hr-lock" role="img" aria-label="System item, on/off only">
+                      <Tooltip title="System item: what it IS cannot be changed — the calculation reads its type and the year-end forms read its category. What it counts towards is yours to set.">
+                        <span className="hr-lock" role="img" aria-label="System item: its kind is fixed, its treatment is not">
                           <IconLock />
                         </span>
                       </Tooltip>
                     ) : null}
                   </div>
                   <span className="hr-faint hr-small">{row.code}</span>
+                  {row.clinicOverride ? (
+                    <div className="hr-small hr-decided">
+                      <StatusChip tone="info">Your clinic</StatusChip>
+                      <span className="hr-faint">from {dayjs(row.effectiveFrom).format('D MMM YYYY')}</span>
+                      {row.changeReason ? <span className="hr-decided__why">{row.changeReason}</span> : null}
+                    </div>
+                  ) : null}
+                  <button type="button" className="hr-link hr-small" onClick={() => setHistoryOf(row.code)}>
+                    History
+                  </button>
                 </div>
               ),
             },
@@ -219,9 +306,8 @@ export function PayrollItemsPage() {
                     <Switch
                       size="small"
                       checked={isPending ? pending.next : row[flag.key]}
-                      disabled={!mayManage || row.systemControlled || upsert.isPending}
+                      disabled={!mayManage || upsert.isPending}
                       aria-label={`${flag.title} for ${row.name}`}
-                      title={row.systemControlled ? 'A system item keeps its statutory treatment.' : undefined}
                       onChange={(next) => {
                         setPending({ row, flag: flag.key, next });
                         setFrom(dayjs().add(1, 'month').startOf('month'));
@@ -301,6 +387,154 @@ export function PayrollItemsPage() {
         />
         {components.data ? <div className="hr-panelNote">{components.data.verificationNotice.statement}</div> : null}
       </Panel>
+
+      {historyOf ? (
+        <Drawer
+          open
+          title={`${history.data?.name ?? historyOf} — every version`}
+          onClose={() => setHistoryOf(null)}
+        >
+          {history.isLoading ? (
+            <div className="hr-faint">Loading…</div>
+          ) : (
+            <ol className="hr-versions">
+              {(history.data?.versions ?? []).map((version, index, all) => {
+                const changed = moved(version, all[index + 1]);
+                return (
+                  <li key={version.id} className="hr-version">
+                    <div className="hr-version__when">
+                      <span className="hr-strong">
+                        {dayjs(version.effectiveFrom).format('D MMM YYYY')}
+                        {version.effectiveTo ? ` – ${dayjs(version.effectiveTo).format('D MMM YYYY')}` : ' onwards'}
+                      </span>
+                      {version.effectiveTo ? null : <StatusChip tone="done">In force</StatusChip>}
+                    </div>
+                    <div className="hr-version__flags">
+                      {FLAGS.map((flag) => (
+                        <span key={flag.key} className={version[flag.key] ? 'hr-tg' : 'hr-tn'}>
+                          {flag.title} {version[flag.key] ? '✓' : '✗'}
+                        </span>
+                      ))}
+                    </div>
+                    {changed.length > 0 ? (
+                      <div className="hr-small">Changed: {changed.join(' · ')}</div>
+                    ) : null}
+                    {/*
+                      * WHOSE DECISION THIS WAS. A version Kuwick seeded and one
+                      * the clinic chose are different kinds of fact, and the
+                      * screen that has to defend a figure must not blur them.
+                      */}
+                    <div className="hr-small hr-faint">
+                      {version.clinicOverride ? (
+                        <>
+                          Set by {version.setBy ?? 'this clinic'} on {dayjs(version.setAt).format('D MMM YYYY')}
+                          {version.changeReason ? ` — ${version.changeReason}` : ''}
+                        </>
+                      ) : (
+                        (version.sourceRef ?? 'Seeded by Kuwick. Not checked against any authority.')
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </Drawer>
+      ) : null}
+
+      {adding ? (
+        <Drawer
+          open
+          title="Add a payroll item"
+          onClose={() => setAdding(false)}
+          footer={
+            <>
+              <button type="button" className="hr-btn" onClick={() => setAdding(false)}>
+                Cancel
+              </button>
+              <button type="button" className="hr-btn hr-btn--primary" onClick={addComponent} disabled={upsert.isPending}>
+                Add it
+              </button>
+            </>
+          }
+        >
+          <div className="hr-fld">
+            <label htmlFor="new-name">What is it called</label>
+            <Input
+              id="new-name"
+              value={draft.name}
+              maxLength={120}
+              placeholder="e.g. Procedure incentive"
+              onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+            />
+          </div>
+          <div className="hr-fld">
+            <label htmlFor="new-code">Short code</label>
+            <Input
+              id="new-code"
+              value={draft.code}
+              maxLength={64}
+              placeholder="PROCEDURE_INCENTIVE"
+              onChange={(event) => setDraft({ ...draft, code: event.target.value })}
+            />
+            <span className="hr-faint hr-small">Letters, numbers and underscores. It never changes once used.</span>
+          </div>
+          <div className="hr-fld">
+            <label htmlFor="new-type">Does it add or deduct</label>
+            <Select
+              id="new-type"
+              value={draft.type}
+              style={{ width: '100%' }}
+              onChange={(value) => setDraft({ ...draft, type: value })}
+              options={[
+                { value: 'ADDITION', label: 'Adds to pay' },
+                { value: 'DEDUCTION', label: 'Deducts from pay' },
+              ]}
+            />
+          </div>
+          <div className="hr-fld">
+            <label htmlFor="new-category">What kind of money</label>
+            <Select
+              id="new-category"
+              value={draft.category}
+              style={{ width: '100%' }}
+              onChange={(value) => setDraft({ ...draft, category: value })}
+              options={[
+                { value: 'REMUNERATION', label: 'Remuneration' },
+                { value: 'ALLOWANCE', label: 'Allowance' },
+                { value: 'BENEFIT_IN_KIND', label: 'Benefit in kind' },
+                { value: 'PERQUISITE', label: 'Perquisite' },
+                { value: 'PAYROLL_DEDUCTION', label: 'Payroll deduction' },
+                { value: 'TAX_DEDUCTION', label: 'Tax deduction' },
+              ]}
+            />
+            <span className="hr-faint hr-small">This drives the year-end forms, and it cannot be changed later.</span>
+          </div>
+
+          <div className="hr-fld">
+            <label>What it counts towards</label>
+            <div className="hr-newFlags">
+              {FLAGS.map((flag) => (
+                <label key={flag.key} className="hr-newFlags__one">
+                  <Switch
+                    size="small"
+                    checked={draft[flag.key]}
+                    onChange={(next) => setDraft({ ...draft, [flag.key]: next })}
+                    aria-label={flag.title}
+                  />
+                  <span>{flag.title}</span>
+                </label>
+              ))}
+            </div>
+            <span className="hr-faint hr-small">
+              Everything starts off except PCB, because pay is taxable unless something says otherwise. Kuwick does not
+              guess at the rest: what this clinic remits on is yours to say, and nothing here has been checked against
+              KWSP, PERKESO, LHDN or HRD Corp.
+            </span>
+          </div>
+          {addProblem ? <div className="hr-small" style={{ color: 'var(--hr-red)' }}>{addProblem}</div> : null}
+        </Drawer>
+      ) : null}
     </HrPage>
   );
 }

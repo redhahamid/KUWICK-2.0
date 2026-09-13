@@ -49,6 +49,7 @@ import type {
   WorkforceToday,
   LegalEmployerRow,
   SalaryHistoryRow,
+  PayComponentHistory,
   PayComponentList,
   PayrollInputRow,
   PayrollCandidateDiff,
@@ -1071,6 +1072,22 @@ export function usePayComponents() {
   return useQuery({
     queryKey: ['admin-hr', 'pay-components'],
     queryFn: () => apiClient.get<PayComponentList>('/workforce/pay-components'),
+  });
+}
+
+/**
+ * EVERY VERSION OF ONE COMPONENT.
+ *
+ * The settings list shows what stands. This answers what an audit asks — what
+ * was an allowance liable to in March, and who decided that — which the list
+ * cannot, because March may be two versions ago. Fetched only when a version
+ * history is actually opened.
+ */
+export function usePayComponentHistory(code: string | null) {
+  return useQuery({
+    queryKey: ['admin-hr', 'pay-components', code, 'history'],
+    queryFn: () => apiClient.get<PayComponentHistory>(`/workforce/pay-components/${code}/history`),
+    enabled: code !== null,
   });
 }
 

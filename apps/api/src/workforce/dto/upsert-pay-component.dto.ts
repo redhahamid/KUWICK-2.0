@@ -36,5 +36,18 @@ export class UpsertPayComponentDto {
    * component, which starts from the epoch so no period is left uncovered.
    */
   @IsOptional() @IsISO8601() effectiveFrom?: string;
-  @IsOptional() @IsString() @Length(1, 500) reason?: string;
+
+  /**
+   * WHY, IN THE WORDS OF WHOEVER DECIDED.
+   *
+   * REQUIRED when the statutory treatment of an existing component changes,
+   * and kept on the version it explains rather than only in the audit log.
+   * Whether an allowance is EPF-liable is a policy this clinic set, not a fact
+   * Kuwick shipped, and the person who has to defend the figure a year later
+   * needs the sentence next to the flag — not in a log they do not have open.
+   *
+   * Optional elsewhere: naming a new component or correcting a label decides
+   * nothing about anybody's money.
+   */
+  @IsOptional() @IsString() @Length(4, 500) reason?: string;
 }

@@ -8134,6 +8134,17 @@ model PayComponent {
   verificationStatus StatutoryVerificationStatus @default(DRAFT) @map("verification_status")
   sourceRef          String?                     @map("source_ref")
 
+  /// THIS VERSION'S TREATMENT WAS SET BY THE CLINIC, not by Kuwick's seed.
+  /// The seeded values are a starting guess that reproduces the old engine;
+  /// what a clinic decides about its own EPF policy is a different kind of
+  /// fact, and a payslip's provenance must not confuse the two.
+  clinicOverride Boolean @default(false) @map("clinic_override")
+
+  /// Why this version exists, in the words of whoever made it. Required when
+  /// a clinic changes a component's statutory treatment: a flag nobody can
+  /// explain is a flag nobody can defend to KWSP.
+  changeReason String? @map("change_reason")
+
   version       Int       @default(1)
   effectiveFrom DateTime  @map("effective_from") @db.Date
   effectiveTo   DateTime? @map("effective_to") @db.Date

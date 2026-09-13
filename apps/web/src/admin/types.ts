@@ -1814,6 +1814,40 @@ export interface PayComponentRow {
   verificationStatus: string;
   version: number;
   effectiveFrom: string;
+  effectiveTo: string | null;
+  /** This version's treatment was set by the clinic, not by Kuwick's seed. */
+  clinicOverride: boolean;
+  /** Why it was set that way, in the words of whoever set it. */
+  changeReason: string | null;
+}
+
+/** One version of one component, as the history drawer reads it. */
+export interface PayComponentVersion {
+  id: string;
+  version: number;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  pcbLiable: boolean;
+  epfLiable: boolean;
+  socsoLiable: boolean;
+  eisLiable: boolean;
+  hrdLiable: boolean;
+  includeInOrpBase: boolean;
+  includeInUnpaidLeaveBase: boolean;
+  additionalRemuneration: boolean;
+  prorated: boolean;
+  clinicOverride: boolean;
+  changeReason: string | null;
+  sourceRef: string | null;
+  verificationStatus: string;
+  setBy: string | null;
+  setAt: string;
+}
+
+export interface PayComponentHistory {
+  code: string;
+  name: string;
+  versions: PayComponentVersion[];
 }
 
 export interface PayComponentList {

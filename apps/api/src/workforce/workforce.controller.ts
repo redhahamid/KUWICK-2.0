@@ -450,6 +450,11 @@ export class WorkforceController {
     return this.payComponents.list();
   }
 
+  @Get('pay-components/:code/history')
+  payComponentHistory(@Param('code') code: string) {
+    return this.payComponents.history(code);
+  }
+
   @Post('pay-components/seed')
   seedPayComponents() {
     return this.payComponents.seed();
