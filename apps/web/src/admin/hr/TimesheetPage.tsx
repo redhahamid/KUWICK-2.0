@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { App } from 'antd';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useRosterRange } from '../../appointment/hooks/useRoster';
@@ -16,7 +16,7 @@ import {
   useTimesheet,
 } from '../hooks/useAdmin';
 import { clinicDayjs, clinicDayjsAtWall, formatClinicTime } from '../../clinical/clinicTime';
-import { AuthImage, Drawer, HrPage, Panel, SegControl, StatCard, StatRow, StatusChip } from './ui';
+import { AuthImage, Drawer, duration, HrPage, Panel, SegControl, StatCard, StatRow, StatusChip } from './ui';
 import { Table } from './ui/Table';
 import { IconClock, IconDownload, IconEdit } from './ui/icons';
 import { initialsOf } from './ui/who';
@@ -39,8 +39,26 @@ interface DayRow {
   onDuty: boolean;
 }
 
-const hours = (minutes: number | null | undefined) =>
-  minutes === null || minutes === undefined ? '—' : (minutes / 60).toFixed(1);
+/**
+ * The export is read by a spreadsheet, not by a person, so it carries a bare
+ * number that never changes unit and keeps the precision the screen rounds
+ * away. `duration` is for the screen; this is for the file.
+ */
+const csvHours = (minutes: number | null | undefined) =>
+  minutes === null || minutes === undefined ? '' : (minutes / 60).toFixed(2);
+
+/**
+ * STILL ON THE FLOOR, rather than a missing punch: clocked in, not out, and
+ * the shift has not ended — today. Both the day sheet and a person's month
+ * ask this, and a rule written twice is a rule that drifts, so it is written
+ * here.
+ */
+function onDutyNow(record: { clockInAt: string | null; clockOutAt: string | null }, workDate: string, shiftEnd: string | null): boolean {
+  if (!record.clockInAt || record.clockOutAt) return false;
+  const now = clinicDayjs(new Date());
+  if (workDate.slice(0, 10) !== now.format('YYYY-MM-DD')) return false;
+  return shiftEnd ? now.isBefore(clinicDayjs(shiftEnd)) : true;
+}
 
 /** The file id inside `/me/files/<id>`, read back by HR from its own route. */
 function proofPath(path: string | null): string | null {
@@ -76,6 +94,26 @@ export function TimesheetPage() {
   const navigate = useNavigate();
   const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
 
+  /*
+   * THE MONTHLY SUMMARY'S FIGURES ARE LINKS, AND A LINK HAS TO ARRIVE
+   * SOMEWHERE.
+   *
+   * Piece 1 made every figure on the summary a link to
+   * `/admin/hr/attendance?staffId=…&month=…` (finding 12) and stopped there.
+   * That route is THIS page: React Router changed the URL, the component
+   * stayed mounted with its own tab and month in local state, and the screen
+   * did not move. Pressing 88.0 h did nothing at all — a link that goes
+   * nowhere is worse than the dead end it replaced, because it looks like it
+   * works.
+   *
+   * So the page reads the focus off the URL. With a staffId in it the summary
+   * shows ONE person's month, day by day, which is what the figure is made
+   * of.
+   */
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusStaffId = searchParams.get('staffId');
+  const focusMonth = searchParams.get('month');
+
   const [tab, setTab] = useState<Tab>('timesheet');
   const [day, setDay] = useState(clinicDayjs(new Date()).format('YYYY-MM-DD'));
   const [month, setMonth] = useState(clinicDayjs(new Date()).startOf('month'));
@@ -85,12 +123,41 @@ export function TimesheetPage() {
   const [clockOut, setClockOut] = useState('');
   const [why, setWhy] = useState('');
 
+  // Arriving with a person in the URL means the month, on that person.
+  useEffect(() => {
+    if (focusStaffId) setTab('summary');
+  }, [focusStaffId]);
+  useEffect(() => {
+    if (focusMonth) setMonth(clinicDayjs(`${focusMonth}-01`).startOf('month'));
+  }, [focusMonth]);
+
   const today = useTimesheet({ from: day, to: day, clinicId });
   const monthSheet = useTimesheet({
     from: month.format('YYYY-MM-DD'),
     to: month.endOf('month').format('YYYY-MM-DD'),
     clinicId,
   });
+  const focused = useMemo(
+    () => (focusStaffId ? ((monthSheet.data?.staff ?? []).find((person) => person.staffId === focusStaffId) ?? null) : null),
+    [focusStaffId, monthSheet.data],
+  );
+  const clearFocus = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('staffId');
+    next.delete('month');
+    setSearchParams(next, { replace: true });
+  };
+  /*
+   * A TAB IS TOP-LEVEL NAVIGATION, so pressing one leaves the person behind.
+   * Without this, pressing Monthly summary while focused on Dr Meera Kaur
+   * returns to Dr Meera Kaur, and the tab appears not to work — the same
+   * complaint this piece exists to answer, one screen along.
+   */
+  const goTab = (next: Tab) => {
+    clearFocus();
+    setTab(next);
+  };
+
   const corrections = useCorrectionRequests(clinicId);
   const decideCorrection = useDecideCorrection();
   const approveOvertime = useApproveOvertime();
@@ -165,12 +232,9 @@ export function TimesheetPage() {
      * punch turns every normal working day into an exception list. The shift's
      * end — or the end of the day when nothing was rostered — is the line.
      */
-    const now = clinicDayjs(new Date());
-    const stillToday = day === now.format('YYYY-MM-DD');
     for (const row of byStaff.values()) {
-      if (!row.record?.clockInAt || row.record.clockOutAt) continue;
-      const endsAt = row.shiftEnd ? clinicDayjs(row.shiftEnd) : null;
-      row.onDuty = stillToday && (endsAt ? now.isBefore(endsAt) : true);
+      if (!row.record) continue;
+      row.onDuty = onDutyNow(row.record, day, row.shiftEnd);
     }
     return [...byStaff.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [today.data, roster.data, leave.data, nameOf, day]);
@@ -260,8 +324,8 @@ export function TimesheetPage() {
         row.record?.clockInAt ? formatClinicTime(row.record.clockInAt) : '',
         row.record?.clockOutAt ? formatClinicTime(row.record.clockOutAt) : '',
         resultText(row),
-        row.record ? hours(row.record.workedMinutes) : '',
-        row.record ? hours(row.record.overtimeMinutes) : '',
+        csvHours(row.record?.workedMinutes),
+        csvHours(row.record?.overtimeMinutes),
         row.record?.overtimeMinutes ? (row.record.overtimeApproved ? 'Approved' : 'Pending') : '',
         row.record ? (row.record.source === 'MANUAL' ? 'HR' : 'The employee') : '',
       ]),
@@ -312,25 +376,25 @@ export function TimesheetPage() {
         />
         <StatCard
           label="OT today"
-          value={`${hours(otMinutes)} h`}
+          value={duration(otMinutes)}
           tone={otPending > 0 ? 'gold' : 'plain'}
-          sub={`${otPendingMinutes > 0 ? `${hours(otPendingMinutes)} h` : 'none'} pending approval · ${hours(monthOtMinutes)} h this month`}
+          sub={`${otPendingMinutes > 0 ? duration(otPendingMinutes) : 'none'} pending approval · ${duration(monthOtMinutes)} this month`}
         />
       </StatRow>
 
       <Panel className="hr-mt">
         <div className="hr-tabs" role="tablist" aria-label="Attendance views">
-          <button type="button" role="tab" aria-selected={tab === 'timesheet'} className={tab === 'timesheet' ? 'is-active' : undefined} onClick={() => setTab('timesheet')}>
+          <button type="button" role="tab" aria-selected={tab === 'timesheet'} className={tab === 'timesheet' ? 'is-active' : undefined} onClick={() => goTab('timesheet')}>
             Timesheet
           </button>
           <button type="button" role="tab" aria-selected={false} onClick={() => navigate('/admin/hr/attendance/roster')}>
             Roster
           </button>
-          <button type="button" role="tab" aria-selected={tab === 'corrections'} className={tab === 'corrections' ? 'is-active' : undefined} onClick={() => setTab('corrections')}>
+          <button type="button" role="tab" aria-selected={tab === 'corrections'} className={tab === 'corrections' ? 'is-active' : undefined} onClick={() => goTab('corrections')}>
             Corrections
             {waiting > 0 ? <span className="hr-tabs__n">{waiting}</span> : null}
           </button>
-          <button type="button" role="tab" aria-selected={tab === 'summary'} className={tab === 'summary' ? 'is-active' : undefined} onClick={() => setTab('summary')}>
+          <button type="button" role="tab" aria-selected={tab === 'summary'} className={tab === 'summary' ? 'is-active' : undefined} onClick={() => goTab('summary')}>
             Monthly summary
           </button>
         </div>
@@ -414,17 +478,17 @@ export function TimesheetPage() {
                   width: 230,
                   render: (_: unknown, row) => <Result row={row} />,
                 },
-                { title: 'Hours', key: 'hours', num: true, width: 80, render: (_: unknown, row) => (row.record ? hours(row.record.workedMinutes) : '—') },
+                { title: 'Worked', key: 'hours', num: true, width: 85, render: (_: unknown, row) => (row.record ? duration(row.record.workedMinutes) : '—') },
                 {
-                  title: 'OT h',
+                  title: 'Overtime',
                   key: 'ot',
                   num: true,
-                  width: 80,
+                  width: 90,
                   render: (_: unknown, row) =>
                     row.record && row.record.overtimeMinutes > 0 ? (
-                      <span className="hr-teal">{hours(row.record.overtimeMinutes)}</span>
+                      <span className="hr-teal">{duration(row.record.overtimeMinutes)}</span>
                     ) : (
-                      <span className="hr-tn">0.0</span>
+                      <span className="hr-tn">0.0 h</span>
                     ),
                 },
                 {
@@ -566,7 +630,106 @@ export function TimesheetPage() {
           />
         ) : null}
 
-        {tab === 'summary' ? (
+        {tab === 'summary' && focusStaffId ? (
+          <Table<Day>
+            rows={focused ? [...focused.days].sort((a, b) => a.workDate.localeCompare(b.workDate)) : []}
+            loading={monthSheet.isLoading}
+            rowKey="id"
+            emptyText={`Nothing recorded for this employee in ${month.format('MMMM YYYY')}`}
+            toolbarLead={
+              <div className="hr-focus">
+                <button type="button" className="hr-link" onClick={clearFocus}>
+                  Back to everybody
+                </button>
+                <span className="hr-focus__who">
+                  {focused?.name ?? nameOf.get(focusStaffId) ?? 'This employee'} · {month.format('MMMM YYYY')}
+                </span>
+              </div>
+            }
+            columns={[
+              {
+                title: 'Day',
+                dataIndex: 'workDate',
+                width: 150,
+                render: (value: string) => (
+                  <button
+                    type="button"
+                    className="hr-link"
+                    onClick={() => {
+                      setDay(value.slice(0, 10));
+                      goTab('timesheet');
+                    }}
+                  >
+                    {clinicDayjs(value).format('ddd D MMM')}
+                  </button>
+                ),
+              },
+              {
+                title: 'Punches',
+                key: 'punches',
+                render: (_: unknown, row) => (
+                  <Punches punches={row.punches ?? []} alt={`${focused?.name ?? 'Employee'}, punch selfie`} />
+                ),
+              },
+              {
+                title: 'Result',
+                key: 'result',
+                width: 190,
+                render: (_: unknown, row) => (
+                  <Result
+                    row={{
+                      staffId: focusStaffId,
+                      name: focused?.name ?? '',
+                      record: row,
+                      shiftStart: row.scheduledStart,
+                      shiftEnd: row.scheduledEnd,
+                      leaveType: null,
+                      onDuty: onDutyNow(row, row.workDate, row.scheduledEnd),
+                    }}
+                  />
+                ),
+              },
+              { title: 'Worked', dataIndex: 'workedMinutes', num: true, width: 85, render: (value: number | null) => duration(value) },
+              {
+                title: 'Overtime',
+                dataIndex: 'overtimeMinutes',
+                num: true,
+                width: 90,
+                render: (value: number) => (value > 0 ? <span className="hr-teal">{duration(value)}</span> : <span className="hr-tn">0.0 h</span>),
+              },
+              {
+                title: 'OT status',
+                key: 'otStatus',
+                width: 150,
+                render: (_: unknown, row) => {
+                  if (row.overtimeMinutes === 0) return null;
+                  if (row.overtimeApproved) return <StatusChip tone="done">Approved</StatusChip>;
+                  const id = row.id;
+                  return (
+                    <button
+                      type="button"
+                      className="hr-btn hr-btn--sm"
+                      disabled={approveOvertime.isPending}
+                      onClick={() =>
+                        approveOvertime.mutate(
+                          { id },
+                          {
+                            onSuccess: () => message.success('Overtime approved. It reaches the payroll month.'),
+                            onError: (error: Error) => message.error(error.message),
+                          },
+                        )
+                      }
+                    >
+                      Pending · approve
+                    </button>
+                  );
+                },
+              },
+            ]}
+          />
+        ) : null}
+
+        {tab === 'summary' && !focusStaffId ? (
           <Table<StaffRow>
             rows={monthSheet.data?.staff}
             loading={monthSheet.isLoading}
@@ -646,9 +809,9 @@ export function TimesheetPage() {
                 dataIndex: 'workedHours',
                 num: true,
                 width: 95,
-                render: (value: number, row) => (
+                render: (_: number, row) => (
                   <Link className="hr-link" to={`/admin/hr/attendance?staffId=${row.staffId}&month=${month.format('YYYY-MM')}`}>
-                    {value.toFixed(1)} h
+                    {duration(row.workedMinutes)}
                   </Link>
                 ),
               },
@@ -679,7 +842,7 @@ export function TimesheetPage() {
                     <span className="hr-tn">—</span>
                   ) : (
                     <Link className="hr-link hr-tg" to={`/admin/hr/attendance?staffId=${row.staffId}&month=${month.format('YYYY-MM')}`}>
-                      {value.toFixed(1)} h
+                      {duration(row.approvedOvertimeMinutes)}
                     </Link>
                   ),
               },
@@ -693,7 +856,7 @@ export function TimesheetPage() {
                     <span className="hr-tn">—</span>
                   ) : (
                     <Link className="hr-link hr-gold" to={`/admin/hr/attendance?staffId=${row.staffId}&month=${month.format('YYYY-MM')}`}>
-                      {value.toFixed(1)} h
+                      {duration(row.unapprovedOvertimeMinutes)}
                     </Link>
                   ),
               },
@@ -897,7 +1060,7 @@ function PunchEditor({
       <div className="hr-punchPreview">
         <span>
           <b>Hours after your change</b>{' '}
-          {(wasMinutes / 60).toFixed(1)} h → {(minutes.total / 60).toFixed(1)} h
+          {duration(wasMinutes)} → {duration(minutes.total)}
           {minutes.hanging ? ' · incomplete' : ''}
         </span>
         {minutes.hanging ? (

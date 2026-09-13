@@ -4,7 +4,7 @@ import dayjs from 'dayjs';
 import { clinicDayjs, formatClinicTime } from '../clinical/clinicTime';
 import { ApiError } from '../core/api-client';
 import { Drawer, Panel, PanelHead, StatusChip } from '../admin/hr/ui';
-import { AuthImage } from '../admin/hr/ui';
+import { AuthImage, duration } from '../admin/hr/ui';
 import { ClockButton } from './clock';
 import { myFilePath, useMyAttendance, useMyHome, useMySchedule, useRequestCorrection, type MyAttendanceDay } from './hooks/useMe';
 import { PortalEmpty } from './portal';
@@ -32,7 +32,6 @@ export function MyAttendancePage() {
 
   const onDuty = home?.clock.onDuty ?? false;
   const time = (value: string | null | undefined) => (value ? formatClinicTime(value) : '—');
-  const hours = (minutes: number | null) => (minutes === null ? '—' : `${(minutes / 60).toFixed(2)} h`);
   const distance = (metres: number) => (metres >= 1000 ? `${(metres / 1000).toFixed(1)} km away` : `${metres} m away`);
   // The selfie kept with a punch, read back through the person's own token.
   const proof = (path: string | null, alt: string) => {
@@ -136,7 +135,7 @@ export function MyAttendancePage() {
                       <b>{clinicDayjs(`${day.workDate}T00:00:00`).format('ddd D MMM')}</b>
                       {day.extraMinutesRecorded > 0 ? (
                         <div className="hr-tdSub">
-                          {(day.extraMinutesRecorded / 60).toFixed(2)} h extra · {day.overtimeApproved ? 'approved as overtime' : 'not yet approved as overtime'}
+                          {duration(day.extraMinutesRecorded)} extra · {day.overtimeApproved ? 'approved as overtime' : 'not yet approved as overtime'}
                         </div>
                       ) : null}
                       {day.correctionRequest ? (
@@ -170,7 +169,7 @@ export function MyAttendancePage() {
                         ))}
                       </span>
                     </td>
-                    <td className="hr-num">{hours(day.workedMinutes)}</td>
+                    <td className="hr-num">{duration(day.workedMinutes)}</td>
                     <td>
                       <span className="hr-dots">
                         {statusChip(day)}

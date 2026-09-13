@@ -2275,3 +2275,80 @@ textarea.hr-f {
   font-size: 13px;
 }
 .hr-punchPreview__warn { font-size: 12px; color: var(--hr-gold); }
+
+/* THE THUMBNAIL IS A BUTTON (finding 3 of the September UAT). It carries no
+   chrome of its own — the image is the affordance — but it is a real button,
+   so the keyboard reaches it and the pointer says so. */
+.hr-proofBtn {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: zoom-in;
+  display: inline-block;
+  vertical-align: middle;
+  line-height: 0;
+  border-radius: 6px;
+}
+.hr-proofBtn:focus-visible {
+  outline: 2px solid var(--hr-teal);
+  outline-offset: 2px;
+}
+
+/* The image, whole. `contain` rather than `cover`: the thumbnail's crop is
+   what sent the owner here. */
+.hr-zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+.hr-zoom__scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  cursor: zoom-out;
+  background: rgba(15, 26, 30, 0.72);
+}
+.hr-zoom__img {
+  position: relative;
+  max-width: min(920px, 90vw);
+  max-height: 86vh;
+  object-fit: contain;
+  border-radius: 10px;
+  background: var(--hr-surface);
+  box-shadow: 0 24px 60px -12px rgba(15, 26, 30, 0.55);
+}
+.hr-zoom__close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: var(--hr-surface);
+  color: var(--hr-ink);
+  border: 1px solid var(--hr-line2);
+  border-radius: 8px;
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.hr-zoom__close:hover {
+  border-color: var(--hr-ink3);
+}
+
+/* One person's month, reached from a figure on the Monthly summary. */
+.hr-focus {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.hr-focus__who {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--hr-ink);
+}
