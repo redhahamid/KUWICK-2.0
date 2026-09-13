@@ -341,6 +341,7 @@ model Tenant {
   dayEndClosings             DayEndClosing[]
   employeeProfiles           EmployeeProfile[]
   attendanceRecords          AttendanceRecord[]
+  attendancePunches          AttendancePunch[]
   attendancePolicies         AttendancePolicy[]
   attendanceCorrections      AttendanceCorrectionRequest[]
   leavePolicies              LeavePolicy[]
@@ -1083,6 +1084,9 @@ model Staff {
   attendanceCorrectionsDecided AttendanceCorrectionRequest[] @relation("AttendanceCorrectionDecider")
   attendanceCorrections        AttendanceRecord[]            @relation("AttendanceCorrectedBy")
   overtimeApprovals            AttendanceRecord[]            @relation("AttendanceOvertimeApprover")
+  attendancePunches            AttendancePunch[]             @relation("AttendancePunchStaff")
+  attendancePunchesSuperseded  AttendancePunch[]             @relation("AttendancePunchSupersededBy")
+  attendancePunchesRecorded    AttendancePunch[]             @relation("AttendancePunchRecordedBy")
   leaveBalances                LeaveBalance[]                @relation("LeaveBalanceStaff")
   incentiveRulesTargeting      IncentiveRule[]               @relation("IncentiveRuleTarget")
   incentiveRulesAuthored       IncentiveRule[]               @relation("IncentiveRuleAuthor")
@@ -6570,6 +6574,71 @@ enum AttendanceSource {
   MANUAL
 }
 
+enum AttendancePunchKind {
+  IN
+  OUT
+}
+
+/// EVERY PRESS OF THE BUTTON, KEPT.
+///
+/// `attendance_records` holds ONE clock-in and ONE clock-out a day, so a day
+/// was measured from the first punch to the last and the ones in between were
+/// overwritten and lost — not in an audit row either, because clocking in
+/// writes none. A clinic whose admin staff clock out at lunch and back in, on
+/// purpose, so the owner can see who left and came back late, had that whole
+/// purpose thrown away and the lunch hour counted as worked.
+///
+/// APPEND-ONLY. A punch is never edited and never deleted. A correction writes
+/// NEW punches and marks the ones it replaces superseded, with who did it and
+/// why — the same promise `AttendanceRecord.correct()` already makes about the
+/// original clock-in, and the only shape that makes sense for the fix to a bug
+/// whose whole nature was losing data.
+///
+/// The daily `AttendanceRecord` stays as the computed summary every screen and
+/// the payroll engine already read. Its `clockInAt` and `clockOutAt` become the
+/// day's first and last punch — derived, no longer the authority.
+model AttendancePunch {
+  id                 String @id @default(uuid())
+  tenantId           String @map("tenant_id")
+  attendanceRecordId String @map("attendance_record_id")
+  staffId            String @map("staff_id")
+
+  at   DateTime
+  kind AttendancePunchKind
+
+  /// Where this punch came from. HR recording one for somebody else is MANUAL.
+  source         AttendanceSource @default(PORTAL)
+  /// The selfie kept with THIS punch, as a staff file path. Never a bare URL.
+  proofUrl       String?          @map("proof_url")
+  lat            Decimal?         @db.Decimal(9, 6)
+  lng            Decimal?         @db.Decimal(9, 6)
+  /// How far from the branch this punch stood, and whether that is outside the
+  /// radius. Per punch — the record keeps the day's furthest, which is the
+  /// number its "outside clinic" chip has always shown.
+  distanceMetres Int?             @map("distance_metres")
+  outsideClinic  Boolean          @default(false) @map("outside_clinic")
+
+  /// Replaced by a correction. The punch itself is untouched; these three say
+  /// that a later one stands in its place, who decided, and why.
+  supersededAt        DateTime? @map("superseded_at")
+  supersededByStaffId String?   @map("superseded_by_staff_id")
+  supersededReason    String?   @map("superseded_reason")
+
+  /// Who recorded it. Null is the employee themselves through the portal.
+  recordedByStaffId String?  @map("recorded_by_staff_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id])
+  record       AttendanceRecord @relation(fields: [attendanceRecordId], references: [id], onDelete: Cascade)
+  staff        Staff            @relation("AttendancePunchStaff", fields: [staffId], references: [id], onDelete: Cascade)
+  supersededBy Staff?           @relation("AttendancePunchSupersededBy", fields: [supersededByStaffId], references: [id])
+  recordedBy   Staff?           @relation("AttendancePunchRecordedBy", fields: [recordedByStaffId], references: [id])
+
+  @@index([tenantId, attendanceRecordId, at])
+  @@index([tenantId, staffId, at])
+  @@map("attendance_punches")
+}
+
 /// What an employee can hand in through the portal. The bytes live in
 /// `staff_files`, never on a public URL: a receipt, an MC and a selfie are
 /// the employee's, served only to them and to HR.
@@ -6774,6 +6843,7 @@ model AttendanceRecord {
   correctedBy        Staff?                        @relation("AttendanceCorrectedBy", fields: [correctedByStaffId], references: [id])
   overtimeApprovedBy Staff?                        @relation("AttendanceOvertimeApprover", fields: [overtimeApprovedByStaffId], references: [id])
   correctionRequests AttendanceCorrectionRequest[]
+  punches            AttendancePunch[]
 
   @@unique([tenantId, staffId, workDate])
   @@index([tenantId, clinicId, workDate])
