@@ -783,6 +783,11 @@ async function reset() {
     // Correction requests point at the attendance record they ask to change,
     // so they go first; the policy points only at the clinic and the person who
     // last edited it, so it can go anywhere before `staff`.
+    // Punches hang off the record they belong to and go before it, even
+    // though the foreign key cascades: this list is read as the order the
+    // world comes apart in, and a child missing from it reads as an
+    // oversight rather than a cascade somebody verified.
+    'attendance_punches',
     'attendance_correction_requests', 'attendance_records', 'attendance_policies', 'employee_profiles',
     // AFTER the profiles that reference them, BEFORE the staff that authored
     // them.
@@ -2851,6 +2856,94 @@ async function seedWorkforce(ids: Ids) {
         correctionReason: 'Badge reader was offline; CCTV confirms a 09:00 arrival',
       },
     });
+
+    /*
+     * ONE DAY WORKED AS FOUR PUNCHES — the clinic's actual pattern.
+     *
+     * The counter staff clock out at lunch and back in, deliberately, so the
+     * owner can see who left and came back late. Every other day above is one
+     * stretch, and a demo world with no four-punch day in it cannot show the
+     * thing the timesheet was rebuilt for.
+     *
+     * 09:02 to 13:01, away for an hour and eleven minutes, 14:12 to 18:03 —
+     * 7.8 hours, not the 9.0 that the first punch to the last would report.
+     */
+    // The loop above already wrote this person a day here on any weekday, and
+    // a second record for one person on one date is what the unique key
+    // forbids — so this REPLACES that day rather than adding to it.
+    const lunchWhen = day(-2);
+    const lunchFields = {
+      clinicId: central.id,
+      clockInAt: at(-2, 1, 2),
+      clockOutAt: at(-2, 10, 3),
+      workedMinutes: 470,
+      status: 'PRESENT' as const,
+      scheduledStart: at(-2, 1),
+      scheduledEnd: at(-2, 9),
+      overtimeMinutes: 0,
+      overtimeApproved: false,
+      overtimeApprovedByStaffId: null,
+      lateMinutes: 0,
+    };
+    const lunchExisting = await tx.attendanceRecord.findFirst({
+      where: { tenantId: tenant.id, staffId: staff.counter, workDate: lunchWhen },
+      select: { id: true },
+    });
+    const lunchDay = lunchExisting
+      ? await tx.attendanceRecord.update({ where: { id: lunchExisting.id }, data: lunchFields })
+      : await tx.attendanceRecord.create({
+          data: { tenantId: tenant.id, staffId: staff.counter, workDate: lunchWhen, ...lunchFields },
+        });
+    for (const [minutesFromNine, kind] of [
+      [2, 'IN'],
+      [241, 'OUT'],
+      [312, 'IN'],
+      [543, 'OUT'],
+    ] as [number, 'IN' | 'OUT'][]) {
+      await tx.attendancePunch.create({
+        data: {
+          tenantId: tenant.id,
+          attendanceRecordId: lunchDay.id,
+          staffId: staff.counter,
+          at: new Date(at(-2, 1).getTime() + minutesFromNine * 60_000),
+          kind,
+          source: 'PORTAL',
+        },
+      });
+    }
+
+    /*
+     * EVERY OTHER DAY GETS ITS TWO PUNCHES, derived the same way the migration
+     * backfilled the days that already existed.
+     *
+     * Written HERE rather than at each of the dozen `attendanceRecord.create`
+     * calls above: one pass that reads the record cannot drift from it, and a
+     * punch added to one of those calls and forgotten at another is exactly the
+     * kind of gap a demo world hides until somebody demonstrates it.
+     */
+    const seeded = await tx.attendanceRecord.findMany({
+      where: { tenantId: tenant.id },
+      select: { id: true, staffId: true, clockInAt: true, clockOutAt: true, source: true },
+    });
+    for (const record of seeded) {
+      if (record.id === lunchDay.id) continue;
+      for (const [instant, kind] of [
+        [record.clockInAt, 'IN'],
+        [record.clockOutAt, 'OUT'],
+      ] as [Date | null, 'IN' | 'OUT'][]) {
+        if (!instant) continue;
+        await tx.attendancePunch.create({
+          data: {
+            tenantId: tenant.id,
+            attendanceRecordId: record.id,
+            staffId: record.staffId,
+            at: instant,
+            kind,
+            source: record.source,
+          },
+        });
+      }
+    }
 
     // --- Leave -------------------------------------------------------------
     await tx.leaveRequest.create({

@@ -43,8 +43,8 @@ await page.screenshot({ path: `${OUT}/01-timesheet-punches.png` });
 console.log('01 timesheet');
 
 // 02 — the Fix drawer on a four-punch day.
-const fix = page.getByRole('button', { name: /^Fix$/ }).first();
-await fix.click();
+const fourPunchRow = page.locator('tr', { has: page.locator('.hr-punchGap') }).first();
+await fourPunchRow.getByRole('button', { name: /^Fix$/ }).click();
 await page.waitForTimeout(1200);
 await page.screenshot({ path: `${OUT}/02-fix-drawer.png` });
 console.log('02 fix drawer');
