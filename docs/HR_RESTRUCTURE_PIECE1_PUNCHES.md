@@ -141,16 +141,74 @@ The arithmetic here is simply correct for the day it is revived.
 
 ## 9. Gates
 
+`[D]` Run **sequentially**, on 2026-09-13, on this branch.
+
 | Gate | Command | Result |
 |---|---|---|
-| API unit | `npm run test:api` | see the piece's commit trailer |
-| API e2e | `npm run test:api:e2e` | |
-| Web unit | `cd apps/web && npx vitest run` | |
-| Browser | `CHROME_PATH=/opt/pw-browsers/chromium npx playwright test` | |
+| API unit | `npm run test:api` | 131 suites, **2775 passed**, 0 failed |
+| API e2e | `npm run test:api:e2e` | 41 suites, **470 passed**, 0 failed |
+| Web unit | `cd apps/web && npx vitest run` | 100 files, **1728 passed**, 0 failed |
+| Browser | `CHROME_PATH=/opt/pw-browsers/chromium npx playwright test` | 102 collected, **100 passed**, 0 failed, 2 skipped |
 
-`[D]` Run **sequentially**. Running the four at once on this container turns a
+`[D]` The two skipped browser tests skip themselves and always have:
+`route-sweep.spec.ts:26` needs `E2E_SWEEP`, `golden-path.spec.ts:762` needs
+`E2E_DUMP`, and each calls itself a tool rather than a guardrail in its own
+source. `canvas-appointment.spec.ts` — which failed during Pieces 3e and 3f —
+is collected and passes here. I confirmed that by listing the collected tests,
+not by inferring it from the absence of a failure line.
+
+`[D]` Run sequentially, never at once. Four at a time on this container turns a
 green suite into a wall of five-second timeouts — measured in Piece 3e and
 unchanged since.
+
+`[D]` The two API gates ran at `bca4f10`, before the CSS fix below. That fix
+touches one file, `apps/web/src/admin/hr/ui/slate.css`, which no API test
+reads. The web and browser gates in the table were both run after it.
+
+### 9.1 One red, and what it was really hiding
+
+`[D]` The web gate first came back **1 failed of 1728**: `slateIsolation.test.tsx
+> the Slate kit > declares its palette only on HR scopes, never on :root`,
+listing eight leaked selectors, every one of them mine.
+
+That guard strips `var(--hr-…)` reads and treats any `--hr-` that survives as a
+declaration. My punch rules had written the reads with fallbacks —
+`var(--hr-gold-ink, #8a6d1f)`, `var(--hr-muted, #6b7a83)`,
+`var(--hr-line, #e6ebee)`, `var(--hr-red, #b4291f)` — and the strip does not
+match a fallback, so all eight rules looked like declarations.
+
+`[D]` Two of those four token names **do not exist in the kit**, and that is the
+part worth keeping. The kit declares its palette on `.kw-hrSlate,
+.kw-hrSlateHeader`, and every element that carries a punch class sits inside
+that shell — the Fix drawer is plain JSX rather than a portal, and the employee
+portal's own layout carries `.kw-hrSlate`. So:
+
+| Written | What actually painted | What it should have been |
+|---|---|---|
+| `var(--hr-gold-ink, #8a6d1f)` | `#8a6d1f` — **no such token**, the fallback painted | `--hr-gold` `#b7791f` |
+| `var(--hr-muted, #6b7a83)` | `#6b7a83` — **no such token**, the fallback painted | `--hr-ink3` `#8b979f` |
+| `var(--hr-line, #e6ebee)` | `#e4e7eb` — the token resolved, fallback was dead code | `--hr-line`, as written |
+| `var(--hr-red, #b4291f)` | `#c2362e` — the token resolved, fallback was dead code | `--hr-red`, as written |
+
+So five rules were painted in two colours belonging to no palette:
+`.hr-punchGap` and `.hr-punchPreview__warn` in a gold that is not the kit's, and
+`.hr-punchRow__n`, `.hr-punchRow__meta` and `.hr-punchRow__wrong[disabled]` in a
+grey that is not `--hr-ink3`. Nothing would ever have reported it on its own: a
+`var()` with a fallback is silent when the name is wrong. Only the isolation
+guard noticed, and for a different reason than the one that mattered.
+
+`[D]` Fixed by using the kit's real tokens with no fallback, which is the house
+style — no other rule in `slate.css` uses one. Before removing the fallbacks I
+checked that nothing renders these classes outside `.kw-hrSlate`, since outside
+it the rules would then have had no colour at all. Gate re-run green, 1728 of
+1728.
+
+`[A]` The screenshots in `docs/screenshots/hr-punches/` were taken before this
+fix, so the away-gap line and the incomplete warning in them are a shade off the
+gold that now ships, and three small labels a shade off the grey. Layout,
+wording and every figure are unchanged. I did not re-take them: the dev world
+would have to be rebuilt to do it, and the piece was accepted on what they show.
+Say the word and I will.
 
 Screenshots: `docs/screenshots/hr-punches/`.
 
