@@ -1,4 +1,4 @@
-import { computeAttendance, hoursOf, totalTimesheet } from './attendance-hours';
+import { computeAttendance, computePunchedDay, hoursOf, totalTimesheet } from './attendance-hours';
 import { DEFAULT_ATTENDANCE_POLICY } from './attendance-policy';
 
 const at = (iso: string) => new Date(iso);
@@ -127,5 +127,106 @@ describe('attendance hours', () => {
         workedMinutes: 480,
       });
     });
+  });
+});
+
+/**
+ * FOUR PUNCHES A DAY — the clinic's admin staff clock out at lunch and back
+ * in, on purpose, so the owner can see who left and came back late. Measuring
+ * the day as first-punch-to-last paid them for the lunch hour.
+ */
+describe('computePunchedDay', () => {
+  const punch = (iso: string, kind: 'IN' | 'OUT') => ({ at: at(iso), kind });
+
+  it('sums each pair and never pays the gap between them', () => {
+    const result = computePunchedDay({
+      punches: [
+        punch('2026-09-13T01:00:00Z', 'IN'), //  09:00 local
+        punch('2026-09-13T05:00:00Z', 'OUT'), // 13:00 — lunch
+        punch('2026-09-13T06:00:00Z', 'IN'), //  14:00 — back
+        punch('2026-09-13T10:00:00Z', 'OUT'), // 18:00
+      ],
+    });
+    // 4h + 4h worked. The hour at lunch is not in it; first-to-last would be 9h.
+    expect(result.workedMinutes).toBe(480);
+    expect(result.status).toBe('PRESENT');
+  });
+
+  it('is not confused by the order the punches arrive in', () => {
+    const ordered = computePunchedDay({
+      punches: [punch('2026-09-13T01:00:00Z', 'IN'), punch('2026-09-13T05:00:00Z', 'OUT')],
+    });
+    const shuffled = computePunchedDay({
+      punches: [punch('2026-09-13T05:00:00Z', 'OUT'), punch('2026-09-13T01:00:00Z', 'IN')],
+    });
+    expect(shuffled).toEqual(ordered);
+  });
+
+  it('measures lateness from the first punch and early leaving from the last', () => {
+    const result = computePunchedDay({
+      punches: [
+        punch('2026-09-13T01:20:00Z', 'IN'), //  20 min after the shift started
+        punch('2026-09-13T05:00:00Z', 'OUT'),
+        punch('2026-09-13T06:00:00Z', 'IN'),
+        punch('2026-09-13T09:30:00Z', 'OUT'), // 30 min before it ended
+      ],
+      scheduledStart: at('2026-09-13T01:00:00Z'),
+      scheduledEnd: at('2026-09-13T10:00:00Z'),
+    });
+    expect(result.lateMinutes).toBe(15); // 20 less the 5-minute grace
+    expect(result.earlyOutMinutes).toBe(30);
+  });
+
+  it('reports the hours it closed on a day still open, and still calls it incomplete', () => {
+    const result = computePunchedDay({
+      punches: [
+        punch('2026-09-13T01:00:00Z', 'IN'),
+        punch('2026-09-13T05:00:00Z', 'OUT'),
+        punch('2026-09-13T06:00:00Z', 'IN'), // never clocked out
+      ],
+    });
+    expect(result.workedMinutes).toBe(240);
+    expect(result.status).toBe('MISSING_PUNCH');
+    expect(result.exceptions).toContain('MISSING_PUNCH');
+  });
+
+  it('adds nothing for a clock-out with nothing open, as a lone clock-out always did', () => {
+    expect(computePunchedDay({ punches: [punch('2026-09-13T05:00:00Z', 'OUT')] }).workedMinutes).toBeNull();
+  });
+
+  it('does not deduct the flat break from a day whose break was punched', () => {
+    const policy = { ...DEFAULT_ATTENDANCE_POLICY, unpaidBreakMinutes: 60, breakAfterMinutes: 360 };
+    const punched = computePunchedDay(
+      {
+        punches: [
+          punch('2026-09-13T01:00:00Z', 'IN'),
+          punch('2026-09-13T05:00:00Z', 'OUT'),
+          punch('2026-09-13T06:00:00Z', 'IN'),
+          punch('2026-09-13T10:00:00Z', 'OUT'),
+        ],
+      },
+      policy,
+    );
+    // Already excluded by the gap; deducting 60 again would charge the hour twice.
+    expect(punched.payableMinutes).toBe(480);
+
+    const oneStretch = computePunchedDay(
+      { punches: [punch('2026-09-13T01:00:00Z', 'IN'), punch('2026-09-13T10:00:00Z', 'OUT')] },
+      policy,
+    );
+    expect(oneStretch.workedMinutes).toBe(540);
+    expect(oneStretch.payableMinutes).toBe(480);
+  });
+
+  it('reproduces the owner’s UAT day exactly', () => {
+    const result = computePunchedDay({
+      punches: [
+        punch('2026-09-13T06:01:00Z', 'IN'),
+        punch('2026-09-13T06:03:00Z', 'OUT'),
+        punch('2026-09-13T06:06:00Z', 'IN'),
+        punch('2026-09-13T06:07:00Z', 'OUT'),
+      ],
+    });
+    expect(result.workedMinutes).toBe(3); // 2 + 1, not the 6 that first-to-last reported
   });
 });
