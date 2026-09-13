@@ -185,7 +185,92 @@ Akta.
 > default**. Guna Clinic rate hanya kalau anda memang bayar doktor kadar syif
 > tetap untuk cuti umum.
 
-### 2.4 Attendance & leave policies
+### 2.4 Memilih mod rule set: Akta, kadar tetap, atau ambang berkala
+
+Ini keputusan yang paling kerap disalah set, jadi ia diberi bahagiannya
+sendiri. Rule set ialah **cara klinik menghargakan jam lebih** untuk satu
+kumpulan pekerja. Setiap pekerja dihargakan oleh satu rule set sahaja: yang
+diberikan terus pada rekod mereka, atau yang untuk kumpulan mereka, atau yang
+**default**.
+
+#### Apa yang ada hari ini
+
+Dua mod, dan anda pilih satu untuk setiap rule set.
+
+| | **Employment Act 1955** | **Clinic rate** |
+|---|---|---|
+| Apa yang anda taip | Tiada apa-apa | Sehingga empat amaun |
+| Hari biasa | Jam lebih diluluskan × 1.5× kadar sejam | Jam lebih diluluskan × **Per hour of overtime** |
+| Hari rehat | 2.0× ikut Akta | Satu amaun **rata** untuk syif, campur kadar sejam untuk jam melebihi jam normal |
+| Cuti umum | 3.0× campur dua hari gaji untuk hari itu | Satu amaun **rata** untuk syif, campur kadar sejam untuk jam melebihi jam normal |
+| Kotak yang dibiar kosong | — | Dihargakan ikut Akta |
+| Had bawah | Ia **ialah** had bawah | Untuk gaji RM4,000 ke bawah, Akta ialah lantai. Kadar lebih rendah akan **menghalang** run |
+
+**Kedua-duanya membayar jam yang diluluskan sahaja.** Mod tidak mengubah itu.
+
+#### Bila klinik patut guna yang mana
+
+| Keadaan klinik | Pilih |
+|---|---|
+| Semua staf bergaji RM4,000 ke bawah, anda ikut Akta | **Employment Act 1955** |
+| Anda tidak pasti | **Employment Act 1955**. Ia tidak boleh terkurang bayar sesiapa |
+| Anda bayar doktor kadar syif tetap untuk cuti umum, dan yang lain ikut Akta | Dua rule set: satu **Clinic rate** untuk doktor, satu **Employment Act 1955** sebagai default |
+| Doktor langsung tidak dibayar jam lebih | **Bukan rule set langsung.** Lihat nota di bawah |
+
+**Doktor tanpa jam lebih langsung** diset pada **rekod pekerja**, bukan di
+sini: tab **Statutory** ▸ **Statutory standing** ▸ **Overtime above the
+Employment Act limit** ▸ **Overtime is not paid**. Jawapan itu **mengatasi**
+mana-mana rule set kadar klinik yang mereka ada — tiada bayaran jam lebih
+dihasilkan pada mana-mana jenis hari. Ia hanya berkuat kuasa untuk gaji
+melebihi RM4,000 sebulan; di bawah itu Akta tetap terpakai.
+
+#### Mod ketiga — ambang berkala — belum ada
+
+Sesetengah klinik tidak mengira lebih masa harian langsung. Mereka
+menetapkan **ambang jam bagi satu tempoh** — contoh 45 jam seminggu atas 6 hari
+kerja — dan setiap jam melebihi ambang itu dibayar pada satu kadar sejam yang
+rata, tanpa pengganda 1.5× / 2.0× / 3.0×, sama ada hari biasa, hari rehat atau
+cuti umum. Bila ada cuti umum dalam tempoh itu, ambangnya turun sehari.
+
+**Ini belum wujud dalam Kuwick.** Jangan cari mod ketiga pada skrin — hanya ada
+dua. Kalau ini cara klinik anda membayar, lihat bahagian 6 untuk apa yang boleh
+anda buat sementara itu.
+
+#### Apa jadi bila rule set ditukar pertengahan bulan
+
+Ini berbeza daripada gaji dan daripada statutory standing, dan perbezaannya
+penting.
+
+**Gaji dan statutory standing bertarikh.** Anda beritahu Kuwick dari bila ia
+berkuat kuasa, dan bulan lepas kekal dengan apa yang benar ketika itu.
+
+**Rule set TIDAK bertarikh.** Tiada medan "berkuat kuasa dari" padanya. Yang
+berlaku:
+
+| Keadaan bulan | Apa jadi bila anda tukar rule set |
+|---|---|
+| Belum dimulakan | Ia akan guna rule set seperti keadaan sekarang |
+| Sudah dimulakan, belum diluluskan | Kira semula dan **seluruh bulan dihargakan semula** pada kadar baharu — termasuk hari sebelum anda menukarnya |
+| Sudah diluluskan | Kekal dengan angka yang ia diluluskan dengannya. Laci sendiri berkata: *approved months keep the figures they were approved with* |
+
+Yang dibekukan pada setiap run ialah **pembahagi** — bulan 26 hari, 7.5 jam
+sehari, cuti tanpa gaji atas 31 hari. **Kadar klinik tidak dibekukan**; ia
+dibaca semula setiap kali anda mengira.
+
+Dua akibat praktikal:
+
+1. **Tukar rule set antara bulan, bukan pertengahan bulan.** Kalau anda
+   menaikkan kadar sejam pada 20 haribulan dan mengira semula, sembilan belas
+   hari pertama bulan itu juga dibayar pada kadar baharu. Itu mungkin apa yang
+   anda mahu — tetapi ia keputusan, bukan kemalangan, dan tiada apa pada skrin
+   akan menyebutnya.
+2. **Selepas menukar, kira semula dan baca tahap Review semula sebelum
+   meluluskan.** Menukar mod kepada **Clinic rate** untuk kumpulan yang
+   mengandungi sesiapa bergaji RM4,000 ke bawah boleh menimbulkan halangan
+   baharu — *[nama set] pays below the Employment Act for N employees* — yang
+   tidak ada sebelum anda menukarnya.
+
+### 2.5 Attendance & leave policies
 
 **Apa gunanya.** Apa yang dikira **lewat**, apa yang dikira **sehari penuh**,
 dan apa yang tuntutan perlukan.
@@ -253,7 +338,7 @@ seseorang akan tertanya kenapa grace period jadi begitu.
 **Setiap tuntutan menyimpan kadar yang ia dihantar dengan.** Naikkan kadar
 hari ini dan perjalanan semalam tetap pada kadar lama. Itu disengajakan.
 
-### 2.5 Public holidays
+### 2.6 Public holidays
 
 **Apa gunanya.** Hari klinik tutup. Attendance dan Leave kedua-duanya baca
 senarai ini.
@@ -270,7 +355,7 @@ yang bekerja pada Hari Raya dibayar seperti hari biasa.
 > persekutuan dan negeri anda untuk tahun semasa. Tarikh Islam dan Cina
 > berubah setiap tahun — semak warta, jangan agak.
 
-### 2.6 Opening balances
+### 2.7 Opening balances
 
 **Apa gunanya.** Hanya untuk klinik yang mula guna Kuwick **pertengahan
 tahun**. Ia memberitahu Kuwick berapa yang sudah dibayar dan dipotong bulan-
@@ -298,7 +383,7 @@ Kuwick juga menolak bulan sebelum pekerjaan di sini bermula (itu Borang TP3,
 pada rekod pekerja) dan bulan yang run Kuwick yang sudah diluluskan telah
 tulis.
 
-### 2.7 Statutory rates
+### 2.8 Statutory rates
 
 **Apa gunanya.** Menunjukkan kadar KWSP, PERKESO dan LHDN yang Kuwick guna.
 **Anda tidak menaip kadar di sini — anda menyemaknya.**
@@ -768,6 +853,7 @@ tersalah set. Ia memang belum wujud dalam Kuwick hari ini.
 | **Fail pembayaran bank format bank tertentu** | Kuwick memberi senarai yang anda kunci masuk di portal bank sendiri |
 | **Gaji harian atau gaji sejam** | Kuwick mengira gaji bulanan sahaja. Pekerja berkadar harian akan **Blocked** dengan sebab itu |
 | **Jam × kadar dalam payroll** | Tiada di mana-mana. Setiap item yang anda tambah pada gaji ialah satu **amaun**, bukan jam darab kadar. Satu-satunya tempat jam didarab kadar ialah enjin lebih masa dan sesi locum |
+| **Ambang berkala untuk jam lebih** — contoh 45 jam seminggu, dan setiap jam selepas itu pada satu kadar rata | Tiada. Enjin menghargakan **hari demi hari** dan tidak pernah menjumlahkan satu minggu. Hanya dua mod wujud: Akta dan kadar klinik. Sementara itu, set **Overtime is not paid** pada pekerja berkenaan dan bayar jam lebihan sebagai satu item gaji yang dimasukkan tangan setiap bulan |
 | **Sesi locum untuk pekerja** | Modul **Locum sessions** hanya menerima orang yang **engagement = contractor**. Untuk pekerja bergaji, pelayan menolak dengan sebabnya. Lihat nota di bawah |
 | **Catatan lejar Finance untuk bayaran locum** | Sesi locum membawa status bayaran dan rujukan invois sendiri; catatan lejar ialah jurang yang diakui |
 
