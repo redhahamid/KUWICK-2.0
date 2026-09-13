@@ -1,0 +1,116 @@
+# HR UAT, September 2026 — findings, decisions and the work order
+
+The owner ran the HR/payroll cycle end to end on staging against the
+`Klinik Contoh (UAT)` world: create → calculate → approve → pay → payslip →
+portal. **The full cycle succeeded.** Seventeen findings came out of it.
+
+This is the backlog of record for the pieces that follow. `[D]` marks what was
+read in the code, `[A]` an assumption, `[O]` an owner decision.
+
+## The order, agreed
+
+| # | Piece | Contains |
+|---|---|---|
+| 1 | **Punches** | Finding 1, and finding 12 rides with it |
+| 2 | **Component statutory treatment** | Finding 17 |
+| 3 | **HR permissions** | Finding 2, and finding 5 rides with it |
+| 4 | **Settings that do nothing** | Findings 7, 8, the ORP divisors below, **and a full audit** |
+| 5 | **Payslip and export output** | Findings 13, 14, 16 |
+| 6 | **Payroll run DRAFT state** | Finding 6 is inside this; already carded |
+| 7 | **Portal on a phone** | Finding 4 |
+| 8 | **Periodic threshold mode** | Finding 10 — `docs/HR_PIECE4_PERIOD_THRESHOLD.md` |
+
+`[O]` Seventeen findings, eight pieces. Findings 12 and 5 are not separate work:
+12 touches the same file as piece 1 and must be rewritten once punches become
+rows; 5 is in `ClaimsPage.tsx`, which piece 3 already opens.
+
+`[O]` Piece 2 sits above piece 3 because a permission gap has a complete
+workaround — the owner does everything — and a wrong statutory flag does not:
+it reaches KWSP and LHDN under the clinic's own employer number.
+
+## Withdrawn
+
+- **Finding 15, net in words.** `[O]` Withdrawn by the owner. The hyphen is
+  present; it wrapped in the PDF and was lost on copying. `[O]` **The Malaysian
+  cheque form stays as it is** — *"Ringgit Malaysia … and sen … only"*. It is
+  not to be changed to the English word order.
+- **Finding 9, proration.** `[O]` Withdrawn — it came from reading documents,
+  not from an observed payslip. `[D]` s.18A proration is implemented and used:
+  `prorationFor` → `proratedBasicCents`, with the days-in-period divisor, and
+  `PART_MONTH` says so on the run.
+
+`[O]` In its place, piece 4 takes the finding that turned up while checking it.
+
+## Piece 2 — the statutory treatment this clinic needs
+
+`[O]` The clinic's required treatment, to be settable rather than hardcoded:
+
+| Component | EPF | SOCSO | EIS | PCB |
+|---|---|---|---|---|
+| Procedure incentives | ✗ | ✓ | ✓ | ✓ |
+| Commission / other | ✗ | ✓ | ✓ | ✓ |
+| Allowance | ✗ | ✓ | ✓ | ✓ |
+| Attendance allowance | ✗ | ✓ | ✓ | ✓ |
+| Overtime | ✗ | ✓ | ✓ | ✓ |
+| Locum (own employee) | ✗ | ✓ | ✓ | ✓ |
+| Director's fee | ✗ | ✗ | ✗ | ✓ |
+| Mileage / travelling | ✗ | ✗ | ✗ | ✗ |
+
+`[O]` **EPF ✗ throughout is this clinic's own choice** — they contribute on
+basic pay only. It is not a claim about Malaysian law, and **Kuwick must keep
+warning where its own opinion differs**, the way the EPF basis warning already
+does.
+
+`[O]` SOCSO reference given by the owner: perkeso.gov.my lists overtime,
+commission, and incentive / shift / meal / cost-of-living / housing allowances
+as wages; travelling claims are excluded.
+
+Both fixes are wanted, not one: (a) the account holder may edit a built-in
+component's switches, with a mandatory reason and an effective date, versioned
+the way an employee's statutory standing is; (b) a clinic may create its own
+components with free switches. Kuwick's catalogue becomes a recommendation.
+
+`[D]` The screen's own footnote, under the component list on
+**Settings ▸ Payroll items**, already concedes the problem:
+
+> No statutory treatment on this page has been checked against KWSP, PERKESO,
+> LHDN or HRD Corp. These flags reproduce what the payroll engine already did;
+> they are not a statement of Malaysian law.
+
+`[D]` So does `apps/api/src/workforce/pay-component-catalogue.ts`, whose header
+states every row ships `DRAFT` and that the file "does not assert that any flag
+is correct". Kuwick locks a treatment it declines to stand behind.
+
+## Piece 4 — settings that do nothing, and the audit
+
+Three known members:
+
+1. `[D]` **"Overtime must be approved"** changes nothing. Every pricing branch
+   gates on the day's own `overtimeApproved`, and nothing sets it but the
+   explicit approve action.
+2. `[D]` **The payroll cut-off day** is promised by the Settings card's
+   description and has no field on any screen.
+3. `[D]` **The ORP divisors.** `PayrollRun.orpOvertimeDays`,
+   `orpUnpaidLeaveDays` and `orpHoursPerDay` are **only ever read, never
+   written**, so every run uses the schema defaults 26 / 31 / 7.5. The rule
+   set's own `salaryProrationBasis`, `overtimeDays`, `unpaidLeaveDays`,
+   `overtimeHoursPerDay`, `leavePayBasis` and `terminationBasis` are stored,
+   shown in Settings, and never applied. For this clinic the defaults happen to
+   be the right numbers, which is what makes it dangerous rather than harmless.
+
+`[O]` **Before this piece closes, audit every HR setting**: for each field that
+can be set anywhere in Settings, establish whether the engine reads it, and
+report the dead ones. The owner expects more than these three.
+
+## Also settled during UAT
+
+- `[D]` **`payableMinutes` is dead.** `computeAttendance` derives it from
+  `unpaidBreakMinutes` / `breakAfterMinutes` and nothing reads it. Both fields
+  save, display, and change nothing. It belongs to piece 1, not piece 4,
+  because a clinic that punches its breaks may not want a flat deduction at
+  all — see that piece.
+- `[D]` **Finding 16 is partly demo data.** The payslip does read `epfNumber`,
+  `socsoNumber`, `taxNumber` and `identifierValue`; the seeded employees simply
+  have none. The decision the owner asked for still stands: does a payslip
+  refuse to issue without the KWSP and PERKESO numbers, or print with a
+  warning?
