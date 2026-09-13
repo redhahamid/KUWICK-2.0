@@ -148,6 +148,50 @@ identity fixed, evidence required, and only then the change.
 | `apps/api/test/payroll-stage2.e2e-spec.ts` | The old rule's test, rewritten to the new contract |
 | `apps/web/src/admin/hr/payrollItems.test.tsx` | 8 tests: the switch is live, it still asks when and why, the row says whose decision it was, history keeps Kuwick's guess and the clinic's apart, a new item starts liable to nothing but tax |
 
+## 7b. The demo world decides, and the months are priced under it
+
+`[D]` `seed-hr-uat.ts` now applies the clinic's table **through the same
+endpoint an owner uses** — dated, reasoned, marked as the clinic's — before
+the three payroll months are calculated. Not in the product seed: the demo
+tenant is a clinic that has made these decisions, which is a different thing
+from Kuwick shipping them.
+
+`[D]` It is idempotent by comparison, not by a flag: on a re-run the months
+below are already approved and a treatment change dated into an approved
+period is refused, correctly. Nothing differs, so nothing is sent.
+
+`[D]` Measured against the database afterwards, not inferred from the log:
+
+| Component | Versions | Clinic-decided |
+|---|---|---|
+| `ALLOWANCE`, `ATTENDANCE_ALLOWANCE`, `COMMISSION`, `INCENTIVE`, `LOCUM_FEE`, `MILEAGE` | 2 | yes |
+| `BASIC`, `DIRECTOR_FEE`, `OVERTIME` | 1 | no |
+
+Six versioned, three untouched — and the three untouched are exactly the ones
+that already matched or were never in the table. A no-op edit did not litter
+the history.
+
+`[D]` Version 1 closes `2026-05-31` and version 2 opens `2026-06-01`: no gap,
+no overlap, so every period resolves to exactly one treatment.
+
+### It reached the money
+
+`[D]` Dr Meera Kaur, June, read from `payroll_lines`:
+
+| | |
+|---|---|
+| Gross pay | RM 10,400.00 |
+| of which allowances | RM 900.00 |
+| Basic | RM 9,500.00 |
+| **EPF employee** | **RM 1,045.00** |
+
+RM1,045 is 11% of **9,500**, not of 10,400. Under Kuwick's seeded treatment it
+would have been RM1,144. The clinic's decision moved RM99 in one month for one
+employee, which is the whole point of the piece: the flags on that screen are
+what the engine reads.
+
+Screenshots: `docs/screenshots/hr-components/`.
+
 ## 8. Gates
 
 `[D]` Run **sequentially**, on 2026-09-13.

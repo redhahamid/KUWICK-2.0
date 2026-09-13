@@ -278,7 +278,7 @@ export function PayrollItemsPage() {
                       {row.changeReason ? <span className="hr-decided__why">{row.changeReason}</span> : null}
                     </div>
                   ) : null}
-                  <button type="button" className="hr-link hr-small" onClick={() => setHistoryOf(row.code)}>
+                  <button type="button" className="hr-historyLink" onClick={() => setHistoryOf(row.code)}>
                     History
                   </button>
                 </div>

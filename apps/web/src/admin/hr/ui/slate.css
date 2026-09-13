@@ -2413,3 +2413,21 @@ textarea.hr-f {
   font-size: 13px;
   cursor: pointer;
 }
+
+/* A quiet way into a component's versions. It sits on its own line under the
+   code: beside it, a bordered control reads as part of the code itself. */
+.hr-historyLink {
+  display: block;
+  margin-top: 4px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--hr-teal);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.hr-historyLink:hover {
+  color: var(--hr-ink);
+}

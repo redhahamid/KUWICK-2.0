@@ -335,6 +335,64 @@ async function main() {
     return text ? (JSON.parse(text) as unknown) : null;
   };
 
+  /*
+   * THE CLINIC'S OWN STATUTORY TREATMENT, decided before a month is priced.
+   *
+   * Kuwick seeds a catalogue that reproduces what the old engine did, and says
+   * of itself that no authority has checked it. THIS clinic contributes EPF on
+   * basic pay only, counts an employee's own locum session as wages, and treats
+   * mileage as a reimbursement rather than pay. All three are lawful choices a
+   * clinic makes, all three differ from the seed, and none of them is shipped
+   * as a default — the product must not hardcode one clinic's policy in place
+   * of another's.
+   *
+   * So the demo world makes them the way an owner does: through the same
+   * endpoint, dated, reasoned, and marked as the clinic's decision. Applied
+   * BEFORE the three months below, so those months are priced under the
+   * clinic's table rather than under Kuwick's guess.
+   */
+  const TREATMENT: { code: string; epf: boolean; socso: boolean; eis: boolean; pcb: boolean; why: string }[] = [
+    { code: 'INCENTIVE', epf: false, socso: true, eis: true, pcb: true, why: 'Clinic policy: EPF is contributed on basic pay only.' },
+    { code: 'COMMISSION', epf: false, socso: true, eis: true, pcb: true, why: 'Clinic policy: EPF is contributed on basic pay only.' },
+    { code: 'ALLOWANCE', epf: false, socso: true, eis: true, pcb: true, why: 'Clinic policy: EPF is contributed on basic pay only.' },
+    { code: 'ATTENDANCE_ALLOWANCE', epf: false, socso: true, eis: true, pcb: true, why: 'Clinic policy: EPF is contributed on basic pay only.' },
+    { code: 'OVERTIME', epf: false, socso: true, eis: true, pcb: true, why: 'Clinic policy: EPF is contributed on basic pay only.' },
+    { code: 'LOCUM_FEE', epf: false, socso: true, eis: true, pcb: true, why: "An employee's own locum session is wages, so SOCSO and EIS apply." },
+    { code: 'DIRECTOR_FEE', epf: false, socso: false, eis: false, pcb: true, why: "A director's fee here is a fee, not employment income." },
+    { code: 'MILEAGE', epf: false, socso: false, eis: false, pcb: false, why: 'Reimbursement of travel actually incurred, not pay.' },
+  ];
+
+  const treatmentFrom = ym(monthStart(-3)) + '-01';
+  const catalogue = (await call('GET', '/workforce/pay-components')) as {
+    components: (Record<string, unknown> & { code: string; epfLiable: boolean; socsoLiable: boolean; eisLiable: boolean; pcbLiable: boolean })[];
+  };
+  let decided = 0;
+  for (const want of TREATMENT) {
+    const row = catalogue.components.find((component) => component.code === want.code);
+    if (!row) continue;
+    // IDEMPOTENT, and it has to be: on a re-run the months below are already
+    // approved, and a treatment change dated into an approved period is refused
+    // — correctly. Nothing differs, so nothing is sent.
+    const differs =
+      row.epfLiable !== want.epf || row.socsoLiable !== want.socso || row.eisLiable !== want.eis || row.pcbLiable !== want.pcb;
+    if (!differs) continue;
+    await call('POST', '/workforce/pay-components', {
+      ...row,
+      epfLiable: want.epf,
+      socsoLiable: want.socso,
+      eisLiable: want.eis,
+      pcbLiable: want.pcb,
+      effectiveFrom: treatmentFrom,
+      reason: want.why,
+    });
+    decided += 1;
+  }
+  summary.push(
+    decided > 0
+      ? `Statutory treatment: ${decided} component(s) set by the clinic from ${treatmentFrom}, each with its reason`
+      : 'Statutory treatment: already as this clinic decided',
+  );
+
   for (const offset of [-3, -2, -1]) {
     const period = monthStart(offset);
     const key = ym(period);
