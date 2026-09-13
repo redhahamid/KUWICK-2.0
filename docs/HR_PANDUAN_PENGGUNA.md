@@ -288,8 +288,8 @@ branch*, *the group default*, atau *Kuwick's built-in default*.
 | **Short after** | Berapa minit sebelum habis syif yang masih tidak dikira balik awal | 5 min | 5–10 min | Terlalu besar: balik awal setengah jam pun tidak kelihatan |
 | **Overtime minimum** | Masa lebih di bawah ini bukan lebih masa langsung | 30 min | 30 min | 0 bermakna tunggu 3 minit lepas syif pun jadi calon lebih masa |
 | **Overtime rounds down to** | Lebih masa dibundarkan **ke bawah** kepada gandaan ini. 0 matikan pembundaran | 15 min | 15 atau 30 min | — |
-| **Unpaid break** | Berapa minit rehat ditolak dari syif | 0 min | 60 min kalau klinik tutup waktu makan | 0 bermakna waktu rehat dibayar |
-| **Break applies to shifts over** | Syif lebih pendek dari ini tiada potongan rehat | 360 min (6 jam) | 300–360 min | Terlalu kecil: syif 4 jam pun kena potong sejam |
+| **Unpaid break** | Sepatutnya: berapa minit rehat ditolak dari syif. **Tidak berfungsi hari ini** — lihat bahagian 6 | 0 min | Biarkan `0` | Menetapkannya tidak mengubah apa-apa: bukan jam yang dipaparkan, bukan slip gaji |
+| **Break applies to shifts over** | Pasangan kepada medan di atas. **Tidak berfungsi hari ini** | 360 min (6 jam) | Biarkan seperti sedia ada | Sama |
 | **Longest believable shift** | Pasangan clock in / clock out lebih lama dari ini ditanda, bukan dipercayai | 16 jam | 12–16 jam | Terlalu besar: staf yang lupa clock out dikira kerja 23 jam |
 
 **Susunan penting, dan skrin memberitahunya:** *The minimum is applied before
@@ -675,21 +675,37 @@ salah. Permohonan itu muncul pada tab **Corrections** anda.
 
 ### Staff clock out masa rehat — kena set Unpaid break tak?
 
-**Ya, kalau anda mahu waktu rehat ditolak.**
+**Jangan.** Medan itu tidak berfungsi, dan clock out waktu rehat tidak
+membantu. Beritahu staf: **clock in sekali pagi, clock out sekali balik.**
 
-Satu hari ada **satu** clock in dan **satu** clock out. Punch pertama hari itu
-ialah waktu masuk dan ia tidak berubah lagi; setiap punch selepas itu hanya
-menggerakkan waktu keluar ke waktu terkini. Jadi kalau seseorang clock out
-pukul 1, clock in semula pukul 2, dan balik pukul 6, hari itu dikira
-**pukul masuk hingga pukul 6** — waktu rehat termasuk di dalamnya.
+Dua sebab, kedua-duanya perlu anda tahu sebelum UAT.
 
-Untuk menolak rehat, set **Unpaid break** (contoh `60` min) dan **Break
-applies to shifts over** (contoh `360` min) dalam **Settings ▸ Attendance &
-leave policies**. Kuwick akan tolak 60 minit dari setiap syif 6 jam ke atas,
-tanpa peduli berapa kali orang itu tekan butang.
+**Satu hari menyimpan satu clock in dan satu clock out sahaja.** Punch pertama
+hari itu menjadi waktu masuk dan tidak berubah lagi; setiap punch selepasnya
+hanya menggerakkan waktu keluar ke waktu terkini. Punch di tengah **tidak
+disimpan langsung**. Jadi staf yang clock out pukul 1, clock in semula pukul 2
+dan balik pukul 6 menghasilkan satu baris sahaja — pukul masuk hingga pukul 6 —
+dan jam rehat termasuk di dalamnya, sama seperti kalau mereka tidak menekan
+apa-apa waktu rehat.
 
-Beritahu staf: **tak perlu clock out waktu rehat.** Ia tidak membantu, dan ia
-berisiko — kalau mereka lupa clock in semula, hari itu jadi pendek.
+**Medan Unpaid break tidak menolak apa-apa.** Angka yang ia hasilkan tidak
+disimpan dan tidak dibaca oleh mana-mana skrin atau slip gaji. Menetapkannya
+kepada 60 minit mengubah tiada satu angka pun.
+
+**Jadi hari ini tiada cara automatik untuk mengecualikan rehat dari jam
+sehari.** Yang ada: tekan **Fix** pada baris hari itu dan taip waktu masuk dan
+keluar yang anda mahu direkodkan, dengan sebabnya. Itu masih satu tempoh, bukan
+dua.
+
+**Sejauh mana ia penting.** Pada **hari kerja biasa**, jam yang melambung tidak
+mengubah bayaran: gaji ialah angka bulanan, dan lebih masa diukur dari waktu
+tamat syif ke punch terakhir, bukan dari jumlah jam. Ia penting pada **hari
+rehat dan cuti umum yang dikerja**, di mana jumlah jam menentukan sama ada hari
+itu dibayar sebagai sesi separuh hari atau syif penuh, dan berapa jam melebihi
+hari normal. Dan ia penting untuk sesiapa yang membaca lajur **Worked** sebagai
+jam sebenar — ia bukan.
+
+Lihat bahagian 6.
 
 ### OT tak muncul dalam payroll — kenapa?
 
@@ -854,6 +870,8 @@ tersalah set. Ia memang belum wujud dalam Kuwick hari ini.
 | **Gaji harian atau gaji sejam** | Kuwick mengira gaji bulanan sahaja. Pekerja berkadar harian akan **Blocked** dengan sebab itu |
 | **Jam × kadar dalam payroll** | Tiada di mana-mana. Setiap item yang anda tambah pada gaji ialah satu **amaun**, bukan jam darab kadar. Satu-satunya tempat jam didarab kadar ialah enjin lebih masa dan sesi locum |
 | **Ambang berkala untuk jam lebih** — contoh 45 jam seminggu, dan setiap jam selepas itu pada satu kadar rata | Tiada. Enjin menghargakan **hari demi hari** dan tidak pernah menjumlahkan satu minggu. Hanya dua mod wujud: Akta dan kadar klinik. Sementara itu, set **Overtime is not paid** pada pekerja berkenaan dan bayar jam lebihan sebagai satu item gaji yang dimasukkan tangan setiap bulan |
+| **Lebih dari dua punch sehari** | Tidak disokong. Pangkalan data menyimpan **satu baris satu orang satu hari** dengan satu waktu masuk dan satu waktu keluar, dan punch di tengah tidak disimpan di mana-mana — tiada jejak audit untuknya. Jam sehari ialah punch pertama hingga punch terakhir, bukan jumlah setiap pasangan masuk-keluar |
+| **Unpaid break** dan **Break applies to shifts over** | Kedua-duanya boleh diset dan disimpan, tetapi angka yang dihasilkannya tidak disimpan dan tidak dibaca oleh apa-apa. Tiada potongan rehat berlaku |
 | **Sesi locum untuk pekerja** | Modul **Locum sessions** hanya menerima orang yang **engagement = contractor**. Untuk pekerja bergaji, pelayan menolak dengan sebabnya. Lihat nota di bawah |
 | **Catatan lejar Finance untuk bayaran locum** | Sesi locum membawa status bayaran dan rujukan invois sendiri; catatan lejar ialah jurang yang diakui |
 
