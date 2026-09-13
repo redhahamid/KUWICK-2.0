@@ -708,8 +708,19 @@ export function useTimesheet(params: { from: string; to: string; clinicId?: stri
 
 export function useCorrectAttendance() {
   return useAdminMutation(
-    ({ id, ...body }: { id: string; clockInAt?: string; clockOutAt?: string; status?: string; reason: string }) =>
-      apiClient.patch(`/workforce/attendance/${id}/correct`, body),
+    ({
+      id,
+      ...body
+    }: {
+      id: string;
+      /** The whole day, punch by punch — what moved, what was marked wrong, what was added. */
+      punches?: { id?: string; at?: string; kind?: 'IN' | 'OUT'; wrong?: boolean }[];
+      /** The older two-field form: the day's two ends. Still accepted. */
+      clockInAt?: string;
+      clockOutAt?: string;
+      status?: string;
+      reason: string;
+    }) => apiClient.patch(`/workforce/attendance/${id}/correct`, body),
     ['admin-hr'],
   );
 }

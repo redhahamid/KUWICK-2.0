@@ -168,7 +168,18 @@ export interface MyAttendanceDay {
     reason: string;
     decisionNote: string | null;
     createdAt: string;
-  } | null;
+  } | null;  /** Every press of the button that day, superseded ones included. */
+  punches: {
+    id: string;
+    at: string;
+    kind: 'IN' | 'OUT';
+    source: string;
+    proofUrl: string | null;
+    supersededAt: string | null;
+    supersededReason: string | null;
+    supersededBy: string | null;
+    recordedBy: string | null;
+  }[];
 }
 
 export interface StaffFileRef {

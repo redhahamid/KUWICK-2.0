@@ -175,9 +175,20 @@ export class MeService {
       }),
       this.prisma.attendanceRecord.findFirst({ where: { staffId: actor.id, workDate: today } }),
       // The overnight case: yesterday's shift may still be running.
-      this.prisma.attendanceRecord.findFirst({
-        where: { staffId: actor.id, clockInAt: { not: null }, clockOutAt: null },
-        orderBy: { workDate: 'desc' },
+      this.prisma.attendancePunch.findFirst({
+        /*
+         * STILL ON DUTY IS THE LAST PUNCH, NOT AN EMPTY CLOCK-OUT.
+         *
+         * This asked for a day with a clock-in and no clock-out. Once a day
+         * can hold four punches, somebody who clocked out at lunch and back in
+         * HAS a clock-out — the middle one — so the portal would have shown
+         * them the Clock in button while they were standing at the counter,
+         * and the punch would have opened a third stretch. The day's last
+         * punch that counts is the only thing that answers this.
+         */
+        where: { staffId: actor.id, supersededAt: null },
+        orderBy: { at: 'desc' },
+        include: { record: { select: { workDate: true } } },
       }),
       this.prisma.leaveRequest.count({ where: { staffId: actor.id, status: LeaveStatus.PENDING } }),
       this.prisma.leaveRequest.findFirst({
@@ -224,7 +235,7 @@ export class MeService {
       this.leaveService.balancesForSelf(actor.id, year),
     ]);
 
-    const onDuty = Boolean(openRecord);
+    const onDuty = openRecord?.kind === 'IN';
     const annual = balances.balances.find((row) => row.leaveType === LeaveType.ANNUAL) ?? null;
     const medical = balances.balances.find((row) => row.leaveType === LeaveType.MEDICAL) ?? null;
     const money = (value: unknown) => Number(value ?? 0);
@@ -282,10 +293,10 @@ export class MeService {
       // in this response, because it decides which button the page shows.
       clock: {
         onDuty,
-        since: openRecord?.clockInAt ?? null,
+        since: onDuty ? (openRecord?.at ?? null) : null,
         // Named so the phone does not have to work out whether an open record
         // from yesterday means an overnight shift or a forgotten clock-out.
-        openSince: openRecord ? openRecord.workDate.toISOString().slice(0, 10) : null,
+        openSince: onDuty && openRecord ? openRecord.record.workDate.toISOString().slice(0, 10) : null,
         todayStatus: todayRecord?.status ?? null,
       },
       todayShifts: todayShifts.map((shift) => ({
@@ -444,6 +455,24 @@ export class MeService {
           take: 1,
           select: { id: true, status: true, reason: true, decisionNote: true, createdAt: true },
         },
+        // An employee sees every punch of their own day, superseded ones
+        // included: "the manager changed my clock-in" is exactly the dispute
+        // this record exists to settle, and it cannot settle it by hiding the
+        // punch that was replaced.
+        punches: {
+          orderBy: { at: 'asc' },
+          select: {
+            id: true,
+            at: true,
+            kind: true,
+            source: true,
+            proofUrl: true,
+            supersededAt: true,
+            supersededReason: true,
+            supersededBy: { select: { fullName: true } },
+            recordedBy: { select: { fullName: true } },
+          },
+        },
       },
     });
 
@@ -454,6 +483,17 @@ export class MeService {
       scheduledEnd: row.scheduledEnd,
       clockInAt: row.clockInAt,
       clockOutAt: row.clockOutAt,
+      punches: row.punches.map((punch) => ({
+        id: punch.id,
+        at: punch.at,
+        kind: punch.kind,
+        source: punch.source,
+        proofUrl: punch.proofUrl,
+        supersededAt: punch.supersededAt,
+        supersededReason: punch.supersededReason,
+        supersededBy: punch.supersededBy?.fullName ?? null,
+        recordedBy: punch.recordedBy?.fullName ?? null,
+      })),
       status: row.status,
       source: row.source,
       proofUrl: row.proofUrl,

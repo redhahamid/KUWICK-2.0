@@ -123,8 +123,7 @@ export function MyAttendancePage() {
                 <tr>
                   <th>Day</th>
                   <th>Rostered</th>
-                  <th>In</th>
-                  <th>Out</th>
+                  <th>Punches</th>
                   <th className="hr-num">Hours</th>
                   <th>Status</th>
                   <th />
@@ -149,15 +148,26 @@ export function MyAttendancePage() {
                     </td>
                     <td>{day.scheduledStart ? `${time(day.scheduledStart)}–${time(day.scheduledEnd)}` : <span className="hr-faint">No shift</span>}</td>
                     <td>
-                      <span className="hr-dots">
-                        {proof(day.proofUrl, 'Clock-in selfie')}
-                        {time(day.clockInAt)}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="hr-dots">
-                        {proof(day.clockOutProofUrl, 'Clock-out selfie')}
-                        {time(day.clockOutAt)}
+                      {/*
+                        * EVERY PUNCH OF YOUR OWN DAY, superseded ones included.
+                        * "The manager changed my clock-in" is the dispute this
+                        * record exists to settle, and it cannot settle it by
+                        * hiding the punch that was replaced.
+                        */}
+                      <span className="hr-punches">
+                        {(day.punches ?? []).length === 0 ? <span className="hr-faint">—</span> : null}
+                        {(day.punches ?? []).map((punch) => (
+                          <span
+                            key={punch.id}
+                            className={`hr-punchPair${punch.supersededAt ? ' hr-punch--gone' : ''}`}
+                            title={punch.supersededReason ?? undefined}
+                          >
+                            {proof(punch.proofUrl, `${punch.kind === 'IN' ? 'Clock-in' : 'Clock-out'} selfie`)}
+                            {time(punch.at)} {punch.kind === 'IN' ? 'in' : 'out'}
+                            {punch.supersededAt ? ' · marked wrong' : ''}
+                            {punch.recordedBy ? ` · by ${punch.recordedBy}` : ''}
+                          </span>
+                        ))}
                       </span>
                     </td>
                     <td className="hr-num">{hours(day.workedMinutes)}</td>

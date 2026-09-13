@@ -2234,3 +2234,44 @@ textarea.hr-f {
 .hr-linkButton:hover {
   text-decoration: underline;
 }
+
+/* ── Punches on a day ──────────────────────────────────────────────────────
+   A day is a strip of pairs, not two times. The gap between two pairs is the
+   thing the owner opened this screen for — somebody clocked out and came back
+   — so it is stated with its length and never judged. */
+.hr-punches { display: flex; flex-direction: column; gap: 2px; }
+.hr-punchPair { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.hr-punchGap {
+  font-size: 11px;
+  color: var(--hr-gold-ink, #8a6d1f);
+  padding-left: 2px;
+}
+.hr-punchGap::before { content: '└ '; opacity: 0.55; }
+.hr-punch--gone { text-decoration: line-through; opacity: 0.5; }
+
+/* The Fix drawer: the day as a list, one line per punch. */
+.hr-punchList { display: flex; flex-direction: column; gap: 0; margin: 2px 0 10px; }
+.hr-punchRow {
+  display: grid;
+  grid-template-columns: 22px 42px 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--hr-line, #e6ebee);
+}
+.hr-punchRow--gone { opacity: 0.55; }
+.hr-punchRow--gone .hr-punchRow__time { text-decoration: line-through; }
+.hr-punchRow__n { font-size: 12px; color: var(--hr-muted, #6b7a83); text-align: right; }
+.hr-punchRow__kind { font-size: 12px; font-weight: 600; }
+.hr-punchRow__meta { font-size: 11px; color: var(--hr-muted, #6b7a83); }
+.hr-punchRow__wrong {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; font-size: 12px; color: var(--hr-red, #b4291f); text-decoration: underline;
+}
+.hr-punchRow__wrong[disabled] { color: var(--hr-muted, #6b7a83); cursor: default; text-decoration: none; }
+.hr-punchPreview {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 10px 4px; border-top: 1px solid var(--hr-line, #e6ebee);
+  font-size: 13px;
+}
+.hr-punchPreview__warn { font-size: 12px; color: var(--hr-gold-ink, #8a6d1f); }

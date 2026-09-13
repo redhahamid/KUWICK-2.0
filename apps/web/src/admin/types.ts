@@ -707,8 +707,33 @@ export interface TimesheetReport {
       clockOutProofUrl: string | null;
       outsideClinic: boolean;
       distanceMetres: number | null;
+      /**
+       * EVERY PRESS OF THE BUTTON, in order, superseded ones included.
+       *
+       * `clockInAt` and `clockOutAt` above are the day's two ends. They cannot
+       * say that somebody clocked out at lunch and back in, which is exactly
+       * what this clinic's admin staff do so the owner can see who left and
+       * came back late.
+       */
+      punches: AttendancePunchRow[];
     }[];
   }[];
+}
+
+export interface AttendancePunchRow {
+  id: string;
+  at: string;
+  kind: 'IN' | 'OUT';
+  source: 'PORTAL' | 'QR' | 'DEVICE' | 'MANUAL';
+  proofUrl: string | null;
+  outsideClinic: boolean;
+  distanceMetres: number | null;
+  /** Replaced by a correction. Drawn struck through, never hidden. */
+  supersededAt: string | null;
+  supersededReason: string | null;
+  supersededBy: string | null;
+  /** Null is the employee themselves; a name is the supervisor who recorded it. */
+  recordedBy: string | null;
 }
 
 export interface PayrollRunRow {

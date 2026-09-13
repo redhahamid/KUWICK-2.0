@@ -21,7 +21,7 @@ import { Table } from './ui/Table';
 import { IconClock, IconDownload, IconEdit } from './ui/icons';
 import { initialsOf } from './ui/who';
 import { downloadCsv } from './ui/csv';
-import type { TimesheetReport } from '../types';
+import type { AttendancePunchRow, TimesheetReport } from '../types';
 
 type Tab = 'timesheet' | 'roster' | 'corrections' | 'summary';
 type StaffRow = TimesheetReport['staff'][number];
@@ -80,6 +80,7 @@ export function TimesheetPage() {
   const [day, setDay] = useState(clinicDayjs(new Date()).format('YYYY-MM-DD'));
   const [month, setMonth] = useState(clinicDayjs(new Date()).startOf('month'));
   const [fixing, setFixing] = useState<DayRow | null>(null);
+  const [punchDraft, setPunchDraft] = useState<PunchDraft[]>([]);
   const [clockIn, setClockIn] = useState('');
   const [clockOut, setClockOut] = useState('');
   const [why, setWhy] = useState('');
@@ -201,6 +202,13 @@ export function TimesheetPage() {
     setFixing(row);
     setClockIn(row.record?.clockInAt ? formatClinicTime(row.record.clockInAt) : '');
     setClockOut(row.record?.clockOutAt ? formatClinicTime(row.record.clockOutAt) : '');
+    // The drawer opens on the day as it stands: every punch that counts, in
+    // order. A superseded one is already history and is not editable again.
+    setPunchDraft(
+      (row.record?.punches ?? [])
+        .filter((punch) => !punch.supersededAt)
+        .map((punch) => ({ id: punch.id, at: formatClinicTime(punch.at), kind: punch.kind })),
+    );
     setWhy('');
   };
 
@@ -214,10 +222,17 @@ export function TimesheetPage() {
     }
     try {
       if (fixing.record) {
+        // The whole day goes back, punch by punch: what moved, what was marked
+        // wrong, and what was added. A punch with no time was added and never
+        // filled in, and is simply not sent.
         await correct.mutateAsync({
           id: fixing.record.id,
-          clockInAt: at(clockIn),
-          clockOutAt: at(clockOut),
+          punches: punchDraft
+            .filter((punch) => punch.wrong || punch.at)
+            .map((punch) => ({
+              ...(punch.id ? { id: punch.id } : {}),
+              ...(punch.wrong ? { wrong: true } : { at: at(punch.at), kind: punch.kind }),
+            })),
           reason: why.trim(),
         });
         message.success('Corrected. The original punch stays on the record.');
@@ -383,23 +398,15 @@ export function TimesheetPage() {
                     ),
                 },
                 {
-                  title: 'Clock in',
-                  key: 'in',
-                  width: 130,
-                  render: (_: unknown, row) => <Punch at={row.record?.clockInAt ?? null} proof={row.record?.proofUrl ?? null} late={(row.record?.lateMinutes ?? 0) > 0} alt="Clock-in selfie" />,
-                },
-                {
-                  title: 'Clock out',
-                  key: 'out',
-                  width: 130,
-                  render: (_: unknown, row) => (
-                    <Punch
-                      at={row.record?.clockOutAt ?? null}
-                      proof={row.record?.clockOutProofUrl ?? null}
-                      late={(row.record?.earlyOutMinutes ?? 0) > 0}
-                      alt="Clock-out selfie"
-                    />
-                  ),
+                  title: 'Punches',
+                  key: 'punches',
+                  width: 230,
+                  render: (_: unknown, row) =>
+                    row.record ? (
+                      <Punches punches={row.record.punches ?? []} alt={`${row.name}, punch selfie`} />
+                    ) : (
+                      <span className="hr-tn">—</span>
+                    ),
                 },
                 {
                   title: 'Result',
@@ -634,7 +641,17 @@ export function TimesheetPage() {
                 width: 125,
                 render: (count: number) => (count > 0 ? <span className="hr-ts">{count}</span> : <span className="hr-tn">0</span>),
               },
-              { title: 'Worked', dataIndex: 'workedHours', num: true, width: 95, render: (value: number) => `${value.toFixed(1)} h` },
+              {
+                title: 'Worked',
+                dataIndex: 'workedHours',
+                num: true,
+                width: 95,
+                render: (value: number, row) => (
+                  <Link className="hr-link" to={`/admin/hr/attendance?staffId=${row.staffId}&month=${month.format('YYYY-MM')}`}>
+                    {value.toFixed(1)} h
+                  </Link>
+                ),
+              },
               {
                 title: 'Late',
                 dataIndex: 'lateOccasions',
@@ -643,19 +660,42 @@ export function TimesheetPage() {
                 render: (count: number, row) =>
                   count === 0 ? <span className="hr-tn">0</span> : <span className="hr-ts">{count}× · {row.lateMinutes} min</span>,
               },
+              /*
+                * A FIGURE THAT CANNOT BE OPENED IS A DEAD END (finding 12).
+                *
+                * "OT pending 4.0 h" with no way through to the days behind it
+                * left the only route as walking the Timesheet backwards a day
+                * at a time. Every number here now opens the month for that one
+                * person, where the days it is made of are listed and each can
+                * be approved.
+                */
               {
                 title: 'OT approved',
                 dataIndex: 'approvedOvertimeHours',
                 num: true,
                 width: 120,
-                render: (value: number) => (value === 0 ? <span className="hr-tn">—</span> : <span className="hr-tg">{value.toFixed(1)} h</span>),
+                render: (value: number, row) =>
+                  value === 0 ? (
+                    <span className="hr-tn">—</span>
+                  ) : (
+                    <Link className="hr-link hr-tg" to={`/admin/hr/attendance?staffId=${row.staffId}&month=${month.format('YYYY-MM')}`}>
+                      {value.toFixed(1)} h
+                    </Link>
+                  ),
               },
               {
                 title: 'OT pending',
                 dataIndex: 'unapprovedOvertimeHours',
                 num: true,
                 width: 115,
-                render: (value: number) => (value === 0 ? <span className="hr-tn">—</span> : <span className="hr-gold">{value.toFixed(1)} h</span>),
+                render: (value: number, row) =>
+                  value === 0 ? (
+                    <span className="hr-tn">—</span>
+                  ) : (
+                    <Link className="hr-link hr-gold" to={`/admin/hr/attendance?staffId=${row.staffId}&month=${month.format('YYYY-MM')}`}>
+                      {value.toFixed(1)} h
+                    </Link>
+                  ),
               },
             ]}
           />
@@ -683,35 +723,34 @@ export function TimesheetPage() {
           </>
         }
       >
-        <div className="hr-pform">
-          <div>
-            <label htmlFor="fix-in">Clock in</label>
-            <input id="fix-in" type="time" className="hr-f" value={clockIn} onChange={(event) => setClockIn(event.target.value)} />
+        {fixing?.record ? (
+          <PunchEditor
+            punches={fixing.record.punches ?? []}
+            draft={punchDraft}
+            onChange={setPunchDraft}
+          />
+        ) : (
+          <div className="hr-pform">
+            <div>
+              <label htmlFor="fix-in">Clock in</label>
+              <input id="fix-in" type="time" className="hr-f" value={clockIn} onChange={(event) => setClockIn(event.target.value)} />
+            </div>
           </div>
-          <div>
-            <label htmlFor="fix-out">Clock out</label>
-            <input
-              id="fix-out"
-              type="time"
-              className="hr-f"
-              value={clockOut}
-              disabled={!fixing?.record}
-              onChange={(event) => setClockOut(event.target.value)}
-            />
-          </div>
-          {fixing?.record ? (
+        )}
+        {fixing?.record ? (
+          <div className="hr-pform">
             <div className="hr-pform__full">
               <label htmlFor="fix-why">Why</label>
               <textarea
                 id="fix-why"
                 className="hr-f"
-                placeholder="e.g. Clocked in at reception, phone was flat"
+                placeholder="e.g. Clocked out at reception, phone was flat"
                 value={why}
                 onChange={(event) => setWhy(event.target.value)}
               />
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
         {fixing?.record ? (
           <div className="hr-notice hr-notice--info">
             The original punch stays on the record with your name and the reason against it. The employee sees both.
@@ -730,6 +769,200 @@ export function TimesheetPage() {
         ) : null}
       </Drawer>
     </HrPage>
+  );
+}
+
+
+/** One line of the day as the manager left it. */
+type PunchDraft = { id?: string; at: string; kind: 'IN' | 'OUT'; wrong?: boolean };
+
+/**
+ * THE FIX DRAWER IS THE DAY, NOT A FORM.
+ *
+ * Two time fields could not express a day somebody clocked out at lunch and
+ * back in, which is the day this clinic's admin staff work. So the drawer
+ * lists the punches in order and lets each one be moved, marked wrong, or
+ * added to.
+ *
+ * "WRONG", IN WORDS, NEVER A BIN ICON. A manager in a hurry reads a bin as
+ * delete, and a manager who believes the button destroys a punch forever will
+ * hesitate over a day that genuinely needs correcting. Nothing here deletes
+ * anything: a punch marked wrong is struck through and stays, on screen and on
+ * the record, with the reason and the name against it.
+ *
+ * AND THE PREVIEW NEVER SHOWS A BARE NUMBER. Marking a punch wrong without
+ * replacing it leaves the day unpaired, and the hours then fall — correctly,
+ * but a smaller figure on its own reads as an answer rather than a warning. So
+ * an unpaired day says `incomplete` and names the punch left hanging.
+ */
+function PunchEditor({
+  punches,
+  draft,
+  onChange,
+}: {
+  punches: AttendancePunchRow[];
+  draft: PunchDraft[];
+  onChange: (next: PunchDraft[]) => void;
+}) {
+  const live = draft.filter((row) => !row.wrong);
+  const minutes = (() => {
+    const sorted = [...live].sort((a, b) => a.at.localeCompare(b.at));
+    let total = 0;
+    let open: string | null = null;
+    let hanging: PunchDraft | null = null;
+    for (const row of sorted) {
+      if (row.kind === 'IN') {
+        if (open) hanging = row;
+        open = row.at;
+      } else if (open) {
+        const [ah, am] = open.split(':').map(Number);
+        const [bh, bm] = row.at.split(':').map(Number);
+        total += Math.max(0, bh * 60 + bm - (ah * 60 + am));
+        open = null;
+      } else {
+        hanging = row;
+      }
+    }
+    if (open) hanging = sorted.filter((r) => r.kind === 'IN').reverse()[0] ?? null;
+    return { total, hanging };
+  })();
+
+  const before = punches.filter((p) => !p.supersededAt).length;
+  const wasMinutes = (() => {
+    let total = 0;
+    let open: Date | null = null;
+    for (const row of punches.filter((p) => !p.supersededAt)) {
+      if (row.kind === 'IN') open = new Date(row.at);
+      else if (open) {
+        total += Math.max(0, Math.round((new Date(row.at).getTime() - open.getTime()) / 60000));
+        open = null;
+      }
+    }
+    return total;
+  })();
+
+  const set = (index: number, patch: Partial<PunchDraft>) =>
+    onChange(draft.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+
+  return (
+    <>
+      <div className="hr-small hr-muted" style={{ marginBottom: 4 }}>
+        The punches as recorded
+      </div>
+      <div className="hr-punchList">
+        {draft.map((row, index) => {
+          const stored = punches.find((p) => p.id === row.id);
+          return (
+            <div key={row.id ?? `new-${index}`} className={`hr-punchRow${row.wrong ? ' hr-punchRow--gone' : ''}`}>
+              <span className="hr-punchRow__n">{index + 1}</span>
+              <span className="hr-punchRow__kind">{row.kind === 'IN' ? 'In' : 'Out'}</span>
+              <span className="hr-punchRow__time">
+                <input
+                  type="time"
+                  className="hr-f"
+                  value={row.at}
+                  disabled={row.wrong}
+                  aria-label={`${row.kind === 'IN' ? 'Clock in' : 'Clock out'} ${index + 1}`}
+                  onChange={(event) => set(index, { at: event.target.value })}
+                />
+              </span>
+              <span className="hr-punchRow__meta">
+                {row.wrong
+                  ? 'marked wrong'
+                  : stored?.recordedBy
+                    ? `entered by ${stored.recordedBy}`
+                    : (stored?.source ?? 'new').toLowerCase()}
+              </span>
+              <button
+                type="button"
+                className="hr-punchRow__wrong"
+                disabled={row.wrong}
+                onClick={() => set(index, { wrong: true })}
+              >
+                {row.wrong ? '' : 'Wrong'}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <button
+        type="button"
+        className="hr-btn hr-btn--sm"
+        onClick={() =>
+          onChange([...draft, { at: '', kind: draft.filter((r) => !r.wrong).slice(-1)[0]?.kind === 'IN' ? 'OUT' : 'IN' }])
+        }
+      >
+        + Add a punch
+      </button>
+      <div className="hr-punchPreview">
+        <span>
+          <b>Hours after your change</b>{' '}
+          {(wasMinutes / 60).toFixed(1)} h → {(minutes.total / 60).toFixed(1)} h
+          {minutes.hanging ? ' · incomplete' : ''}
+        </span>
+        {minutes.hanging ? (
+          <span className="hr-punchPreview__warn">
+            {minutes.hanging.at || 'A punch'} {minutes.hanging.kind === 'IN' ? 'In' : 'Out'} has no{' '}
+            {minutes.hanging.kind === 'IN' ? 'clock-out' : 'clock-in'} — this day will be marked incomplete.
+          </span>
+        ) : null}
+        {before !== live.length ? null : null}
+      </div>
+    </>
+  );
+}
+
+/**
+ * THE DAY AS ITS PAIRS, which is the whole reason four punches are stored.
+ *
+ * "8.0 h" is arithmetic; `09:02–13:01 · 14:12–18:03, away 1 h 11 m` is the
+ * answer to the question the owner opens this screen with — who left and came
+ * back late. The gap is STATED, never judged: nothing here knows how long a
+ * break was meant to be, and a column that makes an accusation it cannot
+ * support is a column people learn to ignore.
+ */
+function Punches({ punches, alt }: { punches: AttendancePunchRow[]; alt: string }) {
+  const live = punches.filter((p) => !p.supersededAt);
+  const gone = punches.filter((p) => p.supersededAt);
+  if (punches.length === 0) return <span className="hr-tn">—</span>;
+
+  const pairs: { in: AttendancePunchRow | null; out: AttendancePunchRow | null }[] = [];
+  for (const punch of live) {
+    const open = pairs[pairs.length - 1];
+    if (punch.kind === 'IN' || !open || open.out) pairs.push({ in: punch.kind === 'IN' ? punch : null, out: punch.kind === 'OUT' ? punch : null });
+    else open.out = punch;
+  }
+
+  const gap = (a: AttendancePunchRow, b: AttendancePunchRow) => {
+    const mins = Math.round((new Date(b.at).getTime() - new Date(a.at).getTime()) / 60000);
+    if (mins <= 0) return null;
+    const h = Math.floor(mins / 60);
+    return h > 0 ? `${h} h ${mins % 60} m` : `${mins} m`;
+  };
+
+  return (
+    <span className="hr-punches">
+      {pairs.map((pair, index) => {
+        const previous = index > 0 ? pairs[index - 1].out : null;
+        const away = previous && pair.in ? gap(previous, pair.in) : null;
+        return (
+          <span key={pair.in?.id ?? pair.out?.id ?? index}>
+            <span className="hr-punchPair">
+              {pair.in ? <Punch at={pair.in.at} proof={pair.in.proofUrl} late={false} alt={alt} /> : <span className="hr-tn">—</span>}
+              <span className="hr-tn">–</span>
+              {pair.out ? <Punch at={pair.out.at} proof={pair.out.proofUrl} late={false} alt={alt} /> : <span className="hr-ts">no clock-out</span>}
+            </span>
+            {away ? <span className="hr-punchGap">away {away}</span> : null}
+          </span>
+        );
+      })}
+      {gone.map((punch) => (
+        <span key={punch.id} className="hr-punchPair hr-punch--gone" title={punch.supersededReason ?? undefined}>
+          {formatClinicTime(punch.at)} {punch.kind === 'IN' ? 'in' : 'out'} · marked wrong
+          {punch.supersededBy ? ` by ${punch.supersededBy}` : ''}
+        </span>
+      ))}
+    </span>
   );
 }
 
