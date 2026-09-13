@@ -150,11 +150,17 @@ The arithmetic here is simply correct for the day it is revived.
 | Web unit | `cd apps/web && npx vitest run` | 100 files, **1728 passed**, 0 failed |
 | Browser | `CHROME_PATH=/opt/pw-browsers/chromium npx playwright test` | 102 collected, **100 passed**, 0 failed, 2 skipped |
 
-`[D]` The two skipped browser tests skip themselves and always have:
-`route-sweep.spec.ts:26` needs `E2E_SWEEP`, `golden-path.spec.ts:762` needs
-`E2E_DUMP`, and each calls itself a tool rather than a guardrail in its own
-source. `canvas-appointment.spec.ts` — which failed during Pieces 3e and 3f —
-is collected and passes here. I confirmed that by listing the collected tests,
+`[D]` `route-sweep.spec.ts:26` is one of the two skips in the first run —
+observed, it is the last line of the run. `[A]` The other is
+`golden-path.spec.ts:762` by elimination: it is the only remaining test whose
+source skips on an unset variable (`E2E_DUMP`, and `route-sweep` wants
+`E2E_SWEEP`), and the only other conditional skip in the suite,
+`hr-workforce.spec.ts:104`, did not fire when I ran that file on its own. Both
+env-gated tests call themselves tools rather than guardrails in their own
+source.
+
+`[D]` `canvas-appointment.spec.ts` — which failed during Pieces 3e and 3f — is
+collected and passes here. I confirmed it is collected by listing the suite,
 not by inferring it from the absence of a failure line.
 
 `[D]` Run sequentially, never at once. Four at a time on this container turns a
@@ -209,6 +215,31 @@ gold that now ships, and three small labels a shade off the grey. Layout,
 wording and every figure are unchanged. I did not re-take them: the dev world
 would have to be rebuilt to do it, and the piece was accepted on what they show.
 Say the word and I will.
+
+### 9.2 The browser gate is not repeatable against one seeded world
+
+`[D]` I ran the browser gate a second time, on the fixed CSS, to leave no
+caveat in the table. It came back **99 passed, 3 skipped** where the first run
+was **100 passed, 2 skipped**. Same 102 collected, zero failures both times —
+but a test that passed had skipped itself.
+
+`[D]` It is `admin-integration.spec.ts:153` — *Day-end closing, end to end ›
+counting short forces an explanation, and closing freezes the day*. It reads
+the day-end STATUS off the screen and, if it is not `Open`, calls
+`test.skip(true, 'today is already counted or closed — re-run the admin UAT
+seed')` on itself. **The first run closed the day.** That is the thing the test
+exists to prove, and having proved it the world no longer offers an open day to
+close.
+
+So the gate is green twice, and the second run is a weaker green than the
+first. This is not Piece 1's doing — it reproduces on master, on any second
+consecutive run without re-seeding — and the test says so in its own skip
+message. `[A]` The table above reports the FIRST run, where the day-end test
+actually ran.
+
+`[A]` Worth a piece of its own later, not this one: a guard that skips itself
+into silence is indistinguishable from a guard that passed, and on a re-run
+that is the report you get.
 
 Screenshots: `docs/screenshots/hr-punches/`.
 
