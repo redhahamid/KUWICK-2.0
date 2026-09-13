@@ -147,3 +147,56 @@ identity fixed, evidence required, and only then the change.
 | `apps/api/test/pay-component-treatment.e2e-spec.ts` | 17 tests: the unlock, the identity refusal, the evidence, the history, clinic-made components, and the owner's whole table end to end |
 | `apps/api/test/payroll-stage2.e2e-spec.ts` | The old rule's test, rewritten to the new contract |
 | `apps/web/src/admin/hr/payrollItems.test.tsx` | 8 tests: the switch is live, it still asks when and why, the row says whose decision it was, history keeps Kuwick's guess and the clinic's apart, a new item starts liable to nothing but tax |
+
+## 8. Gates
+
+`[D]` Run **sequentially**, on 2026-09-13.
+
+| Gate | Result |
+|---|---|
+| API unit | 131 suites, **2775 passed**, 0 failed |
+| API e2e | 42 suites, **489 passed**, 0 failed |
+| Web unit | 104 files, **1755 passed**, 0 failed |
+| Browser | 102 collected, **99 passed**, 0 failed, 3 skipped |
+
+`[D]` The web figures add up: 100 files → 104 across Pieces 1b and 2, 1728 →
+1755. The browser gate's third skip is the day-end test documented in Piece 1
+§9.2, which skips itself once an earlier run in the same session has closed the
+day.
+
+### 8.1 The e2e gate went red, and it was this piece's doing
+
+`[D]` The first full run reported **"Test suite failed to run"** against two
+suites, with **zero assertion failures** and a different suite named each time.
+The message was `A jest worker process was terminated by another process:
+signal=SIGKILL` — the OOM killer, not a test.
+
+`[A]` "Flake" would have been the wrong answer. Measured instead:
+
+| Run | Suites | Result |
+|---|---|---|
+| 42 suites, default workers (3) | this piece's tree | **worker SIGKILLed** |
+| 42 suites, `--maxWorkers=2` | this piece's tree | 489 passed |
+| 41 suites, default workers | this piece's tree, new spec moved aside | 472 passed |
+
+`[D]` So the gate was already at the edge — every e2e worker boots a whole Nest
+`AppModule` and its Prisma client, and three of those on a 4-CPU container is
+the limit — and **the 42nd suite, which is mine, tipped it over.**
+
+`[D]` Fixed by capping `maxWorkers` to 2 in `jest-e2e.json`, with the reasoning
+in `global-setup.ts` because a JSON config cannot carry a comment. The cap is
+there rather than in my suite, because the next suite anyone adds would have
+hit exactly this. The gate command itself — `npm run test:api:e2e` — now
+reports 42 of 42.
+
+## 9. Still to do
+
+`[D]` **Staging needs the seed workflow.** This piece adds two columns to
+`pay_components`, so `prisma migrate deploy` has to run before the code that
+reads them. No new table, so the role's grants already cover it and no
+re-provision is needed.
+
+`[A]` Not built here, and worth naming: nothing yet **raises**
+`verificationStatus` above `DRAFT`. A clinic that has checked a flag against
+KWSP's own schedule still cannot say so on this screen. That belongs with the
+statutory register rather than with this piece.

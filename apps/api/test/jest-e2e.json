@@ -7,5 +7,6 @@
   "moduleFileExtensions": ["js", "json", "ts"],
   "testEnvironment": "node",
   "setupFiles": ["<rootDir>/setup-env.ts"],
-  "globalSetup": "<rootDir>/global-setup.ts"
+  "globalSetup": "<rootDir>/global-setup.ts",
+  "maxWorkers": 2
 }

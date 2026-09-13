@@ -6,6 +6,18 @@ import * as path from 'node:path';
 // separate process from `setup-env.ts` — decoupled deliberately, so this
 // file's only job is "make sure kuwick_test's schema is current," not
 // "make other code see the right DATABASE_URL."
+//
+// WHY `maxWorkers: 2` IN jest-e2e.json, which cannot hold a comment of its
+// own: every worker boots a whole Nest AppModule and its Prisma client, and on
+// a 4-CPU container jest's default of 3 workers runs the box out of memory.
+// It does not fail a test — the OOM killer SIGKILLs a worker and jest reports
+// "Test suite failed to run" against whichever suite it was carrying, a
+// different one each run, with zero assertion failures.
+//
+// Measured, not guessed: 41 suites passed at the default and the 42nd tipped
+// it over; the same 42 pass at two workers. The cap is here rather than on the
+// suite that happened to be 42nd, because the next suite anyone adds would
+// have hit exactly this.
 export default function globalSetup(): void {
   const envTestPath = path.join(__dirname, '..', '.env.test');
   const env: Record<string, string | undefined> = { ...process.env };
