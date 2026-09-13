@@ -1,0 +1,602 @@
+# HR UAT SEED — MANUAL-ONLY. Brings the Supabase staging database up to the
+# current schema and puts the HR/payroll test world on it, entirely from the
+# Actions tab, using the secrets this repository already holds. No database
+# credential ever has to leave GitHub.
+#
+# The order is the one the repository proves on every push, plus the seed:
+#
+#   provision kuwick_app -> prisma migrate deploy -> RE-provision (grants on
+#   the tables those migrations just created, e.g. 3g's leave_request_
+#   attachments, claim_policies and staff_files) -> seed the HR UAT world.
+#
+# It changes no application code, no schema and no seed data — it only RUNS
+# what the repository already contains, against the database
+# SUPABASE_DATABASE_URL points at.
+#
+# THE PASSWORD IS NEVER ROTATED HERE. scripts/provision-app-role.mjs always
+# issues `ALTER ROLE kuwick_app WITH PASSWORD <APP_ROLE_PASSWORD>`, so a run
+# with a different value would change the role's password out from under the
+# live API and the next request would die with `28P01 password authentication
+# failed`. This workflow passes the SAME SUPABASE_APP_ROLE_PASSWORD secret the
+# Render service's DATABASE_URL was built from, both times, so the password it
+# sets is the password already in use — which is also what makes re-running
+# safe.
+#
+# TRIGGER: workflow_dispatch only. Deliberately NOT on push — this writes to a
+# real database and must never run because somebody pushed.
+#
+# SECRETS (Settings -> Secrets and variables -> Actions -> Repository secrets):
+#   SUPABASE_DATABASE_URL        the OWNER (postgres.<project-ref>) session-
+#                                pooler URL, with sslmode=require. The seed
+#                                needs the owner: every table is FORCE ROW
+#                                LEVEL SECURITY, so the application role
+#                                cannot see the rows it must clear.
+#   SUPABASE_APP_ROLE_PASSWORD   the password kuwick_app already has, and the
+#                                one this run re-sets it to. Do not change it.
+#   KUWICK_ADMIN_UAT_PASSWORD    OPTIONAL. The sign-in password for the five
+#                                UAT accounts. Unset is the normal case: the
+#                                seed's documented default is used and printed
+#                                in the run summary.
+#
+# IDEMPOTENT. Re-run it as often as testing needs: migrate deploy is a no-op
+# once applied, provisioning is declarative, and the seed rebuilds ITS OWN
+# tenant and touches no other. The one thing a re-run does destroy is anything
+# typed into the demo tenant during testing — untick "Rebuild the demo tenant"
+# to keep it and only top the HR layer up.
+#
+# No secret is echoed: GitHub masks registered secrets, and the one derived
+# value (the node-pg form of the URL) is masked explicitly before use. The
+# job's token is contents:read, so this run cannot commit or push anything.
+
+name: HR UAT Seed (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: 'The deployed API the seed runs payroll through (no trailing slash)'
+        required: false
+        default: 'https://kuwick-api.onrender.com'
+      rebuild_demo_tenant:
+        description: 'Rebuild "Klinik Contoh (UAT)" from scratch. Untick to keep what you have typed during testing and only top up the HR layer.'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hr-uat-seed
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    name: provision + migrate + re-provision + seed HR UAT
+    runs-on: ubuntu-latest
+    # Generous: the seed issues thousands of sequential queries from a runner a
+    # long way from the ap-southeast-1 pooler, and step 3 drives three whole
+    # payroll months through the deployed API.
+    timeout-minutes: 60
+    env:
+      # Prisma's CLI reads this verbatim. Under sslmode=require Prisma's engine
+      # speaks TLS without CA verification, which suits the shared pooler.
+      # node-pg steps use the derived form below instead.
+      DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+      APP_ROLE_PASSWORD: ${{ secrets.SUPABASE_APP_ROLE_PASSWORD }}
+      # PREFER IPv4. GitHub-hosted runners have no routable IPv6 while the
+      # Supabase pooler hostname publishes both an A and an AAAA record, so a
+      # verbatim-order resolve can hand pg the unreachable IPv6 address and the
+      # socket dies with `connect ENETUNREACH`. Set at JOB level so every step
+      # inherits it.
+      NODE_OPTIONS: '--dns-result-order=ipv4first'
+      API_URL: ${{ inputs.api_url || 'https://kuwick-api.onrender.com' }}
+    steps:
+      - name: Refuse to run without the two required secrets
+        env:
+          HAS_DB_URL: ${{ secrets.SUPABASE_DATABASE_URL != '' }}
+          HAS_ROLE_PW: ${{ secrets.SUPABASE_APP_ROLE_PASSWORD != '' }}
+        run: |
+          ok=yes
+          [ "$HAS_DB_URL" = "true" ]  || { echo "::error::Repository secret SUPABASE_DATABASE_URL is not set."; ok=no; }
+          # WHY THIS IS FATAL RATHER THAN DEFAULTED. provision-app-role.mjs
+          # falls back to the CI password 'apppass' when APP_ROLE_PASSWORD is
+          # empty. It refuses that default against a remote host, so an empty
+          # secret cannot silently rotate the live password — but it would end
+          # the run halfway with a confusing message instead of this one.
+          [ "$HAS_ROLE_PW" = "true" ] || { echo "::error::Repository secret SUPABASE_APP_ROLE_PASSWORD is not set. It must hold the password kuwick_app ALREADY has (the one inside the Render service's DATABASE_URL), or this run would lock the live API out with 28P01."; ok=no; }
+          [ "$ok" = yes ]
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Pin the Supabase pooler hostname to IPv4
+        # Same pin as Supabase DB Init, and for the same reason: glibc consults
+        # /etc/hosts before DNS for BOTH node-pg and Prisma's Rust engine, so
+        # once pinned no later step resolves this host at all and the
+        # unreachable AAAA is out of the picture. Errexit is deliberately off so
+        # a resolution miss yields a clear ::error:: rather than a bare exit
+        # code. Only name resolution changes; the URL and credentials are
+        # untouched, and only the non-secret hostname is printed.
+        env:
+          SUPABASE_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+        run: |
+          set +e
+          set -u
+
+          host="$(node -e 'process.stdout.write(new URL(process.env.SUPABASE_DATABASE_URL).hostname)')"
+          if [ -z "${host:-}" ]; then
+            echo "::error::Could not parse a hostname from SUPABASE_DATABASE_URL."
+            exit 1
+          fi
+
+          cat > "$RUNNER_TEMP/resolve-ipv4.cjs" <<'RESOLVE_EOF'
+          const dnsp = require("dns").promises;
+          const host = new URL(process.env.SUPABASE_DATABASE_URL).hostname;
+          (async () => {
+            const once = async () => {
+              try { const a = await dnsp.resolve4(host); if (a && a.length) return a; } catch (e) {}
+              try {
+                const r = await dnsp.lookup(host, { family: 4, all: true });
+                const a = r.map((x) => x.address).filter(Boolean);
+                if (a.length) return a;
+              } catch (e) {}
+              return [];
+            };
+            for (let i = 0; i < 6; i++) {
+              const a = await once();
+              if (a.length) { process.stdout.write(Array.from(new Set(a)).join(" ")); return; }
+              await new Promise((res) => setTimeout(res, 2000));
+            }
+            process.exit(3);
+          })().catch(() => process.exit(3));
+          RESOLVE_EOF
+
+          ipv4s="$(node "$RUNNER_TEMP/resolve-ipv4.cjs")"
+          rm -f "$RUNNER_TEMP/resolve-ipv4.cjs"
+          if [ -z "${ipv4s:-}" ]; then
+            echo "::error::The Supabase pooler hostname '$host' did not resolve to any IPv4 (A) record from this runner."
+            exit 1
+          fi
+
+          for ip in $ipv4s; do
+            printf '%s %s\n' "$ip" "$host" | sudo tee -a /etc/hosts >/dev/null
+          done
+
+          echo "Supabase pooler hostname : $host"
+          echo "Pinned IPv4 address(es)  : $ipv4s"
+          first="$(getent hosts "$host" | awk 'NR==1{print $1}')"
+          case "${first:-}" in
+            ""|*:*)
+              echo "::error::'$host' still does not resolve to IPv4 after pinning (got '${first:-none}')."
+              exit 1
+              ;;
+          esac
+          echo "IPv4 pin verified: $first"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Derive the node-pg form of the connection URL
+        # node-postgres verifies the certificate chain under a plain
+        # sslmode=require, which the shared pooler's chain may not satisfy. The
+        # repository's own runbook (docs/STAGING_DEPLOYMENT.md, step 2)
+        # documents sslmode=no-verify — TLS without CA verification — as the
+        # remote form for pg-based scripts. Derived once, masked, never printed.
+        run: |
+          PG_URL="${DATABASE_URL/sslmode=require/sslmode=no-verify}"
+          echo "::add-mask::$PG_URL"
+          {
+            echo "PG_DATABASE_URL<<__PG_URL_EOF__"
+            echo "$PG_URL"
+            echo "__PG_URL_EOF__"
+          } >> "$GITHUB_ENV"
+
+      - name: Wake the staging API and check it answers
+        # WHY BEFORE ANY WRITE. The seed's third step runs June, July and August
+        # through the ENGINE over HTTP — create, calculate, approve, prepare,
+        # record paid — because tsx emits no decorator metadata and Nest cannot
+        # be bootstrapped in-process. If the API is down or asleep the seed
+        # would fail AFTER rebuilding the tenant, leaving a half-built world.
+        # Render's free instances also spin down, and the first request pays the
+        # cold start, so this both checks and wakes it.
+        run: |
+          set -u
+          echo "Staging API: $API_URL"
+          code=""
+          for attempt in $(seq 1 20); do
+            # curl writes %{http_code} even when it fails, so `|| true` (not
+            # `|| echo`) keeps the result a single value.
+            code="$(curl -sS -o "$RUNNER_TEMP/health.json" -w '%{http_code}' --max-time 30 "$API_URL/health" || true)"
+            if [ "$code" = "200" ]; then break; fi
+            echo "  attempt $attempt: HTTP $code — waiting for the instance to wake"
+            sleep 15
+          done
+          if [ "$code" != "200" ]; then
+            echo "::error::$API_URL/health did not answer 200 after 20 attempts (last: HTTP $code). The seed drives payroll through this API, so nothing was written. Check the Render service is live, then run this workflow again."
+            cat "$RUNNER_TEMP/health.json" 2>/dev/null || true
+            exit 1
+          fi
+          echo "The API answered:"
+          cat "$RUNNER_TEMP/health.json"
+          echo
+
+      - name: Read the database as it is now
+        # Requirement: never fail silently about the tenants already there. This
+        # step reports what the database holds BEFORE anything is written, says
+        # in plain words what this run will do to it, and records the migration
+        # list so the summary can name exactly which ones this run applies.
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+        run: |
+          cat > hr-uat-before.cjs <<'__BEFORE_EOF__'
+          // Read-only. Prints tenant names and migration counts — no row data,
+          // no credentials.
+          const fs = require('fs');
+          const { Client } = require('pg');
+          const HR_TENANT = 'aaaaaaaa-0000-4000-8000-000000000001';
+          (async () => {
+            const c = new Client({ connectionString: process.env.DATABASE_URL });
+            await c.connect();
+            const has = async (t) =>
+              (await c.query(
+                `SELECT to_regclass($1) IS NOT NULL AS present`, [`public.${t}`],
+              )).rows[0].present;
+
+            // READING ACROSS TENANTS, THE PRODUCT'S OWN WAY. `tenants` is FORCE
+            // ROW LEVEL SECURITY, so a plain SELECT with no app.tenant_id set
+            // matches nothing and REPORTS SUCCESS — the same silence
+            // seed-admin-uat.ts documents about its own reset. A report that
+            // said "0 tenants" because of it would be worse than no report. The
+            // policy's own escape hatch (`app.bypass_tenant_scope`, migration
+            // 20260731280000 / D-036 — the one auth.service.ts uses to resolve a
+            // login before a tenant is known) makes this read correct whether or
+            // not the connecting role happens to bypass RLS. Set LOCAL and
+            // rolled back, so it never outlives the read, and read-only.
+            const readTenants = async () => {
+              if (!(await has('tenants'))) return [];
+              await c.query('BEGIN');
+              try {
+                await c.query(`SELECT set_config('app.bypass_tenant_scope', 'true', true)`);
+                return (await c.query(`SELECT id, name FROM tenants ORDER BY name`)).rows;
+              } finally {
+                await c.query('ROLLBACK');
+              }
+            };
+
+            const tenants = await readTenants();
+            let migrations = [];
+            if (await has('_prisma_migrations')) {
+              migrations = (await c.query(
+                `SELECT migration_name FROM _prisma_migrations
+                  WHERE finished_at IS NOT NULL ORDER BY migration_name`,
+              )).rows.map((r) => r.migration_name);
+            }
+            await c.end();
+
+            fs.writeFileSync(process.env.BEFORE_JSON, JSON.stringify({ tenants, migrations }, null, 2));
+
+            console.log(`Migrations already applied : ${migrations.length}`);
+            console.log(`Tenants already present    : ${tenants.length}`);
+            for (const t of tenants) console.log(`  - ${t.name}  (${t.id})`);
+            console.log('');
+
+            const hr = tenants.find((t) => t.id === HR_TENANT);
+            const others = tenants.filter((t) => t.id !== HR_TENANT);
+
+            console.log('WHAT THIS RUN WILL DO TO THEM');
+            console.log(hr
+              ? '  - "Klinik Contoh (UAT)" is already here. The HR seed rebuilds its own tenant, so this one is cleared and rebuilt (or topped up, if you unticked "Rebuild the demo tenant").'
+              : '  - "Klinik Contoh (UAT)" is NOT here yet. The HR seed creates it. This is the tenant the UAT accounts belong to.');
+            for (const t of others) {
+              console.log(`  - "${t.name}" is NOT touched: the HR seed only ever writes inside its own tenant id.`);
+            }
+
+            if (others.length > 0 && !hr) {
+              console.log('');
+              console.log('::warning::After this run, the "Supabase DB Init (manual)" workflow will stop at its staging-seed step.');
+              console.log('WHY, IN FULL — so nothing about it is a surprise later:');
+              console.log(`  prisma/seed-staging-uat.ts guards itself with "the database already holds N other tenant(s) — refusing to touch it".`);
+              console.log(`  That guard exists so the staging seed can never scribble on a database that is not exclusively its own.`);
+              console.log(`  This database currently holds ${others.length} tenant(s) it considers its own world, and adding "Klinik Contoh (UAT)"`);
+              console.log('  beside it makes that guard true. Nothing is lost and nothing is broken: the staging world keeps working, the HR');
+              console.log('  world is added beside it, and both are reachable from the same sign-in page. It only means the staging seed will');
+              console.log('  refuse to RE-seed from then on. Re-running THIS workflow is the supported way to refresh the HR world afterwards.');
+            }
+            console.log('');
+          })().catch((e) => { console.error('read error:', e.message); process.exit(1); });
+          __BEFORE_EOF__
+          # Written into the checkout, not $RUNNER_TEMP: node resolves
+          # require('pg') against node_modules along the script's own path.
+          BEFORE_JSON="$RUNNER_TEMP/before.json" node hr-uat-before.cjs
+          rm -f hr-uat-before.cjs
+
+      - name: Provision kuwick_app BEFORE migrations
+        # PHASE 0, the order ci.yml proves on every push: several migrations
+        # GRANT to kuwick_app, so the role must exist before migrate deploy.
+        # APP_ROLE_PASSWORD is the job-level secret — the SAME value the live
+        # API already connects with, so this sets the password to what it is.
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+        run: |
+          echo "Setting kuwick_app to the password already in SUPABASE_APP_ROLE_PASSWORD (unchanged — this is what keeps the live API from hitting 28P01)."
+          node scripts/provision-app-role.mjs
+
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: npx prisma generate
+
+      - name: Apply all outstanding migrations
+        working-directory: apps/api
+        run: npx prisma migrate deploy
+
+      - name: Re-provision kuwick_app AFTER migrations
+        # ALTER DEFAULT PRIVILEGES covers tables a FUTURE migration creates, not
+        # the ones the migrations that just ran created. Without this second
+        # pass the API would connect fine and then get "permission denied for
+        # table leave_request_attachments" on the first read — the three tables
+        # 3g added (leave_request_attachments, claim_policies, staff_files) are
+        # exactly that case. Same password, again: nothing rotates.
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+        run: node scripts/provision-app-role.mjs
+
+      - name: Seed the HR UAT world
+        # Step 1 rebuilds the synthetic admin UAT tenant, step 2 adds what a
+        # real payroll month needs, step 3 runs three months through the engine
+        # over the API above. ADMIN_UAT_RESET_URL must be the OWNER url: every
+        # table is FORCE ROW LEVEL SECURITY, so a DELETE issued as the
+        # application role matches nothing and reports success.
+        working-directory: apps/api
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+          ADMIN_UAT_RESET_URL: ${{ env.PG_DATABASE_URL }}
+          KUWICK_ADMIN_UAT_SEED: 'yes'
+          KUWICK_HR_UAT_SKIP_BASE: ${{ inputs.rebuild_demo_tenant && 'no' || 'yes' }}
+          # WHY THE DEFAULT IS SPELLED OUT. The seed reads
+          # `process.env.ADMIN_UAT_PASSWORD ?? 'AdminUat!2026'`, and `??`
+          # falls back on null/undefined only — an unset secret arrives as
+          # the EMPTY STRING, which is not nullish, so the five accounts
+          # would be created with a blank password. `||` in the expression
+          # below substitutes the seed's own documented default instead.
+          # It is not a secret: it is in the seed's source and in the docs.
+          ADMIN_UAT_PASSWORD: ${{ secrets.KUWICK_ADMIN_UAT_PASSWORD || 'AdminUat!2026' }}
+          KUWICK_API_URL: ${{ inputs.api_url || 'https://kuwick-api.onrender.com' }}
+        run: |
+          if [ "$KUWICK_HR_UAT_SKIP_BASE" = "yes" ]; then
+            echo "Rebuild unticked: the existing \"Klinik Contoh (UAT)\" tenant is kept and only the HR layer is topped up."
+          else
+            echo "Rebuilding \"Klinik Contoh (UAT)\" from scratch. Anything typed into that tenant during testing is discarded; every other tenant is untouched."
+          fi
+          npx tsx prisma/seed-hr-uat.ts
+
+      - name: Migration status — must report fully applied
+        working-directory: apps/api
+        run: npx prisma migrate status
+
+      - name: Write the run summary
+        if: always()
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+          JOB_STATUS: ${{ job.status }}
+          ADMIN_UAT_PASSWORD_SET: ${{ secrets.KUWICK_ADMIN_UAT_PASSWORD != '' }}
+        run: |
+          cat > hr-uat-summary.cjs <<'__SUMMARY_EOF__'
+          // Read-only. Everything it prints is either schema metadata, a tenant
+          // name, or a synthetic .invalid account — no real person's data.
+          const fs = require('fs');
+          const { Client } = require('pg');
+          const HR_TENANT = 'aaaaaaaa-0000-4000-8000-000000000001';
+          const DOMAIN = 'admin-uat.kuwick.invalid';
+          // The three tables Piece 3g added. They are the reason this workflow
+          // provisions twice, so the summary proves the second pass worked.
+          const NEW_3G_TABLES = ['leave_request_attachments', 'claim_policies', 'staff_files'];
+          const ACCOUNTS = [
+            ['Owner', `owner@${DOMAIN}`, 'Dr Aisyah Rahman', 'Runs and approves payroll'],
+            ['Clinic manager', `manager@${DOMAIN}`, 'Rohana Yusof', 'Approves leave, claims and overtime'],
+            ['Doctor (portal)', `resident@${DOMAIN}`, 'Dr Meera Kaur', 'RM9,500, Doctors rule set'],
+            ['Nurse (portal)', `nurse@${DOMAIN}`, 'Puteri Balqis', 'RM3,400, statutory rule set'],
+            ['Staff (portal)', `stock@${DOMAIN}`, 'Hafiz Osman', 'RM2,900, within the First Schedule'],
+          ];
+
+          // The snapshot the "Read the database as it is now" step left. On a
+          // run that failed BEFORE it, there is none — and then no honest diff
+          // exists, so the report says so rather than claiming every migration
+          // in the database as this run's work.
+          const haveBefore = fs.existsSync(process.env.BEFORE_JSON);
+          const before = haveBefore
+            ? JSON.parse(fs.readFileSync(process.env.BEFORE_JSON, 'utf8'))
+            : { tenants: [], migrations: [] };
+
+          (async () => {
+            const out = [];
+            const say = (line) => out.push(line);
+            const ok = process.env.JOB_STATUS === 'success';
+
+            say(`# HR UAT seed — ${ok ? 'done' : 'FAILED (' + process.env.JOB_STATUS + ')'}`);
+            say('');
+            if (!ok) {
+              say('Read the failing step above. Nothing below is a claim that it worked — it is the database as it stands right now, which is what you need in order to decide whether to run this again.');
+              say('');
+            }
+
+            const c = new Client({ connectionString: process.env.DATABASE_URL });
+            await c.connect();
+            const has = async (t) =>
+              (await c.query(`SELECT to_regclass($1) IS NOT NULL AS present`, [`public.${t}`])).rows[0].present;
+
+            // ---- 1. migrations ------------------------------------------------
+            let applied = [];
+            let unfinished = 0;
+            if (await has('_prisma_migrations')) {
+              const rows = (await c.query(
+                `SELECT migration_name, finished_at FROM _prisma_migrations ORDER BY migration_name`,
+              )).rows;
+              applied = rows.filter((r) => r.finished_at).map((r) => r.migration_name);
+              unfinished = rows.filter((r) => !r.finished_at).length;
+            }
+            const known = new Set(before.migrations);
+            const newlyApplied = applied.filter((m) => !known.has(m));
+
+            say('## 1. Migrations');
+            say('');
+            if (!haveBefore) {
+              say(`Applied in total: **${applied.length}**. Unfinished: **${unfinished}**.`);
+              say('');
+              say('This run stopped before it could read the database as it was, so there is nothing to compare against and it cannot say which migrations were its own. The totals above are the database as it stands.');
+            } else {
+              say(`Applied by this run: **${newlyApplied.length}**. Applied in total: **${applied.length}**. Unfinished: **${unfinished}**.`);
+              say('');
+              if (newlyApplied.length === 0) {
+                say('Nothing to apply — the database was already at the repository\'s schema. That is the normal result of a second run.');
+              } else {
+                say('| # | Migration applied by this run |');
+                say('|---|---|');
+                newlyApplied.forEach((m, i) => say(`| ${i + 1} | \`${m}\` |`));
+              }
+            }
+            say('');
+
+            // ---- 2. the three tables 3g added --------------------------------
+            say('## 2. The three tables Piece 3g added');
+            say('');
+            say('This is why the workflow provisions the role a second time: `ALTER DEFAULT PRIVILEGES` does not reach tables created by the migrations that just ran.');
+            say('');
+            say('| Table | Exists | Row-level security forced | kuwick_app can read |');
+            say('|---|---|---|---|');
+            for (const t of NEW_3G_TABLES) {
+              const present = await has(t);
+              let rls = '—';
+              let grant = '—';
+              if (present) {
+                const r = (await c.query(
+                  `SELECT c.relrowsecurity AND c.relforcerowsecurity AS forced
+                     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = 'public' AND c.relname = $1`, [t],
+                )).rows[0];
+                rls = r && r.forced ? 'yes' : 'NO';
+                // has_table_privilege() RAISES on an unknown role, which
+                // would take the report down on exactly the run that needs it.
+                const g = (await c.query(
+                  `SELECT CASE WHEN EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'kuwick_app')
+                               THEN has_table_privilege('kuwick_app', $1, 'SELECT') END AS can`,
+                  [`public.${t}`],
+                )).rows[0];
+                grant = g.can === null ? 'no such role' : g.can ? 'yes' : 'NO';
+              }
+              say(`| \`${t}\` | ${present ? 'yes' : 'NO'} | ${rls} | ${grant} |`);
+            }
+            say('');
+
+            // ---- 3. tenants ---------------------------------------------------
+
+            // READING ACROSS TENANTS, THE PRODUCT'S OWN WAY. `tenants` is FORCE
+            // ROW LEVEL SECURITY, so a plain SELECT with no app.tenant_id set
+            // matches nothing and REPORTS SUCCESS — the same silence
+            // seed-admin-uat.ts documents about its own reset. A report that
+            // said "0 tenants" because of it would be worse than no report. The
+            // policy's own escape hatch (`app.bypass_tenant_scope`, migration
+            // 20260731280000 / D-036 — the one auth.service.ts uses to resolve a
+            // login before a tenant is known) makes this read correct whether or
+            // not the connecting role happens to bypass RLS. Set LOCAL and
+            // rolled back, so it never outlives the read, and read-only.
+            const readTenants = async () => {
+              if (!(await has('tenants'))) return [];
+              await c.query('BEGIN');
+              try {
+                await c.query(`SELECT set_config('app.bypass_tenant_scope', 'true', true)`);
+                return (await c.query(`SELECT id, name FROM tenants ORDER BY name`)).rows;
+              } finally {
+                await c.query('ROLLBACK');
+              }
+            };
+
+            const tenants = await readTenants();
+            const knownTenants = new Set(before.tenants.map((t) => t.id));
+            const hr = tenants.find((t) => t.id === HR_TENANT);
+            const others = tenants.filter((t) => t.id !== HR_TENANT);
+
+            say('## 3. Tenants in the database');
+            say('');
+            say('| Tenant | Id | Was it here before this run? |');
+            say('|---|---|---|');
+            for (const t of tenants) {
+              const was = !haveBefore ? 'not known' : knownTenants.has(t.id) ? 'yes' : '**created by this run**';
+              say(`| ${t.name} | \`${t.id}\` | ${was} |`);
+            }
+            if (tenants.length === 0) say('| _none_ | | |');
+            say('');
+            if (hr) {
+              say(`The UAT accounts below belong to **${hr.name}**.`);
+            } else {
+              say('**"Klinik Contoh (UAT)" is not there.** The accounts below will not sign in until a run of this workflow finishes successfully.');
+            }
+            if (others.length > 0) {
+              say('');
+              say('### What this means for the other workflow');
+              say('');
+              say(`This database also holds ${others.length} other tenant(s): ${others.map((t) => `**${t.name}**`).join(', ')}. None of them was touched — the HR seed only ever writes inside its own tenant id.`);
+              say('');
+              say('But `prisma/seed-staging-uat.ts` refuses to run when the database holds a tenant that is not its own ("database already holds N other tenant(s) — refusing to touch it"), so **the "Supabase DB Init (manual)" workflow will now stop at its staging-seed step**. That guard is doing its job, not failing: it exists so the staging seed can never scribble on a database that is not exclusively its own. Both worlds keep working and both sign in at the same page. Refresh the HR world by re-running *this* workflow instead.');
+            }
+            say('');
+
+            // ---- 4. accounts --------------------------------------------------
+            const password = process.env.ADMIN_UAT_PASSWORD_SET === 'true'
+              ? '_the value of the `KUWICK_ADMIN_UAT_PASSWORD` secret_ (not printed here)'
+              : '`AdminUat!2026`';
+            say('## 4. Sign in');
+            say('');
+            say(`Web: ${process.env.WEB_URL}`);
+            say('');
+            say(`Password for all five: ${password}`);
+            say('');
+            say('| Role | Email | Who they are | What they are for |');
+            say('|---|---|---|---|');
+            for (const [role, email, name, what] of ACCOUNTS) {
+              say(`| ${role} | \`${email}\` | ${name} | ${what} |`);
+            }
+            say('');
+            say('Every account is synthetic: invented names, invented figures, and `.invalid` addresses that can never route.');
+            say('');
+            say('Checklist to test against: `docs/HR_UAT_CHECKLIST.md`.');
+            say('');
+            say('## 5. Running this again');
+            say('');
+            say('Safe at any time. Migrations re-apply as a no-op, the role password is re-set to the same value (which is what keeps the live API off 28P01), and the seed rebuilds only its own tenant. The one thing a rebuild discards is whatever you typed into the demo tenant while testing — untick **Rebuild the demo tenant** to keep it and only top the HR layer up.');
+
+            await c.end();
+            const text = out.join('\n') + '\n';
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, text);
+            console.log(text);
+          })().catch((e) => {
+            const line = `\n> The summary could not read the database: ${e.message}\n`;
+            try { fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, line); } catch (_) {}
+            console.error('summary error:', e.message);
+            // Never turn a good run red because the report could not be drawn.
+            process.exit(0);
+          });
+          __SUMMARY_EOF__
+          BEFORE_JSON="$RUNNER_TEMP/before.json" WEB_URL="https://kuwick-web.onrender.com" node hr-uat-summary.cjs
+          rm -f hr-uat-summary.cjs
+
+      - name: Discard generated artefacts (nothing here is ever committed)
+        if: always()
+        run: |
+          # Never fail the job from cleanup, and never assume a checkout exists:
+          # an early failure can happen before it.
+          set +e
+          rm -f hr-uat-before.cjs hr-uat-summary.cjs "$RUNNER_TEMP/resolve-ipv4.cjs" 2>/dev/null || true
+          if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            git checkout -- docs/seed-review/ 2>/dev/null || true
+            echo "Workspace after cleanup (should list nothing):"
+            git status --porcelain || true
+          else
+            echo "No git checkout in this run — nothing to clean."
+          fi
+          echo "This job's token is contents:read — it cannot push commits regardless."
+          exit 0

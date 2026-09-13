@@ -57,6 +57,43 @@ public secret.
 3. Set `kuwick-api`'s variables. It restarts and `/health` should answer.
 4. Set `kuwick-web`'s `VITE_API_BASE_URL` to the API's URL and redeploy it.
 5. Set `kuwick-api`'s `CORS_ORIGINS` to the web URL and restart it.
+6. Run the **HR UAT Seed (manual)** workflow to put the HR/payroll test world
+   on the database. It needs the API from step 3 to be answering, because the
+   seed runs three payroll months through the engine over HTTP.
+
+## Keeping staging seeded: HR UAT Seed (manual)
+
+`.github/workflows/hr-uat-seed.yml` does from the Actions tab what nobody can
+do from a laptop without the database password:
+
+    provision kuwick_app -> prisma migrate deploy -> RE-provision -> seed
+
+The second provision is not a belt-and-braces repeat. `ALTER DEFAULT
+PRIVILEGES` covers tables a *future* migration creates, not the ones the
+migrations that just ran created — so without it the API connects fine and then
+answers `permission denied for table leave_request_attachments` on the first
+read of anything Piece 3g added.
+
+It uses `SUPABASE_APP_ROLE_PASSWORD` for both passes, which is the point: that
+secret must hold the password `kuwick_app` **already** has — the one inside
+`kuwick-api`'s `DATABASE_URL` — because `provision-app-role.mjs` always issues
+`ALTER ROLE kuwick_app WITH PASSWORD`. A different value there would rotate the
+password out from under the live service and every request would die with
+`28P01 password authentication failed`. Same value in, same password out, which
+is also what makes the workflow safe to re-run.
+
+Two inputs: the API URL (default `https://kuwick-api.onrender.com`) and
+**Rebuild the demo tenant**, which is ticked by default and rebuilds
+`Klinik Contoh (UAT)` from scratch. Untick it during testing to keep what you
+have typed and only top the HR layer up.
+
+The run summary prints the migrations the run applied, the tenants in the
+database, and the five UAT accounts with their password. One thing it will tell
+you and is worth knowing beforehand: once `Klinik Contoh (UAT)` sits beside the
+staging seed's own tenant, `seed-staging-uat.ts` refuses to run ("database
+already holds N other tenant(s)"), so **Supabase DB Init (manual)** will stop at
+its staging-seed step from then on. That guard is doing its job. Refresh the HR
+world by re-running the HR workflow instead.
 
 ## Verifying a deploy — the only thing that counts as verified
 
