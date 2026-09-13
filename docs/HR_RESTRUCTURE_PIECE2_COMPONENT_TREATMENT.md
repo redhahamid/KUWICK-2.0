@@ -233,6 +233,45 @@ there rather than in my suite, because the next suite anyone adds would have
 hit exactly this. The gate command itself — `npm run test:api:e2e` — now
 reports 42 of 42.
 
+### 8.2 The browser gate went red twice, and neither was this piece
+
+`[D]` Both failures were **world residue from running the gate repeatedly
+against a persistent development database**, not defects. Proven, not assumed:
+
+**`admin-hr.spec.ts:128`** — *payroll is honest in both directions*. It opens
+August 2026 and expects a **Calculated** chip. I had just run `seed-hr-uat.ts`
+on the dev database, which takes the last three months — June, July and August
+— through the engine to **paid**. Re-seeding the base world with
+`seed-admin-uat.ts`, where August is calculated and not approved, made it pass
+immediately. The 3f README already records that these two worlds differ; this
+is that note arriving as a red gate.
+
+**`canvas-appointment.spec.ts:40`** — *the card, the mapping, the capacity, and
+the appointment that results*. It asserts a follow-up lands at a **fixed**
+16 Sep 2026, 14:00–14:30, while the booking it makes takes the **next free**
+slot. Every run consumes two slots and never releases them, so the world walks
+forward and the assertion is left behind. The database showed it plainly —
+thirteen `FRONT_DESK` bookings created today, two per run, marching from 08:00
+to 14:00 local:
+
+```
+09:09 → 08:00, 08:30     16:01 → 11:00, 11:30
+09:37 → 09:00, 09:30     17:42 → 12:00, 12:30
+14:36 → 10:00, 10:30     17:56 → 13:00, 13:30, 14:00
+```
+
+`[D]` Cancelling those thirteen — the database **refuses a delete**, because an
+appointment is an append-only medicolegal record and the trigger says so —
+made both specs pass, 7 of 7.
+
+`[A]` Worth its own piece, not this one: **three** browser tests now cannot run
+twice against the same world. `admin-integration.spec.ts:153` skips itself
+silently (Piece 1 §9.2), `canvas-appointment.spec.ts:40` fails loudly, and
+`admin-hr.spec.ts:128` depends on which of two seeds ran last. Loud is better
+than silent, and all three are better than neither. Each one costs an
+investigation every time it bites, and it has now bitten in Pieces 3e, 3f and
+here.
+
 ## 9. Still to do
 
 `[D]` **Staging needs the seed workflow.** This piece adds two columns to
