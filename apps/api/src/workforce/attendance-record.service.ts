@@ -1,12 +1,12 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { AttendanceCorrectionStatus, AttendanceSource, AttendanceStatus } from '@prisma/client';
+import { AttendanceCorrectionStatus, AttendancePunchKind, AttendanceSource, AttendanceStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { actorCan, requirePermission, resolveClinicId, withAdminTx } from '../finance/admin-actor';
+import { AdminTx, actorCan, requirePermission, resolveClinicId, withAdminTx } from '../finance/admin-actor';
 import { requireActor, withTenantTx } from '../clinical/clinical-actor';
 import { recordAudit } from '../finance/admin-audit';
-import { computeAttendance, hoursOf, totalTimesheet } from './attendance-hours';
+import { computePunchedDay, hoursOf, totalTimesheet } from './attendance-hours';
 import { AttendancePolicy, DEFAULT_ATTENDANCE_POLICY, resolveAttendancePolicy } from './attendance-policy';
 import { clinicDateKey } from '../appointment/time.util';
 import { workforceCategoryOf } from './workforce-category';
@@ -116,6 +116,69 @@ export class AttendanceRecordService {
   }
 
   /**
+   * RECOMPUTE A DAY FROM ITS PUNCHES — the one place the summary is written.
+   *
+   * `AttendanceRecord` is no longer where a punch lives; it is what the punches
+   * add up to. Every path that changes a punch ends here, so a day worked as
+   * four punches and a day corrected to four punches are measured by exactly
+   * the same code.
+   *
+   * SUPERSEDED PUNCHES ARE NOT READ. They stay on the record for the employee
+   * and the audit to see, and they are not part of the arithmetic — which is
+   * what "marked wrong" has to mean if it is to mean anything.
+   */
+  private async recomputeDay(tx: AdminTx, recordId: string) {
+    const record = await tx.attendanceRecord.findUnique({ where: { id: recordId } });
+    if (!record) throw new NotFoundException('Attendance record not found');
+
+    const punches = await tx.attendancePunch.findMany({
+      where: { attendanceRecordId: recordId, supersededAt: null },
+      orderBy: { at: 'asc' },
+    });
+    const policy = await this.policyFor(record.clinicId);
+    const computed = computePunchedDay(
+      {
+        punches: punches.map((row) => ({ at: row.at, kind: row.kind === 'IN' ? 'IN' : 'OUT' })),
+        scheduledStart: record.scheduledStart,
+        scheduledEnd: record.scheduledEnd,
+      },
+      policy,
+    );
+
+    const firstIn = punches.find((row) => row.kind === 'IN') ?? null;
+    const lastOut = [...punches].reverse().find((row) => row.kind === 'OUT') ?? null;
+    /*
+     * THE DAY'S FURTHEST PUNCH, still — the number the "outside clinic" chip
+     * has always shown. Now it is the furthest of the punches that count,
+     * rather than a running maximum a superseded punch could no longer be
+     * removed from.
+     */
+    const distances = punches.map((row) => row.distanceMetres).filter((n): n is number => n !== null);
+
+    return tx.attendanceRecord.update({
+      where: { id: recordId },
+      data: {
+        clockInAt: firstIn?.at ?? null,
+        clockOutAt: lastOut?.at ?? null,
+        status: computed.status as AttendanceStatus,
+        lateMinutes: computed.lateMinutes,
+        earlyOutMinutes: computed.earlyOutMinutes,
+        workedMinutes: computed.workedMinutes,
+        overtimeMinutes: computed.overtimeCandidateMinutes,
+        source: firstIn?.source ?? record.source,
+        proofUrl: firstIn?.proofUrl ?? null,
+        clockOutProofUrl: lastOut?.proofUrl ?? null,
+        lat: firstIn?.lat ?? null,
+        lng: firstIn?.lng ?? null,
+        clockOutLat: lastOut?.lat ?? null,
+        clockOutLng: lastOut?.lng ?? null,
+        distanceMetres: distances.length > 0 ? Math.max(...distances) : null,
+        outsideClinic: punches.some((row) => row.outsideClinic),
+      },
+    });
+  }
+
+  /**
    * Clock in, or clock out. The same endpoint, because the record decides.
    *
    * CLOCKING YOURSELF IN IS NOT A PERMISSIONED ACT. This required `hr.view`,
@@ -149,11 +212,8 @@ export class AttendanceRecordService {
       const existing = overnight ?? (await tx.attendanceRecord.findFirst({ where: { staffId, workDate: day } }));
       const shift = await this.scheduledFor(staffId, day);
 
-      const clockInAt = existing?.clockInAt ?? now;
-      const clockOutAt = existing?.clockInAt ? now : null;
       const scheduledStart = shift?.startsAt ?? existing?.scheduledStart ?? null;
       const scheduledEnd = shift?.endsAt ?? existing?.scheduledEnd ?? null;
-      const computed = computeAttendance({ clockInAt, clockOutAt, scheduledStart, scheduledEnd }, policy);
 
       // WHERE THE PUNCH CAME FROM, AND WHERE IT STOOD. The portal sends the
       // phone's position and, with consent on record, a selfie already stored
@@ -182,52 +242,63 @@ export class AttendanceRecordService {
         if (!file) throw new NotFoundException('That selfie is not yours, or does not exist.');
         proofPath = staffFilePath(file.id);
       }
-      const isClockOut = Boolean(existing?.clockInAt);
-      // One distance per day: the furthest punch from the clinic, so the
-      // "outside clinic" flag always has the number that earned it.
-      const furthest =
-        fence.distanceMetres !== null && (existing?.distanceMetres == null || fence.distanceMetres > existing.distanceMetres)
-          ? fence.distanceMetres
-          : (existing?.distanceMetres ?? null);
-      const punchFields = isClockOut
-        ? {
-            clockOutLat: point?.lat ?? null,
-            clockOutLng: point?.lng ?? null,
-            clockOutProofUrl: proofPath,
-            distanceMetres: furthest,
-            outsideClinic: Boolean(existing?.outsideClinic) || fence.outside,
-          }
-        : {
-            source,
-            lat: point?.lat ?? null,
-            lng: point?.lng ?? null,
-            proofUrl: proofPath,
-            distanceMetres: fence.distanceMetres,
-            outsideClinic: fence.outside,
-          };
+      /*
+       * WHICH WAY THIS PUNCH GOES, from the punches themselves.
+       *
+       * This read `Boolean(existing?.clockInAt)` — the day already has a
+       * clock-in, so this must be the clock-out — which is why a third and a
+       * fourth press of the button simply moved the clock-out later and the
+       * two middle punches were lost. The day now says what it is: if the last
+       * punch that counts was an IN, this one closes it; otherwise it opens a
+       * new stretch.
+       */
+      const live = existing
+        ? await tx.attendancePunch.findMany({
+            where: { attendanceRecordId: existing.id, supersededAt: null },
+            orderBy: { at: 'asc' },
+          })
+        : [];
+      const lastLive = live[live.length - 1] ?? null;
+      const isClockOut = lastLive?.kind === 'IN';
 
-      const data = {
-        clinicId,
-        clockInAt,
-        clockOutAt,
-        scheduledStart,
-        scheduledEnd,
-        status: computed.status as AttendanceStatus,
-        lateMinutes: computed.lateMinutes,
-        earlyOutMinutes: computed.earlyOutMinutes,
-        workedMinutes: computed.workedMinutes,
-        // EXTRA TIME IS NOT OVERTIME until somebody approves it. What is stored
-        // is the CANDIDATE the clinic's policy would consider — past its
-        // minimum, rounded its way — because that is the number a manager
-        // approves and payroll pays. The raw excess stays derivable from the
-        // clock-out and the scheduled end, both of which are on this row.
-        overtimeMinutes: computed.overtimeCandidateMinutes,
-        ...punchFields,
-      };
+      const record = existing
+        ? await tx.attendanceRecord.update({
+            where: { id: existing.id },
+            data: { clinicId, scheduledStart, scheduledEnd },
+          })
+        : await tx.attendanceRecord.create({
+            data: {
+              tenantId: currentTenantId(),
+              staffId,
+              workDate: day,
+              clinicId,
+              scheduledStart,
+              scheduledEnd,
+              status: AttendanceStatus.MISSING_PUNCH,
+              source,
+            },
+          });
 
-      return existing
-        ? tx.attendanceRecord.update({ where: { id: existing.id }, data })
-        : tx.attendanceRecord.create({ data: { ...data, tenantId: currentTenantId(), staffId, workDate: day } });
+      await tx.attendancePunch.create({
+        data: {
+          tenantId: currentTenantId(),
+          attendanceRecordId: record.id,
+          staffId,
+          at: now,
+          kind: isClockOut ? AttendancePunchKind.OUT : AttendancePunchKind.IN,
+          source,
+          proofUrl: proofPath,
+          lat: point?.lat ?? null,
+          lng: point?.lng ?? null,
+          distanceMetres: fence.distanceMetres,
+          outsideClinic: fence.outside,
+          // Null is the employee themselves. HR clocking somebody in is the
+          // supervisory act, and the record says whose hand it was.
+          recordedByStaffId: forSomebodyElse ? actor.id : null,
+        },
+      });
+
+      return this.recomputeDay(tx, record.id);
     });
   }
 
@@ -242,37 +313,94 @@ export class AttendanceRecordService {
       const record = await tx.attendanceRecord.findUnique({ where: { id } });
       if (!record) throw new NotFoundException('Attendance record not found');
 
-      const clockInAt = dto.clockInAt ? new Date(dto.clockInAt) : record.clockInAt;
-      const clockOutAt = dto.clockOutAt ? new Date(dto.clockOutAt) : record.clockOutAt;
-      if (clockInAt && clockOutAt && clockOutAt < clockInAt) {
+      const live = await tx.attendancePunch.findMany({
+        where: { attendanceRecordId: id, supersededAt: null },
+        orderBy: { at: 'asc' },
+      });
+
+      /*
+       * A CORRECTION IS PUNCHES IN AND PUNCHES OUT, NEVER AN EDIT.
+       *
+       * `punches` is what the Fix drawer sends: every line of the day as the
+       * manager left it. An entry naming an existing punch either marks it
+       * wrong or moves it; an entry naming none is a punch being added. A
+       * moved punch is superseded and replaced rather than updated, so the
+       * time the employee actually pressed the button survives underneath.
+       *
+       * Sent without `punches` — the older two-field form, and the portal's
+       * own correction flow — it still means "these are the day's two ends",
+       * and is translated into the same operations.
+       */
+      const wanted = dto.punches ?? [
+        ...(dto.clockInAt ? [{ at: dto.clockInAt, kind: 'IN' as const }] : []),
+        ...(dto.clockOutAt ? [{ at: dto.clockOutAt, kind: 'OUT' as const }] : []),
+      ];
+
+      const supersede = async (punchId: string) =>
+        tx.attendancePunch.update({
+          where: { id: punchId },
+          data: { supersededAt: new Date(), supersededByStaffId: actor.id, supersededReason: dto.reason },
+        });
+      const add = async (at: Date, kind: AttendancePunchKind) =>
+        tx.attendancePunch.create({
+          data: {
+            tenantId: currentTenantId(),
+            attendanceRecordId: id,
+            staffId: record.staffId,
+            at,
+            kind,
+            // A punch HR recorded is MANUAL and carries no selfie and no
+            // position: nobody stood anywhere to make it.
+            source: AttendanceSource.MANUAL,
+            recordedByStaffId: actor.id,
+          },
+        });
+
+      const byId = new Map(live.map((row) => [row.id, row]));
+      const touched: string[] = [];
+      for (const entry of wanted) {
+        const existing = entry.id ? byId.get(entry.id) : undefined;
+        if (entry.id && !existing) {
+          throw new BadRequestException('One of those punches is not on this day, or has already been replaced.');
+        }
+        if (existing) touched.push(existing.id);
+        if (existing && entry.wrong) {
+          await supersede(existing.id);
+          continue;
+        }
+        if (!entry.at) continue;
+        const at = new Date(entry.at);
+        const kind = (entry.kind ?? existing?.kind ?? 'IN') as AttendancePunchKind;
+        if (existing && existing.at.getTime() === at.getTime() && existing.kind === kind) continue;
+        if (existing) await supersede(existing.id);
+        await add(at, kind);
+      }
+
+      /*
+       * THE TWO-FIELD FORM REPLACES THE DAY'S ENDS, not only the ones it named.
+       * Sending a clock-out for a day that has one has always meant "this is
+       * the clock-out", so the punch it replaces is superseded even though the
+       * caller could not name it.
+       */
+      if (!dto.punches) {
+        for (const row of live) {
+          if (touched.includes(row.id)) continue;
+          const replaced = wanted.some((entry) => entry.kind === row.kind);
+          const isEnd = row.id === live.find((p) => p.kind === row.kind)?.id
+            || row.id === [...live].reverse().find((p) => p.kind === row.kind)?.id;
+          if (replaced && isEnd) await supersede(row.id);
+        }
+      }
+
+      const updated = await this.recomputeDay(tx, id);
+      if (updated.clockInAt && updated.clockOutAt && updated.clockOutAt < updated.clockInAt) {
         throw new BadRequestException('Clock-out cannot be before clock-in.');
       }
 
-      // The clinic's CURRENT policy, deliberately. A correction is a fresh
-      // decision about what happened, so it is measured by the rules in force
-      // when it is made; changing the policy does not silently re-measure
-      // punches nobody has touched.
-      const policy = await this.policyFor(record.clinicId);
-      const computed = computeAttendance(
-        {
-          clockInAt,
-          clockOutAt,
-          scheduledStart: record.scheduledStart,
-          scheduledEnd: record.scheduledEnd,
-        },
-        policy,
-      );
-
-      const updated = await tx.attendanceRecord.update({
+      const finished = await tx.attendanceRecord.update({
         where: { id },
         data: {
-          clockInAt,
-          clockOutAt,
-          status: (dto.status ?? computed.status) as AttendanceStatus,
-          lateMinutes: computed.lateMinutes,
-          earlyOutMinutes: computed.earlyOutMinutes,
-          workedMinutes: computed.workedMinutes,
-          overtimeMinutes: computed.overtimeCandidateMinutes,
+          ...(dto.status ? { status: dto.status } : {}),
           correctedAt: new Date(),
           correctedByStaffId: actor.id,
           correctionReason: dto.reason,
@@ -287,13 +415,13 @@ export class AttendanceRecordService {
         action: 'attendance.corrected',
         entityType: 'AttendanceRecord',
         entityId: id,
-        before: { clockInAt: record.clockInAt, clockOutAt: record.clockOutAt, status: record.status },
-        after: { clockInAt, clockOutAt, status: updated.status },
+        before: { punches: live.map((row) => ({ at: row.at, kind: row.kind })), status: record.status },
+        after: { clockInAt: finished.clockInAt, clockOutAt: finished.clockOutAt, status: finished.status },
         reason: dto.reason,
         source: 'hr.attendance',
       });
 
-      return updated;
+      return finished;
     });
   }
 
@@ -440,7 +568,35 @@ export class AttendanceRecordService {
         workDate: { gte: dateOnly(params.from), lte: dateOnly(params.to) },
       },
       orderBy: [{ workDate: 'asc' }],
-      include: { staff: { select: { id: true, fullName: true } }, clinic: { select: { name: true } } },
+      include: {
+        staff: { select: { id: true, fullName: true } },
+        clinic: { select: { name: true } },
+        /*
+         * EVERY PUNCH, INCLUDING THE ONES A CORRECTION REPLACED.
+         *
+         * The reason the clinic's admin staff press the button four times is
+         * so the owner can see who left and came back late. A screen that
+         * shows only the total throws that purpose away even when the
+         * arithmetic underneath is right — so the day sends its punches and
+         * the timesheet draws each pair.
+         */
+        punches: {
+          orderBy: { at: 'asc' },
+          select: {
+            id: true,
+            at: true,
+            kind: true,
+            source: true,
+            proofUrl: true,
+            outsideClinic: true,
+            distanceMetres: true,
+            supersededAt: true,
+            supersededReason: true,
+            supersededBy: { select: { fullName: true } },
+            recordedBy: { select: { fullName: true } },
+          },
+        },
+      },
     });
 
     const byStaff = new Map<string, { name: string; rows: typeof records }>();
@@ -492,6 +648,21 @@ export class AttendanceRecordService {
             clockOutProofUrl: row.clockOutProofUrl,
             outsideClinic: row.outsideClinic,
             distanceMetres: row.distanceMetres,
+            punches: row.punches.map((punch) => ({
+              id: punch.id,
+              at: punch.at,
+              kind: punch.kind,
+              source: punch.source,
+              proofUrl: punch.proofUrl,
+              outsideClinic: punch.outsideClinic,
+              distanceMetres: punch.distanceMetres,
+              // A superseded punch is drawn struck through, not hidden: the
+              // employee is entitled to see what was changed and by whom.
+              supersededAt: punch.supersededAt,
+              supersededReason: punch.supersededReason,
+              supersededBy: punch.supersededBy?.fullName ?? null,
+              recordedBy: punch.recordedBy?.fullName ?? null,
+            })),
           })),
         };
       }),
