@@ -212,7 +212,13 @@ export function HrSettingsPage() {
       // computed itself and never reads the rule set's basis. What the card
       // does lead to is the approval rule and the overtime pricing, so that
       // is what it now says.
-      description: 'Who may approve a run, and how overtime and public holidays are priced.',
+      //
+      // Keep another card's NAME out of this sentence. The cards are matched
+      // by their whole text, so a description that happens to contain "public
+      // holidays" makes this card answer to the Public holidays card as well —
+      // and this one is drawn first, so it wins. "Holiday pay" says the same
+      // thing and collides with nothing.
+      description: 'Who may approve a run, and how overtime and holiday pay are priced.',
       to: '/admin/hr/settings/payroll',
       icon: <IconSliders />,
       tone: approval.data ? 'done' : 'muted',

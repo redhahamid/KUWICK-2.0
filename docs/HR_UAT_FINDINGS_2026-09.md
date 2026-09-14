@@ -110,8 +110,21 @@ have to constrain never consults it. The audit also **corrects two fields I
 first reported dead in error** (`overtimeMinimumMinutes`,
 `overtimeRoundingMinutes`); both are live and reach pay.
 
-`[D]` The audit **reports only**. None of the fourteen is fixed: making an inert
-setting live changes what people are paid, and each needs its own decision.
+`[D]` **The build half is partly done.** The five dead fields a clinic can
+actually SEE now carry a "Not applied" mark, and two false claims were removed:
+the "Overtime must be approved" switch said that turning it off pays unapproved
+extra time (it does not — approval is required either way), and the Payroll
+policies card promised a cut-off day that exists nowhere.
+
+`[D]` **Still open in piece 4**, and each is the owner's decision because it
+changes pay or the API:
+
+- **None of the fourteen was made live or deleted.** Applying one changes what
+  somebody is paid. `[O]` needed, one field at a time.
+- **The nine API-only fields** have no screen to mark. Implement or withdraw.
+- **The ORP divisors** (`orpOvertimeDays`, `orpUnpaidLeaveDays`,
+  `orpHoursPerDay`) are still read-never-written; every run uses 26 / 31 / 7.5.
+- **The cut-off day** is no longer promised, but still does not exist.
 
 ## Also settled during UAT
 
