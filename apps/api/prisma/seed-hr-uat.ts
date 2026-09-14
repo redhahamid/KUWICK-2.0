@@ -362,11 +362,54 @@ async function main() {
     { code: 'MILEAGE', epf: false, socso: false, eis: false, pcb: false, why: 'Reimbursement of travel actually incurred, not pay.' },
   ];
 
-  const treatmentFrom = ym(monthStart(-3)) + '-01';
+  /*
+   * WHERE THE CLINIC'S DECISION IS ALLOWED TO START.
+   *
+   * Three months back is what the demo wants, so the months below are priced
+   * under the clinic's own table rather than under Kuwick's guess. On a tenant
+   * nobody has used yet that is exactly what happens.
+   *
+   * It is not what may happen on a tenant that HAS been used. Every run the
+   * owner approved while testing is a month that was settled under the
+   * treatment standing at the time, and piece 2's guard refuses to re-date a
+   * change into it — correctly, because those figures were remitted. The seed
+   * used to walk into that guard and stop, which made the workflow unusable
+   * without ticking "Rebuild the demo tenant" and throwing the owner's testing
+   * away.
+   *
+   * So the seed does what the guard's own message asks for: it dates the change
+   * from the first month no approved run covers. Nothing is loosened, nothing
+   * settled is rewritten, and the clinic's table is in force from the first
+   * month that is still open.
+   */
+  const settled = await inTenant((tx) =>
+    tx.payrollRun.findFirst({
+      where: { tenantId, status: { in: ['APPROVED', 'PAID'] } },
+      orderBy: { period: 'desc' },
+      select: { period: true },
+    }),
+  );
+  const wanted = monthStart(-3);
+  // The guard counts approved runs whose period is >= the month the change
+  // starts in, so the first date it will accept is the month AFTER the last one
+  // that was approved.
+  const firstOpenMonth = settled
+    ? new Date(Date.UTC(settled.period.getUTCFullYear(), settled.period.getUTCMonth() + 1, 1))
+    : wanted;
+  const treatmentStart = firstOpenMonth > wanted ? firstOpenMonth : wanted;
+  const treatmentFrom = ymd(treatmentStart);
   const catalogue = (await call('GET', '/workforce/pay-components')) as {
-    components: (Record<string, unknown> & { code: string; epfLiable: boolean; socsoLiable: boolean; eisLiable: boolean; pcbLiable: boolean })[];
+    components: (Record<string, unknown> & {
+      code: string;
+      effectiveFrom: string;
+      epfLiable: boolean;
+      socsoLiable: boolean;
+      eisLiable: boolean;
+      pcbLiable: boolean;
+    })[];
   };
   let decided = 0;
+  const inForceFrom = new Set<string>();
   for (const want of TREATMENT) {
     const row = catalogue.components.find((component) => component.code === want.code);
     if (!row) continue;
@@ -376,20 +419,44 @@ async function main() {
     const differs =
       row.epfLiable !== want.epf || row.socsoLiable !== want.socso || row.eisLiable !== want.eis || row.pcbLiable !== want.pcb;
     if (!differs) continue;
-    await call('POST', '/workforce/pay-components', {
+    /*
+     * TWO FLOORS UNDER THE DATE, and the later one wins.
+     *
+     * The approved-run guard sets the first; the second is per component. A
+     * version that is already IN FORCE can only be superseded from a date after
+     * it starts — a new row cannot be slipped in underneath the one it
+     * replaces. A version that has not started yet has no such floor: it is
+     * corrected where it stands, so any date the guard allows will do.
+     */
+    const openFrom = String(row.effectiveFrom).slice(0, 10);
+    const inForce = openFrom <= todayKey();
+    const afterOpen = ymd(new Date(new Date(`${openFrom}T00:00:00.000Z`).getTime() + 86400000));
+    const from = inForce && afterOpen > treatmentFrom ? afterOpen : treatmentFrom;
+
+    // The service decides what the change BECOMES: a new version, a correction
+    // to one that has not started, or — where the clinic's table is what the
+    // previous version already said — the withdrawal of an unstarted version,
+    // which leaves no row at all. Report the date it really has, not the date
+    // we asked for.
+    const saved = (await call('POST', '/workforce/pay-components', {
       ...row,
       epfLiable: want.epf,
       socsoLiable: want.socso,
       eisLiable: want.eis,
       pcbLiable: want.pcb,
-      effectiveFrom: treatmentFrom,
+      effectiveFrom: from,
       reason: want.why,
-    });
+    })) as { effectiveFrom: string };
+    inForceFrom.add(String(saved.effectiveFrom).slice(0, 10));
     decided += 1;
   }
   summary.push(
     decided > 0
-      ? `Statutory treatment: ${decided} component(s) set by the clinic from ${treatmentFrom}, each with its reason`
+      ? `Statutory treatment: ${decided} component(s) set by the clinic, in force from ` +
+        `${[...inForceFrom].sort().join(' and ')}, each with its reason` +
+        (treatmentStart > wanted
+          ? ` (not ${ymd(wanted)}: payroll up to ${ym(settled!.period)} is approved and stays as it was paid)`
+          : '')
       : 'Statutory treatment: already as this clinic decided',
   );
 

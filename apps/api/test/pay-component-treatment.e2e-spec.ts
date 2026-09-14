@@ -375,6 +375,63 @@ describe('pay component statutory treatment (e2e)', () => {
         await withTenantContext(prisma, tenantId, (tx) => tx.payrollRun.delete({ where: { id: run.id } }));
       }
     });
+
+    /*
+     * THE WAY OUT THE REFUSAL PROMISES, and it has to stay open.
+     *
+     * The 409 above tells the caller to "date the change from a period that has
+     * not been approved". That sentence is only useful if such a date is
+     * actually accepted — otherwise a clinic that has ever approved a run could
+     * never change a treatment again, and the message would be sending people
+     * nowhere.
+     *
+     * The HR UAT seed depends on exactly this: on a tenant the owner has
+     * already been testing in, it dates the clinic's table from the first month
+     * no approved run covers rather than rebuilding the tenant and throwing
+     * that testing away. Tighten the guard to refuse this too and the seed
+     * stops, so it is pinned here rather than discovered in a workflow log.
+     */
+    it('accepts the same change dated from the month after the last approved run', async () => {
+      const run = await withTenantContext(prisma, tenantId, (tx) =>
+        tx.payrollRun.create({
+          data: {
+            tenantId,
+            period: new Date('2027-06-01T00:00:00.000Z'),
+            status: 'APPROVED',
+            createdByStaffId: ownerStaffId,
+          },
+        }),
+      );
+
+      try {
+        const row = await find('UNPAID_LEAVE');
+        await save(row, {
+          pcbLiable: !row.pcbLiable,
+          effectiveFrom: '2027-06-01',
+          reason: 'Dated into the settled month: this one must be refused.',
+        }).expect(409);
+
+        const accepted = await save(row, {
+          pcbLiable: !row.pcbLiable,
+          effectiveFrom: '2027-07-01',
+          reason: 'Dated from the first month nobody has been paid for yet.',
+        }).expect(201);
+        expect(accepted.body.effectiveFrom.slice(0, 10)).toBe('2027-07-01');
+        expect(accepted.body.pcbLiable).toBe(!row.pcbLiable);
+      } finally {
+        await withTenantContext(prisma, tenantId, (tx) => tx.payrollRun.delete({ where: { id: run.id } }));
+        await withTenantContext(prisma, tenantId, async (tx) => {
+          // The accepted version is a fixture like the run above: left behind,
+          // it becomes the open version every later test in this file has to
+          // date around.
+          const rows = await tx.payComponent.findMany({ where: { code: 'UNPAID_LEAVE' }, orderBy: { version: 'desc' } });
+          if (rows.length > 1 && rows[0].effectiveFrom.toISOString().startsWith('2027-07-01')) {
+            await tx.payComponent.delete({ where: { id: rows[0].id } });
+            await tx.payComponent.update({ where: { id: rows[1].id }, data: { effectiveTo: null } });
+          }
+        });
+      }
+    });
   });
 
   /**
