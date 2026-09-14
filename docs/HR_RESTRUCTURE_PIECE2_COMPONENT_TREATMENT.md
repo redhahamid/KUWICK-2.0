@@ -196,12 +196,17 @@ Screenshots: `docs/screenshots/hr-components/`.
 
 `[D]` Run **sequentially**, on 2026-09-13.
 
-| Gate | Result |
-|---|---|
-| API unit | 131 suites, **2775 passed**, 0 failed |
-| API e2e | 42 suites, **489 passed**, 0 failed |
-| Web unit | 104 files, **1755 passed**, 0 failed |
-| Browser | 102 collected, **99 passed**, 0 failed, 3 skipped |
+| Gate | Piece 2a–2c | Piece 2d (final) |
+|---|---|---|
+| API unit | 131 suites, **2775 passed** | 131 suites, **2775 passed** |
+| API e2e | 42 suites, **489 passed** | 42 suites, **493 passed** |
+| Web unit | 104 files, **1755 passed** | 104 files, **1760 passed** |
+| Browser | 102 collected, **99 passed**, 3 skipped | 102 collected, **100 passed**, 2 skipped |
+
+`[D]` Zero failures in either column. The 2d numbers grow by the four e2e tests
+and five web tests that piece added; the browser gate skips only its two
+env-gated tools this time, because the day-end world had been reseeded and its
+day was open again.
 
 `[D]` The web figures add up: 100 files → 104 across Pieces 1b and 2, 1728 →
 1755. The browser gate's third skip is the day-end test documented in Piece 1
@@ -340,6 +345,32 @@ happens.
 `[D]` **This piece adds none.** The correction is service logic, the dropdown
 is a screen, and the two new audit actions go into `audit_logs.action`, which
 is a plain `text` column rather than a Postgres enum — checked.
+
+### 8.3 Two more red gates, and what they cost to diagnose
+
+`[D]` The 2d gate run came back with **API e2e red and the browser gate red**.
+Neither was the code.
+
+**The browser gate had nothing to test against.** The container had restarted
+between pieces, taking the API and web dev servers with it; every spec that
+needs a running app failed. `curl` on both ports returned nothing at all, which
+is the whole diagnosis.
+
+**The API e2e failure could not be diagnosed at all**, because the gate script
+captured only the last six lines and those were npm's own "command failed".
+A re-run of the same tree passes 42 suites and 493 tests. I can say it was
+transient; I cannot say what it was, and that is a worse answer than it needed
+to be.
+
+`[D]` So the gate script now keeps the **full** log of each gate and prints the
+first failures when one goes red. This is the third time a red gate has thrown
+away the one thing that would have explained it — Piece 2's OOM, Piece 2c's two
+world-residue failures, and this. Each cost a whole re-run to find out.
+
+`[A]` Also worth naming, since it has now bitten twice: **the browser gate
+depends on dev servers that nothing starts or checks.** A gate that reports
+failure when its target is simply absent is a gate that will be believed at the
+wrong moment. Not fixed here.
 
 ## 9. Still to do
 
