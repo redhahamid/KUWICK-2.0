@@ -159,7 +159,16 @@ export class StaffClaimService {
    * their own money back.
    */
   async decide(id: string, dto: DecideStaffClaimDto) {
-    return withAdminTx(this.rawPrisma, 'hr.payroll.approve', async (tx, actor) => {
+    /*
+     * `hr.claim.approve`, NOT `hr.payroll.approve` — split after UAT.
+     *
+     * Deciding somebody's RM180 dental receipt and signing off the month's
+     * payroll are not the same job, and while they shared a permission a
+     * clinic that wanted the first delegated had to hand over the second with
+     * it. `settle` below stays on payroll: that one is money leaving through
+     * Finance, which is a different act from saying yes to a receipt.
+     */
+    return withAdminTx(this.rawPrisma, 'hr.claim.approve', async (tx, actor) => {
       const claim = await tx.staffClaim.findFirst({ where: { id } });
       if (!claim) throw new NotFoundException('Claim not found');
       if (claim.status !== 'SUBMITTED') {

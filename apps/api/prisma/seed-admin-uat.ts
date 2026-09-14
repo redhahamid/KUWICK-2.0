@@ -200,7 +200,14 @@ async function main() {
        * Synthetic, like everything else in this file: invented names,
        * `.invalid` accounts, invented figures.
        */
-      { key: 'manager', name: 'Rohana Yusof', role: 'HR_STAFF' as const, clinic: central.id, doctor: false },
+      /*
+       * CLINIC_MANAGER, not HR_STAFF. UAT found her unable to press Approve on
+       * a leave request while this file's own console output described her as
+       * approving leave, claims and overtime — the seed contradicted its own
+       * documentation. HR_STAFF is a records clerk and approves nothing, which
+       * is correct for a clerk and wrong for her.
+       */
+      { key: 'manager', name: 'Rohana Yusof', role: 'CLINIC_MANAGER' as const, clinic: central.id, doctor: false },
       { key: 'nurse', name: 'Puteri Balqis', role: 'FRONT_DESK_CLINICAL_STAFF' as const, clinic: central.id, doctor: false },
       { key: 'pharm', name: 'Lim Wei Chen', role: 'STOCK_STAFF' as const, clinic: branch.id, doctor: false },
       { key: 'accounts', name: 'Kavitha Menon', role: 'FINANCE_STAFF' as const, clinic: branch.id, doctor: false },

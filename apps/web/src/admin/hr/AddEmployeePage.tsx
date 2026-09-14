@@ -46,6 +46,9 @@ const ROLES = [
   { value: 'FRONT_DESK_CLINICAL_STAFF', label: 'Front desk / clinical staff' },
   { value: 'FINANCE_STAFF', label: 'Finance' },
   { value: 'HR_STAFF', label: 'HR' },
+  // The person who runs the floor. Approves leave, claims and overtime and
+  // keeps employee records; never sees a salary and never touches payroll.
+  { value: 'CLINIC_MANAGER', label: 'Clinic manager' },
   { value: 'STOCK_STAFF', label: 'Stock / pharmacy' },
   { value: 'PANEL_STAFF', label: 'Panel' },
   { value: 'OWNER_ADMIN', label: 'Owner / administrator' },

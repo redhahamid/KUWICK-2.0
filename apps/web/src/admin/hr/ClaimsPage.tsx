@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { App } from 'antd';
 import dayjs from 'dayjs';
 import { clinicDayjs } from '../../clinical/clinicTime';
+import { useCan, permissionHint } from '../../core/hooks/useCan';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import {
   useDecideStaffClaim,
@@ -74,6 +75,14 @@ export function ClaimsPage() {
   const employees = useEmployees({});
   const benefits = useStaffBenefits({ year: clinicDayjs(new Date()).year(), clinicId });
   const decide = useDecideStaffClaim();
+  /*
+   * THE BUTTON USED TO LIE. There was no permission check on this screen at
+   * all, so Review opened for anyone who could reach Claims and the decision
+   * failed at the server — which UAT found as a clinic manager pressing
+   * Approve and being refused after the fact. `hr.claim.approve` is its own
+   * permission now; a reader still sees every claim and every receipt.
+   */
+  const canDecide = useCan('hr.claim.approve');
   const settle = useSettleStaffClaim();
 
   const [filter, setFilter] = useState<Filter>('ALL');
@@ -329,8 +338,13 @@ export function ClaimsPage() {
               key: 'review',
               width: 90,
               render: (_: unknown, row) => (
-                <button type="button" className="hr-btn hr-btn--sm" onClick={() => open(row)}>
-                  Review
+                <button
+                  type="button"
+                  className="hr-btn hr-btn--sm"
+                  onClick={() => open(row)}
+                  title={canDecide ? undefined : permissionHint('decide staff expense claims')}
+                >
+                  {canDecide ? 'Review' : 'View'}
                 </button>
               ),
             },

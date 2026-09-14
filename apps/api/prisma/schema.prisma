@@ -17,6 +17,11 @@ enum Role {
   FRONT_DESK_CLINICAL_STAFF
   FINANCE_STAFF
   HR_STAFF
+  /// The person who runs the floor: approves leave, claims and overtime, keeps
+  /// employee records and corrects attendance — and never sees a salary or
+  /// touches payroll. Distinct from HR_STAFF, which is a records clerk and
+  /// deliberately approves nothing.
+  CLINIC_MANAGER
   STOCK_STAFF
   PANEL_STAFF
   PATIENT_PORTAL

@@ -1,0 +1,23 @@
+-- CLINIC_MANAGER — the person who runs the floor.
+--
+-- UAT finding 2: the clinic manager could not press Approve on a leave request.
+-- The seed gave Rohana Yusof `HR_STAFF` while its own documentation described
+-- her as approving leave, claims and overtime — and `HR_STAFF` deliberately
+-- approves nothing, because it models a records clerk:
+--
+--     'hr.view', 'hr.employee.manage', 'hr.attendance.manage',
+--     // NOT leave approval, payroll or incentives: an HR clerk maintaining
+--     // records is not the person who approves somebody's leave or signs off
+--     // their pay.
+--
+-- That comment is right. The job it does not describe is the one this clinic
+-- actually has, so the answer is a role rather than a widened clerk: approves
+-- leave, claims and overtime, keeps employee records, corrects attendance —
+-- and NEVER sees a salary or touches payroll. `hr.salary.view` is withheld on
+-- purpose, which is why the Claims and Leave screens have to work without it.
+--
+-- Adding a value to an enum is not reversible in Postgres without rewriting the
+-- type, and nothing is migrated onto it here: no existing staff row changes
+-- role. The demo seed assigns it; a real clinic assigns it from Roles.
+
+ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'CLINIC_MANAGER' AFTER 'HR_STAFF';

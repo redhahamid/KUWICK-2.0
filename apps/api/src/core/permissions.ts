@@ -180,6 +180,14 @@ export type Permission =
   | 'hr.payroll.view'
   | 'hr.payroll.run'
   | 'hr.payroll.approve'
+  /**
+   * DECIDE A STAFF EXPENSE CLAIM. Split from `hr.payroll.approve` after UAT:
+   * approving somebody's RM180 dental receipt and signing off the month's
+   * payroll are not the same job, and a clinic that wants the first delegated
+   * had to hand over the second as well. Settling a claim through Finance is
+   * still payroll-tier — that one is money leaving.
+   */
+  | 'hr.claim.approve'
   // ---------------------------------------------------------------------
   // MALAYSIA PAYROLL STAGE 2 — separating rights that were conflated.
   //
@@ -425,6 +433,7 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     'hr.payroll.view',
     'hr.payroll.run',
     'hr.payroll.approve',
+    'hr.claim.approve',
     'hr.salary.view',
     'hr.payroll.reopen',
     'hr.payroll.export.bank',
@@ -471,6 +480,10 @@ export const LEGACY_ROLE_FALLBACK: Record<Role, SystemRole[]> = {
   // The four back-office roles hold no system role — see LEGACY_ROLE_PERMISSIONS.
   FINANCE_STAFF: [],
   HR_STAFF: [],
+  // No capability role: running the floor is an administrative job, and the
+  // clinical abilities come only from DOCTOR / CLINICAL_STAFF with their own
+  // credential gates.
+  CLINIC_MANAGER: [],
   STOCK_STAFF: [],
   PANEL_STAFF: [],
   // Not staff. No capability of any kind.
@@ -528,6 +541,27 @@ export const LEGACY_ROLE_PERMISSIONS: Partial<Record<Role, Permission[]>> = {
     // NOT leave approval, payroll or incentives: an HR clerk maintaining
     // records is not the person who approves somebody's leave or signs off
     // their pay.
+  ],
+  /*
+   * THE PERSON WHO RUNS THE FLOOR.
+   *
+   * The clerk above approves nothing, and that is correct for a clerk — but
+   * UAT found the clinic manager holding it and unable to press Approve on a
+   * leave request, while the seed's own documentation said she approved leave,
+   * claims and overtime. The job exists; it just had no role.
+   *
+   * WHAT IS DELIBERATELY ABSENT is the point of it: no `hr.salary.view`, so
+   * she cannot see what anyone earns, and nothing from payroll — not view, not
+   * run, not approve. Somebody has to decide the leave and the receipts every
+   * week, and that person does not have to be the person who knows the
+   * doctor's salary.
+   */
+  CLINIC_MANAGER: [
+    'hr.view',
+    'hr.employee.manage',
+    'hr.attendance.manage',
+    'hr.leave.approve',
+    'hr.claim.approve',
   ],
   STOCK_STAFF: [
     'dispense.perform',
@@ -726,6 +760,7 @@ export const INDIVIDUALLY_GRANTABLE: Permission[] = [
   'panel.writeOff',
   'supplierPayment.record',
   'hr.leave.approve',
+  'hr.claim.approve',
   'hr.payroll.view',
   'analytics.view',
   // Deliberately ABSENT, and each for the same reason: it approves money
@@ -813,6 +848,7 @@ const REFUSAL: Partial<Record<Permission, string>> = {
   'hr.employee.manage': 'Your account is not permitted to change employee records.',
   'hr.attendance.manage': 'Your account is not permitted to correct attendance.',
   'hr.leave.approve': 'Your account is not permitted to approve leave.',
+  'hr.claim.approve': 'Your account is not permitted to decide staff expense claims.',
   'hr.payroll.view': 'Your account is not permitted to view payroll.',
   'hr.payroll.run': 'Your account is not permitted to calculate a payroll run.',
   'hr.payroll.approve': 'Approving and locking a payroll run is an owner decision.',
@@ -912,6 +948,22 @@ export const CUSTOM_ROLE_GRANTABLE: Permission[] = [
   'appointment.override',
   'appointment.configure',
   'appointment.manage_roster',
+  /*
+   * HR, up to but NOT including anybody's pay.
+   *
+   * This list had no `hr.*` at all, so a clinic composing its own "Clinic
+   * manager" or "Branch manager" could not give it the one thing such a person
+   * does every week. The four below are the floor-running job; salary,
+   * payroll and the statutory tables stay out, for the same reason
+   * `hr.payroll.approve` and `finance.configure` are absent above — a role
+   * that can see or move everybody's pay is a role an owner should be
+   * composing deliberately, not reaching for by habit.
+   */
+  'hr.view',
+  'hr.employee.manage',
+  'hr.attendance.manage',
+  'hr.leave.approve',
+  'hr.claim.approve',
 ];
 
 export function isCustomRoleGrantable(permission: string): permission is Permission {

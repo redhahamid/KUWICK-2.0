@@ -63,9 +63,28 @@ const PERMISSION_GROUPS: { title: string; keys: string[] }[] = [
     title: 'Billing & inventory',
     keys: ['billing.counter', 'billing.corrections', 'dispense.perform'],
   },
+  /*
+   * HR — ABSENT UNTIL UAT ASKED FOR IT.
+   *
+   * There was no HR group here at all, and none of these permissions was in
+   * the servable catalogue either, so a clinic composing its own "Clinic
+   * manager" could not give it the one job such a person does every week.
+   * Pay is deliberately not here: salary, payroll and the statutory tables
+   * are the owner's, and a role that could see or move everybody's pay is one
+   * an owner should compose deliberately rather than reach for by habit.
+   */
+  {
+    title: 'HR & people',
+    keys: ['hr.view', 'hr.employee.manage', 'hr.attendance.manage', 'hr.leave.approve', 'hr.claim.approve'],
+  },
 ];
 
 const PERMISSION_WORDS: Record<string, string> = {
+  'hr.view': 'Open the HR module',
+  'hr.employee.manage': 'Keep employee records',
+  'hr.attendance.manage': 'Correct attendance and approve overtime',
+  'hr.leave.approve': 'Approve leave',
+  'hr.claim.approve': 'Decide staff expense claims',
   'appointment.view': 'See the diary',
   'appointment.create': 'Book appointments',
   'appointment.edit': 'Change appointments',

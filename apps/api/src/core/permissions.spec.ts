@@ -222,7 +222,10 @@ describe('a deactivated account', () => {
 describe('migrating what already exists', () => {
   it('every legacy role has a mapping — none silently loses its job', () => {
     const legacy = Object.keys(LEGACY_ROLE_FALLBACK) as Role[];
-    expect(legacy).toHaveLength(9);
+    // TEN since UAT finding 2 added CLINIC_MANAGER — the person who runs the
+    // floor, which HR_STAFF deliberately is not. The count is pinned so that
+    // adding a role stays a visible decision rather than a side effect.
+    expect(legacy).toHaveLength(10);
     for (const role of legacy) expect(LEGACY_ROLE_FALLBACK[role]).toBeDefined();
   });
 
@@ -454,6 +457,9 @@ describe('individual permission grants', () => {
       // clerical, and it belongs to whoever opens the post.
       'supplierPayment.record',
       'hr.leave.approve',
+      // Split from hr.payroll.approve after UAT: deciding a receipt and signing
+      // off the month's payroll are not the same job.
+      'hr.claim.approve',
       'hr.payroll.view',
       'analytics.view',
     ]);
