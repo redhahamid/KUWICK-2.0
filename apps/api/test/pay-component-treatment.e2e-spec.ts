@@ -26,6 +26,7 @@ describe('pay component statutory treatment (e2e)', () => {
   let prisma: PrismaClient;
   let tenantId: string;
   let bearer: string;
+  let ownerStaffId: string;
 
   const server = () => app.getHttpServer();
 
@@ -78,7 +79,9 @@ describe('pay component statutory treatment (e2e)', () => {
     await withTenantContext(prisma, tenantId, (tx) =>
       tx.tenant.create({ data: { id: tenantId, name: 'Component Treatment Tenant' } }),
     );
-    bearer = (await createOwnerAndBearer(prisma, tenantId)).bearer;
+    const owner = await createOwnerAndBearer(prisma, tenantId);
+    bearer = owner.bearer;
+    ownerStaffId = owner.staffId;
     await request(server()).post('/workforce/pay-components/seed').set('Authorization', bearer).expect(201);
   });
 
@@ -249,6 +252,128 @@ describe('pay component statutory treatment (e2e)', () => {
         })
         .expect(400);
       expect(res.body.message).toContain('raise the rate paid for the next one');
+    });
+  });
+
+  /**
+   * A VERSION THAT HAS NOT STARTED IS A PLAN, NOT HISTORY.
+   *
+   * The owner mis-tapped EPF on overtime, saved it from 1 October, and could
+   * not undo it: the same date came back "not before", so the only way out was
+   * a THIRD version from November — leaving a month of a treatment nobody
+   * wanted, recorded as though it had been decided. Nothing is paid under a
+   * version that has not begun, so nothing needs preserving.
+   */
+  describe('correcting a version before it takes effect', () => {
+    const FUTURE = '2027-03-01';
+
+    it('replaces an unstarted version instead of stacking a third on top of it', async () => {
+      const before = await find('BONUS');
+      expect(before.epfLiable).toBe(true);
+
+      // The mis-tap: EPF off, from a date well in the future.
+      await save(before, { epfLiable: false, effectiveFrom: FUTURE, reason: 'Mis-tap, about to be undone.' }).expect(201);
+      expect(await historyOf('BONUS')).toHaveLength(2);
+
+      // The correction, at the SAME date. This used to be refused.
+      const mistaken = await find('BONUS');
+      await save(mistaken, {
+        epfLiable: false,
+        hrdLiable: true,
+        effectiveFrom: FUTURE,
+        reason: 'Corrected before it began.',
+      }).expect(201);
+
+      const after = await find('BONUS');
+      expect(after.hrdLiable).toBe(true);
+      expect(after.effectiveFrom).toBe(FUTURE);
+      // Still two versions, not three: the plan was edited, not superseded.
+      expect(await historyOf('BONUS')).toHaveLength(2);
+      expect(after.changeReason).toBe('Corrected before it began.');
+    });
+
+    it('withdraws the version entirely when the correction puts it back as it was', async () => {
+      const mistaken = await find('BONUS');
+      // Back to exactly what the previous version said.
+      await save(mistaken, {
+        epfLiable: true,
+        hrdLiable: false,
+        effectiveFrom: FUTURE,
+        reason: 'Undoing the mis-tap completely.',
+      }).expect(201);
+
+      /*
+       * ONE version, and it is the original. A row recording that the clinic
+       * decided the same thing twice is something an owner would have to
+       * explain to an auditor who asked why.
+       */
+      const versions = await historyOf('BONUS');
+      expect(versions).toHaveLength(1);
+      expect(versions[0].effectiveTo).toBeNull();
+      expect(versions[0].clinicOverride).toBe(false);
+
+      const restored = await find('BONUS');
+      expect(restored.epfLiable).toBe(true);
+      expect(restored.hrdLiable).toBe(false);
+    });
+
+    it('still refuses to re-date a version that HAS started', async () => {
+      /*
+       * The old rule was right about the past, and this piece must not soften
+       * it. `DIRECTOR_FEE` is untouched, so its version opened at the epoch and
+       * has been in force ever since: re-dating it onto its own start is still
+       * a no.
+       */
+      const live = await find('DIRECTOR_FEE');
+      const res = await save(live, {
+        socsoLiable: true,
+        effectiveFrom: '1970-01-01',
+        reason: 'Trying to re-date a version already in force.',
+      }).expect(400);
+      expect(res.body.message).toContain('which is not before');
+    });
+
+    it('still refuses a correction that would reach a month already approved', async () => {
+      /*
+       * THE GUARD THIS PIECE PROMISED NOT TO WEAKEN, proven against the NEW
+       * path rather than the old one: an unstarted version is editable, but not
+       * into a period whose money is settled. The approved-run check runs
+       * before the correction branch, and this is what says so.
+       */
+      const row = await find('ADVANCE_RECOVERY');
+      await save(row, {
+        pcbLiable: false,
+        effectiveFrom: '2027-03-01',
+        reason: 'A plan, dated well ahead.',
+      }).expect(201);
+
+      // Somebody approves a run covering that month. The guard counts every
+      // approved run from that month ONWARDS, so this fixture would block every
+      // earlier-dated change in the file if it outlived its own test — it is
+      // removed again below rather than left lying in the tenant.
+      const run = await withTenantContext(prisma, tenantId, (tx) =>
+        tx.payrollRun.create({
+          data: {
+            tenantId,
+            period: new Date('2027-03-01T00:00:00.000Z'),
+            status: 'APPROVED',
+            createdByStaffId: ownerStaffId,
+          },
+        }),
+      );
+
+      try {
+        const planned = await find('ADVANCE_RECOVERY');
+        const res = await save(planned, {
+          pcbLiable: true,
+          hrdLiable: true,
+          effectiveFrom: '2027-03-01',
+          reason: 'Correcting a plan whose month is now settled.',
+        }).expect(409);
+        expect(res.body.message).toContain('approved payroll run(s) cover');
+      } finally {
+        await withTenantContext(prisma, tenantId, (tx) => tx.payrollRun.delete({ where: { id: run.id } }));
+      }
     });
   });
 

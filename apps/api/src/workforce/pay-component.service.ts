@@ -330,19 +330,49 @@ export class PayComponentService {
           (field) => (data as Record<string, unknown>)[field] !== (open as unknown as Record<string, unknown>)[field],
         );
 
+      /*
+       * A VERSION THAT HAS NOT STARTED IS NOT HISTORY — IT IS A PLAN.
+       *
+       * An owner mis-tapped EPF on overtime, saved it from 1 October, and then
+       * could not undo it: dating the correction from the same 1 October was
+       * refused as "not before", so the only way out was a THIRD version from
+       * November — leaving a month of a treatment nobody wanted, recorded as
+       * though it had been decided.
+       *
+       * The rule that produced that is right about the past and wrong about
+       * the future. What makes a version immovable is that money was paid
+       * under it, and nothing is paid under a version that has not begun. So
+       * while a version has not started, editing it EDITS THAT VERSION rather
+       * than stacking another on top.
+       *
+       * The approved-run guard below is untouched and still decides: any date
+       * a settled month covers is refused whichever path this takes.
+       *
+       * `pay_components` carries no append-only trigger, unlike `appointments`
+       * — checked, not assumed. An appointment is a medicolegal record of
+       * something that happened; a configuration version that never took
+       * effect is a record of nothing, and the audit log keeps the mis-tap.
+       */
+      const todayUtc = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
+      const notYetStarted = open !== null && open.effectiveFrom > todayUtc;
+
       if (open && movedTreatment) {
-        if (!dto.effectiveFrom) {
+        if (!dto.effectiveFrom && !notYetStarted) {
           throw new BadRequestException(
             `The statutory treatment of "${dto.code}" is changing, and that is recorded from the date it takes ` +
               'effect. Send effectiveFrom: without it, this month and every earlier unapproved month would be ' +
               'recalculated under a rule that was not in force for them.',
           );
         }
-        const from = new Date(`${dto.effectiveFrom.slice(0, 10)}T00:00:00.000Z`);
-        if (from <= open.effectiveFrom) {
+        // Correcting a version that has not started keeps its own date unless a
+        // new one is named.
+        const from = dto.effectiveFrom
+          ? new Date(`${dto.effectiveFrom.slice(0, 10)}T00:00:00.000Z`)
+          : open.effectiveFrom;
+        if (!notYetStarted && from <= open.effectiveFrom) {
           throw new BadRequestException(
             `The current version of "${dto.code}" starts on ${open.effectiveFrom.toISOString().slice(0, 10)}, ` +
-              `which is not before ${dto.effectiveFrom.slice(0, 10)}.`,
+              `which is not before ${dto.effectiveFrom?.slice(0, 10)}.`,
           );
         }
         /*
@@ -379,6 +409,77 @@ export class PayComponentService {
           );
         }
 
+        if (notYetStarted) {
+          /*
+           * CORRECTING A PLAN, not writing history.
+           *
+           * The version has not begun, so there is nothing to preserve and
+           * nothing to date around: it is edited where it stands, keeping its
+           * version number, because it was never in force to be superseded.
+           */
+          const previous = await tx.payComponent.findFirst({
+            where: { code: dto.code, effectiveTo: { not: null } },
+            orderBy: { effectiveFrom: 'desc' },
+          });
+          const backToPrevious =
+            previous !== null &&
+            TREATMENT_FIELDS.every(
+              (field) =>
+                (data as Record<string, unknown>)[field] === (previous as unknown as Record<string, unknown>)[field],
+            );
+
+          if (backToPrevious) {
+            /*
+             * A VERSION THAT SAYS WHAT THE ONE BEFORE IT SAYS IS NOT A VERSION.
+             *
+             * Undoing a mis-tap must leave the catalogue as though the tap had
+             * not happened — not a second row recording that the clinic decided
+             * the same thing twice, which is what an owner would have to
+             * explain to an auditor who asked why. The withdrawal itself is in
+             * the audit log, where a mistake belongs.
+             */
+            await tx.payComponent.delete({ where: { id: open.id } });
+            const restored = await tx.payComponent.update({
+              where: { id: previous.id },
+              data: { effectiveTo: null },
+            });
+            await recordAudit(tx, actor, {
+              action: 'payComponent.versionWithdrawn',
+              entityType: 'PayComponent',
+              entityId: restored.id,
+              reason:
+                `Withdrew the unstarted v${open.version} of ${dto.code} (would have begun ` +
+                `${open.effectiveFrom.toISOString().slice(0, 10)}); the treatment in force is unchanged. ` +
+                `Given: ${dto.reason.trim()}`,
+              before: open,
+              after: restored,
+            });
+            return restored;
+          }
+
+          const corrected = await tx.payComponent.update({
+            where: { id: open.id },
+            data: {
+              ...data,
+              effectiveFrom: from,
+              clinicOverride: true,
+              changeReason: dto.reason.trim(),
+              createdByStaffId: actor.id,
+            },
+          });
+          await recordAudit(tx, actor, {
+            action: 'payComponent.versionCorrected',
+            entityType: 'PayComponent',
+            entityId: corrected.id,
+            reason:
+              `Corrected v${corrected.version} of ${corrected.code} before it took effect ` +
+              `(${from.toISOString().slice(0, 10)}), set by this clinic and UNVERIFIED: ${dto.reason.trim()}`,
+            before: open,
+            after: corrected,
+          });
+          return corrected;
+        }
+
         await tx.payComponent.update({
           where: { id: open.id },
           data: { effectiveTo: new Date(from.getTime() - 86_400_000) },
@@ -409,7 +510,7 @@ export class PayComponentService {
           action: 'payComponent.updated',
           entityType: 'PayComponent',
           entityId: saved.id,
-          reason: `${saved.code} v${saved.version} from ${dto.effectiveFrom.slice(0, 10)}, set by this clinic and UNVERIFIED: ${dto.reason.trim()}`,
+          reason: `${saved.code} v${saved.version} from ${from.toISOString().slice(0, 10)}, set by this clinic and UNVERIFIED: ${dto.reason.trim()}`,
           before: open,
           after: saved,
         });

@@ -98,6 +98,22 @@ const BLANK = {
   active: true,
 };
 
+/**
+ * THE REASONS A CLINIC ACTUALLY GIVES.
+ *
+ * The reason stays MANDATORY — a year on, when KWSP asks, the sentence beside
+ * the flag is what answers them — but typing one on a phone every time a
+ * switch is touched is a tax on doing the right thing. These are the four an
+ * owner named, as opening sentences rather than codes: picking one fills the
+ * box, and the box is still a box, so it can be finished by hand.
+ */
+const COMMON_REASONS = [
+  'Clinic policy.',
+  'Following a KWSP circular.',
+  'On the auditor’s advice.',
+  'Correcting a mistaken tap.',
+];
+
 /** What this version changed from the one before it — the only part worth reading twice. */
 const moved = (version: PayComponentVersion, previous: PayComponentVersion | undefined): string[] => {
   if (!previous) return [];
@@ -105,6 +121,9 @@ const moved = (version: PayComponentVersion, previous: PayComponentVersion | und
     (flag) => `${flag.title} ${version[flag.key] ? 'on' : 'off'}`,
   );
 };
+
+/** Has this version begun? A plan and a record are corrected differently. */
+const notStarted = (row: PayComponentRow) => dayjs(row.effectiveFrom).isAfter(dayjs(), 'day');
 
 export function PayrollItemsPage() {
   const { message } = App.useApp();
@@ -321,7 +340,17 @@ export function PayrollItemsPage() {
                           {flag.title} {pending.next ? 'on' : 'off'} for {row.name}
                         </div>
                         <div className="hr-popover__hint">
-                          A changed treatment is a new version, not an edit — months already priced keep the old one.
+                          {/*
+                            * TELL THE TRUTH ABOUT WHICH OF THE TWO THIS IS.
+                            * A version that has not begun is a plan, and editing
+                            * it replaces it; one already in force is history, and
+                            * changing it can only mean a new version from a later
+                            * month. Saying "a new version" for both left an owner
+                            * unable to undo a mis-tap.
+                            */}
+                          {notStarted(row)
+                            ? `This change has not started yet, so editing it replaces it — no third version, and nothing has been paid under it.`
+                            : 'A changed treatment is a new version, not an edit — months already priced keep the old one.'}
                         </div>
                         <label htmlFor={`from-${row.id}`}>From which month</label>
                         <DatePicker
@@ -334,10 +363,18 @@ export function PayrollItemsPage() {
                           onChange={(value) => value && setFrom(value.startOf('month'))}
                         />
                         <label htmlFor={`reason-${row.id}`}>Why</label>
+                        <Select
+                          aria-label="Common reasons"
+                          placeholder="Pick a common reason"
+                          style={{ width: '100%', marginBottom: 6 }}
+                          value={COMMON_REASONS.includes(reason) ? reason : undefined}
+                          options={COMMON_REASONS.map((value) => ({ value, label: value }))}
+                          onChange={(value) => setReason(value)}
+                        />
                         <Input
                           id={`reason-${row.id}`}
                           value={reason}
-                          placeholder="e.g. KWSP circular of 12 Aug"
+                          placeholder="or write your own"
                           maxLength={500}
                           onChange={(event) => setReason(event.target.value)}
                           onPressEnter={save}

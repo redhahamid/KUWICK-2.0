@@ -111,6 +111,12 @@ export type AuditAction =
   | 'payComponent.seeded'
   | 'payComponent.created'
   | 'payComponent.updated'
+  /// A version corrected before it took effect — not a new version, because
+  /// nothing was ever paid under the one it replaces.
+  | 'payComponent.versionCorrected'
+  /// An unstarted version withdrawn outright, leaving the treatment in force
+  /// unchanged. The mistake lives here rather than in the catalogue.
+  | 'payComponent.versionWithdrawn'
   // A named person here looked at the statutory registry. Not verification.
   | 'statutory.checked'
   | 'payrollPolicy.created'

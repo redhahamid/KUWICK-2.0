@@ -58,9 +58,20 @@ const list: PayComponentList = {
       eisLiable: false,
       pcbLiable: false,
       version: 2,
-      effectiveFrom: '2026-10-01',
+      // In the past: this version is in force, so changing it means a new one.
+      effectiveFrom: '2026-08-01',
       clinicOverride: true,
       changeReason: 'Reimbursement of travel actually incurred.',
+    }),
+    component({
+      id: 'c-bonus',
+      code: 'BONUS',
+      name: 'Bonus',
+      version: 2,
+      // Well ahead of any date a test runs on: a PLAN, not a record.
+      effectiveFrom: '2099-01-01',
+      clinicOverride: true,
+      changeReason: 'Mis-tap, waiting to be corrected.',
     }),
   ],
   verificationNotice: {
@@ -164,15 +175,60 @@ describe('the statutory treatment of a payroll item', () => {
   it('says whose decision a changed row was, and why, on the row', () => {
     mount();
     // Not in an audit log: on the screen, next to the figure it explains.
-    expect(screen.getByText('Your clinic')).toBeTruthy();
+    // Two rows carry it now — the one in force and the one still a plan.
+    expect(screen.getAllByText('Your clinic')).toHaveLength(2);
     expect(screen.getByText('Reimbursement of travel actually incurred.')).toBeTruthy();
-    expect(screen.getByText(/from 1 Oct 2026/)).toBeTruthy();
+    expect(screen.getByText(/from 1 Aug 2026/)).toBeTruthy();
   });
 
   it('never claims any of it has been checked against an authority', () => {
     mount();
     expect(screen.getByText(/not a statement of Malaysian law/i)).toBeTruthy();
     expect(screen.getByText('Unchecked')).toBeTruthy();
+  });
+});
+
+describe('the reason, which stays mandatory but need not be typed', () => {
+  it('offers the reasons a clinic actually gives', () => {
+    mount();
+    fireEvent.click(screen.getByLabelText('EPF for Allowance'));
+    // Mandatory, and the owner agreed it should stay mandatory — but typing one
+    // on a phone every time a switch is touched is a tax on doing the right
+    // thing.
+    expect(screen.getByLabelText('Common reasons')).toBeTruthy();
+  });
+
+  it('keeps the free-text box, because a picked sentence is a starting point', () => {
+    mount();
+    fireEvent.click(screen.getByLabelText('EPF for Allowance'));
+    const box = screen.getByLabelText('Why') as HTMLInputElement;
+    expect(box).toBeTruthy();
+    fireEvent.change(box, { target: { value: 'KWSP circular of 12 Aug.' } });
+    expect(box.value).toBe('KWSP circular of 12 Aug.');
+  });
+
+  it('will not save with the reason left empty', () => {
+    mount();
+    fireEvent.click(screen.getByLabelText('EPF for Allowance'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(upsertMutate).not.toHaveBeenCalled();
+    expect(screen.getByText(/Say why/)).toBeTruthy();
+  });
+});
+
+describe('a version that has not started yet', () => {
+  it('says it will be REPLACED, not stacked on', () => {
+    mount();
+    fireEvent.click(screen.getByLabelText('EPF for Bonus'));
+    // The owner mis-tapped, saved from a future date, and could not undo it.
+    // The screen must not keep calling that "a new version".
+    expect(screen.getByText(/has not started yet, so editing it replaces it/)).toBeTruthy();
+  });
+
+  it('still calls a change to a version in force a new version', () => {
+    mount();
+    fireEvent.click(screen.getByLabelText('EPF for Mileage / travelling allowance'));
+    expect(screen.getByText(/months already priced keep the old one/)).toBeTruthy();
   });
 });
 

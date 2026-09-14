@@ -272,6 +272,75 @@ than silent, and all three are better than neither. Each one costs an
 investigation every time it bites, and it has now bitten in Pieces 3e, 3f and
 here.
 
+## 8b. Piece 2d — two findings from the owner's staging test
+
+### A version that has not started is a plan, not history
+
+`[D]` The owner mis-tapped EPF on overtime, saved it from 1 October, and could
+not undo it. The same date came back *"The current version of OVERTIME starts
+on 2026-10-01, which is not before 2026-10-01"*, so the only way out was a
+**third** version from November — leaving a month of a treatment nobody wanted,
+recorded as though it had been decided.
+
+`[O]` The rule that produced that is right about the past and wrong about the
+future. What makes a version immovable is that **money was paid under it**, and
+nothing is paid under a version that has not begun. So while a version has not
+started, editing it edits **that** version:
+
+| Situation | What happens now |
+|---|---|
+| Open version has not started; flags change | It is **corrected in place**, keeping its version number |
+| Open version has not started; flags return to the previous version's | It is **withdrawn entirely** and the previous version reopens |
+| Open version is in force | Unchanged: a new version, from a later date |
+| Any date an approved run covers | Unchanged: refused |
+
+`[D]` The withdrawal matters as much as the correction. A row recording that
+the clinic decided the same thing twice is something an owner would have to
+explain to an auditor who asked why. The mis-tap stays in the **audit log**,
+where a mistake belongs, and leaves the catalogue as though the tap had not
+happened.
+
+`[D]` `pay_components` carries **no append-only trigger** — checked against the
+database, not assumed. `appointments` does, and refused a delete outright
+during Piece 2c's investigation with *"This is a medicolegal record"*. The
+distinction is the right one: an appointment records something that happened; a
+configuration version that never took effect records nothing.
+
+`[D]` The approved-run guard sits at line 399 and the correction branch at 412,
+so the guard still decides first on both paths. A test creates an approved run
+and proves the correction is refused through it — and removes the run again,
+because the guard counts every approved run from that month onwards and the
+fixture would otherwise block every earlier-dated change in the file.
+
+`[A]` One trade, stated rather than hidden: **one future version at a time.**
+Re-dating an unstarted version moves it rather than scheduling a second change
+behind it. Two queued future changes to the same component cannot be expressed
+until the first takes effect. That is the shape that matches "undo my mistake",
+which is the case that actually came up.
+
+### The reason stays mandatory, and stops being typing
+
+`[D]` The owner works from a phone and asked for common reasons as a dropdown
+**and** the free-text box kept — and was explicit that the reason itself must
+stay mandatory: *"setahun lagi bila KWSP tanya, sebab yang jelas itu yang
+menyelamatkan saya."*
+
+`[D]` Four reasons, as opening sentences rather than codes — clinic policy, a
+KWSP circular, the auditor's advice, correcting a mistaken tap. Picking one
+fills the box; the box is still a box, so it can be finished by hand. On a
+phone that is four taps and no typing. The mandatory check is untouched.
+
+`[D]` The popover also stopped lying about which of the two things it is doing.
+It said *"a new version, not an edit"* for every change; on a version that has
+not started it now says the change **replaces** it, because that is what
+happens.
+
+### No migration
+
+`[D]` **This piece adds none.** The correction is service logic, the dropdown
+is a screen, and the two new audit actions go into `audit_logs.action`, which
+is a plain `text` column rather than a Postgres enum — checked.
+
 ## 9. Still to do
 
 `[D]` **Staging needs the seed workflow.** This piece adds two columns to
