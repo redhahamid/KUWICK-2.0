@@ -136,6 +136,15 @@ it decides what the fix can be. They are not one group:
 | `unpaidBreakMinutes`, `breakAfterMinutes` | `AttendanceRulesPanel.tsx` FIELDS | two editable numbers |
 | `unpaidLeaveBasis`, `unpaidLeaveDays` | `PayrollSettingsPage.tsx:379` | the **Unpaid leave** column, e.g. "Calendar days (31)" |
 
+`[D]` **Credit where it is due: the payroll screen was not silent.** A footnote
+under that table already said the proration bases are *"recorded but NOT yet
+applied"*, and why — the lawful basis has not been established against the Act,
+"so proration stays unimplemented rather than guessed". `[A]` What it could not
+do is reach the column itself, which still printed "Calendar days (31)" as
+though it were the answer in force. A reader who takes in a table cell and not
+a footnote under it — which is most readers — was still misled. The per-field
+mark is that footnote finishing its sentence, not a new idea.
+
 **Dead and API-only** — no screen shows them, no screen edits them:
 
 `salaryProrationBasis`, `salaryProrationDays`, `overtimeBasis`, `overtimeDays`,
