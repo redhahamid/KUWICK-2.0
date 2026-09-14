@@ -102,6 +102,17 @@ Three known members:
 can be set anywhere in Settings, establish whether the engine reads it, and
 report the dead ones. The owner expects more than these three.
 
+`[D]` **The audit is done** — `docs/HR_SETTINGS_AUDIT_2026-09.md`. Fourteen dead
+fields, one half-live, one promised with no field at all. There was indeed more
+than three, and one is new to everybody: **`LeavePolicy.carryForwardDays` caps
+nothing** — no rollover job exists, and the manual balance adjustment it would
+have to constrain never consults it. The audit also **corrects two fields I
+first reported dead in error** (`overtimeMinimumMinutes`,
+`overtimeRoundingMinutes`); both are live and reach pay.
+
+`[D]` The audit **reports only**. None of the fourteen is fixed: making an inert
+setting live changes what people are paid, and each needs its own decision.
+
 ## Also settled during UAT
 
 - `[D]` **`payableMinutes` is dead.** `computeAttendance` derives it from
