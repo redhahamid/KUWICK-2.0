@@ -175,6 +175,20 @@
   font-weight: 600;
   margin: 30px 0 12px;
 }
+/* A setting that saves and is not obeyed. The chip carries the word; this only
+   sets the sentence beside it apart from the field's own help text, which is
+   the line it is contradicting. */
+.hr-inert {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.hr-inert__why {
+  font-size: 12px;
+  color: var(--hr-ink2);
+}
+
 .hr-note {
   margin-top: 22px;
   font-size: 13px;

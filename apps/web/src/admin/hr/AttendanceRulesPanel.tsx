@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { App, Button, Form, Input, InputNumber, Select, Switch, Tooltip } from 'antd';
-import { Panel, PanelHead, StatusChip } from './ui';
+import { NotApplied, Panel, PanelHead, StatusChip } from './ui';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useAttendancePolicy, useSaveAttendancePolicy } from '../hooks/useAdmin';
 import { permissionHint, useCan } from '../../core/hooks/useCan';
@@ -20,7 +20,16 @@ import type { AttendancePolicy } from '../types';
  * mention. The panel says which of the three answers is in force, because
  * "why is this branch different" is the first question anybody asks.
  */
-const FIELDS: { name: keyof AttendancePolicy; label: string; help: string; min: number; max: number; unit: string }[] = [
+const FIELDS: {
+  name: keyof AttendancePolicy;
+  label: string;
+  help: string;
+  min: number;
+  max: number;
+  unit: string;
+  /** Set where the field saves and no calculation reads it. See ui/NotApplied. */
+  inert?: string;
+}[] = [
   {
     name: 'lateGraceMinutes',
     label: 'Late after',
@@ -60,6 +69,7 @@ const FIELDS: { name: keyof AttendancePolicy; label: string; help: string; min: 
     min: 0,
     max: 240,
     unit: 'min',
+    inert: 'No break is deducted from anybody today.',
   },
   {
     name: 'breakAfterMinutes',
@@ -68,6 +78,7 @@ const FIELDS: { name: keyof AttendancePolicy; label: string; help: string; min: 
     min: 0,
     max: 1440,
     unit: 'min',
+    inert: 'Nothing is measured against this yet.',
   },
   {
     name: 'maximumShiftHours',
@@ -211,17 +222,44 @@ export function AttendanceRulesPanel() {
               key={field.name}
               name={field.name}
               label={field.label}
-              extra={field.help}
+              extra={
+                field.inert ? (
+                  <>
+                    {field.help} <NotApplied>{field.inert}</NotApplied>
+                  </>
+                ) : (
+                  field.help
+                )
+              }
               rules={[{ required: true, message: 'A number is required' }]}
             >
               <InputNumber min={field.min} max={field.max} addonAfter={field.unit} style={{ width: '100%' }} />
             </Form.Item>
           ))}
+          {/*
+            * THIS SWITCH SAID SOMETHING UNTRUE. Its help text used to read
+            * "Off means extra time reaches payroll without anybody agreeing to
+            * it" — and turning it off does nothing of the kind. Every pricing
+            * branch gates on the day's own overtimeApproved regardless, and the
+            * only thing that sets that flag is a manager pressing Approve. So
+            * the switch is obeyed in the ON position by accident and ignored in
+            * the OFF position, and the panel's own notice above says approval
+            * is always required, which contradicted the field directly.
+            *
+            * Saying so is not the fix, only the honest half of it: whether a
+            * clinic may pay unapproved extra time is the account holder's
+            * decision, and it changes what people are paid.
+            */}
           <Form.Item
             name="overtimeRequiresApproval"
             label="Overtime must be approved"
             valuePropName="checked"
-            extra="Off means extra time reaches payroll without anybody agreeing to it."
+            extra={
+              <>
+                Approval is required either way today — turning this off does not pay unapproved extra time.{' '}
+                <NotApplied>Only Approve on the timesheet releases overtime to payroll.</NotApplied>
+              </>
+            }
           >
             <Switch />
           </Form.Item>

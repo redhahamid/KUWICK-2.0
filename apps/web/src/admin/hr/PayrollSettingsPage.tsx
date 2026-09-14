@@ -10,7 +10,7 @@ import {
   useStatutoryRates,
   useUpsertPayrollPolicy,
 } from '../hooks/useAdmin';
-import { Drawer, HrPage, Panel, PanelHead, StatusChip } from './ui';
+import { Drawer, HrPage, NotApplied, Panel, PanelHead, StatusChip } from './ui';
 import { Table } from './ui/Table';
 import { IconEdit, IconPlus } from './ui/icons';
 import type { OvertimeMode, PayrollPolicyRow } from '../types';
@@ -376,7 +376,25 @@ export function PayrollSettingsPage() {
                 </span>
               ),
             },
-            { title: 'Unpaid leave', key: 'ul', width: 140, render: (_: unknown, row) => basisLabel(row.unpaidLeave.basis, row.unpaidLeave.days) },
+            {
+              /*
+               * THE ONE BASIS THIS SCREEN SHOWS, and it prices nothing. The
+               * run deducts unpaid leave from the days it computed itself; the
+               * rule set's unpaid-leave basis is stored, resent unchanged on
+               * every edit above, and read by no calculation. The column stays
+               * because the answer is real and a clinic recorded it — it just
+               * stops presenting itself as the one in force.
+               */
+              title: 'Unpaid leave',
+              key: 'ul',
+              width: 200,
+              render: (_: unknown, row) => (
+                <span>
+                  {basisLabel(row.unpaidLeave.basis, row.unpaidLeave.days)}{' '}
+                  <NotApplied>The run uses the days it computed.</NotApplied>
+                </span>
+              ),
+            },
             ...(mayManage
               ? [
                   {

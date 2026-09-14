@@ -87,9 +87,9 @@ established is never written — and `payroll-journey.service.ts:437` reads
 field of the same name. `payroll-calculation.ts:229` says of one of them
 outright: *"`unpaidLeaveDaysPerMonth` is GONE from the calculation."*
 
-`[D]` So **ten** payroll-policy fields are stored, shown in Settings and applied
-to nothing, and an eleventh moves only a warning. Every run prices the ordinary
-rate from the schema defaults 26 / 31 / 7.5.
+`[D]` So **ten** payroll-policy fields are stored and applied to nothing, and an
+eleventh moves only a warning. Every run prices the ordinary rate from the schema
+defaults 26 / 31 / 7.5.
 
 `[O]` The owner's own note on why this is worse than harmless: *"For this
 clinic the defaults happen to be the right numbers, which is what makes it
@@ -102,8 +102,11 @@ dangerous rather than harmless."*
 | `carryForwardDays` | nothing | **DEAD — new** |
 
 `[D]` **A carry-forward cap that caps nothing.** `carryForwardDays` is read at
-`leave.service.ts:63` into the response the Settings screen displays, written at
-`:86` and `:96`, and consulted by no calculation. The balance is computed from
+`leave.service.ts:63` into the API's list response, written at `:86` and `:96`,
+and consulted by no calculation. `[D]` It is also never rendered: there is **no
+leave-policy editor anywhere in the web app**. The employee record shows the
+policy's name and its annual-leave days (`EmployeeWorkspacePage.tsx:325, 385`)
+and nothing else. The balance is computed from
 `carriedInDays` on the employee's stored `LeaveBalance` row
 (`leave.service.ts:234`), and that row has exactly one writer: the manual adjust
 action (`leave.service.ts:329, 338`, from `adjust-leave-balance.dto.ts`).
@@ -120,12 +123,48 @@ number a clinic would reasonably believe is being enforced — except that here 
 is true, and it governs leave that staff will eventually ask to take or be paid
 for.
 
+## Two different problems, and only one is on a screen
+
+`[D]` I checked where each dead field actually appears in the web app, because
+it decides what the fix can be. They are not one group:
+
+**Dead and on screen** — a clinic reads these and is misled:
+
+| Field | Where | What it says |
+|---|---|---|
+| `overtimeRequiresApproval` | `AttendanceRulesPanel.tsx:221` | a switch, with help text that is false in the off position |
+| `unpaidBreakMinutes`, `breakAfterMinutes` | `AttendanceRulesPanel.tsx` FIELDS | two editable numbers |
+| `unpaidLeaveBasis`, `unpaidLeaveDays` | `PayrollSettingsPage.tsx:379` | the **Unpaid leave** column, e.g. "Calendar days (31)" |
+
+**Dead and API-only** — no screen shows them, no screen edits them:
+
+`salaryProrationBasis`, `salaryProrationDays`, `overtimeBasis`, `overtimeDays`,
+`leavePayBasis`, `leavePayDays`, `terminationBasis`, `terminationDays`,
+`carryForwardDays`.
+
+`[D]` The eight payroll ones survive only because `PayrollSettingsPage.tsx:187`
+resends them unchanged on every edit — a carry-through, not a display. They are
+reachable through the API and through nothing else.
+
+`[A]` **This splits piece 4's build in two.** Marking a field on screen fixes the
+first group and does nothing for the second: there is no screen to mark. The
+second group is a decision about the API surface — implement them or withdraw
+them — and it is the owner's, not mine.
+
 ## Promised and absent
 
-`[D]` **The payroll cut-off day** (finding 8). The Settings card's description
-promises it; there is no field for it on any screen and no column for it on any
-model. It is not a dead setting — it is a setting that was never built,
-described as though it were.
+`[D]` **The payroll cut-off day** (finding 8). There is no field for it on any
+screen and no column for it on any model. It is not a dead setting — it is a
+setting that was never built, described as though it were.
+
+`[D]` The description that promises it is `HrSettingsPage.tsx:209`, on the
+**Payroll policies** card, and it makes **two** false claims in one line:
+
+> Who may approve a run, how overtime and unpaid leave are priced, cut-off day.
+
+`[D]` Only the first clause is true. There is no cut-off day; and unpaid leave is
+priced from the run's own computed days, never from the unpaid-leave basis this
+card is pointing at.
 
 ## The settings that are live, in full
 
@@ -156,14 +195,33 @@ my first pass claimed; the payroll policy is exactly as bad as the owner
 suspected; and the one genuinely new field is on the leave policy, which nobody
 had looked at.
 
-## What this audit does NOT do
+## What was built on the back of this, and what was not
 
-`[A]` It reports. **Nothing here is fixed yet** — making an inert setting live
-changes what people are paid, and each one needs its own decision: apply it,
-remove it from the screen, or mark it plainly as not yet applied. That is the
-build half of piece 4 and it has not been done.
+`[D]` **Built: the screens stop claiming.** Every dead field that a clinic can
+actually see now carries a **Not applied** mark (`hr/ui/NotApplied.tsx`), in the
+gold `attn` tone because it is a decision waiting for the account holder rather
+than a settled fact:
 
-`[A]` `[D]` The safest immediate step, and the one I would take first, is
-neither applying nor deleting: **say so on the screen**. A field that admits it
-is not yet applied is honest at no risk to anybody's pay, and the statutory rate
-card already does exactly this elsewhere in the product.
+| Where | What changed |
+|---|---|
+| `AttendanceRulesPanel.tsx` | the unpaid-break pair marked |
+| `AttendanceRulesPanel.tsx` | **the approval switch's help text corrected** — it said off "means extra time reaches payroll without anybody agreeing to it", which is false |
+| `PayrollSettingsPage.tsx` | the **Unpaid leave** column marked |
+| `HrSettingsPage.tsx` | the Payroll policies card no longer promises a cut-off day, nor unpaid-leave pricing |
+
+`[D]` Pinned by `settingsNotApplied.test.tsx`, including a test that the overtime
+minimum and rounding stay **un**marked — the two I first got wrong. If either
+ever becomes dead for real, that test fails and somebody decides on purpose.
+
+`[A]` **Not built, and deliberately: none of the fourteen was made live or
+deleted.** Applying a dead setting changes what somebody is paid. That is the
+account holder's decision, one field at a time, and it is not a thing to do at
+the end of a long session on the way past.
+
+`[A]` **Not built, because there is nothing to mark:** the nine API-only fields.
+No screen shows them, so on-screen honesty cannot reach them. They need the
+other decision — implement or withdraw from the API — and that is the owner's.
+
+`[A]` `[O]` **The one I would put first** is `carryForwardDays`. It is the only
+new find that governs something staff will eventually ask for, and it is
+currently neither enforced nor visible.

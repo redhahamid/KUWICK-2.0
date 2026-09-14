@@ -206,7 +206,13 @@ export function HrSettingsPage() {
     },
     {
       title: 'Payroll policies',
-      description: 'Who may approve a run, how overtime and unpaid leave are priced, cut-off day.',
+      // FINDING 8. This line used to end "cut-off day", and no cut-off day
+      // exists — not as a field, not as a column, not anywhere. It also
+      // claimed unpaid leave was priced here; the run deducts the days it
+      // computed itself and never reads the rule set's basis. What the card
+      // does lead to is the approval rule and the overtime pricing, so that
+      // is what it now says.
+      description: 'Who may approve a run, and how overtime and public holidays are priced.',
       to: '/admin/hr/settings/payroll',
       icon: <IconSliders />,
       tone: approval.data ? 'done' : 'muted',
