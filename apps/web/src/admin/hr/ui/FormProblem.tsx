@@ -35,6 +35,26 @@ const fieldOf = (problem: Problem): string | undefined =>
 export const PROBLEM_NOTICE_ID = 'hr-form-problem';
 
 /**
+ * The class the grid cell holding the refused field wears.
+ *
+ * A reason trapped in one column of a three-up row wrapped into a twelve-line
+ * ribbon, so the first fix moved all three reasons out of the cells and under
+ * the row. That row only exists above 992px: `.hr-grid3` collapses to a single
+ * column below it, and on an iPad the three divisors stacked while the reason
+ * stayed at the bottom of the stack — two fields below the box that caused it.
+ * Reported from staging as "still at the top of the drawer, not under the
+ * divisor row", which is what an unanchored reason looks like on the screen it
+ * was not measured on.
+ *
+ * So the reason goes back INSIDE its own cell, directly under its own input,
+ * and the cell takes the whole row while it is speaking. Same two readable
+ * lines at 1440, and at 390 the reason is against the field instead of adrift.
+ */
+export function problemCell(problem: Problem, field: string): string | undefined {
+  return fieldOf(problem) === field ? 'hr-cell--flagged' : undefined;
+}
+
+/**
  * The reason, under the field it is about. Renders nothing anywhere else, so a
  * form can drop one of these under every input and only the guilty one speaks.
  */

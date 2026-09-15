@@ -186,6 +186,36 @@
   color: var(--hr-red);
 }
 
+/* THE CELL THAT IS SPEAKING TAKES THE ROW.
+ *
+ * A sentence in one column of a three-up row inside a 440px drawer wraps into
+ * a ribbon twelve lines deep. Putting it under the row instead solved that at
+ * 1440 and broke it everywhere narrower, where the row is a stack and "under
+ * the row" is two fields away from the box that is wrong. Spanning the cell
+ * keeps the reason against its own field at every width and still gives it
+ * the full width to say it in. */
+.hr-grid2 > .hr-cell--flagged,
+.hr-grid3 > .hr-cell--flagged {
+  grid-column: 1 / -1;
+}
+.hr-cell--flagged .ant-input-affix-wrapper,
+.hr-cell--flagged .ant-input-number,
+.hr-cell--flagged .ant-input-group-wrapper,
+.hr-cell--flagged .ant-select,
+.hr-cell--flagged > .ant-input {
+  border-radius: 8px;
+  outline: 2px solid var(--hr-red);
+  outline-offset: 1px;
+}
+/* Only above the breakpoint, where spanning actually widened the cell — below
+   it the cell was already full width and capping would shrink one box out of
+   line with the two beside it. */
+@media (min-width: 992px) {
+  .hr-grid3 > .hr-cell--flagged > :not(.hr-form__error) {
+    max-width: 180px;
+  }
+}
+
 .hr-inert {
   display: inline-flex;
   align-items: baseline;

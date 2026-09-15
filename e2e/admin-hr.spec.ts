@@ -219,3 +219,56 @@ test.describe('HR', () => {
     expect(errors).toEqual([]);
   });
 });
+
+/**
+ * A REFUSAL THE PERSON WHO CAUSED IT CAN SEE, AT THE WIDTH THEY SAW IT.
+ *
+ * Staging UAT, twice. First: typing an overtime divisor of 30 was correctly
+ * refused and the refusal was INVISIBLE — the drawer body scrolls and Save
+ * sits in a pinned footer outside it, so the reason rendered at the top of a
+ * body already scrolled past. The fix put the reason under the three-up
+ * divisor row, measured at 1440, and shipped.
+ *
+ * Second: on an iPad the reason appeared nowhere near the divisor. The row is
+ * only a row above 992px — `.hr-grid3` collapses to a single column below it —
+ * so "under the row" meant under a STACK, and a complaint about the overtime
+ * divisor printed below the unpaid-leave box two fields down.
+ *
+ * Which is why this runs at 390px. The unit tests pin the structure; only a
+ * browser can say how far apart two boxes actually are, and the first fix
+ * passed every test it had while being wrong on the screen it was used on.
+ */
+test.describe('a refused rule set says why, beside the box that is wrong', () => {
+  const PHONE = { width: 390, height: 844 };
+
+  test('puts the reason directly under the divisor on a phone-width screen', async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await loginAdmin(page, ADMIN_ACCOUNTS.owner);
+    await gotoAdmin(page, '/admin/hr/settings/payroll');
+
+    await page.getByRole('button', { name: 'Add rule set' }).click();
+    await page.getByLabel('Name').fill('Phone width check');
+    const divisor = page.locator('#orp-ot-days');
+    await divisor.fill('30');
+    await page.getByRole('button', { name: 'Add rule set' }).last().click();
+
+    // Section 60I(1A) sets 26. Above it every hour of overtime is worth less.
+    const reason = page.getByText(/makes a day worth less than section 60I\(1A\)/i);
+    await expect(reason).toBeVisible();
+
+    const box = await divisor.boundingBox();
+    const said = await reason.boundingBox();
+    expect(box).not.toBeNull();
+    expect(said).not.toBeNull();
+    // Directly under the box, not under the group. One short gap, never the
+    // height of two more fields — which is what "under the row" measured at
+    // this width.
+    const gap = said!.y - (box!.y + box!.height);
+    expect(gap).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeLessThan(40);
+
+    // And the caret is back in the box that has to change, so the next
+    // keystroke fixes it.
+    await expect(divisor).toBeFocused();
+  });
+});

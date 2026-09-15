@@ -2,7 +2,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { useState } from 'react';
-import { FieldProblem, ProblemNotice, useProblemFocus, type FormProblem } from './ui';
+import { FieldProblem, ProblemNotice, problemCell, useProblemFocus, type FormProblem } from './ui';
 
 /*
  * A REFUSAL THE PERSON WHO CAUSED IT CAN SEE.
@@ -85,6 +85,63 @@ describe('a refused save says why, where the mistake is', () => {
 
   it('says nothing at all when there is nothing wrong', () => {
     render(<Form problem={null} />);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+/*
+ * THE SECOND REPORT FROM STAGING, ON AN iPAD: the reason appeared, and appeared
+ * nowhere near the divisor. The first fix rendered all three reasons under the
+ * three-up row — which only exists above 992px. Below it `.hr-grid3` collapses
+ * to a single column, so "under the row" meant under a STACK, and a complaint
+ * about the overtime divisor printed below the unpaid-leave box two fields
+ * down. jsdom has no layout and no media queries, so what these pin is the
+ * structure the width cannot change: the reason lives in the same cell as its
+ * own input, and the cell says so.
+ */
+const Divisors = ({ problem }: { problem: FormProblem }) => (
+  <div className="hr-grid3">
+    <div className={problemCell(problem, 'orp-ot-days')}>
+      <label htmlFor="orp-ot-days">Overtime divisor</label>
+      <input id="orp-ot-days" defaultValue="30" />
+      <FieldProblem problem={problem} field="orp-ot-days" />
+    </div>
+    <div className={problemCell(problem, 'orp-hours')}>
+      <label htmlFor="orp-hours">Normal hours</label>
+      <input id="orp-hours" defaultValue="7.5" />
+      <FieldProblem problem={problem} field="orp-hours" />
+    </div>
+    <div className={problemCell(problem, 'orp-ul-days')}>
+      <label htmlFor="orp-ul-days">Unpaid leave divisor</label>
+      <input id="orp-ul-days" defaultValue="31" />
+      <FieldProblem problem={problem} field="orp-ul-days" />
+    </div>
+  </div>
+);
+
+describe('the reason travels with its own field, not with the row', () => {
+  it('renders inside the cell that holds the offending box', () => {
+    render(<Divisors problem={{ field: 'orp-ot-days', message: 'Use 26 or fewer.' }} />);
+
+    const cell = screen.getByRole('alert').parentElement as HTMLElement;
+    // Same cell as the box that is wrong — so a stacked layout cannot put two
+    // other fields between them.
+    expect(cell.querySelector('input')?.id).toBe('orp-ot-days');
+    // And not a sibling of the row, which is where it was.
+    expect(cell.classList.contains('hr-grid3')).toBe(false);
+  });
+
+  it('flags the guilty cell and only the guilty cell', () => {
+    render(<Divisors problem={{ field: 'orp-hours', message: 'Section 60A(1) caps them at 8.' }} />);
+
+    const flagged = document.querySelectorAll('.hr-cell--flagged');
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0].querySelector('input')?.id).toBe('orp-hours');
+  });
+
+  it('flags nothing while nothing is wrong', () => {
+    render(<Divisors problem={null} />);
+    expect(document.querySelectorAll('.hr-cell--flagged')).toHaveLength(0);
     expect(screen.queryByRole('alert')).toBeNull();
   });
 });

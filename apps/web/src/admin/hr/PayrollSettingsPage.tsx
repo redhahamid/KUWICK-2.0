@@ -18,6 +18,7 @@ import {
   Panel,
   PanelHead,
   ProblemNotice,
+  problemCell,
   StatusChip,
   useProblemFocus,
   type FormProblem,
@@ -521,7 +522,7 @@ export function PayrollSettingsPage() {
       >
         <ProblemNotice problem={problem} />
         <div className="hr-form">
-          <div>
+          <div className={problemCell(problem, 'ruleset-name')}>
             <label htmlFor="ruleset-name">Name</label>
             <Input id="ruleset-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Doctors, Clinical staff…" />
             <FieldProblem problem={problem} field="ruleset-name" />
@@ -554,8 +555,17 @@ export function PayrollSettingsPage() {
             */}
           <div>
             <label>A day and an hour</label>
+            {/*
+              * EACH REASON INSIDE ITS OWN CELL, and the guilty cell takes the
+              * whole row while it speaks (`hr-cell--flagged`). Under the row
+              * instead of in the cell read well at 1440 and badly everywhere
+              * else: below 992px `.hr-grid3` is a stack, so a reason about the
+              * overtime divisor rendered below the unpaid-leave box — which is
+              * how it reached staging looking like it was not attached to
+              * anything.
+              */}
             <div className="hr-grid3">
-              <div>
+              <div className={problemCell(problem, 'orp-ot-days')}>
                 <label htmlFor="orp-ot-days" className="hr-form__sub">Overtime divisor</label>
                 <Input
                   id="orp-ot-days"
@@ -564,8 +574,9 @@ export function PayrollSettingsPage() {
                   addonAfter="days"
                   inputMode="numeric"
                 />
+                <FieldProblem problem={problem} field="orp-ot-days" />
               </div>
-              <div>
+              <div className={problemCell(problem, 'orp-hours')}>
                 <label htmlFor="orp-hours" className="hr-form__sub">Normal hours</label>
                 <Input
                   id="orp-hours"
@@ -574,8 +585,9 @@ export function PayrollSettingsPage() {
                   addonAfter="a day"
                   inputMode="decimal"
                 />
+                <FieldProblem problem={problem} field="orp-hours" />
               </div>
-              <div>
+              <div className={problemCell(problem, 'orp-ul-days')}>
                 <label htmlFor="orp-ul-days" className="hr-form__sub">Unpaid leave divisor</label>
                 <Input
                   id="orp-ul-days"
@@ -584,17 +596,9 @@ export function PayrollSettingsPage() {
                   addonAfter="days"
                   inputMode="numeric"
                 />
+                <FieldProblem problem={problem} field="orp-ul-days" />
               </div>
             </div>
-            {/*
-              * UNDER THE ROW, NOT INSIDE A CELL. Trapped in one column of three
-              * the reason wrapped into a twelve-line ribbon nobody would read.
-              * Full width directly beneath the boxes, with the offending one
-              * focused and outlined, says the same thing in two lines.
-              */}
-            <FieldProblem problem={problem} field="orp-ot-days" />
-            <FieldProblem problem={problem} field="orp-hours" />
-            <FieldProblem problem={problem} field="orp-ul-days" />
             <div className="hr-form__help">
               The ordinary rate is the monthly salary over the overtime divisor, and an hour is that over the normal
               hours. Overtime, rest days and public holidays are all priced from it. Section 60I(1A) sets 26; above it
