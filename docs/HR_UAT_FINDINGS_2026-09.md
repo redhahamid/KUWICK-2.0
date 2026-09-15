@@ -28,6 +28,41 @@ rows; 5 is in `ClaimsPage.tsx`, which piece 3 already opens.
 workaround — the owner does everything — and a wrong statutory flag does not:
 it reaches KWSP and LHDN under the clinic's own employer number.
 
+## The silent refusal, and where else it lives
+
+`[O]` Found on staging: an overtime divisor of 30 was correctly refused, and the
+refusal was **invisible**. The drawer stayed open, nothing appeared, and the
+owner closed it by hand and guessed. *"Sebab s.60I(1A) yang awak sebut itu tidak
+pernah saya nampak."*
+
+`[D]` **The mechanism, and it is structural rather than a typo.**
+`.hr-drawer__body` has `overflow: auto` and the Save button lives in
+`.hr-drawer__foot`, pinned outside it. Every one of these forms renders its
+reason as the FIRST child of the body. Scroll down to the field, press Save in
+the footer, and the reason renders at the top of a body that is no longer on
+screen. Nothing moves the view to it.
+
+`[D]` **Where it lives**, checked across every HR drawer and form:
+
+| Screen | Where the reason rendered | Silent? |
+|---|---|---|
+| Payroll policies — rule set drawer | top of the scrolling body | **yes** — the one reported |
+| Employee record — edit drawer | top of the scrolling body | **yes** |
+| Employee record — recurring items | top of the scrolling body | **yes** |
+| Company & statutory — employer drawer | top of the scrolling body | **yes** |
+| Payroll items — add drawer | bottom of the body, beside the footer | at risk when scrolled |
+| Payroll items — treatment popover | inline, above its own Save | no |
+
+`[D]` **Fixed.** `hr/ui/FormProblem.tsx` carries the two rules that come out of
+it: the reason belongs beside the field that caused it, and wherever it lands
+the view moves to it. The rule set drawer names the guilty field for every one
+of its seven refusals and draws the reason under it; the other three keep their
+banner and gained the movement. Pinned by `formProblem.test.tsx`.
+
+`[A]` The remaining one — Payroll items' add drawer — renders at the bottom
+next to the footer, which is the least bad of the shapes and was left alone
+rather than restructured on a guess.
+
 ## Carded, not chased — the follow-up that does not reach the module
 
 `[O]` Found by the browser gate on 15 September 2026 while landing three other

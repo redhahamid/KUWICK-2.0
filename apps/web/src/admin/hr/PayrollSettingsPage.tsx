@@ -10,7 +10,18 @@ import {
   useStatutoryRates,
   useUpsertPayrollPolicy,
 } from '../hooks/useAdmin';
-import { Drawer, HrPage, NotApplied, Panel, PanelHead, StatusChip } from './ui';
+import {
+  Drawer,
+  FieldProblem,
+  HrPage,
+  NotApplied,
+  Panel,
+  PanelHead,
+  ProblemNotice,
+  StatusChip,
+  useProblemFocus,
+  type FormProblem,
+} from './ui';
 import { Table } from './ui/Table';
 import { IconEdit, IconPlus } from './ui/icons';
 import type { OvertimeMode, PayrollPolicyRow } from '../types';
@@ -133,7 +144,13 @@ export function PayrollSettingsPage() {
   const [otDays, setOtDays] = useState('26');
   const [ulDays, setUlDays] = useState('31');
   const [hoursDay, setHoursDay] = useState('7.5');
-  const [problem, setProblem] = useState<string | null>(null);
+  // The reason, and WHICH BOX it is about. A refusal with no field named is
+  // about the form as a whole and keeps the banner.
+  const [problem, setProblem] = useState<FormProblem>(null);
+  useProblemFocus(problem);
+  const refuse = (field: string | undefined, message: string) => {
+    setProblem({ field, message });
+  };
 
   const openNew = () => {
     setName('');
@@ -169,18 +186,18 @@ export function PayrollSettingsPage() {
   const save = () => {
     const amounts = { clinicOvertimeHourly: clean(hourly), clinicPublicHolidayShift: clean(holiday), clinicRestDayShift: clean(restDay), clinicSessionRate: clean(session) };
     if (name.trim().length < 2) {
-      setProblem('Give the rule set a name.');
+      refuse('ruleset-name', 'Give the rule set a name.');
       return;
     }
     if (mode === 'CLINIC_RATE') {
       for (const value of Object.values(amounts)) {
         if (value !== '' && (!/^\d{1,10}(\.\d{1,2})?$/.test(value) || Number(value) <= 0)) {
-          setProblem('Enter each amount as a number above zero, with at most two decimal places, or leave it blank.');
+          refuse(undefined, 'Enter each amount as a number above zero, with at most two decimal places, or leave it blank.');
           return;
         }
       }
       if (Object.values(amounts).every((value) => value === '')) {
-        setProblem('A clinic-rate rule set needs at least one amount.');
+        refuse(undefined, 'A clinic-rate rule set needs at least one amount.');
         return;
       }
     }
@@ -197,22 +214,23 @@ export function PayrollSettingsPage() {
     const ulDaysNum = Number(ulDays);
     const hoursNum = Number(hoursDay);
     if (!Number.isInteger(otDaysNum) || otDaysNum < 1 || otDaysNum > 31) {
-      setProblem('The overtime divisor is a whole number of days between 1 and 31.');
+      refuse('orp-ot-days', 'The overtime divisor is a whole number of days between 1 and 31.');
       return;
     }
     if (otDaysNum > 26) {
-      setProblem(
+      refuse(
+        'orp-ot-days',
         `An overtime divisor of ${otDaysNum} makes a day worth less than section 60I(1A) allows, which underpays ` +
           'every hour of overtime, every rest day and every public holiday. Payroll will refuse to calculate. Use 26 or fewer.',
       );
       return;
     }
     if (!Number.isInteger(ulDaysNum) || ulDaysNum < 1 || ulDaysNum > 31) {
-      setProblem('The unpaid leave divisor is a whole number of days between 1 and 31.');
+      refuse('orp-ul-days', 'The unpaid leave divisor is a whole number of days between 1 and 31.');
       return;
     }
     if (!Number.isFinite(hoursNum) || hoursNum < 0.5 || hoursNum > 8) {
-      setProblem('Normal hours are between 0.5 and 8 a day. Section 60A(1) of the Employment Act caps them at 8.');
+      refuse('orp-hours', 'Normal hours are between 0.5 and 8 a day. Section 60A(1) of the Employment Act caps them at 8.');
       return;
     }
     const existing = editing !== 'new' && editing ? editing : null;
@@ -254,7 +272,7 @@ export function PayrollSettingsPage() {
           message.success(existing ? 'Rule set updated' : 'Rule set added');
           close();
         },
-        onError: (mutationError: Error) => setProblem(mutationError.message),
+        onError: (mutationError: Error) => refuse(undefined, mutationError.message),
       },
     );
   };
@@ -501,11 +519,12 @@ export function PayrollSettingsPage() {
           </>
         }
       >
-        {problem ? <div className="hr-notice hr-notice--attn">{problem}</div> : null}
+        <ProblemNotice problem={problem} />
         <div className="hr-form">
           <div>
             <label htmlFor="ruleset-name">Name</label>
             <Input id="ruleset-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Doctors, Clinical staff…" />
+            <FieldProblem problem={problem} field="ruleset-name" />
           </div>
           <div>
             <label htmlFor="ruleset-applies">Applies to</label>
@@ -567,6 +586,15 @@ export function PayrollSettingsPage() {
                 />
               </div>
             </div>
+            {/*
+              * UNDER THE ROW, NOT INSIDE A CELL. Trapped in one column of three
+              * the reason wrapped into a twelve-line ribbon nobody would read.
+              * Full width directly beneath the boxes, with the offending one
+              * focused and outlined, says the same thing in two lines.
+              */}
+            <FieldProblem problem={problem} field="orp-ot-days" />
+            <FieldProblem problem={problem} field="orp-hours" />
+            <FieldProblem problem={problem} field="orp-ul-days" />
             <div className="hr-form__help">
               The ordinary rate is the monthly salary over the overtime divisor, and an hour is that over the normal
               hours. Overtime, rest days and public holidays are all priced from it. Section 60I(1A) sets 26; above it

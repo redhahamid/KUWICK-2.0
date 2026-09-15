@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { App, DatePicker, Input, Select } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEmployees, useUpsertEmployee } from '../hooks/useAdmin';
-import { Drawer } from './ui';
+import { Drawer, ProblemNotice, useProblemFocus } from './ui';
 import type { EmployeeRecord } from '../types';
 
 /**
@@ -37,6 +37,9 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
   const upsert = useUpsertEmployee();
   const people = useEmployees({});
   const [problem, setProblem] = useState<string | null>(null);
+  // The drawer body scrolls and Save sits in the pinned footer, so a banner at
+  // the top of the body is invisible from where the button is. Move the view.
+  useProblemFocus(problem);
 
   // Profile
   const [legalName, setLegalName] = useState('');
@@ -358,7 +361,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
           </>
         ) : null}
 
-        {problem ? <div className="hr-notice hr-notice--attn">{problem}</div> : null}
+        <ProblemNotice problem={problem} />
       </div>
     </Drawer>
   );

@@ -3,7 +3,7 @@ import { App, DatePicker, Input, Select } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useCan } from '../../core/hooks/useCan';
 import { useCreateRecurringItem, useRecurringItemChoices, useRecurringItems, useUpdateRecurringItem } from '../hooks/useAdmin';
-import { Drawer, PanelHead, StatusChip } from './ui';
+import { Drawer, PanelHead, ProblemNotice, StatusChip, useProblemFocus } from './ui';
 import { Table } from './ui/Table';
 import { IconEdit, IconPlus } from './ui/icons';
 import type { RecurringItemRow } from '../types';
@@ -43,6 +43,8 @@ export function RecurringItemsPanel({ staffId, canSeePay }: { staffId: string; c
   const [until, setUntil] = useState<Dayjs | null>(null);
   const [note, setNote] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
+  // Same shape as the rule set drawer: scrolling body, pinned footer.
+  useProblemFocus(problem);
 
   const openNew = () => {
     setCode(undefined);
@@ -254,7 +256,7 @@ export function RecurringItemsPanel({ staffId, canSeePay }: { staffId: string; c
             <label htmlFor="ri-note">Note</label>
             <Input id="ri-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Salary advance of RM800 taken 20 Aug" maxLength={500} />
           </div>
-          {problem ? <div className="hr-notice hr-notice--attn">{problem}</div> : null}
+          <ProblemNotice problem={problem} />
         </div>
       </Drawer>
     </>

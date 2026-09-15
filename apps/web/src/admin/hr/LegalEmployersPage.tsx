@@ -4,7 +4,7 @@ import dayjs from 'dayjs';
 import { Link } from 'react-router-dom';
 import { useLegalEmployers, useRecordEmployerHrd, useUpsertLegalEmployer } from '../hooks/useAdmin';
 import { useCan } from '../../core/hooks/useCan';
-import { Drawer, HrPage, Panel, StatusChip } from './ui';
+import { Drawer, HrPage, Panel, ProblemNotice, StatusChip, useProblemFocus } from './ui';
 import { Table } from './ui/Table';
 import type { LegalEmployerRow } from '../types';
 
@@ -54,6 +54,8 @@ export function LegalEmployersPage() {
   const [editing, setEditing] = useState<LegalEmployerRow | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  // Same shape as the rule set drawer: scrolling body, pinned footer.
+  useProblemFocus(error);
 
   const [hrdFor, setHrdFor] = useState<LegalEmployerRow | null>(null);
   const [hrdClass, setHrdClass] = useState<string | undefined>();
@@ -271,7 +273,7 @@ export function LegalEmployersPage() {
           </>
         }
       >
-        {error ? <div className="hr-notice hr-notice--block" style={{ margin: '0 0 12px' }}>{error}</div> : null}
+        <ProblemNotice problem={error} />
         <div style={{ display: 'grid', gap: 10 }}>
           {FIELDS.map(([key, label]) => (
             <label key={key}>

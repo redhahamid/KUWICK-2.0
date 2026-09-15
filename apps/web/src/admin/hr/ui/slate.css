@@ -178,6 +178,14 @@
 /* A setting that saves and is not obeyed. The chip carries the word; this only
    sets the sentence beside it apart from the field's own help text, which is
    the line it is contradicting. */
+/* The reason a save was refused, under the field that caused it. */
+.hr-form__error {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--hr-red);
+}
+
 .hr-inert {
   display: inline-flex;
   align-items: baseline;

@@ -1,6 +1,7 @@
 export { AuthImage } from './AuthImage';
 export { Drawer } from './Drawer';
 export { duration } from './duration';
+export { FieldProblem, ProblemNotice, useProblemFocus, type FormProblem } from './FormProblem';
 export { HrPage } from './HrPage';
 export { IconButton } from './IconButton';
 export { NotApplied } from './NotApplied';
