@@ -1,3 +1,4 @@
+import { ACT_OVERTIME_MULTIPLIERS, OvertimeMultipliers } from '../statutory/employment-act';
 import { ClinicRates } from './overtime-pricing';
 import { WorkforceCategory } from './workforce-category';
 import { MoneyLike, toCents } from '../finance/money';
@@ -32,6 +33,10 @@ export interface ResolvablePolicy {
   readonly clinicPublicHolidayShift: MoneyLike | null;
   readonly clinicRestDayShift: MoneyLike | null;
   readonly clinicSessionRate: MoneyLike | null;
+  /** Absent as well as null means the Act's — a caller that predates these need not restate them. */
+  readonly overtimeMultiplier?: MoneyLike | null;
+  readonly restDayMultiplier?: MoneyLike | null;
+  readonly publicHolidayMultiplier?: MoneyLike | null;
 }
 
 export type PolicyResolutionHow = 'ASSIGNED' | 'CATEGORY' | 'DEFAULT' | 'NONE';
@@ -66,6 +71,29 @@ export function resolvePayrollPolicy<P extends ResolvablePolicy>(
 }
 
 const cents = (value: MoneyLike | null): number | null => (value === null || value === undefined ? null : toCents(value));
+
+/**
+ * The multipliers a rule set prices its extra hours at.
+ *
+ * Each falls back to the Act's on its own, so a clinic that raised only
+ * overtime keeps the Act's rest-day and public-holiday rates rather than
+ * having to restate them. Applied in BOTH modes: a clinic-rate rule set with
+ * no amount for a kind of day falls back to the Act's formula, and that
+ * fallback should land on the clinic's own answer.
+ */
+export function multipliersOf(policy: ResolvablePolicy | null): OvertimeMultipliers {
+  const pick = (value: MoneyLike | null | undefined, act: number): number => {
+    if (value === null || value === undefined) return act;
+    const chosen = Number(value);
+    return Number.isFinite(chosen) && chosen > 0 ? chosen : act;
+  };
+  if (!policy) return ACT_OVERTIME_MULTIPLIERS;
+  return {
+    normalDay: pick(policy.overtimeMultiplier, ACT_OVERTIME_MULTIPLIERS.normalDay),
+    restDayExcess: pick(policy.restDayMultiplier, ACT_OVERTIME_MULTIPLIERS.restDayExcess),
+    publicHolidayExcess: pick(policy.publicHolidayMultiplier, ACT_OVERTIME_MULTIPLIERS.publicHolidayExcess),
+  };
+}
 
 /** Mode B's amounts, in cents, or null when the rule set is on the Act's formula. */
 export function clinicRatesOf(policy: ResolvablePolicy | null): ClinicRates | null {

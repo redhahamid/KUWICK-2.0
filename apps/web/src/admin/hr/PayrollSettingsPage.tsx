@@ -72,15 +72,35 @@ const basisLabel = (basis: string, days: number | null) =>
 const rm = (value: string) => `RM${Number(value).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** One line naming how a rule set prices extra hours. */
+/*
+ * THE FIGURES IN FORCE, NOT THE FIGURES IN THE ACT.
+ *
+ * This line used to print "1.5× · rest day 2.0× · public holiday 3.0×" for
+ * every statutory rule set, because those were the only multipliers a run
+ * could use. A clinic may now raise any of the three, so the line reads them
+ * off the rule set and says whose numbers they are — a screen that prints the
+ * Act's figure over a clinic's 2× is the same defect as a report that printed
+ * "clinic policy" over a hardcoded divisor.
+ */
+const multiplierLine = (row: PayrollPolicyRow) => {
+  const set = row.multipliers;
+  if (!set) return 'Employment Act: 1.5× · rest day 2.0× · public holiday 3.0×';
+  const own = set.overtime.set || set.restDay.set || set.publicHoliday.set;
+  const figures = `${set.overtime.used}× · rest day ${set.restDay.used}× · public holiday ${set.publicHoliday.used}×`;
+  return own ? `Clinic multipliers: ${figures}` : `Employment Act: ${figures}`;
+};
+
 const pricingLine = (row: PayrollPolicyRow) => {
-  if (row.overtimeMode !== 'CLINIC_RATE' || !row.clinicRates) return 'Employment Act: 1.5× · rest day 2.0× · public holiday 3.0×';
+  if (row.overtimeMode !== 'CLINIC_RATE' || !row.clinicRates) return multiplierLine(row);
   const parts = [
     row.clinicRates.overtimeHourly ? `${rm(row.clinicRates.overtimeHourly)} an hour` : null,
     row.clinicRates.publicHolidayShift ? `${rm(row.clinicRates.publicHolidayShift)} a public holiday shift` : null,
     row.clinicRates.restDayShift ? `${rm(row.clinicRates.restDayShift)} a rest day shift` : null,
     row.clinicRates.session ? `${rm(row.clinicRates.session)} a session` : null,
   ].filter((part): part is string => part !== null);
-  return `Clinic rate: ${parts.join(' · ')}`;
+  // A kind of day with no amount falls back to the Act's formula, which uses
+  // whichever multipliers this rule set holds — so both belong on the line.
+  return `Clinic rate: ${parts.join(' · ')} · otherwise ${multiplierLine(row).toLowerCase()}`;
 };
 
 /**
@@ -105,7 +125,7 @@ const MODES: { value: OvertimeMode; title: string; detail: string }[] = [
   {
     value: 'STATUTORY',
     title: 'Employment Act 1955',
-    detail: 'A day is the monthly salary over 26 and an hour is a day over the normal hours. Overtime at 1.5×, a rest day at 2.0×, a public holiday at 3.0× with two days’ wages for the day itself.',
+    detail: 'A day is the monthly salary over 26 and an hour is a day over the normal hours. The multipliers below decide what an extra hour is worth.',
   },
   {
     value: 'CLINIC_RATE',
@@ -113,6 +133,50 @@ const MODES: { value: OvertimeMode; title: string; detail: string }[] = [
     detail: 'Fixed amounts set here, never typed into the payroll grid. A kind of day left blank is priced by the Act. For anybody on RM4,000 or less the Act is a floor.',
   },
 ];
+
+/*
+ * THE THREE MULTIPLIERS A CLINIC MAY SET, and the Act's floor under each.
+ *
+ * Found in staging UAT: a rule set could only be the Act's fixed 1.5× / 2× / 3×
+ * or fixed ringgit amounts. A clinic that pays overtime at 2× — paying MORE
+ * than the Act, which is its right — had no way to say so, and had to choose
+ * between a rate it had outgrown and a flat amount that stops tracking salary.
+ *
+ * Each floor is "not less than", so above is the clinic's to set and below is
+ * refused. The figures mirror OVERTIME_MULTIPLIER_FLOORS in the API's
+ * employment-act.ts, which is where the server refuses the same values — the
+ * browser saying it first is a courtesy, not the control.
+ *
+ * WHAT THESE PRICE IS THE HOUR, NOT THE DAY. A rest day or public holiday
+ * worked is paid in DAYS of ordinary rate by ss.60(3)(b) and 60D(3)(a)(i) —
+ * two days' wages for a public holiday however few hours were done — and that
+ * is the Act's arithmetic, not a multiplier anybody sets here.
+ */
+const MULTIPLIERS = [
+  {
+    field: 'ruleset-ot-multiplier',
+    label: 'Overtime',
+    act: 1.5,
+    what: 'an hour of overtime on a normal working day',
+    provision: 'Section 60A(3)(a)',
+  },
+  {
+    field: 'ruleset-restday-multiplier',
+    label: 'Rest day',
+    act: 2,
+    what: 'an hour beyond normal hours on a rest day',
+    provision: 'Section 60(3)(c)',
+  },
+  {
+    field: 'ruleset-holiday-multiplier',
+    label: 'Public holiday',
+    act: 3,
+    what: 'an hour beyond normal hours on a public holiday',
+    provision: 'Section 60D(3)(aa)',
+  },
+] as const;
+
+type MultiplierField = (typeof MULTIPLIERS)[number]['field'];
 
 export function PayrollSettingsPage() {
   const { message } = App.useApp();
@@ -145,6 +209,15 @@ export function PayrollSettingsPage() {
   const [otDays, setOtDays] = useState('26');
   const [ulDays, setUlDays] = useState('31');
   const [hoursDay, setHoursDay] = useState('7.5');
+  // THE CLINIC'S OWN MULTIPLIERS, blank for "the Act's". Strings for the same
+  // reason the divisors are: "2." mid-keystroke is not the number 2.
+  const [multipliers, setMultipliers] = useState<Record<MultiplierField, string>>({
+    'ruleset-ot-multiplier': '',
+    'ruleset-restday-multiplier': '',
+    'ruleset-holiday-multiplier': '',
+  });
+  const setMultiplier = (field: MultiplierField, value: string) =>
+    setMultipliers((current) => ({ ...current, [field]: value }));
   // The reason, and WHICH BOX it is about. A refusal with no field named is
   // about the form as a whole and keeps the banner.
   const [problem, setProblem] = useState<FormProblem>(null);
@@ -164,6 +237,7 @@ export function PayrollSettingsPage() {
     setOtDays('26');
     setUlDays('31');
     setHoursDay('7.5');
+    setMultipliers({ 'ruleset-ot-multiplier': '', 'ruleset-restday-multiplier': '', 'ruleset-holiday-multiplier': '' });
     setProblem(null);
     setEditing('new');
   };
@@ -178,6 +252,13 @@ export function PayrollSettingsPage() {
     setOtDays(String(row.overtime.days ?? 26));
     setUlDays(String(row.unpaidLeave.days ?? 31));
     setHoursDay(String(row.overtime.hoursPerDay));
+    // A box left blank is on the Act's, and stays blank so the placeholder can
+    // say which figure that is rather than the clinic having to remember.
+    setMultipliers({
+      'ruleset-ot-multiplier': row.multipliers?.overtime.set ? String(row.multipliers.overtime.used) : '',
+      'ruleset-restday-multiplier': row.multipliers?.restDay.set ? String(row.multipliers.restDay.used) : '',
+      'ruleset-holiday-multiplier': row.multipliers?.publicHoliday.set ? String(row.multipliers.publicHoliday.used) : '',
+    });
     setProblem(null);
     setEditing(row);
   };
@@ -234,6 +315,39 @@ export function PayrollSettingsPage() {
       refuse('orp-hours', 'Normal hours are between 0.5 and 8 a day. Section 60A(1) of the Employment Act caps them at 8.');
       return;
     }
+    /*
+     * THE MULTIPLIERS, HELD TO THE ACT'S FLOOR.
+     *
+     * Same shape as the divisor above: the server refuses these too, and this
+     * says it while the clinic is still typing. Blank is not a refusal — it
+     * means the Act's figure, which is the answer most rule sets keep.
+     */
+    const chosen: Record<string, number | null> = {};
+    for (const multiplier of MULTIPLIERS) {
+      const typed = clean(multipliers[multiplier.field]).replace(/×$/, '').trim();
+      if (typed === '') {
+        chosen[multiplier.field] = null;
+        continue;
+      }
+      const value = Number(typed);
+      if (!/^\d{1,2}(\.\d{1,2})?$/.test(typed) || !Number.isFinite(value) || value <= 0) {
+        refuse(multiplier.field, `${multiplier.label} is a multiplier such as ${multiplier.act}, with at most two decimal places.`);
+        return;
+      }
+      if (value < multiplier.act) {
+        refuse(
+          multiplier.field,
+          `${multiplier.label} of ${value}× pays less for ${multiplier.what} than ${multiplier.provision} allows, which is ` +
+            `${multiplier.act}×. A higher multiplier is yours to set; a lower one is not.`,
+        );
+        return;
+      }
+      if (value > 10) {
+        refuse(multiplier.field, `${multiplier.label} of ${value}× is higher than any rate a clinic pays. Check the figure.`);
+        return;
+      }
+      chosen[multiplier.field] = value;
+    }
     const existing = editing !== 'new' && editing ? editing : null;
     // THE BASES ARE CARRIED THROUGH UNCHANGED. The server replaces every
     // field it is not sent with its default, so an edit that only touched
@@ -262,6 +376,13 @@ export function PayrollSettingsPage() {
         unpaidLeaveDays: ulDaysNum,
         overtimeHoursPerDay: hoursNum,
         overtimeMode: mode,
+        // Null clears a raised multiplier back to the Act's. Sent on every
+        // save, in both modes: a clinic-rate rule set falls back to the Act's
+        // formula for a kind of day it fixes no amount for, and that fallback
+        // should land on the clinic's own answer.
+        overtimeMultiplier: chosen['ruleset-ot-multiplier'],
+        restDayMultiplier: chosen['ruleset-restday-multiplier'],
+        publicHolidayMultiplier: chosen['ruleset-holiday-multiplier'],
         ...(mode === 'CLINIC_RATE'
           ? Object.fromEntries(Object.entries(amounts).map(([key, value]) => [key, value === '' ? null : value]))
           : {}),
@@ -628,6 +749,43 @@ export function PayrollSettingsPage() {
                 </label>
               );
             })}
+            </div>
+          </div>
+          {/*
+            * WHAT AN EXTRA HOUR IS WORTH, IN THE CLINIC'S OWN NUMBERS.
+            *
+            * Shown in both modes on purpose. A clinic-rate rule set prices only
+            * the kinds of day it fixes an amount for; every other day falls
+            * back to the Act's formula, and the fallback should use the
+            * clinic's multiplier rather than a figure it replaced everywhere
+            * else.
+            */}
+          <div>
+            <label>What an extra hour is worth</label>
+            <div className="hr-grid3">
+              {MULTIPLIERS.map((multiplier) => (
+                <div key={multiplier.field} className={problemCell(problem, multiplier.field)}>
+                  <label htmlFor={multiplier.field} className="hr-form__sub">
+                    {multiplier.label}
+                  </label>
+                  <Input
+                    id={multiplier.field}
+                    value={multipliers[multiplier.field]}
+                    onChange={(e) => setMultiplier(multiplier.field, e.target.value)}
+                    addonAfter="×"
+                    inputMode="decimal"
+                    placeholder={String(multiplier.act)}
+                  />
+                  <FieldProblem problem={problem} field={multiplier.field} />
+                </div>
+              ))}
+            </div>
+            <div className="hr-form__help">
+              Left blank, each is the Employment Act’s own figure — {MULTIPLIERS.map((m) => `${m.act}×`).join(', ')} in that
+              order. A clinic paying more may set its own; below the Act is refused, because ss.60A(3)(a), 60(3)(c) and
+              60D(3)(aa) are minimums. These price the extra HOURS. The day itself on a rest day or public holiday is
+              priced in days of the ordinary rate by the Act — a public holiday worked is two days’ wages however few
+              hours were done — and is not set here.
             </div>
           </div>
           {mode === 'CLINIC_RATE' ? (

@@ -343,3 +343,76 @@ describe('the Settings-time check of clinic rates against the Act', () => {
     expect(clinicRateShortfalls({ ruleSet: 'Doctors', overtimeHourlyCents: 100, publicHolidayShiftCents: 100, restDayShiftCents: 100, sessionCents: 100 }, 950000, 8)).toEqual([]);
   });
 });
+
+/*
+ * THE CLINIC'S OWN MULTIPLIERS.
+ *
+ * A rule set could only be the Act's fixed 1.5× / 2× / 3× or fixed ringgit
+ * amounts, so a clinic that pays overtime at 2× — more than the Act, which is
+ * its right — could not say so. The Act stays the floor: the refusal for a
+ * multiplier BELOW it lives in the DTO and the policy service, and is proved
+ * there. What is proved here is that a raised multiplier reaches the money.
+ */
+describe('a clinic that pays above the Act', () => {
+  it('pays overtime at the clinic’s multiplier, not the Act’s', () => {
+    // 2 approved hours at RM15 an hour. The Act's 1.5× is RM45; the clinic's
+    // 2× is RM60, and RM60 is what the employee is owed.
+    const priced = priceDay(day({ overtimeMinutes: 120, overtimeApproved: true }), 'NORMAL_DAY', {
+      ...ctx,
+      multipliers: { normalDay: 2, restDayExcess: 2, publicHolidayExcess: 3 },
+    });
+    expect(priced.excessMultiplier).toBe(2);
+    expect(priced.excessPayCents).toBe(6000);
+    expect(priced.totalCents).toBe(6000);
+  });
+
+  it('names both rates on the payslip, so the figure can be checked', () => {
+    const priced = priceDay(day({ overtimeMinutes: 60, overtimeApproved: true }), 'NORMAL_DAY', {
+      ...ctx,
+      multipliers: { normalDay: 2, restDayExcess: 2, publicHolidayExcess: 3 },
+    });
+    // Without both numbers a reader works out 1.5×, finds RM30 against RM15×2,
+    // and cannot tell generosity from a bug.
+    expect(priced.provision).toContain('s.60A(3)(a)');
+    expect(priced.provision).toContain("clinic's 2×");
+    expect(priced.provision).toContain("Act's 1.5×");
+  });
+
+  it('says nothing extra when the rule set is on the Act’s own figures', () => {
+    const priced = priceDay(day({ overtimeMinutes: 60, overtimeApproved: true }), 'NORMAL_DAY', ctx);
+    expect(priced.provision).toBe('Employment Act 1955, s.60A(3)(a)');
+    expect(priced.excessMultiplier).toBe(1.5);
+  });
+
+  it('raises each kind of day on its own, leaving the others on the Act', () => {
+    const multipliers = { normalDay: 2, restDayExcess: 2, publicHolidayExcess: 3 };
+    // 10 hours on a rest day: 8 normal + 2 beyond. Only overtime was raised,
+    // so the rest-day excess is still the Act's 2×.
+    const rest = priceDay(day({ workedMinutes: 600, overtimeApproved: true }), 'REST_DAY', { ...ctx, multipliers });
+    expect(rest.excessMultiplier).toBe(2);
+    expect(rest.provision).not.toContain('clinic');
+  });
+
+  it('raises the HOURS on a public holiday and never the day itself', () => {
+    // s.60D(3)(a)(i) owes two days' wages for the day, however few hours were
+    // worked, and the clinic does not set that. 10 hours: 2 days at RM120 plus
+    // 2 hours at the clinic's 4× of RM15.
+    const priced = priceDay(day({ workedMinutes: 600, overtimeApproved: true }), 'PUBLIC_HOLIDAY', {
+      ...ctx,
+      multipliers: { normalDay: 1.5, restDayExcess: 2, publicHolidayExcess: 4 },
+    });
+    expect(priced.ordinaryRateDays).toBe(2);
+    expect(priced.dayPayCents).toBe(24000);
+    expect(priced.excessMultiplier).toBe(4);
+    expect(priced.excessPayCents).toBe(12000);
+    expect(priced.totalCents).toBe(36000);
+  });
+
+  it('prices exactly as before when no multipliers are given at all', () => {
+    // Every rule set that predates this holds null for all three, so the
+    // migration must move no figure anywhere.
+    const before = priceDay(day({ overtimeMinutes: 90, overtimeApproved: true }), 'NORMAL_DAY', ctx);
+    const after = priceDay(day({ overtimeMinutes: 90, overtimeApproved: true }), 'NORMAL_DAY', { ...ctx, multipliers: null });
+    expect(after).toEqual(before);
+  });
+});

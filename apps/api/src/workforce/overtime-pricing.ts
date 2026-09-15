@@ -1,8 +1,10 @@
 import {
+  ACT_OVERTIME_MULTIPLIERS,
   FIRST_SCHEDULE_WAGE_CEILING_CENTS,
   MONTHLY_ORP_DIVISOR,
   OVERTIME_MULTIPLIERS,
   OvertimeEntitlementBasis,
+  OvertimeMultipliers,
   OvertimeScope,
   PayBasis,
   publicHolidayEntitlement,
@@ -109,6 +111,19 @@ export interface PricingContext {
   readonly hourlyOrpCents: number;
   /** Mode B. Absent or null means mode A, the Act's formula. */
   readonly clinicRates?: ClinicRates | null;
+  /**
+   * THE CLINIC'S OWN MULTIPLIERS on the hour beyond normal hours, where it set
+   * any. Absent means the Act's. Validated at or above the Act's before it is
+   * ever stored, so nothing here has to defend the floor a second time — and a
+   * clinic paying 2× for overtime is priced at 2×, not at 1.5× with the
+   * difference quietly dropped.
+   *
+   * These apply to any day the ACT'S FORMULA prices, in either mode. A
+   * clinic-rate rule set that fixes no amount for a kind of day falls back to
+   * the formula, and falling back should land on the clinic's own answer
+   * rather than on a number it replaced everywhere else.
+   */
+  readonly multipliers?: OvertimeMultipliers | null;
 }
 
 /** Which arithmetic produced a day's figure. */
@@ -153,6 +168,18 @@ export interface PricedDay {
 }
 
 const iso = (date: Date) => date.toISOString().slice(0, 10);
+
+/**
+ * The provision, and the clinic's own rate where it beat the Act's.
+ *
+ * A payslip saying only "s.60A(3)(a)" for an hour paid at 2× is a payslip that
+ * cannot be checked: the reader works out 1.5×, finds a different number, and
+ * has no way to tell generosity from a bug. Naming both settles it on the
+ * document rather than in an email six months later.
+ */
+function sayRate(provision: string, used: number, act: number): string {
+  return used === act ? provision : `${provision}, at the clinic's ${used}× rather than the Act's ${act}×`;
+}
 const rm = (cents: number) => `RM${(cents / 100).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /**
@@ -204,11 +231,14 @@ function priceDayByTheAct(day: WorkedDay, dayType: DayType, context: PricingCont
     };
   }
 
+  const chosen = context.multipliers ?? ACT_OVERTIME_MULTIPLIERS;
+
   if (dayType === 'NORMAL_DAY') {
     // The salary already covers the day. Only approved overtime is paid, and
     // only at the excess multiplier.
-    const excessHourlyRateCents = Math.round(context.hourlyOrpCents * OVERTIME_MULTIPLIERS.NORMAL_DAY);
-    const excessPayCents = Math.round(approvedExcessHours * context.hourlyOrpCents * OVERTIME_MULTIPLIERS.NORMAL_DAY);
+    const multiplier = chosen.normalDay;
+    const excessHourlyRateCents = Math.round(context.hourlyOrpCents * multiplier);
+    const excessPayCents = Math.round(approvedExcessHours * context.hourlyOrpCents * multiplier);
     return {
       attendanceId: day.attendanceId,
       date: day.date,
@@ -216,14 +246,17 @@ function priceDayByTheAct(day: WorkedDay, dayType: DayType, context: PricingCont
       ordinaryRateDays: 0,
       dayPayCents: 0,
       excessHours: approvedExcessHours,
-      excessMultiplier: OVERTIME_MULTIPLIERS.NORMAL_DAY,
+      excessMultiplier: multiplier,
       excessHourlyRateCents,
       excessPayCents,
       totalCents: excessPayCents,
-      provision:
+      provision: sayRate(
         entitlement === 'STATUTORY'
           ? 'Employment Act 1955, s.60A(3)(a)'
           : 'Company benefit at s.60A(3)(a) rates — outside the First Schedule limit',
+        multiplier,
+        OVERTIME_MULTIPLIERS.NORMAL_DAY,
+      ),
       entitlement,
       unapprovedExcessHours: day.overtimeApproved ? 0 : day.overtimeMinutes / 60,
       ...byTheAct,
@@ -241,8 +274,13 @@ function priceDayByTheAct(day: WorkedDay, dayType: DayType, context: PricingCont
   const excessWorked = Math.max(0, workedHours - context.normalHoursPerDay);
   const excessHours = day.overtimeApproved ? excessWorked : 0;
 
+  // THE DAY AND THE HOURS ARE DIFFERENT NUMBERS. `ordinaryRateDays` is the day
+  // itself under s.60(3)(b) or s.60D(3)(a)(i) — two days' wages for a public
+  // holiday worked, however few hours — and the clinic does not set it. The
+  // multiplier below applies only to the hours BEYOND normal hours.
+  const multiplier = dayType === 'PUBLIC_HOLIDAY' ? chosen.publicHolidayExcess : chosen.restDayExcess;
   const dayPayCents = Math.round(dayRate.ordinaryRateDays * context.dailyOrpCents);
-  const excessPayCents = Math.round(excessHours * context.hourlyOrpCents * dayRate.excessHourlyMultiplier);
+  const excessPayCents = Math.round(excessHours * context.hourlyOrpCents * multiplier);
 
   return {
     attendanceId: day.attendanceId,
@@ -251,12 +289,15 @@ function priceDayByTheAct(day: WorkedDay, dayType: DayType, context: PricingCont
     ordinaryRateDays: dayRate.ordinaryRateDays,
     dayPayCents,
     excessHours,
-    excessMultiplier: dayRate.excessHourlyMultiplier,
-    excessHourlyRateCents: Math.round(context.hourlyOrpCents * dayRate.excessHourlyMultiplier),
+    excessMultiplier: multiplier,
+    excessHourlyRateCents: Math.round(context.hourlyOrpCents * multiplier),
     excessPayCents,
     totalCents: dayPayCents + excessPayCents,
-    provision:
+    provision: sayRate(
       entitlement === 'STATUTORY' ? dayRate.provision : `Company benefit at ${dayRate.provision} rates — outside the First Schedule limit`,
+      multiplier,
+      dayRate.excessHourlyMultiplier,
+    ),
     entitlement,
     unapprovedExcessHours: day.overtimeApproved ? 0 : excessWorked,
     ...byTheAct,

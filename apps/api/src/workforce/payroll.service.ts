@@ -58,7 +58,7 @@ import {
 import { leaveDaysInYear } from './leave-balance';
 import { describeProration, proratedBasicCents, prorationFor } from './proration';
 import { classifyDay, describePricedDay, priceOvertime } from './overtime-pricing';
-import { clinicRatesOf, resolvePayrollPolicy } from './payroll-policy-resolution';
+import { clinicRatesOf, multipliersOf, resolvePayrollPolicy } from './payroll-policy-resolution';
 import { workforceCategoryOf } from './workforce-category';
 import { LINDUNG_EFFECTIVE_FROM } from '../statutory/lindung-24-jam';
 import { CatalogueRow, ResolvedComponent, catalogueFor, checkOrdinaryRateBase } from './component-liability';
@@ -1382,6 +1382,9 @@ export class PayrollService {
             dailyOrpCents: rates.overtimeDailyCents,
             hourlyOrpCents: rates.overtimeHourlyCents,
             clinicRates,
+            // The clinic's own multipliers where it set any, the Act's where it
+            // did not. Never below the Act's — refused before it is stored.
+            multipliers: multipliersOf(policyResolution.policy),
           },
         );
         const overtimeHours = pricing.normalDayHours;

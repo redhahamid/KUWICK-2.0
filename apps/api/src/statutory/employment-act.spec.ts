@@ -1,6 +1,9 @@
 import {
+  ACT_OVERTIME_MULTIPLIERS,
   MONTHLY_ORP_DIVISOR,
   OVERTIME_MULTIPLIERS,
+  OVERTIME_MULTIPLIER_FLOORS,
+  overtimeMultiplierRefusal,
   checkNormalHours,
   checkOrdinaryRatePolicy,
   daysInMonth,
@@ -169,5 +172,55 @@ describe('section 60A(1) — the limits on normal hours', () => {
 
   it('names both limits when both are breached', () => {
     expect(checkNormalHours(10, 60)).toHaveLength(2);
+  });
+});
+
+/*
+ * THE CLINIC'S OWN MULTIPLIERS, AND THE FLOOR UNDER THEM.
+ *
+ * ss.60A(3)(a), 60(3)(c) and 60D(3)(aa) each say "not less than", which cuts
+ * one way: a clinic paying overtime at 2× is complying generously, and one
+ * paying 1.25× is not. The product refuses the second the way it refuses a
+ * 30-day ordinary-rate divisor — the number is stopped where it is typed, not
+ * discovered on pay day.
+ */
+describe('a multiplier the clinic chose', () => {
+  it('lets a clinic pay above the Act on any of the three', () => {
+    expect(overtimeMultiplierRefusal('overtimeMultiplier', 2)).toBeNull();
+    expect(overtimeMultiplierRefusal('restDayMultiplier', 2.5)).toBeNull();
+    expect(overtimeMultiplierRefusal('publicHolidayMultiplier', 4)).toBeNull();
+  });
+
+  it('lets a clinic state the Act’s own figure', () => {
+    for (const floor of OVERTIME_MULTIPLIER_FLOORS) {
+      expect(overtimeMultiplierRefusal(floor.field, floor.act)).toBeNull();
+    }
+  });
+
+  it('refuses anything below the Act, naming the section and the figure', () => {
+    const refusal = overtimeMultiplierRefusal('overtimeMultiplier', 1.25);
+    expect(refusal).toContain('1.25×');
+    expect(refusal).toContain('s.60A(3)(a)');
+    expect(refusal).toContain('1.5×');
+    // 2× is below the public holiday's 3×, however ordinary it looks beside
+    // the other two.
+    expect(overtimeMultiplierRefusal('publicHolidayMultiplier', 2)).toContain('s.60D(3)(aa)');
+    expect(overtimeMultiplierRefusal('restDayMultiplier', 1.5)).toContain('s.60(3)(c)');
+  });
+
+  it('refuses nought, a negative and a figure no clinic pays', () => {
+    expect(overtimeMultiplierRefusal('overtimeMultiplier', 0)).not.toBeNull();
+    expect(overtimeMultiplierRefusal('overtimeMultiplier', -2)).not.toBeNull();
+    expect(overtimeMultiplierRefusal('overtimeMultiplier', 50)).toContain('Check the figure');
+  });
+
+  it('keeps the Act’s three figures as the floors', () => {
+    // Pinned so a later edit to the table cannot quietly lower a floor.
+    expect(OVERTIME_MULTIPLIER_FLOORS.map((row) => [row.field, row.act])).toEqual([
+      ['overtimeMultiplier', 1.5],
+      ['restDayMultiplier', 2],
+      ['publicHolidayMultiplier', 3],
+    ]);
+    expect(ACT_OVERTIME_MULTIPLIERS).toEqual({ normalDay: 1.5, restDayExcess: 2, publicHolidayExcess: 3 });
   });
 });

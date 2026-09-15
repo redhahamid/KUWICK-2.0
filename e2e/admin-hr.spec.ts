@@ -271,4 +271,40 @@ test.describe('a refused rule set says why, beside the box that is wrong', () =>
     // keystroke fixes it.
     await expect(divisor).toBeFocused();
   });
+
+  test('refuses a multiplier below the Act and says so under that box', async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await loginAdmin(page, ADMIN_ACCOUNTS.owner);
+    await gotoAdmin(page, '/admin/hr/settings/payroll');
+
+    await page.getByRole('button', { name: 'Add rule set' }).click();
+    await page.getByLabel('Name').fill('Below the Act');
+    // A clinic may pay MORE than the Act and never less. 1.25× is less.
+    const overtime = page.locator('#ruleset-ot-multiplier');
+    await overtime.fill('1.25');
+    await page.getByRole('button', { name: 'Add rule set' }).last().click();
+
+    const reason = page.getByText(/Section 60A\(3\)\(a\) allows/i);
+    await expect(reason).toBeVisible();
+    const box = await overtime.boundingBox();
+    const said = await reason.boundingBox();
+    expect(said!.y - (box!.y + box!.height)).toBeLessThan(40);
+    await expect(overtime).toBeFocused();
+  });
+
+  test('accepts a multiplier above the Act, because that pays more', async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await loginAdmin(page, ADMIN_ACCOUNTS.owner);
+    await gotoAdmin(page, '/admin/hr/settings/payroll');
+
+    await page.getByRole('button', { name: 'Add rule set' }).click();
+    const name = `Overtime at two ${Date.now()}`;
+    await page.getByLabel('Name').fill(name);
+    await page.locator('#ruleset-ot-multiplier').fill('2');
+    await page.getByRole('button', { name: 'Add rule set' }).last().click();
+
+    // The rule set list says whose multipliers are in force, so nobody reads
+    // the Act's figure over a clinic's own.
+    await expect(page.getByText(/Clinic multipliers: 2×/)).toBeVisible();
+  });
 });

@@ -3049,6 +3049,13 @@ export interface ClinicRateFields {
   session: string | null;
 }
 
+/** One multiplier: what is applied, the Act's floor under it, and who chose it. */
+export interface MultiplierInForce {
+  used: number;
+  act: number;
+  set: boolean;
+}
+
 export interface PayrollPolicyRow {
   id: string;
   name: string;
@@ -3061,6 +3068,16 @@ export interface PayrollPolicyRow {
   /** §6 — how extra hours, rest days and public holidays are priced. */
   overtimeMode: OvertimeMode;
   clinicRates: ClinicRateFields | null;
+  /**
+   * What an hour beyond normal hours is priced at, in force. `used` is the
+   * figure the run applies, `act` the Employment Act's minimum under it, and
+   * `set` says whether the clinic chose the figure or is on the Act's.
+   */
+  multipliers: {
+    overtime: MultiplierInForce;
+    restDay: MultiplierInForce;
+    publicHoliday: MultiplierInForce;
+  };
   /** DOCTOR, CLINICAL, ADMIN, MANAGEMENT, OTHER, or null. */
   workforceCategory: string | null;
   /** "Doctors", "Everyone no other rule set covers", "Employees assigned by hand". */

@@ -5,10 +5,15 @@ import { currentTenantId } from '../core/tenant-context';
 import { requirePermission, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { formatCents, toCents } from '../finance/money';
-import { FIRST_SCHEDULE_WAGE_CEILING_CENTS } from '../statutory/employment-act';
+import {
+  ACT_OVERTIME_MULTIPLIERS,
+  FIRST_SCHEDULE_WAGE_CEILING_CENTS,
+  OVERTIME_MULTIPLIER_FLOORS,
+  overtimeMultiplierRefusal,
+} from '../statutory/employment-act';
 import { UpsertPayrollPolicyDto } from './dto/upsert-payroll-policy.dto';
 import { clinicRateShortfalls } from './overtime-pricing';
-import { clinicRatesOf, resolvePayrollPolicy } from './payroll-policy-resolution';
+import { clinicRatesOf, multipliersOf, resolvePayrollPolicy } from './payroll-policy-resolution';
 import { WORKFORCE_CATEGORIES, workforceCategoryOf } from './workforce-category';
 
 /**
@@ -134,6 +139,21 @@ export class PayrollPolicyService {
           leavePay: { basis: row.leavePayBasis, days: row.leavePayDays },
           termination: { basis: row.terminationBasis, days: row.terminationDays },
           overtimeMode: row.overtimeMode,
+          // WHAT THE HOURS ARE PRICED AT, and whether the clinic chose it. The
+          // screen needs both: the figure in force, and whether it is the
+          // clinic's own or the Act's showing through an empty box.
+          multipliers: (() => {
+            const used = multipliersOf(row);
+            return {
+              overtime: { used: used.normalDay, act: ACT_OVERTIME_MULTIPLIERS.normalDay, set: row.overtimeMultiplier !== null },
+              restDay: { used: used.restDayExcess, act: ACT_OVERTIME_MULTIPLIERS.restDayExcess, set: row.restDayMultiplier !== null },
+              publicHoliday: {
+                used: used.publicHolidayExcess,
+                act: ACT_OVERTIME_MULTIPLIERS.publicHolidayExcess,
+                set: row.publicHolidayMultiplier !== null,
+              },
+            };
+          })(),
           clinicRates: rates
             ? {
                 overtimeHourly: rates.overtimeHourlyCents === null ? null : formatCents(rates.overtimeHourlyCents),
@@ -194,6 +214,29 @@ export class PayrollPolicyService {
         }
       }
 
+      /*
+       * THE CLINIC'S OWN MULTIPLIERS, HELD TO THE ACT.
+       *
+       * The DTO refuses a value below the floor before this runs; this is the
+       * second statement of the same rule, for anything that reaches the
+       * service another way, and it is where the sentence comes from. Null
+       * clears the choice back to the Act's rather than storing the Act's
+       * number as if the clinic had typed it — a stored 1.5 would stop
+       * following the Act if Parliament ever moved it.
+       */
+      const multipliers: Record<string, number | null> = {};
+      for (const floor of OVERTIME_MULTIPLIER_FLOORS) {
+        const value: number | null | undefined = dto[floor.field];
+        if (value === null || value === undefined) {
+          multipliers[floor.field] = null;
+          continue;
+        }
+        const chosen = Number(value);
+        const refusal = overtimeMultiplierRefusal(floor.field, chosen);
+        if (refusal) throw new BadRequestException(refusal);
+        multipliers[floor.field] = chosen === floor.act ? null : chosen;
+      }
+
       const workforceCategory = dto.workforceCategory ?? null;
       const legalEmployerId = dto.legalEmployerId ?? null;
       if (workforceCategory) {
@@ -225,6 +268,7 @@ export class PayrollPolicyService {
         terminationDays: dto.terminationDays ?? 31,
         overtimeMode,
         ...rates,
+        ...multipliers,
         workforceCategory,
         isDefault: dto.isDefault ?? false,
       };
@@ -256,6 +300,12 @@ export class PayrollPolicyService {
                 .filter(Boolean)
                 .join(',')}`
             : 'statutory pricing') +
+          (() => {
+            const raised = OVERTIME_MULTIPLIER_FLOORS.filter((floor) => multipliers[floor.field] !== null).map(
+              (floor) => `${floor.label.toLowerCase()} at ${multipliers[floor.field]}× against the Act's ${floor.act}×`,
+            );
+            return raised.length > 0 ? `, ${raised.join(', ')}` : '';
+          })() +
           (workforceCategory ? ` for ${categoryLabel(workforceCategory)?.toLowerCase()}` : ''),
         ...(existing ? { before: existing, after: saved } : { after: saved }),
       });

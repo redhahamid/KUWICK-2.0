@@ -179,6 +179,95 @@ export const OVERTIME_MULTIPLIERS = {
 export type OvertimeCategory = keyof typeof OVERTIME_MULTIPLIERS;
 
 /**
+ * THE MULTIPLIERS A RUN ACTUALLY USES.
+ *
+ * "Not less than" cuts one way only, so a clinic gets to choose its own three
+ * numbers and the Act's are the floor under each. A clinic paying overtime at
+ * 2× is not breaking s.60A(3)(a); a clinic paying it at 1.25× is, and the
+ * product refuses that the way it refuses a 30-day divisor.
+ *
+ * Every field is optional. Absent means the Act's, which is what every rule
+ * set had before the clinic was asked.
+ */
+export interface OvertimeMultipliers {
+  readonly normalDay: number;
+  readonly restDayExcess: number;
+  readonly publicHolidayExcess: number;
+}
+
+export const ACT_OVERTIME_MULTIPLIERS: OvertimeMultipliers = {
+  normalDay: OVERTIME_MULTIPLIERS.NORMAL_DAY,
+  restDayExcess: OVERTIME_MULTIPLIERS.REST_DAY_EXCESS,
+  publicHolidayExcess: OVERTIME_MULTIPLIERS.PUBLIC_HOLIDAY_EXCESS,
+};
+
+/**
+ * THE THREE FLOORS, IN ONE PLACE, so the Settings screen, the DTO and the
+ * refusal sentence cannot drift apart. `field` is the name the API and the web
+ * form both use, which is also the id the refusal is anchored to on screen.
+ *
+ * WHAT THESE ARE NOT. Each is the multiplier on an HOUR beyond normal hours.
+ * The DAY itself on a rest day or a public holiday is priced in days of
+ * ordinary rate by ss.60(3)(b) and 60D(3)(a)(i) — a public holiday worked is
+ * two days' wages however few hours were done — and that is a different
+ * number, not settable here.
+ */
+export const OVERTIME_MULTIPLIER_FLOORS = [
+  {
+    field: 'overtimeMultiplier',
+    key: 'normalDay',
+    act: OVERTIME_MULTIPLIERS.NORMAL_DAY,
+    label: 'Overtime',
+    what: 'an hour of overtime on a normal working day',
+    provision: 'Employment Act 1955, s.60A(3)(a)',
+  },
+  {
+    field: 'restDayMultiplier',
+    key: 'restDayExcess',
+    act: OVERTIME_MULTIPLIERS.REST_DAY_EXCESS,
+    label: 'Rest day',
+    what: 'an hour beyond normal hours on a rest day',
+    provision: 'Employment Act 1955, s.60(3)(c)',
+  },
+  {
+    field: 'publicHolidayMultiplier',
+    key: 'publicHolidayExcess',
+    act: OVERTIME_MULTIPLIERS.PUBLIC_HOLIDAY_EXCESS,
+    label: 'Public holiday',
+    what: 'an hour beyond normal hours on a public holiday',
+    provision: 'Employment Act 1955, s.60D(3)(aa)',
+  },
+] as const satisfies readonly {
+  readonly field: string;
+  readonly key: keyof OvertimeMultipliers;
+  readonly act: number;
+  readonly label: string;
+  readonly what: string;
+  readonly provision: string;
+}[];
+
+/**
+ * Why a chosen multiplier cannot be used, or null when it can.
+ *
+ * The same sentence the clinic reads in Settings and the same one the API
+ * returns, because a refusal that is worded differently in two places is two
+ * refusals to explain.
+ */
+export function overtimeMultiplierRefusal(field: string, value: number): string | null {
+  const floor = OVERTIME_MULTIPLIER_FLOORS.find((row) => row.field === field);
+  if (!floor) return `${field} is not a multiplier this rule set holds.`;
+  if (!Number.isFinite(value) || value <= 0) return `${floor.label} is a multiplier above zero, such as ${floor.act}.`;
+  if (value > 10) return `${floor.label} of ${value}× is higher than any rate a clinic pays. Check the figure.`;
+  if (value < floor.act) {
+    return (
+      `${floor.label} of ${value}× pays less for ${floor.what} than ${floor.provision} allows, which is ${floor.act}×. ` +
+      'A higher multiplier is yours to set; a lower one is not.'
+    );
+  }
+  return null;
+}
+
+/**
  * REST-DAY AND PUBLIC-HOLIDAY WORK IS NOT PRICED IN HOURS.
  *
  * Sections 60(3)(b) and 60D(3)(a) pay it in DAYS of ordinary rate, by how much

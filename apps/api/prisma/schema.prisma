@@ -8221,6 +8221,26 @@ model PayrollPolicy {
   clinicRestDayShift       Decimal?     @map("clinic_rest_day_shift") @db.Decimal(12, 2)
   /// RM per session: a rest day or public holiday worked for at most half the normal hours.
   clinicSessionRate        Decimal?     @map("clinic_session_rate") @db.Decimal(12, 2)
+
+  /// THE CLINIC'S OWN MULTIPLIERS, on the hour beyond normal hours.
+  ///
+  /// The two modes above were the only answers a clinic had: the Act's fixed
+  /// 1.5× / 2× / 3×, or fixed ringgit amounts. Neither prices "we pay overtime
+  /// at 2×", which is what a clinic that pays ABOVE the Act actually does, so
+  /// clinics were choosing between a rate they had outgrown and a flat amount
+  /// that stops tracking the salary.
+  ///
+  /// NULL means the Act's, which is what every rule set had before the clinic
+  /// was asked. A value below the Act's is refused in Settings and by the DTO —
+  /// ss.60A(3)(a), 60(3)(c) and 60D(3)(aa) are minimums, and paying less is the
+  /// thing the floor exists to stop. Above is the clinic's to set.
+  ///
+  /// The DAY on a rest day or public holiday is NOT priced from these. It is
+  /// days of ordinary rate under ss.60(3)(b) and 60D(3)(a)(i) — two days' wages
+  /// for a public holiday worked, however few hours — and is not settable.
+  overtimeMultiplier        Decimal?    @map("overtime_multiplier") @db.Decimal(4, 2)
+  restDayMultiplier         Decimal?    @map("rest_day_multiplier") @db.Decimal(4, 2)
+  publicHolidayMultiplier   Decimal?    @map("public_holiday_multiplier") @db.Decimal(4, 2)
   /// Which group this rule set applies to unless an employee is assigned one
   /// directly: DOCTOR, CLINICAL, ADMIN, MANAGEMENT or OTHER — the derived
   /// `WorkforceCategory`, so it is text here and validated in code. NULL means

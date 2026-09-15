@@ -160,6 +160,31 @@ pekerja. Tekan **Add rule set** atau **Edit**.
 3.0× dengan dua hari gaji untuk hari itu sendiri. **Ini pilihan yang betul
 untuk hampir semua klinik kecil.** Anda tidak perlu taip apa-apa nombor.
 
+### Kalau klinik anda bayar LEBIH daripada Akta
+
+Di bawah **What an extra hour is worth** ada tiga kotak — **Overtime**, **Rest
+day**, **Public holiday**. Biar kosong, Kuwick guna angka Akta (1.5× / 2× / 3×).
+Taip angka anda sendiri kalau klinik membayar lebih:
+
+| Anda mahu | Taip |
+|---|---|
+| Lebih masa pada 2×, bukan 1.5× | **Overtime** `2` |
+| Jam lebih pada cuti umum 4× | **Public holiday** `4` |
+| Semua ikut Akta | Biar ketiga-tiga kosong |
+
+**Akta ialah lantai.** Angka di bawah kadar Akta ditolak semasa anda menekan
+Save, dengan seksyen yang menetapkannya disebut di bawah kotak itu. Angka di
+atas Akta diterima, sebab itu membayar lebih, bukan kurang.
+
+Tiga kotak ini menetapkan harga **JAM** yang melebihi jam normal. **Hari** itu
+sendiri pada hari rehat atau cuti umum dikira dalam hari gaji ikut Akta — cuti
+umum yang dikerja ialah **dua hari gaji walau berapa jam pun** (s.60D(3)(a)(i))
+— dan itu bukan kotak di sini.
+
+Kuwick belum boleh membezakan Raya daripada cuti umum biasa: senarai **Public
+holidays** menyimpan tarikh dan nama sahaja, tiada penanda jenis. Satu kadar
+cuti umum untuk semua tarikh buat masa ini.
+
 **Clinic rate** bermakna anda taip amaun tetap:
 
 | Medan | Maksudnya | Contoh |
@@ -200,9 +225,9 @@ Dua mod, dan anda pilih satu untuk setiap rule set.
 | | **Employment Act 1955** | **Clinic rate** |
 |---|---|---|
 | Apa yang anda taip | Tiada apa-apa | Sehingga empat amaun |
-| Hari biasa | Jam lebih diluluskan × 1.5× kadar sejam | Jam lebih diluluskan × **Per hour of overtime** |
-| Hari rehat | 2.0× ikut Akta | Satu amaun **rata** untuk syif, campur kadar sejam untuk jam melebihi jam normal |
-| Cuti umum | 3.0× campur dua hari gaji untuk hari itu | Satu amaun **rata** untuk syif, campur kadar sejam untuk jam melebihi jam normal |
+| Hari biasa | Jam lebih diluluskan × pengganda **Overtime** (kosong = 1.5×) | Jam lebih diluluskan × **Per hour of overtime** |
+| Hari rehat | Hari gaji ikut Akta, campur pengganda **Rest day** (kosong = 2.0×) untuk jam melebihi jam normal | Satu amaun **rata** untuk syif, campur kadar sejam untuk jam melebihi jam normal |
+| Cuti umum | Dua hari gaji untuk hari itu, campur pengganda **Public holiday** (kosong = 3.0×) untuk jam melebihi jam normal | Satu amaun **rata** untuk syif, campur kadar sejam untuk jam melebihi jam normal |
 | Kotak yang dibiar kosong | — | Dihargakan ikut Akta |
 | Had bawah | Ia **ialah** had bawah | Untuk gaji RM4,000 ke bawah, Akta ialah lantai. Kadar lebih rendah akan **menghalang** run |
 

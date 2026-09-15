@@ -248,3 +248,59 @@ changes pay or the API:
   have none. The decision the owner asked for still stands: does a payslip
   refuse to issue without the KWSP and PERKESO numbers, or print with a
   warning?
+
+## The refusal that appeared, and appeared in the wrong place
+
+`[D]` **Reported twice from staging, and the first fix was only right at one
+width.** Typing an overtime divisor of 30 was correctly refused. The first
+report was that the refusal was INVISIBLE — the drawer body scrolls and Save
+sits in a pinned footer outside it, so the reason rendered at the top of a body
+already scrolled past. The fix moved every reason to a named field and put the
+three divisor reasons under the three-up row, measured at 1440.
+
+`[D]` **The second report came from an iPad:** the reason appeared, and appeared
+nowhere near the divisor. `[D]` The cause is one line of CSS —
+`apps/web/src/admin/hr/ui/slate.css` collapses `.hr-grid3` to a single column at
+`max-width: 991px`. So the "row" the reason sat under is only a row above 992px.
+Below it the three divisors are a STACK, and a complaint about the overtime
+divisor printed below the unpaid-leave box, two fields down. An iPad in portrait
+is 810–834px CSS width, so the user saw the stacked layout; a phone is worse.
+
+`[D]` **Fixed by anchoring the reason to its own field, not to the group.** Each
+`FieldProblem` now renders inside its own grid cell, and the cell takes the whole
+row while it is speaking (`hr-cell--flagged`, `grid-column: 1 / -1`), which is
+what kept the reason readable at 1440 in the first place. The offending box is
+outlined and focused. Pinned by unit tests on the structure and by a browser test
+that MEASURES the gap at 390px — the first fix passed every test it had while
+being wrong on the screen it was used on, and only a browser can say how far
+apart two boxes are.
+
+## Overtime and public-holiday multipliers could not be set
+
+`[D]` **Reported from staging.** The rule set drawer offered exactly two
+answers for what extra hours are worth: Employment Act 1955 (fixed 1.5× / 2× /
+3×) or Clinic rate (fixed ringgit amounts). Neither expresses "we pay overtime
+at 2×" — so a clinic paying ABOVE the Act, which is its right, had to choose
+between a multiplier it had outgrown and a flat amount that stops tracking the
+salary the day anybody gets a rise.
+
+`[D]` **Fixed.** A rule set now holds its own multiplier for overtime, rest day
+and public holiday. Blank means the Act's. The Act is the floor in the direction
+the Act sets it — ss.60A(3)(a), 60(3)(c) and 60D(3)(aa) all say "not less than",
+so above is the clinic's to choose and below is refused in Settings, by the DTO
+and by the service. Migration `20260915120000_payroll_policy_multipliers` adds
+three nullable columns; NULL everywhere means no existing figure moves.
+
+`[D]` **What it does NOT cover, and the owner needs to decide:**
+
+1. **Raya priced apart from an ordinary public holiday.** The
+   `public_holidays` table holds only `date` and `name` — no type marker — so
+   the engine cannot tell one holiday from another. Full answer and what a
+   marker would cost: `docs/HR_HOLIDAY_TYPE_MARKER.md`. `[O]` needed before
+   anything is built.
+2. **"All public holidays at 2×" will be refused**, because the Act's floor on
+   the public-holiday MULTIPLIER is 3× (s.60D(3)(aa)) and that multiplier prices
+   the hours beyond normal hours. `[A]` 2× is, however, exactly the Act's figure
+   for the DAY itself (s.60D(3)(a)(i), two days' wages however few hours were
+   worked) — a different number, not settable here. `[O]` needed: which of the
+   two was meant.
