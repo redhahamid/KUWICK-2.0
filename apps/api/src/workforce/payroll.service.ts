@@ -509,6 +509,74 @@ export class PayrollService {
         );
       }
 
+      /*
+       * THE ORDINARY-RATE DIVISORS, FROZEN FROM THE CLINIC'S OWN ANSWER.
+       *
+       * `orpOvertimeDays`, `orpUnpaidLeaveDays` and `orpHoursPerDay` have been
+       * read on every run since Stage 1 and NOTHING EVER WROTE THEM, so every
+       * run in the system used the schema defaults 26 / 31 / 7.5 while the rule
+       * set's own `overtimeDays`, `unpaidLeaveDays` and `overtimeHoursPerDay`
+       * sat beside them and were applied to nothing. The payroll report even
+       * printed "Clinic policy, frozen on this run" over a number the clinic
+       * had never been asked for.
+       *
+       * ONE RUN HAS ONE SET OF DIVISORS, which is a fact about the schema and
+       * about the arithmetic: the ordinary rate is how this employer turns a
+       * monthly salary into a day and an hour. So where the rule sets pricing
+       * this run's people disagree, the run is REFUSED rather than quietly
+       * given one of the answers — exactly as the employing company above is
+       * refused rather than picked when the branch holds two of them.
+       */
+      const forDivisors = await tx.employeeProfile.findMany({
+        where: {
+          engagement: 'EMPLOYEE',
+          employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
+          ...(dto.clinicId ? { staff: { clinicId: dto.clinicId } } : {}),
+          ...(legalEmployerId ? { legalEmployerId } : {}),
+        },
+        select: {
+          payrollPolicyId: true,
+          legalEmployerId: true,
+          staff: { select: { role: true, professionalType: true } },
+        },
+      });
+      const policies = await tx.payrollPolicy.findMany();
+      const divisorsByPolicy = new Map<string, { name: string; overtimeDays: number; unpaidLeaveDays: number; hoursPerDay: number }>();
+      for (const employee of forDivisors) {
+        const { policy } = resolvePayrollPolicy(policies, {
+          payrollPolicyId: employee.payrollPolicyId,
+          legalEmployerId: employee.legalEmployerId,
+          category: workforceCategoryOf(employee.staff),
+        });
+        if (!policy) continue;
+        const row = policies.find((candidate) => candidate.id === policy.id);
+        if (!row) continue;
+        divisorsByPolicy.set(
+          `${row.overtimeDays}/${row.unpaidLeaveDays}/${Number(row.overtimeHoursPerDay)}`,
+          {
+            name: row.name,
+            overtimeDays: row.overtimeDays,
+            unpaidLeaveDays: row.unpaidLeaveDays,
+            hoursPerDay: Number(row.overtimeHoursPerDay),
+          },
+        );
+      }
+      if (divisorsByPolicy.size > 1) {
+        const named = [...divisorsByPolicy.values()]
+          .map((row) => `${row.name} (${row.overtimeDays} / ${row.unpaidLeaveDays} / ${row.hoursPerDay})`)
+          .join(', ');
+        throw new BadRequestException(
+          'The rule sets covering this run disagree about how a monthly salary becomes a day and an hour: ' +
+            `${named}. One run carries one ordinary rate, so overtime, rest days, public holidays and unpaid ` +
+            'leave would all be priced from a divisor half these employees never agreed to. Make them match in ' +
+            'Payroll policies, or run these groups separately.',
+        );
+      }
+      // Nobody on a rule set means nothing to freeze, and the schema defaults
+      // stand — the same numbers as before, now because no clinic answer exists
+      // rather than because none was ever asked for.
+      const chosen = [...divisorsByPolicy.values()][0] ?? null;
+
       return tx.payrollRun.create({
         data: {
           tenantId: currentTenantId(),
@@ -519,6 +587,13 @@ export class PayrollService {
           sequence,
           notes: dto.notes ?? null,
           createdByStaffId: actor.id,
+          ...(chosen
+            ? {
+                orpOvertimeDays: chosen.overtimeDays,
+                orpUnpaidLeaveDays: chosen.unpaidLeaveDays,
+                orpHoursPerDay: chosen.hoursPerDay,
+              }
+            : {}),
         },
       });
     });
