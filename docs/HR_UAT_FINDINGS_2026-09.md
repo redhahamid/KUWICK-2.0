@@ -363,3 +363,39 @@ together on every rule set that exists today.
 price an hour beyond normal hours: RM10 an hour becomes RM20 on a 2× day. The
 day itself on a rest day or public holiday stays the Act's arithmetic in days
 of ordinary rate, and is not settable.
+
+## The browser gate rots after midnight in clinic time
+
+`[D]` **Three specs fail on a world that was seeded on an earlier clinic day**,
+and none of them is a code defect:
+
+| Spec | What it says |
+| --- | --- |
+| `admin-hr.spec.ts:21` | `ON DUTY NOW` is 0 |
+| `appointment-module.spec.ts:519` | the availability month did not offer the fixture day |
+| `canvas-appointment.spec.ts:217` | the engine offered no slots for a rostered day |
+
+`[D]` **The cause is one line in `attendance-record.service.ts`:** the day is
+computed in `Asia/Kuala_Lumpur`, not UTC. The container runs on UTC, so after
+16:00 UTC the clinic is already on the NEXT day. Every seeded attendance row,
+rostered fixture day and bookable slot is planted relative to the clinic day the
+seed ran on, so at 01:00 clinic time they are all yesterday's. Nobody is on duty
+because nobody has clocked in on a day that is forty minutes old.
+
+`[D]` **Proven not to be a code change** by removing the change from the running
+system: checked out the commit before it, restarted both servers against the
+same database, and all three fail identically. The same three passed on this
+same database at 22:52 clinic time earlier the same evening.
+
+`[D]` **Re-running the seeds does not fix it.** `seed-e2e.ts` and
+`seed-density-fixtures.ts` are idempotent by design — they print "already
+seeded" and leave the old dates alone. Only a rebuilt database re-plants the
+fixtures relative to today, which is what CI does on every run and why CI never
+sees this.
+
+`[A]` **What would fix it for good** is making the two appointment fixtures and
+the attendance rows relative to the clinic day at READ time rather than at seed
+time, or having the seeds refresh their date-bearing rows instead of skipping
+them. `[O]` needed: it is test-world plumbing, not product behaviour, and it has
+never once been a real defect — but it costs a gate run every time a session
+crosses midnight in Malaysia.
