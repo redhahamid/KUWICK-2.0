@@ -188,4 +188,96 @@ describe('Leave decisions are made by whoever is signed in (e2e)', () => {
     expect(saved?.rejectReason).toBe('Understaffed that week');
     expect(saved?.approvedByStaffId).toBe(ownerId);
   });
+
+  /*
+   * THE CARRY-FORWARD CAP — a number that existed for a year and bound nothing.
+   *
+   * `LeavePolicy.carryForwardDays` says how many unused annual days a clinic
+   * lets cross into the next year. Nothing read it: there is no year-end
+   * rollover in this API, so the only way a day is carried in is somebody
+   * typing it into a balance adjustment — and that writer never consulted the
+   * policy. A clinic could set "carry forward 8" and have 20 typed in over it,
+   * with the screen showing the 20 and no complaint anywhere.
+   */
+  describe('the carry-forward cap', () => {
+    const policyFor = (carryForwardDays: number | null) =>
+      withTenantContext(prisma, tenantId, async (tx) => {
+        const policy = await tx.leavePolicy.create({
+          data: { tenantId, name: `Cuti ${randomId().slice(0, 8)}`, carryForwardDays },
+        });
+        await tx.leavePolicyEntitlement.create({
+          data: { tenantId, leavePolicyId: policy.id, leaveType: LeaveType.ANNUAL, daysPerYear: 14, paid: true },
+        });
+        await tx.employeeProfile.create({
+          data: {
+            tenantId,
+            staffId: nurseId,
+            employeeNo: `N-${randomId().slice(0, 6)}`,
+            employmentType: 'PERMANENT',
+            employmentStatus: 'ACTIVE',
+            startDate: new Date('2024-01-01'),
+            leavePolicyId: policy.id,
+          },
+        });
+        return policy;
+      });
+
+    const adjust = (carriedInDays: number) =>
+      request(server())
+        .post('/workforce/leave/balances/adjust')
+        .set('Authorization', ownerBearer)
+        .send({
+          staffId: nurseId,
+          leaveType: LeaveType.ANNUAL,
+          benefitYear: 2026,
+          carriedInDays,
+          reason: 'Carrying last year forward.',
+        });
+
+    it('refuses more carried-in days than the policy allows, and says what the cap is', async () => {
+      await policyFor(8);
+      const refused = await adjust(20).expect(400);
+      expect(refused.body.message).toContain('8 days');
+      expect(refused.body.message).toContain('20 was entered');
+    });
+
+    it('accepts the cap exactly, because a cap is a limit and not a barrier', async () => {
+      await policyFor(8);
+      await adjust(8).expect(201);
+      const saved = await withTenantContext(prisma, tenantId, (tx) =>
+        tx.leaveBalance.findFirst({ where: { staffId: nurseId, leaveType: LeaveType.ANNUAL, benefitYear: 2026 } }),
+      );
+      expect(Number(saved?.carriedInDays)).toBe(8);
+    });
+
+    it('refuses nothing where the clinic has recorded no cap, because null is undecided and not zero', async () => {
+      await policyFor(null);
+      await adjust(20).expect(201);
+    });
+
+    it('leaves medical leave alone: carrying forward is an ANNUAL rule and not a general one', async () => {
+      await policyFor(8);
+      await request(server())
+        .post('/workforce/leave/balances/adjust')
+        .set('Authorization', ownerBearer)
+        .send({
+          staffId: nurseId,
+          leaveType: LeaveType.MEDICAL,
+          benefitYear: 2026,
+          carriedInDays: 20,
+          reason: 'Not the field\'s business.',
+        })
+        .expect(201);
+    });
+
+    it('publishes the cap with the balances, so a number that now binds is legible', async () => {
+      await policyFor(8);
+      const balances = await request(server())
+        .get('/workforce/leave/balances?year=2026')
+        .set('Authorization', ownerBearer)
+        .expect(200);
+      const nurse = balances.body.employees.find((row: { staffId: string }) => row.staffId === nurseId);
+      expect(nurse.carryForwardCap).toBe(8);
+    });
+  });
 });

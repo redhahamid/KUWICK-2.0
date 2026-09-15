@@ -19,6 +19,8 @@ type LeaveProfile = {
   leavePolicy: {
     name: string;
     proRateOnJoin: boolean;
+    /** Null means the policy names no cap, not that the cap is zero. */
+    carryForwardDays: number | null;
     entitlements: { leaveType: LeaveType; daysPerYear: unknown; paid: boolean }[];
   } | null;
 };
@@ -215,6 +217,16 @@ export class LeaveService {
       staffId,
       year,
       policyName: profile?.leavePolicy?.name ?? null,
+      /*
+       * THE CARRY-FORWARD CAP, on the screen for the first time.
+       *
+       * The policy has carried this number since leave shipped and nothing has
+       * ever read it — not the balance, not a rollover (there is none), not the
+       * adjustment that is the only way days get carried in. A cap nobody can
+       * see is a cap nobody can be held to, which is why it goes out with the
+       * balances rather than waiting for a policy editor that does not exist.
+       */
+      carryForwardCap: profile?.leavePolicy?.carryForwardDays ?? null,
       // A person with no policy is reported as such, not silently given zero:
       // "nobody has assigned a leave policy" is a piece of HR work.
       policyAssigned: Boolean(profile?.leavePolicy),
@@ -324,6 +336,38 @@ export class LeaveService {
       const existing = await tx.leaveBalance.findFirst({
         where: { staffId: dto.staffId, leaveType: dto.leaveType, benefitYear: dto.benefitYear },
       });
+
+      /*
+       * THE CARRY-FORWARD CAP, ENFORCED — the only place it can be.
+       *
+       * `carryForwardDays` says how many unused annual days a clinic lets cross
+       * into the next year. It has never been read by anything: there is no
+       * year-end rollover job in this API, so the ONLY way a day is carried in
+       * is somebody typing it here. A cap that the one writer ignores is not a
+       * policy, it is a note.
+       *
+       * ANNUAL ONLY, because that is what the field means — the schema says
+       * "whether unused annual leave carries into the next year, and how much".
+       * Capping sick or maternity leave with it would be inventing a rule the
+       * clinic never set.
+       *
+       * A policy with no cap recorded (null) is not a cap of zero: it is a
+       * clinic that has not decided, and this refuses nothing.
+       */
+      if (dto.carriedInDays !== undefined && dto.leaveType === LeaveType.ANNUAL) {
+        const profile = await tx.employeeProfile.findFirst({
+          where: { staffId: dto.staffId },
+          select: { leavePolicy: { select: { name: true, carryForwardDays: true } } },
+        });
+        const cap = profile?.leavePolicy?.carryForwardDays ?? null;
+        if (cap !== null && dto.carriedInDays > cap) {
+          throw new BadRequestException(
+            `${profile?.leavePolicy?.name ?? 'This leave policy'} carries forward at most ${cap} ` +
+              `${cap === 1 ? 'day' : 'days'} of annual leave, and ${dto.carriedInDays} was entered. ` +
+              'Raise the policy first if the clinic has decided to allow more.',
+          );
+        }
+      }
 
       const saved = existing
         ? await tx.leaveBalance.update({

@@ -401,7 +401,18 @@ export function LeavePage() {
                     <span className="hr-who__avatar">{initialsOf(value)}</span>
                     <div>
                       <div className="hr-who__name">{value}</div>
-                      <div className="hr-who__role">{row.policyName ?? 'No leave policy assigned'}</div>
+                      <div className="hr-who__role">
+                        {row.policyName ?? 'No leave policy assigned'}
+                        {/*
+                          * THE CAP, WHERE THE POLICY IS NAMED. It has existed
+                          * since leave shipped and has never been on a screen,
+                          * so nobody could be held to it — and nothing read it
+                          * either. It is enforced now, so it has to be legible.
+                          */}
+                        {row.carryForwardCap !== null
+                          ? ` · carries forward ${row.carryForwardCap} ${row.carryForwardCap === 1 ? 'day' : 'days'}`
+                          : ''}
+                      </div>
                     </div>
                   </div>
                 ),
@@ -437,6 +448,12 @@ export function LeavePage() {
                       <div className="hr-tdSub">
                         {balance.taken} of {balance.available} taken
                         {balance.pending > 0 ? ` · ${balance.pending} waiting` : ''}
+                        {/*
+                          * Carried-in days are part of `available` and were
+                          * invisible inside it. A balance that looks generous
+                          * because last year's days are in it should say so.
+                          */}
+                        {balance.carriedIn > 0 ? ` · ${balance.carriedIn} carried in` : ''}
                       </div>
                     </span>
                   );

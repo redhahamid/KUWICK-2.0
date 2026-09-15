@@ -1628,6 +1628,8 @@ export function useLeaveBalances(params: { clinicId?: string; year?: number } = 
           name: string;
           policyName: string | null;
           policyAssigned: boolean;
+          /** Days of annual leave this policy lets cross into next year. Null = the clinic has not decided. */
+          carryForwardCap: number | null;
           balances: {
             leaveType: string;
             paid: boolean;
