@@ -22,15 +22,19 @@ import { WORKFORCE_CATEGORIES, workforceCategoryOf } from './workforce-category'
 /**
  * PAYROLL POLICY — a rule set.
  *
- * Five proration bases, against the audited competitor's four. The fifth is
- * TERMINATION, and its absence there produced a measurable defect: a leaver
- * archived mid-month kept a full month's pay, before and after an explicit
- * recalculation, with nothing on the screen saying so.
+ * THERE WERE FIVE PRORATION BASES AND NOW THERE IS ONE, because the Employment
+ * Act had already answered the other four. A part month is monthly wages over
+ * the ACTUAL days in it (ss.18A and 60I(1)(c)); a day of unpaid leave is the
+ * same arithmetic, named expressly in s.18A; the ordinary-rate divisor is fixed
+ * at 26 by s.60I(1A) and may only be bettered; and paid leave is not valued
+ * apart from salary at all. Four settings a clinic could type into, none of
+ * which any calculation read, each inviting an answer the law does not permit.
  *
- * THE PRORATION BASES ARE RECORDED, NOT YET APPLIED. Whether a given basis is
- * lawful is Employment Act territory (statutory register EA-03), and that is
- * blocked. Storing the shape now means turning proration on is configuration
- * rather than a migration.
+ * TERMINATION IS THE ONE THAT SURVIVES, and it is the one the audited
+ * competitor lacked: a leaver archived mid-month kept a full month's pay there,
+ * before and after an explicit recalculation, with nothing on the screen saying
+ * so. It is still RECORDED, NOT APPLIED — the final settlement is a feature to
+ * build, and until it exists this is the clinic's answer waiting for it.
  *
  * HOW EXTRA HOURS ARE PRICED IS APPLIED (§6 of the HR restructure). A rule set
  * is STATUTORY — the Act's arithmetic — or CLINIC_RATE, fixed amounts per
@@ -140,14 +144,7 @@ export class PayrollPolicyService {
           id: row.id,
           name: row.name,
           legalEmployerId: row.legalEmployerId,
-          salaryProration: { basis: row.salaryProrationBasis, days: row.salaryProrationDays },
-          overtime: {
-            basis: row.overtimeBasis,
-            days: row.overtimeDays,
-            hoursPerDay: Number(row.overtimeHoursPerDay),
-          },
-          unpaidLeave: { basis: row.unpaidLeaveBasis, days: row.unpaidLeaveDays },
-          leavePay: { basis: row.leavePayBasis, days: row.leavePayDays },
+          overtime: { days: row.overtimeDays, hoursPerDay: Number(row.overtimeHoursPerDay) },
           termination: { basis: row.terminationBasis, days: row.terminationDays },
           overtimeMode: row.overtimeMode,
           // WHAT THE HOURS ARE PRICED AT, and whether the clinic chose it. The
@@ -230,9 +227,10 @@ export class PayrollPolicyService {
       }),
       categories: WORKFORCE_CATEGORIES,
       notice:
-        'Overtime, rest-day and public-holiday pay follow the rule set from the next calculation. The proration bases are ' +
-        'recorded but NOT yet applied: which basis a Malaysian employer may lawfully use has not been established against ' +
-        'the Employment Act, so proration stays unimplemented rather than guessed.',
+        'Overtime, rest-day and public-holiday pay follow the rule set from the next calculation. A part month, a day of ' +
+        'unpaid leave and the ordinary rate are set by the Employment Act and are not the clinic’s to choose — the ' +
+        'settings that offered that choice have been removed. The termination basis is recorded and not yet applied: the ' +
+        'final settlement is not built.',
     };
   }
 
@@ -455,15 +453,8 @@ export class PayrollPolicyService {
       const data = {
         name: dto.name,
         legalEmployerId,
-        salaryProrationBasis: dto.salaryProrationBasis ?? 'CALENDAR_DAYS',
-        salaryProrationDays: dto.salaryProrationDays ?? 26,
-        overtimeBasis: dto.overtimeBasis ?? 'FIXED_DAYS',
         overtimeDays: dto.overtimeDays ?? 26,
         overtimeHoursPerDay: dto.overtimeHoursPerDay ?? 7.5,
-        unpaidLeaveBasis: dto.unpaidLeaveBasis ?? 'CALENDAR_DAYS',
-        unpaidLeaveDays: dto.unpaidLeaveDays ?? 31,
-        leavePayBasis: dto.leavePayBasis ?? 'FIXED_DAYS',
-        leavePayDays: dto.leavePayDays ?? 26,
         terminationBasis: dto.terminationBasis ?? 'CALENDAR_DAYS',
         terminationDays: dto.terminationDays ?? 31,
         overtimeMode,

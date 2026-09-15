@@ -83,10 +83,7 @@ export class AttendancePolicyService {
         earlyOutGraceMinutes: dto.earlyOutGraceMinutes,
         overtimeMinimumMinutes: dto.overtimeMinimumMinutes,
         overtimeRoundingMinutes: dto.overtimeRoundingMinutes,
-        overtimeRequiresApproval: dto.overtimeRequiresApproval,
         countEarlyClockIn: dto.countEarlyClockIn,
-        unpaidBreakMinutes: dto.unpaidBreakMinutes,
-        breakAfterMinutes: dto.breakAfterMinutes,
         maximumShiftHours: dto.maximumShiftHours,
         geofenceRadiusMetres: dto.geofenceRadiusMetres,
       };

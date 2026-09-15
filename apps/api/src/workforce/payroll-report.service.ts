@@ -4,6 +4,7 @@ import { PrismaService } from '../core/prisma.service';
 import { requirePermission, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { formatCents, toCents } from '../finance/money';
+import { daysInMonth } from '../statutory/employment-act';
 import { checkVariance } from './payroll-invariants';
 
 /**
@@ -1034,12 +1035,25 @@ export class PayrollReportService {
         };
       });
 
+    const daysInThisMonth = daysInMonth(run.period.getUTCFullYear(), run.period.getUTCMonth() + 1);
+
     return {
       report: 'UNPAID_LEAVE',
       ...this.header(run),
+      /*
+       * THE DIVISOR IS THE MONTH, AND IT WAS NEVER CLINIC POLICY.
+       *
+       * This printed "monthly salary ÷ 31. Clinic policy, frozen on this run"
+       * over a figure the run had frozen and never applied. s.18A prices an
+       * incomplete month — expressly including leave without pay — on the
+       * ACTUAL days in the wage period, so the divisor is 28, 29, 30 or 31
+       * depending on which month this is, and no clinic ever chose it.
+       */
       divisor: {
-        unpaidLeaveDays: Number(run.orpUnpaidLeaveDays),
-        meaning: `A day of unpaid leave reduces wages by monthly salary ÷ ${Number(run.orpUnpaidLeaveDays)}. Clinic policy, frozen on this run.`,
+        unpaidLeaveDays: daysInThisMonth,
+        meaning:
+          `A day of unpaid leave reduces wages by monthly salary ÷ ${daysInThisMonth}, the days in this month. ` +
+          'Employment Act 1955, s.18A — not clinic policy.',
       },
       rows,
       totals: {

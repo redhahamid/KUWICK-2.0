@@ -287,7 +287,7 @@ export interface SnapshotPayload {
   components?: SnapshotComponent[];
   approvals?: SnapshotApproval[];
   exceptions?: SnapshotException[];
-  orp: { overtimeDays: number; unpaidLeaveDays: number; hoursPerDay: number };
+  orp: { overtimeDays: number; hoursPerDay: number };
   employees: SnapshotEmployeeLine[];
   totals: {
     grossCents: number;

@@ -211,7 +211,6 @@ export function PayrollSettingsPage() {
   // THE ORDINARY-RATE DIVISORS. Held as strings so a half-typed field is not
   // silently read as 0 while somebody is still typing it.
   const [otDays, setOtDays] = useState('26');
-  const [ulDays, setUlDays] = useState('31');
   const [hoursDay, setHoursDay] = useState('7.5');
   // THE CLINIC'S OWN MULTIPLIERS, blank for "the Act's". Strings for the same
   // reason the divisors are: "2." mid-keystroke is not the number 2.
@@ -244,7 +243,6 @@ export function PayrollSettingsPage() {
     setRestDay('');
     setSession('');
     setOtDays('26');
-    setUlDays('31');
     setHoursDay('7.5');
     setMultipliers({ 'ruleset-ot-multiplier': '', 'ruleset-restday-multiplier': '', 'ruleset-holiday-multiplier': '' });
     setBelowActOk(false);
@@ -261,7 +259,6 @@ export function PayrollSettingsPage() {
     setRestDay(row.clinicRates?.restDayShift ?? '');
     setSession(row.clinicRates?.session ?? '');
     setOtDays(String(row.overtime.days ?? 26));
-    setUlDays(String(row.unpaidLeave.days ?? 31));
     setHoursDay(String(row.overtime.hoursPerDay));
     // A box left blank is on the Act's, and stays blank so the placeholder can
     // say which figure that is rather than the clinic having to remember.
@@ -309,7 +306,6 @@ export function PayrollSettingsPage() {
      * payroll.
      */
     const otDaysNum = Number(otDays);
-    const ulDaysNum = Number(ulDays);
     const hoursNum = Number(hoursDay);
     if (!Number.isInteger(otDaysNum) || otDaysNum < 1 || otDaysNum > 31) {
       refuse('orp-ot-days', 'The overtime divisor is a whole number of days between 1 and 31.');
@@ -321,10 +317,6 @@ export function PayrollSettingsPage() {
         `An overtime divisor of ${otDaysNum} makes a day worth less than section 60I(1A) allows, which underpays ` +
           'every hour of overtime, every rest day and every public holiday. Payroll will refuse to calculate. Use 26 or fewer.',
       );
-      return;
-    }
-    if (!Number.isInteger(ulDaysNum) || ulDaysNum < 1 || ulDaysNum > 31) {
-      refuse('orp-ul-days', 'The unpaid leave divisor is a whole number of days between 1 and 31.');
       return;
     }
     if (!Number.isFinite(hoursNum) || hoursNum < 0.5 || hoursNum > 8) {
@@ -375,9 +367,10 @@ export function PayrollSettingsPage() {
     }
 
     const existing = editing !== 'new' && editing ? editing : null;
-    // THE BASES ARE CARRIED THROUGH UNCHANGED. The server replaces every
-    // field it is not sent with its default, so an edit that only touched
-    // the mode must resend what the rule set already has.
+    // THE TERMINATION BASIS IS CARRIED THROUGH UNCHANGED. The server replaces
+    // every field it is not sent with its default, so an edit that only touched
+    // the mode must resend what the rule set already has. It used to be five
+    // bases; the other four were answered by the Employment Act and removed.
     upsert.mutate(
       {
         ...(existing ? { id: existing.id } : {}),
@@ -385,12 +378,6 @@ export function PayrollSettingsPage() {
         ...(existing
           ? {
               legalEmployerId: existing.legalEmployerId,
-              salaryProrationBasis: existing.salaryProration.basis,
-              salaryProrationDays: existing.salaryProration.days ?? undefined,
-              overtimeBasis: existing.overtime.basis,
-              unpaidLeaveBasis: existing.unpaidLeave.basis,
-              leavePayBasis: existing.leavePay.basis,
-              leavePayDays: existing.leavePay.days ?? undefined,
               terminationBasis: existing.termination.basis,
               terminationDays: existing.termination.days ?? undefined,
             }
@@ -399,7 +386,6 @@ export function PayrollSettingsPage() {
         // edited one — a rule set created without them would price its people
         // from the schema's defaults and nobody would know which they got.
         overtimeDays: otDaysNum,
-        unpaidLeaveDays: ulDaysNum,
         overtimeHoursPerDay: hoursNum,
         overtimeMode: mode,
         // Null clears a raised multiplier back to the Act's. Sent on every
@@ -624,25 +610,6 @@ export function PayrollSettingsPage() {
                 </span>
               ),
             },
-            {
-              /*
-               * THE ONE BASIS THIS SCREEN SHOWS, and it prices nothing. The
-               * run deducts unpaid leave from the days it computed itself; the
-               * rule set's unpaid-leave basis is stored, resent unchanged on
-               * every edit above, and read by no calculation. The column stays
-               * because the answer is real and a clinic recorded it — it just
-               * stops presenting itself as the one in force.
-               */
-              title: 'Unpaid leave',
-              key: 'ul',
-              width: 200,
-              render: (_: unknown, row) => (
-                <span>
-                  {basisLabel(row.unpaidLeave.basis, row.unpaidLeave.days)}{' '}
-                  <NotApplied>The run uses the days it computed.</NotApplied>
-                </span>
-              ),
-            },
             ...(mayManage
               ? [
                   {
@@ -771,23 +738,13 @@ export function PayrollSettingsPage() {
                 />
                 <FieldProblem problem={problem} field="orp-hours" />
               </div>
-              <div className={problemCell(problem, 'orp-ul-days')}>
-                <label htmlFor="orp-ul-days" className="hr-form__sub">Unpaid leave divisor</label>
-                <Input
-                  id="orp-ul-days"
-                  value={ulDays}
-                  onChange={(e) => setUlDays(e.target.value)}
-                  addonAfter="days"
-                  inputMode="numeric"
-                />
-                <FieldProblem problem={problem} field="orp-ul-days" />
-              </div>
             </div>
             <div className="hr-form__help">
               The ordinary rate is the monthly salary over the overtime divisor, and an hour is that over the normal
               hours. Overtime, rest days and public holidays are all priced from it. Section 60I(1A) sets 26; above it
-              every hour of overtime is worth less, and the run refuses to calculate. A day of unpaid leave is the
-              salary over its own divisor, which is calendar days for most clinics.
+              every hour of overtime is worth less, and the run refuses to calculate. A day of unpaid leave is not set
+              here: section 18A prices an incomplete month on the actual days in it, so the divisor is 28, 29, 30 or 31
+              depending on the month.
             </div>
           </div>
           <div>

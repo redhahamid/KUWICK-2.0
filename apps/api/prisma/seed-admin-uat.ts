@@ -2259,12 +2259,9 @@ async function seedWorkforce(ids: Ids) {
         tenantId: tenant.id,
         legalEmployerId: employer.id,
         name: 'Klinik Contoh standard',
-        salaryProrationBasis: 'CALENDAR_DAYS',
-        overtimeBasis: 'FIXED_DAYS',
         overtimeDays: 26,
         overtimeHoursPerDay: 7.5,
-        unpaidLeaveBasis: 'CALENDAR_DAYS',
-        unpaidLeaveDays: 31,
+
         isDefault: true,
       },
     });
@@ -2284,12 +2281,9 @@ async function seedWorkforce(ids: Ids) {
         workforceCategory: 'DOCTOR',
         overtimeMode: 'CLINIC_RATE',
         clinicPublicHolidayShift: 500,
-        salaryProrationBasis: 'CALENDAR_DAYS',
-        overtimeBasis: 'FIXED_DAYS',
         overtimeDays: 26,
         overtimeHoursPerDay: 7.5,
-        unpaidLeaveBasis: 'CALENDAR_DAYS',
-        unpaidLeaveDays: 31,
+
         isDefault: false,
       },
     });

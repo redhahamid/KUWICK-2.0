@@ -14,10 +14,12 @@ const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
 const MONEY_MESSAGE = 'Enter an amount in ringgit with at most two decimal places, e.g. 500 or 37.50.';
 
 /**
- * A rule set: five proration bases, and how extra hours are priced.
+ * A rule set: one proration basis, and how extra hours are priced.
  *
- * THE PRORATION BASES ARE RECORDED, NOT YET APPLIED. Which basis is lawful is
- * an Employment Act question (statutory register EA-03) and is blocked.
+ * THERE WERE FIVE BASES AND NOW THERE IS ONE. The Employment Act had already
+ * answered four of them, so they were a choice the law does not permit dressed
+ * as a setting. Termination is the one it leaves to the employer, and it is
+ * RECORDED, NOT APPLIED: the final settlement is not built.
  *
  * THE OVERTIME MODE IS APPLIED, from the next calculation. STATUTORY is the
  * Act's arithmetic; CLINIC_RATE prices from the fixed amounts below. Amounts
@@ -30,20 +32,19 @@ export class UpsertPayrollPolicyDto {
   @IsString() @Length(2, 120) name!: string;
   @IsOptional() @IsString() legalEmployerId?: string | null;
 
-  @IsOptional() @IsIn(BASES) salaryProrationBasis?: Basis;
-  @IsOptional() @IsInt() @Min(1) @Max(31) salaryProrationDays?: number;
-
-  @IsOptional() @IsIn(BASES) overtimeBasis?: Basis;
+  /** The ordinary rate of pay. s.60I(1A) sets 26 and the run refuses more. */
   @IsOptional() @IsInt() @Min(1) @Max(31) overtimeDays?: number;
   @IsOptional() @IsNumber() @Min(0.5) @Max(24) overtimeHoursPerDay?: number;
 
-  @IsOptional() @IsIn(BASES) unpaidLeaveBasis?: Basis;
-  @IsOptional() @IsInt() @Min(1) @Max(31) unpaidLeaveDays?: number;
-
-  @IsOptional() @IsIn(BASES) leavePayBasis?: Basis;
-  @IsOptional() @IsInt() @Min(1) @Max(31) leavePayDays?: number;
-
-  /** The fifth basis, which the audited competitor lacks. */
+  /**
+   * The last basis standing, and the only one the Act leaves to the employer.
+   * Recorded, not applied: the final settlement is a feature to build.
+   *
+   * Salary proration, unpaid leave, the overtime basis and leave pay were here
+   * too. ss.18A, 60I(1)(c) and 60I(1A) had already answered all four, so they
+   * offered a clinic a choice the law does not give it — and every one of them
+   * was read by no calculation at all.
+   */
   @IsOptional() @IsIn(BASES) terminationBasis?: Basis;
   @IsOptional() @IsInt() @Min(1) @Max(31) terminationDays?: number;
 

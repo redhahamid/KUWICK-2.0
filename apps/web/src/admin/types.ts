@@ -2946,10 +2946,7 @@ export interface AttendancePolicy {
   earlyOutGraceMinutes: number;
   overtimeMinimumMinutes: number;
   overtimeRoundingMinutes: number;
-  overtimeRequiresApproval: boolean;
   countEarlyClockIn: boolean;
-  unpaidBreakMinutes: number;
-  breakAfterMinutes: number;
   maximumShiftHours: number;
   /** Where the branch is; a portal punch further than the radius is flagged "outside clinic", never refused. Both or neither. */
   geofenceLat: number | null;
@@ -3076,10 +3073,11 @@ export interface PayrollPolicyRow {
   id: string;
   name: string;
   legalEmployerId: string | null;
-  salaryProration: { basis: string; days: number | null };
-  overtime: { basis: string; days: number | null; hoursPerDay: number };
-  unpaidLeave: { basis: string; days: number | null };
-  leavePay: { basis: string; days: number | null };
+  overtime: { days: number | null; hoursPerDay: number };
+  /**
+   * The only proration basis left, and the only one the Act does not answer.
+   * Recorded, not applied: the final settlement is not built.
+   */
   termination: { basis: string; days: number | null };
   /** §6 — how extra hours, rest days and public holidays are priced. */
   overtimeMode: OvertimeMode;

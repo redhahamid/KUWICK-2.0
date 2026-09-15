@@ -79,3 +79,59 @@ balance adjustment may carry in, which is the only way days get carried in
 today. Nothing walks December's balances into January by itself. That is a
 separate feature, and until it exists the cap binds a human's typing rather than
 a job's output.
+
+
+---
+
+# ANSWERED — the account holder's decision, 16 September 2026
+
+`[O]` All six questions answered in one message. **Ten fields deleted, two kept
+for a feature to be built.** Nothing was switched on.
+
+| Field | Decision | Why |
+| --- | --- | --- |
+| `salaryProrationBasis` | **deleted** | ss.18A and 60I(1)(c) fix a part month at the actual days in it |
+| `salaryProrationDays` | **deleted** | same |
+| `unpaidLeaveBasis` | **deleted** | s.18A names leave without pay expressly — actual days |
+| `unpaidLeaveDays` | **deleted** | same, and see the correction below |
+| `overtimeBasis` | **deleted** | s.60I(1A) fixes 26; the only lawful variation is a divisor BELOW it, which the clinic already controls |
+| `leavePayBasis` | **deleted** | paid leave is not valued apart from salary, and the owner does not want it to be |
+| `leavePayDays` | **deleted** | same |
+| `overtimeRequiresApproval` | **deleted** | a switch with one position; honouring the off position would pay extra time nobody agreed to |
+| `unpaidBreakMinutes` | **deleted** | this clinic punches its breaks, so a flat deduction takes the same hour twice |
+| `breakAfterMinutes` | **deleted** | same |
+| `terminationBasis` | **kept** | the one question the Act leaves to the employer |
+| `terminationDays` | **kept** | same |
+
+`[O]` **On the two kept:** "Kiraan pampasan tamat kerja: YA, saya perlukan ini.
+Bila staf berhenti saya perlu kira gaji akhir dan cuti tahunan yang belum
+diambil." A feature to build, not a switch. **Nothing has been built**, and the
+owner asked for scope and size before anything starts.
+
+`[O]` **On the breaks:** "klinik saya PUNCH waktu rehat: staf clock out masa
+rehat dan clock in balik." Settings now says so in words where the two boxes
+used to be.
+
+## `[D]` The correction this table needed
+
+**`unpaidLeaveDays` was reported LIVE in the row above, and it never was.** The
+ORP piece made it settable in the drawer and froze it onto every run as
+`orpUnpaidLeaveDays`, and `payroll-calculation.ts` reads it nowhere — the
+interface marked it `@deprecated` and the comment said s.18A leaves nothing to
+configure. Two things were saying otherwise on screen, and both are now fixed:
+
+* the rule set drawer's help text, which read "A day of unpaid leave is the
+  salary over its own divisor, which is calendar days for most clinics";
+* the **unpaid leave report**, which printed "monthly salary ÷ 31. Clinic
+  policy, frozen on this run" over a figure that priced nothing. It now names
+  the month's own length and s.18A.
+
+It is the same defect this whole audit began with — a screen claiming a control
+the engine never had — reintroduced by the piece that was meant to end it.
+
+## `[D]` What the deletion cost
+
+Nothing that was ever obeyed. Every one of the ten was read by no calculation,
+which is what made them dead fields in the first place. The migration is
+`20260916090000_drop_settings_the_act_already_decided`; historical payslip
+snapshots are JSON and keep whatever they already hold.

@@ -11,13 +11,18 @@ const randomId = () => crypto.randomUUID();
 /**
  * HOW A MONTHLY SALARY BECOMES A DAY AND AN HOUR.
  *
- * `PayrollRun.orpOvertimeDays`, `orpUnpaidLeaveDays` and `orpHoursPerDay` have
- * been READ on every run since Stage 1 and were never WRITTEN, so every payroll
- * in the system used the schema defaults 26 / 31 / 7.5 — while the rule set's
- * own `overtimeDays`, `unpaidLeaveDays` and `overtimeHoursPerDay` sat beside
- * them, editable, and applied to nothing. The payroll report printed "Clinic
- * policy, frozen on this run" over a number the clinic had never been asked
- * for.
+ * `PayrollRun.orpOvertimeDays` and `orpHoursPerDay` had been READ on every run
+ * since Stage 1 and never WRITTEN, so every payroll in the system used the
+ * schema defaults — while the rule set's own `overtimeDays` and
+ * `overtimeHoursPerDay` sat beside them, editable, and applied to nothing. The
+ * payroll report printed "Clinic policy, frozen on this run" over a number the
+ * clinic had never been asked for.
+ *
+ * THERE WAS A THIRD, and it is gone. `orpUnpaidLeaveDays` was frozen onto every
+ * run and read by nothing at all: s.18A prices an incomplete month — expressly
+ * including leave without pay — on the ACTUAL days in the wage period, so the
+ * divisor was never the clinic's to set. Making it settable in this piece only
+ * made the lie easier to type into, which is why the account holder deleted it.
  *
  * For the clinic that found this the defaults happened to be the right numbers,
  * which is exactly what kept it invisible. The next clinic is the one at risk.
@@ -93,22 +98,21 @@ describe('the ordinary-rate divisors reach the run (e2e)', () => {
   const divisorsOf = (runId: string) =>
     withTenantContext(prisma, tenantId, (tx) => tx.payrollRun.findUnique({ where: { id: runId } })).then((run) => ({
       overtimeDays: Number(run?.orpOvertimeDays),
-      unpaidLeaveDays: Number(run?.orpUnpaidLeaveDays),
       hoursPerDay: Number(run?.orpHoursPerDay),
     }));
 
-  it("freezes the clinic's own answer onto the run instead of the schema's 26 / 31 / 7.5", async () => {
-    await ruleSet({ name: 'Everybody', isDefault: true, overtimeDays: 20, unpaidLeaveDays: 30, overtimeHoursPerDay: 8 }).expect(201);
+  it("freezes the clinic's own answer onto the run instead of the schema's 26 / 7.5", async () => {
+    await ruleSet({ name: 'Everybody', isDefault: true, overtimeDays: 20, overtimeHoursPerDay: 8 }).expect(201);
 
     const runId = (await createRun('2026-08').expect(201)).body.id;
 
-    expect(await divisorsOf(runId)).toEqual({ overtimeDays: 20, unpaidLeaveDays: 30, hoursPerDay: 8 });
+    expect(await divisorsOf(runId)).toEqual({ overtimeDays: 20, hoursPerDay: 8 });
   });
 
   it('leaves the defaults standing where no rule set covers anybody, because there is no clinic answer to freeze', async () => {
     const runId = (await createRun('2026-08').expect(201)).body.id;
 
-    expect(await divisorsOf(runId)).toEqual({ overtimeDays: 26, unpaidLeaveDays: 31, hoursPerDay: 7.5 });
+    expect(await divisorsOf(runId)).toEqual({ overtimeDays: 26, hoursPerDay: 7.5 });
   });
 
   it('refuses the run where two rule sets disagree, naming both rather than picking one', async () => {
@@ -120,8 +124,8 @@ describe('the ordinary-rate divisors reach the run (e2e)', () => {
     );
     await employ(doctor.id, 'O-002', '9500.00');
 
-    await ruleSet({ name: 'Everybody', isDefault: true, overtimeDays: 26, unpaidLeaveDays: 31, overtimeHoursPerDay: 7.5 }).expect(201);
-    await ruleSet({ name: 'Doctors', workforceCategory: 'DOCTOR', overtimeDays: 22, unpaidLeaveDays: 30, overtimeHoursPerDay: 8 }).expect(201);
+    await ruleSet({ name: 'Everybody', isDefault: true, overtimeDays: 26, overtimeHoursPerDay: 7.5 }).expect(201);
+    await ruleSet({ name: 'Doctors', workforceCategory: 'DOCTOR', overtimeDays: 22, overtimeHoursPerDay: 8 }).expect(201);
 
     const refused = await createRun('2026-08').expect(400);
     expect(refused.body.message).toContain('Everybody');
@@ -138,18 +142,17 @@ describe('the ordinary-rate divisors reach the run (e2e)', () => {
     // Different overtime PRICING, same ordinary-rate divisors. That is the
     // common shape — doctors on a session rate, everybody on the same
     // arithmetic for what a day is worth — and it must not be refused.
-    await ruleSet({ name: 'Everybody', isDefault: true, overtimeDays: 24, unpaidLeaveDays: 30, overtimeHoursPerDay: 8 }).expect(201);
+    await ruleSet({ name: 'Everybody', isDefault: true, overtimeDays: 24, overtimeHoursPerDay: 8 }).expect(201);
     await ruleSet({
       name: 'Doctors',
       workforceCategory: 'DOCTOR',
       overtimeMode: 'CLINIC_RATE',
       clinicPublicHolidayShift: '500.00',
       overtimeDays: 24,
-      unpaidLeaveDays: 30,
       overtimeHoursPerDay: 8,
     }).expect(201);
 
     const runId = (await createRun('2026-08').expect(201)).body.id;
-    expect(await divisorsOf(runId)).toEqual({ overtimeDays: 24, unpaidLeaveDays: 30, hoursPerDay: 8 });
+    expect(await divisorsOf(runId)).toEqual({ overtimeDays: 24, hoursPerDay: 8 });
   });
 });

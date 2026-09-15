@@ -40,7 +40,7 @@ const payload = (over: Partial<SnapshotPayload> = {}): SnapshotPayload => ({
   paymentDate: '2026-07-31',
   statutoryRuleSetId: 'rs1',
   statutoryVerificationStatus: 'CORROBORATED',
-  orp: { overtimeDays: 26, unpaidLeaveDays: 31, hoursPerDay: 7.5 },
+  orp: { overtimeDays: 26, hoursPerDay: 7.5 },
   employees: [line()],
   totals: { grossCents: 300000, deductionCents: 35065, netCents: 264935, employerCostCents: 344755, employeeCount: 1 },
   ...over,
@@ -68,7 +68,7 @@ describe('payroll snapshot', () => {
   });
 
   it('changes the hash when the ORP divisors change', () => {
-    const other = payload({ orp: { overtimeDays: 30, unpaidLeaveDays: 31, hoursPerDay: 7.5 } });
+    const other = payload({ orp: { overtimeDays: 30, hoursPerDay: 7.5 } });
     expect(snapshotHash(other)).not.toBe(snapshotHash(payload()));
   });
 

@@ -226,16 +226,15 @@ export function computeBases(lines: PayrollComponentLine[]): BasesResult {
  * the result is no lower, so this is a floor a clinic may better and never
  * worsen.
  *
- * `unpaidLeaveDaysPerMonth` is GONE from the calculation. It configured a fixed
- * divisor for unpaid leave, and s.18A leaves nothing to configure: an
- * incomplete month — expressly including leave of absence without pay — is
- * priced on the actual days in that wage period. The field remains on the run
- * so historical runs still say what they applied, and nothing reads it.
+ * `unpaidLeaveDaysPerMonth` IS GONE, and now so is the column behind it. It
+ * configured a fixed divisor for unpaid leave, and s.18A leaves nothing to
+ * configure: an incomplete month — expressly including leave of absence
+ * without pay — is priced on the actual days in that wage period. It was kept
+ * on the run for a while so historical runs could say what they had applied,
+ * which was the last excuse it had: nothing had ever been applied.
  */
 export interface OrdinaryRateConfig {
   overtimeDaysPerMonth: number;
-  /** @deprecated s.18A governs unpaid leave; kept only on historical runs. */
-  unpaidLeaveDaysPerMonth: number;
   hoursPerDay: number;
 }
 

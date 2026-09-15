@@ -302,7 +302,7 @@ function EmploymentTab({ data, onEdit, onResign }: { data: EmployeeRecord; onEdi
     // Six days around the rest day: rest day Sunday → Mon – Sat.
     const first = DAY_NAMES[(restDay + 1) % 7].slice(0, 3);
     const last = DAY_NAMES[(restDay + 6) % 7].slice(0, 3);
-    const divisor = rules?.overtime.basis === 'FIXED_DAYS' && rules.overtime.days ? `, ${rules.overtime.days}-day divisor` : '';
+    const divisor = rules?.overtime.days ? `, ${rules.overtime.days}-day divisor` : '';
     return `${first} – ${last}${divisor}`;
   }, [restDay, rules]);
   const employment = data.employment;

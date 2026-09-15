@@ -479,14 +479,33 @@ describe('Malaysia payroll: employer, salary history, inputs and snapshots (e2e)
 
   // === 6 · Policy ==========================================================
 
-  it('stores five proration bases and says none of them is applied yet', async () => {
+  it('stores the one proration basis left, and says it is not applied yet', async () => {
+    /*
+     * THERE WERE FIVE, AND FOUR OF THEM WERE NOT THE CLINIC'S TO ANSWER.
+     *
+     * Salary proration and unpaid leave are ss.18A and 60I(1)(c) — the actual
+     * days in the month. The overtime basis is s.60I(1A) — 26, betterable and
+     * never worsenable. Paid leave is not valued apart from salary at all. All
+     * four saved, none was read by any calculation, and each invited a clinic
+     * to record an answer the law does not permit. The account holder deleted
+     * them.
+     *
+     * Termination is the one the Act leaves to the employer, and it is still
+     * recorded rather than applied: the final settlement is not built.
+     */
     await request(server())
       .post('/workforce/payroll-policies')
       .set('Authorization', bearer)
       .send({ name: 'Clinic default', legalEmployerId: employerId, terminationBasis: 'CALENDAR_DAYS', isDefault: true })
       .expect(201);
     const list = await request(server()).get('/workforce/payroll-policies').set('Authorization', bearer).expect(200);
-    expect(list.body.policies[0].termination.basis).toBe('CALENDAR_DAYS');
-    expect(list.body.notice).toMatch(/NOT yet applied/);
+    const policy = list.body.policies[0];
+    expect(policy.termination.basis).toBe('CALENDAR_DAYS');
+    // The four that went are gone from the response, not merely unread.
+    for (const key of ['salaryProration', 'unpaidLeave', 'leavePay']) {
+      expect(policy[key]).toBeUndefined();
+    }
+    expect(policy.overtime.basis).toBeUndefined();
+    expect(list.body.notice).toMatch(/not yet applied/i);
   });
 });

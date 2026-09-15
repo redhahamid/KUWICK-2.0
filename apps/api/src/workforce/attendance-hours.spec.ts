@@ -194,8 +194,17 @@ describe('computePunchedDay', () => {
     expect(computePunchedDay({ punches: [punch('2026-09-13T05:00:00Z', 'OUT')] }).workedMinutes).toBeNull();
   });
 
-  it('does not deduct the flat break from a day whose break was punched', () => {
-    const policy = { ...DEFAULT_ATTENDANCE_POLICY, unpaidBreakMinutes: 60, breakAfterMinutes: 360 };
+  it('counts a punched break out once, and has no second figure to count it out of', () => {
+    /*
+     * THE FLAT BREAK DEDUCTION IS GONE, at the owner's decision: this clinic's
+     * staff clock out for their break and back in, so the break is already
+     * outside the worked minutes. A policy deduction on top would charge the
+     * same hour twice, and the only thing that had ever saved it was that the
+     * `payableMinutes` it produced was read by nothing.
+     *
+     * Nine hours on the clock with an hour punched out is eight hours worked,
+     * and eight is the only figure the day carries.
+     */
     const punched = computePunchedDay(
       {
         punches: [
@@ -205,17 +214,18 @@ describe('computePunchedDay', () => {
           punch('2026-09-13T10:00:00Z', 'OUT'),
         ],
       },
-      policy,
+      DEFAULT_ATTENDANCE_POLICY,
     );
-    // Already excluded by the gap; deducting 60 again would charge the hour twice.
-    expect(punched.payableMinutes).toBe(480);
+    expect(punched.workedMinutes).toBe(480);
+    expect('payableMinutes' in punched).toBe(false);
 
+    // A day worked as one stretch is worth every minute of it. This used to
+    // lose an hour to a break nobody took.
     const oneStretch = computePunchedDay(
       { punches: [punch('2026-09-13T01:00:00Z', 'IN'), punch('2026-09-13T10:00:00Z', 'OUT')] },
-      policy,
+      DEFAULT_ATTENDANCE_POLICY,
     );
     expect(oneStretch.workedMinutes).toBe(540);
-    expect(oneStretch.payableMinutes).toBe(480);
   });
 
   it('reproduces the owner’s UAT day exactly', () => {

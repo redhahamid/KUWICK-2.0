@@ -34,7 +34,6 @@ export interface PunchedDay {
 export interface AttendanceComputation {
   workedMinutes: number | null;
   /** Worked minutes the clinic pays for — worked, less any unpaid break. */
-  payableMinutes: number | null;
   scheduledMinutes: number | null;
   lateMinutes: number | null;
   earlyOutMinutes: number | null;
@@ -161,7 +160,6 @@ export function computePunchedDay(
   if (punches.length === 0) {
     return {
       workedMinutes: null,
-      payableMinutes: null,
       scheduledMinutes,
       lateMinutes: null,
       earlyOutMinutes: null,
@@ -187,7 +185,6 @@ export function computePunchedDay(
   if (!pairsClosed) {
     return {
       workedMinutes: null,
-      payableMinutes: null,
       scheduledMinutes,
       lateMinutes,
       earlyOutMinutes: null,
@@ -204,25 +201,17 @@ export function computePunchedDay(
   const workedMinutes = closedMinutes;
 
   /*
-   * THE FLAT UNPAID BREAK, AND WHY IT IS NOT APPLIED TO A PUNCHED BREAK.
+   * THE FLAT UNPAID BREAK IS GONE, and so is the `payableMinutes` it fed.
    *
-   * A clinic whose staff punch their breaks has already excluded them — the
-   * gap between two pairs is simply not counted. Deducting the policy's flat
-   * break on top would charge them for the same hour twice. So it applies
-   * only to a day worked as ONE stretch, which is the day the setting was
-   * written for.
+   * A break is out of the worked minutes already: staff clock out for it and
+   * back in, and the gap between two pairs is simply not counted. Deducting a
+   * policy figure on top charged the same hour twice. The setting survived only
+   * because `payableMinutes` was read by nothing — it was not stored, not shown
+   * and not priced — so the double-count never reached anybody's pay, and the
+   * fields sat on the Settings screen looking like they did something.
    *
-   * `payableMinutes` is still read by nothing: it is not stored, not shown and
-   * not priced, so the two break fields remain inert whatever this returns.
-   * That is a separate finding and belongs to the settings audit, not here —
-   * but the arithmetic is correct for the day it is revived.
+   * Worked minutes are what a punched day is worth. There is no second figure.
    */
-  const oneStretch = punches.length <= 2;
-  const breakMinutes =
-    oneStretch && policy.unpaidBreakMinutes > 0 && workedMinutes >= policy.breakAfterMinutes
-      ? policy.unpaidBreakMinutes
-      : 0;
-  const payableMinutes = Math.max(0, workedMinutes - breakMinutes);
 
   const earlyOutMinutes = lastOut && scheduledEnd ? Math.max(0, minutesBetween(lastOut, scheduledEnd)) : null;
   const shortMinutes = earlyOutMinutes ? Math.max(0, earlyOutMinutes - policy.earlyOutGraceMinutes) : 0;
@@ -250,7 +239,6 @@ export function computePunchedDay(
 
   return {
     workedMinutes,
-    payableMinutes,
     scheduledMinutes,
     lateMinutes,
     earlyOutMinutes,

@@ -16,11 +16,8 @@ export class SaveAttendancePolicyDto {
 
   @IsOptional() @IsInt() @Min(0) @Max(480) overtimeMinimumMinutes?: number;
   @IsOptional() @IsInt() @Min(0) @Max(120) overtimeRoundingMinutes?: number;
-  @IsOptional() @IsBoolean() overtimeRequiresApproval?: boolean;
   @IsOptional() @IsBoolean() countEarlyClockIn?: boolean;
 
-  @IsOptional() @IsInt() @Min(0) @Max(240) unpaidBreakMinutes?: number;
-  @IsOptional() @IsInt() @Min(0) @Max(1440) breakAfterMinutes?: number;
 
   @IsOptional() @IsInt() @Min(4) @Max(24) maximumShiftHours?: number;
   /**

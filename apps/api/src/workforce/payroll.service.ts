@@ -541,7 +541,7 @@ export class PayrollService {
         },
       });
       const policies = await tx.payrollPolicy.findMany();
-      const divisorsByPolicy = new Map<string, { name: string; overtimeDays: number; unpaidLeaveDays: number; hoursPerDay: number }>();
+      const divisorsByPolicy = new Map<string, { name: string; overtimeDays: number; hoursPerDay: number }>();
       for (const employee of forDivisors) {
         const { policy } = resolvePayrollPolicy(policies, {
           payrollPolicyId: employee.payrollPolicyId,
@@ -551,25 +551,21 @@ export class PayrollService {
         if (!policy) continue;
         const row = policies.find((candidate) => candidate.id === policy.id);
         if (!row) continue;
-        divisorsByPolicy.set(
-          `${row.overtimeDays}/${row.unpaidLeaveDays}/${Number(row.overtimeHoursPerDay)}`,
-          {
-            name: row.name,
-            overtimeDays: row.overtimeDays,
-            unpaidLeaveDays: row.unpaidLeaveDays,
-            hoursPerDay: Number(row.overtimeHoursPerDay),
-          },
-        );
+        divisorsByPolicy.set(`${row.overtimeDays}/${Number(row.overtimeHoursPerDay)}`, {
+          name: row.name,
+          overtimeDays: row.overtimeDays,
+          hoursPerDay: Number(row.overtimeHoursPerDay),
+        });
       }
       if (divisorsByPolicy.size > 1) {
         const named = [...divisorsByPolicy.values()]
-          .map((row) => `${row.name} (${row.overtimeDays} / ${row.unpaidLeaveDays} / ${row.hoursPerDay})`)
+          .map((row) => `${row.name} (${row.overtimeDays} days / ${row.hoursPerDay} hours)`)
           .join(', ');
         throw new BadRequestException(
           'The rule sets covering this run disagree about how a monthly salary becomes a day and an hour: ' +
-            `${named}. One run carries one ordinary rate, so overtime, rest days, public holidays and unpaid ` +
-            'leave would all be priced from a divisor half these employees never agreed to. Make them match in ' +
-            'Payroll policies, or run these groups separately.',
+            `${named}. One run carries one ordinary rate, so overtime, rest days and public holidays would all be ` +
+            'priced from a divisor half these employees never agreed to. Make them match in Payroll policies, or run ' +
+            'these groups separately.',
         );
       }
       // Nobody on a rule set means nothing to freeze, and the schema defaults
@@ -590,7 +586,6 @@ export class PayrollService {
           ...(chosen
             ? {
                 orpOvertimeDays: chosen.overtimeDays,
-                orpUnpaidLeaveDays: chosen.unpaidLeaveDays,
                 orpHoursPerDay: chosen.hoursPerDay,
               }
             : {}),
@@ -697,10 +692,11 @@ export class PayrollService {
         ).map((row) => row.date.toISOString().slice(0, 10)),
       );
 
-      // Ordinary Rate of Pay, frozen onto the run. Two divisors, on purpose.
+      // The ordinary rate of pay, frozen onto the run. One divisor: unpaid
+      // leave is priced on the month's actual days by s.18A, never on a
+      // configured figure, so there is no second one to freeze.
       const orpConfig = {
         overtimeDaysPerMonth: Number(run.orpOvertimeDays),
-        unpaidLeaveDaysPerMonth: Number(run.orpUnpaidLeaveDays),
         hoursPerDay: Number(run.orpHoursPerDay),
       };
 
@@ -2003,7 +1999,6 @@ export class PayrollService {
               })),
               ordinaryRateOfPay: {
                 overtimeDays: orpConfig.overtimeDaysPerMonth,
-                unpaidLeaveDays: orpConfig.unpaidLeaveDaysPerMonth,
                 hoursPerDay: orpConfig.hoursPerDay,
                 unpaidLeaveDaily: fromCents(rates.unpaidLeaveDailyCents),
                 overtimeHourly: fromCents(rates.overtimeHourlyCents),
@@ -3255,11 +3250,7 @@ export class PayrollService {
         overriddenByStaffId: row.overriddenByStaffId,
         overrideReason: row.overrideReason,
       })),
-      orp: {
-        overtimeDays: Number(run.orpOvertimeDays),
-        unpaidLeaveDays: Number(run.orpUnpaidLeaveDays),
-        hoursPerDay: Number(run.orpHoursPerDay),
-      },
+      orp: { overtimeDays: Number(run.orpOvertimeDays), hoursPerDay: Number(run.orpHoursPerDay) },
       employees,
       totals: {
         grossCents: toCents(run.grossTotal),

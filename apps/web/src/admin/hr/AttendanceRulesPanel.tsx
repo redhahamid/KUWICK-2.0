@@ -63,24 +63,6 @@ const FIELDS: {
     unit: 'min',
   },
   {
-    name: 'unpaidBreakMinutes',
-    label: 'Unpaid break',
-    help: 'Deducted from a shift at least as long as the next field.',
-    min: 0,
-    max: 240,
-    unit: 'min',
-    inert: 'No break is deducted from anybody today.',
-  },
-  {
-    name: 'breakAfterMinutes',
-    label: 'Break applies to shifts over',
-    help: 'Shorter shifts have no break deducted.',
-    min: 0,
-    max: 1440,
-    unit: 'min',
-    inert: 'Nothing is measured against this yet.',
-  },
-  {
     name: 'maximumShiftHours',
     label: 'Longest believable shift',
     help: 'A punch pair spanning longer than this is flagged rather than believed.',
@@ -237,32 +219,36 @@ export function AttendanceRulesPanel() {
             </Form.Item>
           ))}
           {/*
-            * THIS SWITCH SAID SOMETHING UNTRUE. Its help text used to read
-            * "Off means extra time reaches payroll without anybody agreeing to
-            * it" — and turning it off does nothing of the kind. Every pricing
-            * branch gates on the day's own overtimeApproved regardless, and the
-            * only thing that sets that flag is a manager pressing Approve. So
-            * the switch is obeyed in the ON position by accident and ignored in
-            * the OFF position, and the panel's own notice above says approval
-            * is always required, which contradicted the field directly.
+            * TWO RULES THAT USED TO BE FIELDS, AND ARE NOW SENTENCES.
             *
-            * Saying so is not the fix, only the honest half of it: whether a
-            * clinic may pay unapproved extra time is the account holder's
-            * decision, and it changes what people are paid.
+            * "Overtime must be approved" was a switch with one position: every
+            * pricing branch gates on the day's own `overtimeApproved` whatever
+            * it said, and the only thing that sets that flag is a manager
+            * pressing Approve. Obeyed in the ON position by accident and
+            * ignored in the OFF position. Honouring the OFF position would have
+            * given a clinic a way to pay extra time nobody agreed to, so the
+            * account holder chose to remove it rather than implement it.
+            *
+            * The unpaid break was deducted from any long shift, into a figure
+            * nothing read. Staff here clock out for their break and back in, so
+            * it is already out of the worked minutes; a second deduction would
+            * charge the same hour twice.
+            *
+            * Both are stated because a rule nobody can see is a rule somebody
+            * will ask about — and the answer used to be a box they could type
+            * in.
             */}
-          <Form.Item
-            name="overtimeRequiresApproval"
-            label="Overtime must be approved"
-            valuePropName="checked"
-            extra={
-              <>
-                Approval is required either way today — turning this off does not pay unapproved extra time.{' '}
-                <NotApplied>Only Approve on the timesheet releases overtime to payroll.</NotApplied>
-              </>
-            }
-          >
-            <Switch />
-          </Form.Item>
+          <div className="hr-notice">
+            <div>
+              <span className="hr-strong">Overtime always needs approval.</span> Only Approve on the timesheet releases
+              extra time to payroll. There is no setting for this, because paying extra time nobody agreed to is not a
+              thing a clinic should be able to switch on by accident.
+            </div>
+            <div>
+              <span className="hr-strong">Breaks are deducted by punching, not by a rule.</span> Staff clock out for a
+              break and back in again, so it is already outside the hours worked. Kuwick deducts nothing on top of that.
+            </div>
+          </div>
           <Form.Item
             name="countEarlyClockIn"
             label="Early arrival counts as extra time"

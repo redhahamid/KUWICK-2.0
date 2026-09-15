@@ -537,7 +537,7 @@ export function TimesheetPage() {
               <span>
                 <b>Rules in force:</b>{' '}
                 {rules
-                  ? `${rules.lateGraceMinutes}-min grace · OT counts after ${rules.overtimeMinimumMinutes} min past shift, ${rules.overtimeRoundingMinutes > 0 ? `rounded down to ${rules.overtimeRoundingMinutes} min` : 'not rounded'} · ${rules.overtimeRequiresApproval ? 'needs approval before payroll' : 'reaches payroll without approval'}`
+                  ? `${rules.lateGraceMinutes}-min grace · OT counts after ${rules.overtimeMinimumMinutes} min past shift, ${rules.overtimeRoundingMinutes > 0 ? `rounded down to ${rules.overtimeRoundingMinutes} min` : 'not rounded'} · needs approval before payroll`
                   : 'loading'}
                 {rules?.geofenceLat !== null && rules?.geofenceLat !== undefined
                   ? ` · portal punches judged within ${rules.geofenceRadiusMetres} m of the branch`

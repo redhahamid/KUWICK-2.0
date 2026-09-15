@@ -19,13 +19,8 @@ export interface AttendancePolicy {
   overtimeMinimumMinutes: number;
   /** Candidate overtime rounds DOWN to a multiple of this. 0 disables it. */
   overtimeRoundingMinutes: number;
-  /** When true, only APPROVED overtime reaches payroll. */
-  overtimeRequiresApproval: boolean;
   /** Whether clocking in before the shift counts toward extra time. */
   countEarlyClockIn: boolean;
-  /** Minutes deducted from a shift at least `breakAfterMinutes` long. */
-  unpaidBreakMinutes: number;
-  breakAfterMinutes: number;
   /** Longer than this and the record is flagged rather than believed. */
   maximumShiftHours: number;
   /** The branch's point for portal clock-ins; null means the distance is not checked. */
@@ -37,20 +32,22 @@ export interface AttendancePolicy {
 /**
  * What every clinic measured by before this table existed.
  *
- * `overtimeRequiresApproval` defaults TRUE and `countEarlyClockIn` defaults
- * FALSE because both are the direction that cannot overpay by accident. A
- * clinic that wants the other behaviour is choosing it, and the choice is on
- * the record.
+ * `countEarlyClockIn` defaults FALSE because that is the direction that cannot
+ * overpay by accident: arriving at 07:30 for an 08:00 shift is not overtime.
+ *
+ * `overtimeRequiresApproval` USED TO BE HERE and was a switch with one
+ * position — only approved extra time ever reached payroll, whatever it said.
+ * `unpaidBreakMinutes` and `breakAfterMinutes` used to deduct a flat break from
+ * any long shift, into a `payableMinutes` figure nothing read. Both are gone:
+ * the first would have let a clinic pay extra time nobody agreed to, and the
+ * second would deduct a break twice in a clinic whose staff punch out for it.
  */
 export const DEFAULT_ATTENDANCE_POLICY: AttendancePolicy = {
   lateGraceMinutes: 5,
   earlyOutGraceMinutes: 5,
   overtimeMinimumMinutes: 30,
   overtimeRoundingMinutes: 15,
-  overtimeRequiresApproval: true,
   countEarlyClockIn: false,
-  unpaidBreakMinutes: 0,
-  breakAfterMinutes: 360,
   maximumShiftHours: 16,
   geofenceLat: null,
   geofenceLng: null,
@@ -93,10 +90,7 @@ export function resolveAttendancePolicy(
     earlyOutGraceMinutes: pick('earlyOutGraceMinutes'),
     overtimeMinimumMinutes: pick('overtimeMinimumMinutes'),
     overtimeRoundingMinutes: pick('overtimeRoundingMinutes'),
-    overtimeRequiresApproval: pick('overtimeRequiresApproval'),
     countEarlyClockIn: pick('countEarlyClockIn'),
-    unpaidBreakMinutes: pick('unpaidBreakMinutes'),
-    breakAfterMinutes: pick('breakAfterMinutes'),
     maximumShiftHours: pick('maximumShiftHours'),
     // The point is one fact, not two: a branch that recorded a latitude but
     // no longitude has recorded nothing. Read from the same row, or not at all.

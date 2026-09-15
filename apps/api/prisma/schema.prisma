@@ -6751,18 +6751,21 @@ model AttendancePolicy {
   overtimeMinimumMinutes   Int     @default(30) @map("overtime_minimum_minutes")
   /// Candidate overtime is rounded DOWN to a multiple of this. 0 = no rounding.
   overtimeRoundingMinutes  Int     @default(15) @map("overtime_rounding_minutes")
-  /// When true (the default, and the safe direction) approved overtime is the
-  /// only overtime that reaches payroll. A clinic that pays all recorded extra
-  /// time can turn this off deliberately, and the run says which it was.
-  overtimeRequiresApproval Boolean @default(true) @map("overtime_requires_approval")
   /// Whether clocking in EARLY counts toward extra time. Off by default:
   /// arriving at 07:30 for an 08:00 shift is not usually overtime.
   countEarlyClockIn        Boolean @default(false) @map("count_early_clock_in")
 
-  /// Deducted from worked minutes when a shift is at least `breakAfterMinutes`
-  /// long. 0 disables it. A paid break is simply 0 here.
-  unpaidBreakMinutes Int @default(0) @map("unpaid_break_minutes")
-  breakAfterMinutes  Int @default(360) @map("break_after_minutes")
+  /// `overtimeRequiresApproval` WAS HERE, and it was a switch with one
+  /// position. Approval is required whatever it said: only approved extra time
+  /// has ever reached payroll. Honouring the off position would have given a
+  /// clinic a way to pay extra time nobody agreed to, so the switch went and
+  /// the rule is stated on the screen instead.
+  ///
+  /// `unpaidBreakMinutes` and `breakAfterMinutes` WERE HERE, deducting a flat
+  /// break from any long shift. They computed a `payableMinutes` nothing read.
+  /// This clinic's staff clock out for their break and back in again, so the
+  /// break is already out of the worked minutes — a flat deduction on top
+  /// would take it twice.
 
   /// A shift longer than this raises a warning rather than being computed
   /// silently — usually a forgotten clock-out rather than a 19-hour day.
@@ -7354,13 +7357,16 @@ model PayrollRun {
   /// dropped or zeroed.
   exceptions Json?
 
-  /// Ordinary Rate of Pay divisors AS APPLIED. Clinic policy, not law, and the
-  /// clinic uses two different day counts on purpose: overtime is priced on a
-  /// 26-day month, unpaid leave is deducted on a 31-day one. Frozen here so a
-  /// later policy change cannot silently reprice a historical run.
-  orpOvertimeDays    Decimal @default(26) @map("orp_overtime_days") @db.Decimal(4, 1)
-  orpUnpaidLeaveDays Decimal @default(31) @map("orp_unpaid_leave_days") @db.Decimal(4, 1)
-  orpHoursPerDay     Decimal @default(7.5) @map("orp_hours_per_day") @db.Decimal(4, 2)
+  /// THE ORDINARY RATE OF PAY AS APPLIED, frozen so a later policy change
+  /// cannot silently reprice a historical run.
+  ///
+  /// There were three. `orpUnpaidLeaveDays` went with the policy field behind
+  /// it: a day of unpaid leave is monthly wages over the ACTUAL days in the
+  /// wage period under s.18A, which expressly names leave without pay, so the
+  /// divisor was never the clinic's to set and never priced anything here. It
+  /// sat on every run saying what had been applied, and nothing had been.
+  orpOvertimeDays Decimal @default(26) @map("orp_overtime_days") @db.Decimal(4, 1)
+  orpHoursPerDay  Decimal @default(7.5) @map("orp_hours_per_day") @db.Decimal(4, 2)
 
   calculatedAt      DateTime? @map("calculated_at")
   approvedByStaffId String?   @map("approved_by_staff_id")
@@ -8194,18 +8200,27 @@ model PayrollPolicy {
 
   name String
 
-  salaryProrationBasis ProrationBasis @default(CALENDAR_DAYS) @map("salary_proration_basis")
-  salaryProrationDays  Int            @default(26) @map("salary_proration_days")
-  overtimeBasis        ProrationBasis @default(FIXED_DAYS) @map("overtime_basis")
-  overtimeDays         Int            @default(26) @map("overtime_days")
-  overtimeHoursPerDay  Decimal        @default(7.5) @map("overtime_hours_per_day") @db.Decimal(4, 2)
-  unpaidLeaveBasis     ProrationBasis @default(CALENDAR_DAYS) @map("unpaid_leave_basis")
-  unpaidLeaveDays      Int            @default(31) @map("unpaid_leave_days")
-  leavePayBasis        ProrationBasis @default(FIXED_DAYS) @map("leave_pay_basis")
-  leavePayDays         Int            @default(26) @map("leave_pay_days")
-  /// The fifth basis.
-  terminationBasis     ProrationBasis @default(CALENDAR_DAYS) @map("termination_basis")
-  terminationDays      Int            @default(31) @map("termination_days")
+  /// THE ORDINARY RATE OF PAY. s.60I(1A) fixes the divisor at 26 and s.60I(2)
+  /// lets an employer use another formula only where the result is no lower,
+  /// so this is a floor a clinic may better and never worsen. Read by the run.
+  overtimeDays        Int     @default(26) @map("overtime_days")
+  overtimeHoursPerDay Decimal @default(7.5) @map("overtime_hours_per_day") @db.Decimal(4, 2)
+
+  /// WHAT A LEAVER IS OWED. The only basis left of the five, and the only one
+  /// the Act does not answer for us. It is NOT yet applied: the final
+  /// settlement is a feature to be built, not a switch to be turned on, and
+  /// until it exists these two are the clinic's recorded answer waiting for it.
+  ///
+  /// The other four went, and the reason is the same for all of them: the
+  /// Employment Act had already decided. A part month is monthly wages over
+  /// the ACTUAL days in it (ss.18A, 60I(1)(c)); a day of unpaid leave is the
+  /// same arithmetic, expressly (s.18A); the ordinary-rate divisor is fixed at
+  /// 26 (s.60I(1A)). Offering a clinic a choice the law does not give it is
+  /// worse than offering nothing: it invites somebody to set 26 and underpay
+  /// every joiner in a 31-day month, and it made the screen claim a control
+  /// the engine never had.
+  terminationBasis ProrationBasis @default(CALENDAR_DAYS) @map("termination_basis")
+  terminationDays  Int            @default(31) @map("termination_days")
 
   /// HOW EXTRA HOURS, REST DAYS AND PUBLIC HOLIDAYS ARE PRICED. STATUTORY is
   /// the Employment Act's arithmetic; CLINIC_RATE prices from the fixed
