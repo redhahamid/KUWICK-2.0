@@ -28,6 +28,35 @@ rows; 5 is in `ClaimsPage.tsx`, which piece 3 already opens.
 workaround — the owner does everything — and a wrong statutory flag does not:
 it reaches KWSP and LHDN under the clinic's own employer number.
 
+## Carded, not chased — the follow-up that does not reach the module
+
+`[O]` Found by the browser gate on 15 September 2026 while landing three other
+pieces, and **deliberately left alone**: it is in the appointment module, not in
+HR, and chasing it would have meant editing code nobody asked to have touched.
+
+`[D]` `e2e/canvas-appointment.spec.ts:40` — a follow-up booked from the
+consultation canvas is not found in the Appointments list. The row is searched
+by patient name, date and time range, and resolves to zero.
+
+`[D]` **It is not the HR work**, proven rather than assumed:
+
+- The payroll change was taken back OUT of the running API — confirmed absent
+  from the built `dist` — and the test failed identically.
+- It failed on a freshly rebuilt demo world, so it is not accumulated slot
+  residue from repeated gate runs.
+- It failed four times in a row. Not a flake.
+
+`[D]` **What is known about the cause.** The spec books
+`dayjs().add(3, 'day')`, which on 14 September was the 17th and on the 15th is
+the 18th — a Friday. It is not a seeded public holiday, and the doctor schedules
+cover all seven days 08:00-20:00, so "the clinic is shut that day" is ruled out.
+The cause is further in than that.
+
+`[A]` `[O]` The same two browser gates that caught it ran **99 passed, 0 failed**
+earlier the same day, on the same date arithmetic. That is the part worth
+starting from: something changed between those runs that was not the HR code,
+because the HR code was proven out.
+
 ## Withdrawn
 
 - **Finding 15, net in words.** `[O]` Withdrawn by the owner. The hyphen is
