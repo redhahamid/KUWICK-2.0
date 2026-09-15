@@ -4,6 +4,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { ADMIN_CATEGORIES } from '../adminNav';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
+import { useCanCheck } from '../../core/hooks/useCan';
 import { usePayrollReadiness, useWorkforceToday } from '../hooks/useAdmin';
 import {
   IconCalendar,
@@ -43,7 +44,10 @@ export function HrShell() {
   const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
 
   const hr = ADMIN_CATEGORIES.find((category) => category.key === 'hr');
-  const items = hr?.items ?? [];
+  const may = useCanCheck();
+  const allItems = hr?.items ?? [];
+  // An entry nobody can open is not drawn.
+  const items = allItems.filter((item) => may(item.needs));
   const settings = hr?.settings;
 
   /*
@@ -54,8 +58,11 @@ export function HrShell() {
    * run at `/admin/hr/payroll/:id` lights Payroll rather than falling back to
    * the first seat. Absorbed URLs light the entry that absorbed them.
    */
+  // Resolved over the FULL list, not the drawn one: a payroll URL reached by
+  // hand — or still open when a role changed — lights the entry that owns it
+  // rather than lighting nothing and reading as "you are nowhere".
   const activePath = useMemo(() => {
-    const all = [...items, ...(settings ? [settings] : [])].flatMap((item) =>
+    const all = [...allItems, ...(settings ? [settings] : [])].flatMap((item) =>
       [item.path, ...(item.covers ?? [])].map((path) => ({ path, owner: item.path })),
     );
     const exact = all.find((entry) => entry.path === location.pathname);
@@ -63,7 +70,7 @@ export function HrShell() {
     return all
       .filter((entry) => location.pathname === entry.path || location.pathname.startsWith(`${entry.path}/`))
       .sort((a, b) => b.path.length - a.path.length)[0]?.owner;
-  }, [items, settings, location.pathname]);
+  }, [allItems, settings, location.pathname]);
 
   /*
    * A NUMBER IN THE RAIL MEANS SOMEBODY IS WAITING.

@@ -146,6 +146,11 @@ export const ADMIN_CATEGORIES: HubCategory[] = [
         path: '/admin/hr/payroll',
         label: 'Payroll',
         covers: ['/admin/hr/incentives', '/admin/hr/locum'],
+        // The clinic manager approves leave, claims and overtime and never
+        // sees a salary. Before this she was given the seat and then refused
+        // at it — "Your account is not permitted to view payroll" — which
+        // looks like something broken rather than the boundary it is.
+        needs: 'hr.payroll.view',
       },
       {
         // Was somebody meant to work, and did they? Roster and the timesheet

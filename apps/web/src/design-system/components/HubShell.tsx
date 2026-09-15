@@ -18,6 +18,18 @@ export interface HubItem {
    * even though the entry's own path is `/admin/hr/payroll`.
    */
   covers?: string[];
+  /**
+   * THE PERMISSION THIS ENTRY NEEDS TO BE WORTH DRAWING.
+   *
+   * A seat in the rail is a promise that there is something behind it. An
+   * account that cannot open a screen should not be offered the door and then
+   * refused at it — that reads as a fault in the product rather than a
+   * boundary the clinic set on purpose.
+   *
+   * Absent means everybody sees it. The server stays the enforcer either way;
+   * this only decides what is drawn.
+   */
+  needs?: string;
 }
 
 export interface HubCategory {

@@ -25,6 +25,23 @@ export function useCan(permission: string): boolean {
   });
 }
 
+/**
+ * The same answer as `useCan`, for a LIST whose length is not known in advance.
+ *
+ * A hook cannot be called once per nav entry, so filtering a rail needs the
+ * permission set in hand rather than one question at a time. The rule is
+ * `useCan`'s, unchanged: absent means fall back and draw it, because a session
+ * minted before the field existed must keep working until its next refresh.
+ */
+export function useCanCheck(): (permission: string | undefined) => boolean {
+  const permissions = useAuthStore((state) => state.staff?.permissions);
+  return (permission) => {
+    if (!permission) return true;
+    if (!permissions) return true;
+    return permissions.includes(permission);
+  };
+}
+
 /** The sentence a disabled control explains itself with. */
 export function permissionHint(doing: string): string {
   return `Your account is not permitted to ${doing}. Ask the clinic owner if you need this.`;
