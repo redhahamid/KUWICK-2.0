@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
@@ -7,6 +8,8 @@ import { recordAudit } from '../finance/admin-audit';
 import { formatCents, toCents } from '../finance/money';
 import {
   ACT_OVERTIME_MULTIPLIERS,
+  belowActMultiplier,
+  BelowActMultiplier,
   FIRST_SCHEDULE_WAGE_CEILING_CENTS,
   OVERTIME_MULTIPLIER_FLOORS,
   overtimeMultiplierRefusal,
@@ -54,6 +57,7 @@ export class PayrollPolicyService {
     await requirePermission(this.rawPrisma, 'hr.payroll.view');
     const rows = await this.prisma.payrollPolicy.findMany({
       orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
+      include: { belowActAcknowledgedBy: { select: { fullName: true } } },
     });
 
     // WHO IS ON WHICH RULE SET — resolved exactly as the run resolves it, so
@@ -80,6 +84,13 @@ export class PayrollPolicyService {
       select: { staffId: true, amount: true, basis: true },
     });
     const wagesByStaff = new Map(salaries.filter((row) => row.basis === 'MONTHLY').map((row) => [row.staffId, toCents(row.amount)]));
+
+    /** Covered employees the First Schedule reaches — the ones a minimum protects. */
+    const protectedOf = (covered: typeof employees) =>
+      covered.filter((employee) => {
+        const wages = wagesByStaff.get(employee.staffId);
+        return wages !== undefined && wages <= FIRST_SCHEDULE_WAGE_CEILING_CENTS;
+      }).length;
 
     const onRuleSet = new Map<string, typeof employees>();
     for (const employee of employees) {
@@ -154,6 +165,48 @@ export class PayrollPolicyService {
               },
             };
           })(),
+          /*
+           * THE PERMANENT MARK. Everything about this rule set that is under
+           * the Act, and who said so.
+           *
+           * Null when the rule set is at or above the Act, which is what makes
+           * a non-null value worth a chip on the row: somebody opening this
+           * screen in a year sees the choice without having to know it was
+           * ever made.
+           *
+           * `protectedCount` is how many covered employees the First Schedule
+           * reaches TODAY. Zero is a real answer and is shown as one — the
+           * Act's minimums bind nobody on this rule set right now, and the
+           * moment somebody on RM4,000 or less joins it they do.
+           */
+          /*
+           * COVERED EMPLOYEES THE FIRST SCHEDULE REACHES, always published.
+           *
+           * Not folded into `belowAct` below, because the screen needs it most
+           * on a rule set that is currently ABOVE the Act — that is where
+           * somebody is about to lower a figure and has to be told who it
+           * lands on. Zero is a real answer.
+           */
+          protectedCount: protectedOf(covered),
+          belowAct: (() => {
+            const multipliers = OVERTIME_MULTIPLIER_FLOORS.map((floor) => {
+              const value = row[floor.field as 'overtimeMultiplier'];
+              return value === null ? null : belowActMultiplier(floor.field, Number(value));
+            }).filter((entry): entry is BelowActMultiplier => entry !== null);
+            const underpaid = floor?.below ?? [];
+            if (multipliers.length === 0 && underpaid.length === 0) return null;
+            return {
+              multipliers,
+              rates: underpaid,
+              acknowledgement: row.belowActAcknowledgedAt
+                ? {
+                    at: row.belowActAcknowledgedAt.toISOString(),
+                    by: row.belowActAcknowledgedBy?.fullName ?? null,
+                    reason: row.belowActReason,
+                  }
+                : null,
+            };
+          })(),
           clinicRates: rates
             ? {
                 overtimeHourly: rates.overtimeHourlyCents === null ? null : formatCents(rates.overtimeHourlyCents),
@@ -181,6 +234,71 @@ export class PayrollPolicyService {
         'recorded but NOT yet applied: which basis a Malaysian employer may lawfully use has not been established against ' +
         'the Employment Act, so proration stays unimplemented rather than guessed.',
     };
+  }
+
+  /**
+   * The highest wage within the First Schedule that this rule set would price
+   * once saved, or null when it would price nobody the Act reaches.
+   *
+   * Highest rather than lowest because the Act's own figures are proportional
+   * to the wage: a fixed clinic amount clears a small salary and fails a large
+   * one, so the largest protected wage is the first to be underpaid and the
+   * one worth asking about.
+   */
+  private async highestProtectedWage(
+    tx: Prisma.TransactionClient,
+    dto: UpsertPayrollPolicyDto,
+  ): Promise<number | null> {
+    const employees = await tx.employeeProfile.findMany({
+      where: { engagement: 'EMPLOYEE', employmentStatus: { in: [...ACTIVE_STATUSES] } },
+      select: {
+        staffId: true,
+        payrollPolicyId: true,
+        legalEmployerId: true,
+        staff: { select: { active: true, role: true, professionalType: true } },
+      },
+    });
+    const active = employees.filter((row) => row.staff.active);
+    if (active.length === 0) return null;
+
+    // Resolved against the rule sets as they WILL be, so a rule set being
+    // pointed at a new group is judged on the group it is about to price.
+    const stored = await tx.payrollPolicy.findMany();
+    const prospective = [
+      ...stored.filter((row) => row.id !== dto.id),
+      {
+        ...(stored.find((row) => row.id === dto.id) ?? stored[0] ?? {}),
+        id: dto.id ?? '__new',
+        name: dto.name,
+        isDefault: dto.isDefault ?? false,
+        legalEmployerId: dto.legalEmployerId ?? null,
+        workforceCategory: dto.workforceCategory ?? null,
+        overtimeMode: 'CLINIC_RATE' as const,
+      },
+    ] as Parameters<typeof resolvePayrollPolicy>[0];
+
+    const mine = active.filter(
+      (employee) =>
+        resolvePayrollPolicy(prospective, {
+          payrollPolicyId: employee.payrollPolicyId,
+          legalEmployerId: employee.legalEmployerId,
+          category: workforceCategoryOf(employee.staff),
+        }).policy?.id === (dto.id ?? '__new'),
+    );
+    if (mine.length === 0) return null;
+
+    const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
+    const salaries = await tx.employeeSalary.findMany({
+      where: {
+        staffId: { in: mine.map((row) => row.staffId) },
+        basis: 'MONTHLY',
+        effectiveFrom: { lte: today },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: today } }],
+      },
+      select: { amount: true },
+    });
+    const protectedWages = salaries.map((row) => toCents(row.amount)).filter((cents) => cents <= FIRST_SCHEDULE_WAGE_CEILING_CENTS);
+    return protectedWages.length === 0 ? null : Math.max(...protectedWages);
   }
 
   async upsert(dto: UpsertPayrollPolicyDto) {
@@ -237,6 +355,88 @@ export class PayrollPolicyService {
         multipliers[floor.field] = chosen === floor.act ? null : chosen;
       }
 
+      /*
+       * THE CHOICE TO PAY BELOW THE ACT, TAKEN BY SOMEBODY WITH A NAME.
+       *
+       * Every below-Act figure on this rule set, fingerprinted. The
+       * acknowledgement is against EXACTLY these terms, so a clinic that later
+       * drops overtime from 1.4× to 1.1× has to say so again rather than ride
+       * in on the consent it gave for 1.4×. An unchanged set of terms keeps
+       * the acknowledgement it already has, so renaming a rule set does not
+       * demand the whole conversation a second time.
+       */
+      const below: string[] = [];
+      for (const [field, value] of Object.entries(multipliers)) {
+        if (value === null) continue;
+        const shortfall = belowActMultiplier(field, value);
+        if (shortfall) below.push(`${shortfall.field}=${shortfall.chosen}/${shortfall.act}`);
+      }
+      const reasons = below.map((entry) => {
+        const [field, pair] = entry.split('=');
+        return belowActMultiplier(field, Number(pair.split('/')[0]))!.sentence;
+      });
+
+      /*
+       * A CLINIC RM RATE IS BELOW THE ACT OR NOT DEPENDING ON WHOSE WAGE IT
+       * PRICES, so unlike a multiplier it cannot be judged from the figure
+       * alone. RM20 an hour is under the Act for somebody on RM3,120 and over
+       * it for somebody on RM1,500.
+       *
+       * Assessed against the HIGHEST First Schedule wage this rule set would
+       * cover once saved: the Act's figure rises with the wage, so that is the
+       * employee a fixed amount fails first. Nobody covered means nothing to
+       * hold it to, and the rule set saves without a word — the permanent mark
+       * and the run's per-employee warning are what catch somebody joining it
+       * later.
+       */
+      const worstWage = clinic ? await this.highestProtectedWage(tx, dto) : null;
+      if (worstWage !== null) {
+        const shortfalls = clinicRateShortfalls(
+          {
+            ruleSet: dto.name,
+            overtimeHourlyCents: rates.clinicOvertimeHourly === null ? null : toCents(rates.clinicOvertimeHourly),
+            publicHolidayShiftCents: rates.clinicPublicHolidayShift === null ? null : toCents(rates.clinicPublicHolidayShift),
+            restDayShiftCents: rates.clinicRestDayShift === null ? null : toCents(rates.clinicRestDayShift),
+            sessionCents: rates.clinicSessionRate === null ? null : toCents(rates.clinicSessionRate),
+          },
+          worstWage,
+          dto.overtimeHoursPerDay ?? 7.5,
+        );
+        for (const shortfall of shortfalls) {
+          below.push(`${shortfall.rate}=${shortfall.clinicCents}/${shortfall.actCents}`);
+          reasons.push(`${shortfall.sentence} That is BELOW what the Act requires on wages of ${formatCents(worstWage)} a month.`);
+        }
+      }
+
+      const terms = below.length > 0 ? below.join(';') : null;
+
+      const acknowledgement =
+        terms === null
+          ? { belowActTerms: null, belowActReason: null, belowActAcknowledgedAt: null, belowActAcknowledgedByStaffId: null }
+          : existing?.belowActTerms === terms
+            ? {
+                belowActTerms: terms,
+                belowActReason: existing.belowActReason,
+                belowActAcknowledgedAt: existing.belowActAcknowledgedAt,
+                belowActAcknowledgedByStaffId: existing.belowActAcknowledgedByStaffId,
+              }
+            : (() => {
+                const reason = (dto.belowActReason ?? '').trim();
+                if (!dto.belowActAcknowledged || reason.length < 4) {
+                  throw new BadRequestException(
+                    `${reasons.join(' ')} Paying below the Act is yours to decide, and Kuwick ` +
+                      'will store it — but not silently. Confirm that this is deliberate and say why, and the choice is ' +
+                      'recorded against your name and today’s date.',
+                  );
+                }
+                return {
+                  belowActTerms: terms,
+                  belowActReason: reason,
+                  belowActAcknowledgedAt: new Date(),
+                  belowActAcknowledgedByStaffId: actor.id,
+                };
+              })();
+
       const workforceCategory = dto.workforceCategory ?? null;
       const legalEmployerId = dto.legalEmployerId ?? null;
       if (workforceCategory) {
@@ -269,6 +469,7 @@ export class PayrollPolicyService {
         overtimeMode,
         ...rates,
         ...multipliers,
+        ...acknowledgement,
         workforceCategory,
         isDefault: dto.isDefault ?? false,
       };
@@ -301,11 +502,16 @@ export class PayrollPolicyService {
                 .join(',')}`
             : 'statutory pricing') +
           (() => {
-            const raised = OVERTIME_MULTIPLIER_FLOORS.filter((floor) => multipliers[floor.field] !== null).map(
-              (floor) => `${floor.label.toLowerCase()} at ${multipliers[floor.field]}× against the Act's ${floor.act}×`,
+            const moved = OVERTIME_MULTIPLIER_FLOORS.filter((floor) => multipliers[floor.field] !== null).map(
+              (floor) =>
+                `${floor.label.toLowerCase()} at ${multipliers[floor.field]}× against the Act's ${floor.act}×` +
+                (Number(multipliers[floor.field]) < floor.act ? ' (BELOW the Act)' : ''),
             );
-            return raised.length > 0 ? `, ${raised.join(', ')}` : '';
+            return moved.length > 0 ? `, ${moved.join(', ')}` : '';
           })() +
+          (terms && acknowledgement.belowActAcknowledgedAt
+            ? `, acknowledged as below the Act: ${acknowledgement.belowActReason}`
+            : '') +
           (workforceCategory ? ` for ${categoryLabel(workforceCategory)?.toLowerCase()}` : ''),
         ...(existing ? { before: existing, after: saved } : { after: saved }),
       });

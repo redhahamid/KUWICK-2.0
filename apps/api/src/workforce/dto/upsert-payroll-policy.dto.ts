@@ -1,5 +1,4 @@
 import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
-import { OVERTIME_MULTIPLIER_FLOORS } from '../../statutory/employment-act';
 import { WORKFORCE_CATEGORIES } from '../workforce-category';
 
 const BASES = ['FIXED_DAYS', 'WORKING_DAYS', 'CALENDAR_DAYS'] as const;
@@ -13,17 +12,6 @@ const CATEGORY_KEYS = WORKFORCE_CATEGORIES.map((row) => row.key);
 /** Ringgit and sen as a string, the shape every money DTO takes. */
 const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
 const MONEY_MESSAGE = 'Enter an amount in ringgit with at most two decimal places, e.g. 500 or 37.50.';
-
-/** The Act's minimum for each settable multiplier, by the field name that holds it. */
-const FLOOR = Object.fromEntries(OVERTIME_MULTIPLIER_FLOORS.map((row) => [row.field, row.act])) as Record<string, number>;
-
-const floorMessage = (field: string) => {
-  const floor = OVERTIME_MULTIPLIER_FLOORS.find((row) => row.field === field)!;
-  return (
-    `${floor.label} must be at least ${floor.act}× — ${floor.provision} sets that as the minimum for ${floor.what}. ` +
-    'A higher multiplier is yours to set; a lower one is not.'
-  );
-};
 
 /**
  * A rule set: five proration bases, and how extra hours are priced.
@@ -72,32 +60,33 @@ export class UpsertPayrollPolicyDto {
 
   /*
    * THE CLINIC'S OWN MULTIPLIERS on the hour beyond normal hours. Null or
-   * absent means the Act's. The floors below are ss.60A(3)(a), 60(3)(c) and
-   * 60D(3)(aa), which say "not less than" — so above is the clinic's to set
-   * and below is refused here as well as in Settings, because a refusal that
-   * only exists in the browser is not a refusal.
+   * absent means the Act's.
+   *
+   * THE BOUNDS HERE ARE NOT THE ACT'S FLOOR. 0.01 to 10 rules out a typing
+   * mistake, nothing more. ss.60A(3)(a), 60(3)(c) and 60D(3)(aa) set minimums
+   * of 1.5×, 2× and 3×, and a figure under them is ALLOWED — a clinic may
+   * decide to pay below the Act and carry the liability. The service requires
+   * it to be acknowledged by name, with a reason, before it will store one.
    *
    * These price the HOURS, not the day. A public holiday worked is two days'
    * wages under s.60D(3)(a)(i) however few hours were done, and that is not
    * settable.
    */
-  @IsOptional()
-  @IsNumber()
-  @Min(FLOOR.overtimeMultiplier, { message: floorMessage('overtimeMultiplier') })
-  @Max(10)
-  overtimeMultiplier?: number | null;
+  @IsOptional() @IsNumber() @Min(0.01) @Max(10) overtimeMultiplier?: number | null;
+  @IsOptional() @IsNumber() @Min(0.01) @Max(10) restDayMultiplier?: number | null;
+  @IsOptional() @IsNumber() @Min(0.01) @Max(10) publicHolidayMultiplier?: number | null;
 
-  @IsOptional()
-  @IsNumber()
-  @Min(FLOOR.restDayMultiplier, { message: floorMessage('restDayMultiplier') })
-  @Max(10)
-  restDayMultiplier?: number | null;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(FLOOR.publicHolidayMultiplier, { message: floorMessage('publicHolidayMultiplier') })
-  @Max(10)
-  publicHolidayMultiplier?: number | null;
+  /*
+   * PAYING BELOW THE ACT IS A DECISION, AND A DECISION HAS AN AUTHOR.
+   *
+   * Sent true only when somebody ticked the confirmation in Settings having
+   * read what is below what. `belowActReason` is their own words and is
+   * required with it: a shortfall nobody can explain is a shortfall nobody can
+   * defend to the Labour Department. Both are ignored when nothing is below
+   * the Act.
+   */
+  @IsOptional() @IsBoolean() belowActAcknowledged?: boolean;
+  @IsOptional() @IsString() @Length(4, 500) belowActReason?: string | null;
   /** Which group of the workforce this rule set applies to, unless assigned by hand. */
   @IsOptional() @IsIn(CATEGORY_KEYS) workforceCategory?: string | null;
 

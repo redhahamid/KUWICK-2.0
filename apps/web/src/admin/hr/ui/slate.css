@@ -186,6 +186,32 @@
   color: var(--hr-red);
 }
 
+/* A notice that has to carry a list, a tick and a box, not just a sentence.
+   The below-Act confirmation is the only place in HR where a warning asks for
+   something back, so it gets room between its parts rather than the tight
+   single-line spacing every other notice wants. */
+.hr-notice__list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.hr-notice__list li + li {
+  margin-top: 4px;
+}
+.hr-notice > * + * {
+  margin-top: 8px;
+}
+.hr-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+.hr-check input {
+  margin-top: 3px;
+  accent-color: var(--hr-red);
+  flex: none;
+}
+
 /* THE CELL THAT IS SPEAKING TAKES THE ROW.
  *
  * A sentence in one column of a three-up row inside a 440px drawer wraps into

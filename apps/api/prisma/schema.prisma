@@ -1102,6 +1102,7 @@ model Staff {
   benefitUsagesRecorded        StaffBenefitUsage[]           @relation("StaffBenefitUsageRecorder")
   statutoryRuleSetsAuthored    StatutoryRuleSet[]            @relation("StatutoryRuleSetAuthor")
   statutoryRuleSetsVerified    StatutoryRuleSet[]            @relation("StatutoryRuleSetVerifier")
+  payrollPoliciesBelowActAcknowledged PayrollPolicy[]         @relation("PayrollPolicyBelowActAcknowledger")
   payrollRunsAuthored          PayrollRun[]                  @relation("PayrollRunAuthor")
   payrollRunsApproved          PayrollRun[]                  @relation("PayrollRunApprover")
   payrollLines                 PayrollLine[]                 @relation("PayrollLineStaff")
@@ -8241,6 +8242,30 @@ model PayrollPolicy {
   overtimeMultiplier        Decimal?    @map("overtime_multiplier") @db.Decimal(4, 2)
   restDayMultiplier         Decimal?    @map("rest_day_multiplier") @db.Decimal(4, 2)
   publicHolidayMultiplier   Decimal?    @map("public_holiday_multiplier") @db.Decimal(4, 2)
+
+  /// A CLINIC THAT CHOSE TO PAY BELOW THE ACT, AND SAID SO.
+  ///
+  /// The Act's rates were a hard floor: a rate under them was refused in
+  /// Settings and the run paid the Act's figure instead. That is not the
+  /// product's call to make. A clinic that decides to pay below the Act is
+  /// taking on a liability it is entitled to take on, and Kuwick's job is to
+  /// make sure nobody does it by accident and that the choice has a name and a
+  /// date on it — not to overrule it.
+  ///
+  /// So a below-Act figure saves, and these four record the choice. Nothing
+  /// here excuses the figure: the run still raises a warning naming everybody
+  /// the First Schedule reaches who is paid under it, the rule set wears a
+  /// permanent mark in Settings, and the payslip prints both rates.
+  ///
+  /// `belowActTerms` is a fingerprint of EXACTLY the figures that were
+  /// acknowledged. Change any of them and the acknowledgement is stale, so
+  /// lowering a rate further cannot ride in on a consent given for something
+  /// else. All four are null together on a rule set at or above the Act.
+  belowActTerms                 String?   @map("below_act_terms")
+  /// Why, in the words of whoever chose it. Required to acknowledge.
+  belowActReason                String?   @map("below_act_reason")
+  belowActAcknowledgedAt        DateTime? @map("below_act_acknowledged_at")
+  belowActAcknowledgedByStaffId String?   @map("below_act_acknowledged_by_staff_id")
   /// Which group this rule set applies to unless an employee is assigned one
   /// directly: DOCTOR, CLINICAL, ADMIN, MANAGEMENT or OTHER — the derived
   /// `WorkforceCategory`, so it is text here and validated in code. NULL means
@@ -8253,9 +8278,10 @@ model PayrollPolicy {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant        Tenant            @relation(fields: [tenantId], references: [id])
-  legalEmployer LegalEmployer?    @relation(fields: [legalEmployerId], references: [id])
-  employees     EmployeeProfile[]
+  tenant                Tenant            @relation(fields: [tenantId], references: [id])
+  legalEmployer         LegalEmployer?    @relation(fields: [legalEmployerId], references: [id])
+  employees             EmployeeProfile[]
+  belowActAcknowledgedBy Staff?           @relation("PayrollPolicyBelowActAcknowledger", fields: [belowActAcknowledgedByStaffId], references: [id])
 
   @@unique([tenantId, name])
   @@index([tenantId, legalEmployerId])

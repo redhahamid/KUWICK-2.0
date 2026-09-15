@@ -172,9 +172,36 @@ Taip angka anda sendiri kalau klinik membayar lebih:
 | Jam lebih pada cuti umum 4× | **Public holiday** `4` |
 | Semua ikut Akta | Biar ketiga-tiga kosong |
 
-**Akta ialah lantai.** Angka di bawah kadar Akta ditolak semasa anda menekan
-Save, dengan seksyen yang menetapkannya disebut di bawah kotak itu. Angka di
-atas Akta diterima, sebab itu membayar lebih, bukan kurang.
+### Kalau klinik anda membayar DI BAWAH Akta
+
+Kuwick akan menyimpannya. Ia keputusan klinik, bukan keputusan Kuwick — tetapi
+ia tidak boleh berlaku senyap. Apabila angka di bawah kadar Akta ditaip, laci
+akan terus menunjukkan amaran yang menyebut:
+
+- seksyen yang menetapkan minimum itu, dan kadar minimumnya
+- berapa orang pada set peraturan ini bergaji RM4,000 ke bawah — merekalah yang
+  dilindungi Akta. Kalau tiada seorang pun, Kuwick berkata begitu juga
+- bahawa klinik memilih untuk membayar di bawah Akta
+
+Untuk menyimpan, anda mesti **menanda kotak pengesahan** dan **menaip sebabnya**.
+Menekan Save sahaja tidak mencukupi. Nama anda dan tarikh hari itu direkodkan.
+
+Selepas itu:
+
+- baris set peraturan ditanda **Below the Act** pada skrin, kekal, dengan nama
+  orang yang mengesahkan dan tarikhnya
+- setiap payslip mencetak kadar yang dibayar DAN kadar Akta
+- setiap payroll run memberi amaran menamakan sesiapa yang dibayar kurang bulan
+  itu. Ia **tidak menyekat** run — anda boleh terus bayar gaji
+- kalau anda ubah angka itu lagi kemudian, Kuwick bertanya semula. Persetujuan
+  untuk 1.4× bukan persetujuan untuk 1.1×
+
+Perlindungan ini hanya untuk pekerja bergaji **RM4,000 sebulan ke bawah**
+(First Schedule). Di atas itu ss.60, 60A dan 60D tidak terpakai, jadi tiada
+minimum untuk dilanggar.
+
+Angka yang **mustahil** masih ditolak: 0, negatif, atau pengganda melebihi 10.
+Itu kesilapan menaip, bukan keputusan.
 
 Tiga kotak ini menetapkan harga **JAM** yang melebihi jam normal. **Hari** itu
 sendiri pada hari rehat atau cuti umum dikira dalam hari gaji ikut Akta — cuti
@@ -193,6 +220,10 @@ cuti umum untuk semua tarikh buat masa ini.
 | **Per public holiday shift** | RM satu syif cuti umum | `RM500.00` |
 | **Per rest day shift** | RM satu syif hari rehat | `RM300.00` |
 | **Per session** | Hari rehat atau cuti umum yang dikerja separuh jam normal ke bawah | `RM150.00` |
+
+Kadar RM yang jatuh di bawah Akta untuk pekerja yang dilindungi mengikut
+peraturan yang sama seperti pengganda di atas: disimpan dengan pengesahan,
+dibayar seperti yang ditetapkan, run memberi amaran bukan sekatan.
 
 Mana-mana kotak yang anda biar **kosong** dihargakan ikut Akta. Ini berguna:
 taip kadar cuti umum sahaja, biar yang lain kosong.

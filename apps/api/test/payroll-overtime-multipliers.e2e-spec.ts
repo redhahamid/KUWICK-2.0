@@ -147,28 +147,115 @@ describe('the clinic’s own overtime multipliers (e2e)', () => {
     await employ(clerkId, 'M-001', '3120.00');
   });
 
-  it('refuses a multiplier below the Act, naming the section and both figures', async () => {
-    const refused = await ruleSet({
+  it('will not store a below-Act multiplier that nobody acknowledged', async () => {
+    // Not a refusal of the figure — a refusal to take it silently. The message
+    // is the whole conversation: what is below what, under which section.
+    const held = await ruleSet({
       name: 'Too little',
       isDefault: true,
       overtimeHoursPerDay: 8,
       overtimeMultiplier: 1.25,
     }).expect(400);
-    expect(JSON.stringify(refused.body.message)).toContain('1.5');
-    expect(JSON.stringify(refused.body.message)).toContain('60A(3)(a)');
+    expect(JSON.stringify(held.body.message)).toContain('BELOW');
+    expect(JSON.stringify(held.body.message)).toContain('1.5');
+    expect(JSON.stringify(held.body.message)).toContain('60A(3)(a)');
   });
 
-  it('refuses a public-holiday multiplier of 2, which is below the Act’s 3 however ordinary it looks', async () => {
-    // The Act's public-holiday floor is on the HOURS beyond normal hours, and
-    // it is 3×. Two days' wages for the day itself is a different figure under
-    // s.60D(3)(a)(i) and is not a multiplier anybody sets.
-    const refused = await ruleSet({
+  it('refuses the acknowledgement without a reason, because a shortfall needs one', async () => {
+    await ruleSet({
+      name: 'No reason',
+      isDefault: true,
+      overtimeHoursPerDay: 8,
+      overtimeMultiplier: 1.25,
+      belowActAcknowledged: true,
+    }).expect(400);
+  });
+
+  it('stores a below-Act multiplier once it is acknowledged, with who and when', async () => {
+    await ruleSet({
       name: 'Holidays at two',
       isDefault: true,
       overtimeHoursPerDay: 8,
       publicHolidayMultiplier: 2,
+      belowActAcknowledged: true,
+      belowActReason: 'Agreed in every contract since 2019',
+    }).expect(201);
+
+    const list = await http().get('/workforce/payroll-policies').set('Authorization', bearer).expect(200);
+    const row = (list.body.policies as { name: string; belowAct: Record<string, unknown> | null }[]).find(
+      (entry) => entry.name === 'Holidays at two',
+    )!;
+    expect(row.belowAct).not.toBeNull();
+    const mark = row.belowAct as {
+      multipliers: { field: string; chosen: number; act: number }[];
+      acknowledgement: { by: string | null; reason: string | null; at: string } | null;
+    };
+    // The permanent mark: what is below the Act, and who said so.
+    expect(mark.multipliers).toEqual([expect.objectContaining({ field: 'publicHolidayMultiplier', chosen: 2, act: 3 })]);
+    expect(mark.acknowledgement?.reason).toBe('Agreed in every contract since 2019');
+    expect(mark.acknowledgement?.by).toBeTruthy();
+    expect(mark.acknowledgement?.at).toBeTruthy();
+  });
+
+  it('asks again when the figures change, so consent cannot be reused for a lower one', async () => {
+    const created = await ruleSet({
+      name: 'Lowering',
+      isDefault: true,
+      overtimeHoursPerDay: 8,
+      overtimeMultiplier: 1.4,
+      belowActAcknowledged: true,
+      belowActReason: 'Contractual',
+    }).expect(201);
+
+    // Renaming touches nothing the acknowledgement was about, so it stands.
+    await ruleSet({
+      id: created.body.id,
+      name: 'Lowering again',
+      isDefault: true,
+      overtimeHoursPerDay: 8,
+      overtimeMultiplier: 1.4,
+    }).expect(201);
+
+    // Dropping it further is a different decision and needs saying again.
+    await ruleSet({
+      id: created.body.id,
+      name: 'Lowering again',
+      isDefault: true,
+      overtimeHoursPerDay: 8,
+      overtimeMultiplier: 1.1,
     }).expect(400);
-    expect(JSON.stringify(refused.body.message)).toContain('60D(3)(aa)');
+  });
+
+  it('still refuses a multiplier that is not a number anybody meant', async () => {
+    await ruleSet({ name: 'Nought', isDefault: true, overtimeHoursPerDay: 8, overtimeMultiplier: 0 }).expect(400);
+    await ruleSet({ name: 'Negative', isDefault: true, overtimeHoursPerDay: 8, overtimeMultiplier: -1 }).expect(400);
+    await ruleSet({ name: 'Absurd', isDefault: true, overtimeHoursPerDay: 8, overtimeMultiplier: 50 }).expect(400);
+  });
+
+  it('pays the below-Act multiplier and warns rather than blocking', async () => {
+    await ruleSet({
+      name: 'Below',
+      isDefault: true,
+      overtimeHoursPerDay: 8,
+      overtimeMultiplier: 1.25,
+      belowActAcknowledged: true,
+      belowActReason: 'Contractual, reviewed by the owner',
+    }).expect(201);
+    await worked(clerkId, '2026-08-12', 600, 120);
+    const runId = await calculate();
+
+    // Two hours at RM15 × 1.25 = RM37.50, not the Act's RM45. The clinic chose
+    // it, so the clinic's figure is what is paid.
+    expect((await overtimeInput(clerkId))?.amount).toBe('37.50');
+
+    const gate = await http().get(`/workforce/payroll/runs/${runId}/exceptions`).set('Authorization', bearer).expect(200);
+    const own = (gate.body.exceptions as { code: string; severity: string; staffId: string | null; cause: string }[]).find(
+      (row) => row.code === 'CLINIC_RATE_BELOW_STATUTORY' && row.staffId === clerkId,
+    );
+    // Named, per employee, and it does not stop the month.
+    expect(own?.severity).toBe('WARNING');
+    expect(own?.cause).toContain('37.50');
+    expect(own?.cause).toContain('45.00');
   });
 
   it('accepts a multiplier above the Act and pays the overtime at it', async () => {

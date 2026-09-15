@@ -3,6 +3,7 @@ import {
   MONTHLY_ORP_DIVISOR,
   OVERTIME_MULTIPLIERS,
   OVERTIME_MULTIPLIER_FLOORS,
+  belowActMultiplier,
   overtimeMultiplierRefusal,
   checkNormalHours,
   checkOrdinaryRatePolicy,
@@ -197,21 +198,36 @@ describe('a multiplier the clinic chose', () => {
     }
   });
 
-  it('refuses anything below the Act, naming the section and the figure', () => {
-    const refusal = overtimeMultiplierRefusal('overtimeMultiplier', 1.25);
-    expect(refusal).toContain('1.25×');
-    expect(refusal).toContain('s.60A(3)(a)');
-    expect(refusal).toContain('1.5×');
-    // 2× is below the public holiday's 3×, however ordinary it looks beside
-    // the other two.
-    expect(overtimeMultiplierRefusal('publicHolidayMultiplier', 2)).toContain('s.60D(3)(aa)');
-    expect(overtimeMultiplierRefusal('restDayMultiplier', 1.5)).toContain('s.60(3)(c)');
+  it('does NOT refuse a figure below the Act — that is a decision, not a mistake', () => {
+    // An employer may choose to pay below the Act and carry the liability.
+    // Refusing it made Kuwick the arbiter of a decision that is not its own;
+    // what it owes instead is that nobody does it by accident.
+    expect(overtimeMultiplierRefusal('overtimeMultiplier', 1.25)).toBeNull();
+    expect(overtimeMultiplierRefusal('publicHolidayMultiplier', 2)).toBeNull();
+    expect(overtimeMultiplierRefusal('restDayMultiplier', 1.5)).toBeNull();
   });
 
   it('refuses nought, a negative and a figure no clinic pays', () => {
+    // These are typing mistakes, and refusing them protects the person at the
+    // keyboard rather than overruling them.
     expect(overtimeMultiplierRefusal('overtimeMultiplier', 0)).not.toBeNull();
     expect(overtimeMultiplierRefusal('overtimeMultiplier', -2)).not.toBeNull();
     expect(overtimeMultiplierRefusal('overtimeMultiplier', 50)).toContain('Check the figure');
+  });
+
+  it('says what is below what, in one sentence, before anybody saves it', () => {
+    const below = belowActMultiplier('publicHolidayMultiplier', 2);
+    expect(below).toMatchObject({ field: 'publicHolidayMultiplier', chosen: 2, act: 3 });
+    // The section, the minimum and the word BELOW in the same sentence: a
+    // clinic reading only two numbers can talk itself into either reading.
+    expect(below?.sentence).toContain('BELOW');
+    expect(below?.sentence).toContain('3×');
+    expect(below?.sentence).toContain('s.60D(3)(aa)');
+  });
+
+  it('has nothing to say about a figure at or above the Act', () => {
+    expect(belowActMultiplier('overtimeMultiplier', 1.5)).toBeNull();
+    expect(belowActMultiplier('overtimeMultiplier', 2)).toBeNull();
   });
 
   it('keeps the Act’s three figures as the floors', () => {

@@ -263,31 +263,39 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
   },
   /*
-   * A CLINIC RATE BELOW THE ACT, for somebody the Act reaches.
+   * A RULE SET PAYING BELOW THE ACT, for somebody the Act reaches.
    *
-   * Settings lets a rule set price a public-holiday shift at RM500 or an hour
-   * of overtime at RM40, because that is how a clinic pays its doctors. For an
-   * employee within the First Schedule (wages of RM4,000 or less) s.60I(2)
-   * makes the Act's own figure a floor. The run prices every such day both
-   * ways: the Act's figure is what is PAID, the clinic's is what is named
-   * here, and the run blocks until the rule set is corrected — an
-   * underpayment written into policy is still an underpayment.
+   * Settings lets a rule set price a public-holiday shift at RM500, an hour of
+   * overtime at RM40, or overtime at a multiplier the clinic chose. For an
+   * employee within the First Schedule (wages of RM4,000 or less) ss.60, 60A
+   * and 60D set minimums under all of it.
    *
-   * Not overridable. A reason typed here would be a reason for paying below
-   * the Act, and there is no such reason.
+   * THIS USED TO BLOCK, AND USED TO PAY THE ACT'S FIGURE INSTEAD. Both are
+   * gone. Overruling the clinic put a number on a payslip nobody in the clinic
+   * had chosen, and blocking treated a decision an employer is entitled to
+   * take as an error to be corrected. The clinic's figure is paid; the rule
+   * set carries a named, dated acknowledgement of what it is doing; and this
+   * says, per employee and per month, who is affected and by how much.
+   *
+   * WARNING rather than BLOCKING, and not overridable — there is nothing to
+   * override. It is not an obstacle, it is the record: the run goes through
+   * and this stays on it, so the month can be read back later by somebody
+   * asking who was paid under the Act and what was said about it at the time.
    */
   CLINIC_RATE_BELOW_STATUTORY: {
     code: 'CLINIC_RATE_BELOW_STATUTORY',
-    severity: 'BLOCKING',
+    severity: 'WARNING',
     overridable: false,
     cause: (c) =>
-      `The "${String(c.ruleSet)}" rule set prices ${String(c.days)} day${Number(c.days) === 1 ? '' : 's'} of extra work at ` +
-      `${String(c.clinic)} where the Employment Act's formula gives ${String(c.statutory)}, on wages of ${String(c.wages)} a month.`,
+      `The "${String(c.ruleSet)}" rule set pays ${String(c.days)} day${Number(c.days) === 1 ? '' : 's'} of extra work at ` +
+      `${String(c.clinic)} where the Employment Act requires ${String(c.statutory)}, on wages of ${String(c.wages)} a month.`,
     consequence:
-      'Wages of RM4,000 a month or less are within the First Schedule, so ss.60, 60A and 60D apply and section 60I(2) ' +
-      'makes the Act’s rates a floor under any clinic rate. The month is priced at the Act’s figure, not the rule set’s.',
+      'Wages of RM4,000 a month or less are within the First Schedule, so ss.60, 60A and 60D apply. The clinic set these ' +
+      'rates and acknowledged that they are under the Act, so they are what is paid. This employee receives less than the ' +
+      'Act requires for these days, and the clinic owes the difference if it is ever claimed.',
     remediation:
-      'Raise the clinic rate to at least the Act’s figure, or put this employee on a statutory rule set, then recalculate.',
+      'Nothing is required to finish this run. To stop it recurring, raise the rate to the Act’s figure in Settings, or ' +
+      'put this employee on a rule set that is at or above it.',
     deepLink: () => '/admin/hr/settings/payroll',
   },
   /*

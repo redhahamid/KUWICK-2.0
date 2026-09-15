@@ -176,6 +176,10 @@ const MULTIPLIERS = [
   },
 ] as const;
 
+/** The one sentence a below-Act figure gets, wherever it is shown. */
+const belowActSentence = (m: { label: string; act: number; what: string; provision: string }, chosen: number) =>
+  `${m.label} at ${chosen}× is BELOW the ${m.act}× that ${m.provision} sets as the minimum for ${m.what}.`;
+
 type MultiplierField = (typeof MULTIPLIERS)[number]['field'];
 
 export function PayrollSettingsPage() {
@@ -218,6 +222,11 @@ export function PayrollSettingsPage() {
   });
   const setMultiplier = (field: MultiplierField, value: string) =>
     setMultipliers((current) => ({ ...current, [field]: value }));
+  // THE CONFIRMATION, AND THE WORDS. Paying below the Act saves, but not by
+  // pressing the same button as everything else: the tick and the reason are
+  // what turn a figure into a decision with an author.
+  const [belowActOk, setBelowActOk] = useState(false);
+  const [belowActWhy, setBelowActWhy] = useState('');
   // The reason, and WHICH BOX it is about. A refusal with no field named is
   // about the form as a whole and keeps the banner.
   const [problem, setProblem] = useState<FormProblem>(null);
@@ -238,6 +247,8 @@ export function PayrollSettingsPage() {
     setUlDays('31');
     setHoursDay('7.5');
     setMultipliers({ 'ruleset-ot-multiplier': '', 'ruleset-restday-multiplier': '', 'ruleset-holiday-multiplier': '' });
+    setBelowActOk(false);
+    setBelowActWhy('');
     setProblem(null);
     setEditing('new');
   };
@@ -259,6 +270,11 @@ export function PayrollSettingsPage() {
       'ruleset-restday-multiplier': row.multipliers?.restDay.set ? String(row.multipliers.restDay.used) : '',
       'ruleset-holiday-multiplier': row.multipliers?.publicHoliday.set ? String(row.multipliers.publicHoliday.used) : '',
     });
+    // An acknowledgement already on file covers the figures it was given for,
+    // so reopening a rule set to rename it does not demand the whole
+    // conversation again. Changing a below-Act figure clears it server-side.
+    setBelowActOk(Boolean(row.belowAct?.acknowledgement));
+    setBelowActWhy(row.belowAct?.acknowledgement?.reason ?? '');
     setProblem(null);
     setEditing(row);
   };
@@ -334,20 +350,30 @@ export function PayrollSettingsPage() {
         refuse(multiplier.field, `${multiplier.label} is a multiplier such as ${multiplier.act}, with at most two decimal places.`);
         return;
       }
-      if (value < multiplier.act) {
-        refuse(
-          multiplier.field,
-          `${multiplier.label} of ${value}× pays less for ${multiplier.what} than ${multiplier.provision} allows, which is ` +
-            `${multiplier.act}×. A higher multiplier is yours to set; a lower one is not.`,
-        );
-        return;
-      }
+      // BELOW THE ACT IS NOT REFUSED HERE. It is a decision the clinic is
+      // entitled to take; the notice under the row says what it is, and Save
+      // asks for a confirmation and a reason before it will go through.
       if (value > 10) {
         refuse(multiplier.field, `${multiplier.label} of ${value}× is higher than any rate a clinic pays. Check the figure.`);
         return;
       }
       chosen[multiplier.field] = value;
     }
+    if (belowAct.length > 0) {
+      if (!belowActOk) {
+        refuse(
+          'below-act-confirm',
+          `${belowAct.map((row) => belowActSentence(row, row.chosen)).join(' ')} Kuwick will store this — it is your clinic's decision to make ` +
+            'and to carry. Confirm that it is deliberate.',
+        );
+        return;
+      }
+      if (belowActWhy.trim().length < 4) {
+        refuse('below-act-why', 'Say why this rule set pays below the Act. A shortfall nobody can explain is one nobody can defend.');
+        return;
+      }
+    }
+
     const existing = editing !== 'new' && editing ? editing : null;
     // THE BASES ARE CARRIED THROUGH UNCHANGED. The server replaces every
     // field it is not sent with its default, so an edit that only touched
@@ -383,6 +409,7 @@ export function PayrollSettingsPage() {
         overtimeMultiplier: chosen['ruleset-ot-multiplier'],
         restDayMultiplier: chosen['ruleset-restday-multiplier'],
         publicHolidayMultiplier: chosen['ruleset-holiday-multiplier'],
+        ...(belowAct.length > 0 ? { belowActAcknowledged: true, belowActReason: belowActWhy.trim() } : {}),
         ...(mode === 'CLINIC_RATE'
           ? Object.fromEntries(Object.entries(amounts).map(([key, value]) => [key, value === '' ? null : value]))
           : {}),
@@ -398,6 +425,24 @@ export function PayrollSettingsPage() {
       },
     );
   };
+
+  /*
+   * WHAT IS BELOW THE ACT, WORKED OUT FROM WHAT IS IN THE BOXES RIGHT NOW.
+   *
+   * Not from what was saved. The clinic has to see the consequence of the
+   * figure it just typed, before Save — a warning that only appears after a
+   * round trip is a warning about something that already happened.
+   */
+  const belowAct = MULTIPLIERS.map((multiplier) => {
+    const typed = clean(multipliers[multiplier.field]).replace(/×$/, '').trim();
+    if (typed === '') return null;
+    const value = Number(typed);
+    return Number.isFinite(value) && value > 0 && value < multiplier.act ? { ...multiplier, chosen: value } : null;
+  }).filter((entry): entry is (typeof MULTIPLIERS)[number] & { chosen: number } => entry !== null);
+
+  // Known only for a rule set that exists; a new one has nobody on it yet and
+  // says so rather than inventing a count.
+  const protectedHere = editing !== 'new' && editing ? (editing.protectedCount ?? null) : null;
 
   const floorGuide = actFloorAt4000(editing !== 'new' && editing ? editing.overtime.hoursPerDay : 7.5);
   const underpaying = (policies.data?.policies ?? []).filter((row) => (row.floor?.below.length ?? 0) > 0);
@@ -549,13 +594,31 @@ export function PayrollSettingsPage() {
             {
               title: 'Overtime and holidays',
               key: 'ot',
+              /*
+               * THE PERMANENT MARK.
+               *
+               * A clinic may choose to pay below the Act, and that choice does
+               * not expire when the drawer closes. Somebody opening this screen
+               * a year later — a new manager, an auditor, the owner on a bad
+               * morning — sees it on the row without having to know it was ever
+               * made, and sees who made it.
+               */
               render: (_: unknown, row) => (
                 <span>
                   {pricingLine(row)}
-                  {row.floor && row.floor.below.length > 0 ? (
+                  {row.belowAct ? (
                     <>
                       {' '}
-                      <StatusChip tone="attn">Below the Act for {row.floor.below.length}</StatusChip>
+                      <StatusChip tone="attn">Below the Act</StatusChip>
+                      <span className="hr-faint">
+                        {' '}
+                        {row.protectedCount > 0
+                          ? `${row.protectedCount} ${row.protectedCount === 1 ? 'employee' : 'employees'} here on RM4,000 or less`
+                          : 'nobody here on RM4,000 or less today'}
+                        {row.belowAct.acknowledgement
+                          ? ` · ${row.belowAct.acknowledgement.by ?? 'somebody'} on ${dayjs(row.belowAct.acknowledgement.at).format('D MMM YYYY')}`
+                          : ''}
+                      </span>
                     </>
                   ) : null}
                 </span>
@@ -782,11 +845,57 @@ export function PayrollSettingsPage() {
             </div>
             <div className="hr-form__help">
               Left blank, each is the Employment Act’s own figure — {MULTIPLIERS.map((m) => `${m.act}×`).join(', ')} in that
-              order. A clinic paying more may set its own; below the Act is refused, because ss.60A(3)(a), 60(3)(c) and
-              60D(3)(aa) are minimums. These price the extra HOURS. The day itself on a rest day or public holiday is
-              priced in days of the ordinary rate by the Act — a public holiday worked is two days’ wages however few
-              hours were done — and is not set here.
+              order. These price the extra HOURS. The day itself on a rest day or public holiday is priced in days of the
+              ordinary rate by the Act — a public holiday worked is two days’ wages however few hours were done — and is
+              not set here.
             </div>
+            {/*
+              * THE CHOICE, BEFORE IT IS MADE.
+              *
+              * ss.60A(3)(a), 60(3)(c) and 60D(3)(aa) set minimums, and a clinic
+              * may decide to pay under them and carry the liability — that is
+              * not Kuwick's call to overrule. What it is Kuwick's job to stop
+              * is somebody doing it without noticing, so the section, the
+              * minimum and the word BELOW appear together, with a tick and a
+              * reason between the figure and Save.
+              */}
+            {belowAct.length > 0 ? (
+              <div className="hr-notice hr-notice--attn" id="below-act-confirm">
+                <div className="hr-strong">This rule set pays below the Employment Act</div>
+                <ul className="hr-notice__list">
+                  {belowAct.map((row) => (
+                    <li key={row.field}>{belowActSentence(row, row.chosen)}</li>
+                  ))}
+                </ul>
+                <div>
+                  {protectedHere === null
+                    ? 'The Act’s minimums reach employees on RM4,000 a month or less.'
+                    : protectedHere === 0
+                      ? 'Nobody on this rule set is on RM4,000 a month or less today, so no minimum binds it right now. The day somebody who is joins it, they are paid under the Act.'
+                      : `${protectedHere} ${protectedHere === 1 ? 'employee' : 'employees'} on this rule set ${protectedHere === 1 ? 'is' : 'are'} on RM4,000 a month or less, so the Act’s minimums reach ${protectedHere === 1 ? 'them' : 'them'}. They will be paid less than the Act requires.`}{' '}
+                  The rule set will be marked below the Act on this screen, every payslip will print both rates, and each
+                  payroll run will name whoever was short that month.
+                </div>
+                <label className="hr-check">
+                  <input type="checkbox" checked={belowActOk} onChange={(e) => setBelowActOk(e.target.checked)} />
+                  <span>I am choosing to pay below the Act, and this clinic carries the liability.</span>
+                </label>
+                <FieldProblem problem={problem} field="below-act-confirm" />
+                <div>
+                  <label htmlFor="below-act-why" className="hr-form__sub">Why</label>
+                  <Input
+                    id="below-act-why"
+                    value={belowActWhy}
+                    onChange={(e) => setBelowActWhy(e.target.value)}
+                    placeholder="Agreed in the employment contract, reviewed by…"
+                  />
+                  <FieldProblem problem={problem} field="below-act-why" />
+                </div>
+                <div className="hr-form__help">
+                  Recorded against your name and today’s date. Change any of these figures later and Kuwick asks again.
+                </div>
+              </div>
+            ) : null}
           </div>
           {mode === 'CLINIC_RATE' ? (
             <div className="hr-form">

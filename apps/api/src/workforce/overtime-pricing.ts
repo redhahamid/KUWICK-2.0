@@ -178,7 +178,10 @@ const iso = (date: Date) => date.toISOString().slice(0, 10);
  * document rather than in an email six months later.
  */
 function sayRate(provision: string, used: number, act: number): string {
-  return used === act ? provision : `${provision}, at the clinic's ${used}× rather than the Act's ${act}×`;
+  if (used === act) return provision;
+  if (used > act) return `${provision}, at the clinic's ${used}× rather than the Act's ${act}×`;
+  // Below. The word has to be on the payslip, not inferable from two numbers.
+  return `${provision}, at the clinic's ${used}× — BELOW the Act's minimum of ${act}×`;
 }
 const rm = (cents: number) => `RM${(cents / 100).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -233,6 +236,24 @@ function priceDayByTheAct(day: WorkedDay, dayType: DayType, context: PricingCont
 
   const chosen = context.multipliers ?? ACT_OVERTIME_MULTIPLIERS;
 
+  /*
+   * A MULTIPLIER UNDER THE ACT'S IS A SHORTFALL, AND IS STILL PAID.
+   *
+   * The clinic set it, acknowledged what it was doing, and the figure it chose
+   * is what the employee receives — overruling that would hide a decision
+   * somebody made on purpose. What the day carries instead is BOTH numbers, so
+   * the payslip can print them, the run can raise a warning naming this
+   * person, and nobody has to reconstruct the shortfall later from a rate
+   * table that has since changed.
+   *
+   * Only within the First Schedule. Above RM4,000 ss.60, 60A and 60D do not
+   * apply, so there is no minimum to fall under and nothing to warn about.
+   */
+  const shortfall = (paidCents: number, actMultiplier: number, chosenMultiplier: number, atActCents: number) =>
+    context.scope.withinFirstSchedule && chosenMultiplier < actMultiplier
+      ? { statutoryFloorCents: atActCents, belowStatutoryFloor: true, clinicRateCents: paidCents }
+      : { statutoryFloorCents: null, belowStatutoryFloor: false, clinicRateCents: null };
+
   if (dayType === 'NORMAL_DAY') {
     // The salary already covers the day. Only approved overtime is paid, and
     // only at the excess multiplier.
@@ -260,6 +281,12 @@ function priceDayByTheAct(day: WorkedDay, dayType: DayType, context: PricingCont
       entitlement,
       unapprovedExcessHours: day.overtimeApproved ? 0 : day.overtimeMinutes / 60,
       ...byTheAct,
+      ...shortfall(
+        excessPayCents,
+        OVERTIME_MULTIPLIERS.NORMAL_DAY,
+        multiplier,
+        Math.round(approvedExcessHours * context.hourlyOrpCents * OVERTIME_MULTIPLIERS.NORMAL_DAY),
+      ),
     };
   }
 
@@ -301,6 +328,12 @@ function priceDayByTheAct(day: WorkedDay, dayType: DayType, context: PricingCont
     entitlement,
     unapprovedExcessHours: day.overtimeApproved ? 0 : excessWorked,
     ...byTheAct,
+    ...shortfall(
+      dayPayCents + excessPayCents,
+      dayRate.excessHourlyMultiplier,
+      multiplier,
+      dayPayCents + Math.round(excessHours * context.hourlyOrpCents * dayRate.excessHourlyMultiplier),
+    ),
   };
 }
 
@@ -380,9 +413,26 @@ function priceDayAtClinicRate(day: WorkedDay, dayType: DayType, context: Pricing
  * One day, priced.
  *
  * Mode A when the context carries no clinic rates, or the rule set fixes no
- * amount for this kind of day. Mode B otherwise — held to the Act's floor for
- * an employee within the First Schedule: the lower clinic figure is kept on
- * the day for the exception to name, and the Act's figure is what is paid.
+ * amount for this kind of day. Mode B otherwise.
+ *
+ * WHAT THE CLINIC SET IS WHAT IS PAID, INCLUDING WHEN IT IS LESS.
+ *
+ * This used to substitute the Act's figure and block the run. Two things were
+ * wrong with that. It overruled a decision the clinic had taken deliberately —
+ * and an employer is entitled to run that liability — and it put a figure on a
+ * payslip that nobody in the clinic had chosen, which is the same defect as
+ * the report that printed "clinic policy" over a hardcoded divisor.
+ *
+ * So the clinic's figure is paid, and the day carries BOTH: `clinicRateCents`
+ * is what the employee receives, `statutoryFloorCents` what the Act requires,
+ * and `belowStatutoryFloor` says the two differ in the direction that matters.
+ * The run raises a warning naming this person, Settings marks the rule set
+ * permanently, and the payslip prints both rates. What Kuwick will not do is
+ * let it happen silently — the acknowledgement on the rule set is where the
+ * clinic says, on the record and by name, that this is what it meant.
+ *
+ * Above the First Schedule there is no minimum to fall under, so nothing here
+ * applies and the clinic's figure is simply the clinic's figure.
  */
 export function priceDay(day: WorkedDay, dayType: DayType, context: PricingContext): PricedDay {
   const byTheAct = priceDayByTheAct(day, dayType, context);
@@ -393,14 +443,14 @@ export function priceDay(day: WorkedDay, dayType: DayType, context: PricingConte
   if (!context.scope.withinFirstSchedule) return atClinicRate;
   if (atClinicRate.totalCents < byTheAct.totalCents) {
     return {
-      ...byTheAct,
-      pricedBy: 'CLINIC_RATE',
+      ...atClinicRate,
       statutoryFloorCents: byTheAct.totalCents,
       belowStatutoryFloor: true,
       clinicRateCents: atClinicRate.totalCents,
       provision:
-        `${rates.ruleSet} pays ${rm(atClinicRate.totalCents)} for this day, below the Employment Act's ${rm(byTheAct.totalCents)}. ` +
-        `Section 60I(2) makes the Act's figure a floor, so the Act's figure is paid (${byTheAct.provision}).`,
+        `${rates.ruleSet} pays ${rm(atClinicRate.totalCents)} for this day — BELOW the Employment Act's ` +
+        `${rm(byTheAct.totalCents)} (${byTheAct.provision}). The clinic set this rate and acknowledged that it is ` +
+        'under the Act, so it is what is paid.',
     };
   }
   return { ...atClinicRate, statutoryFloorCents: byTheAct.totalCents };
@@ -459,7 +509,13 @@ export function describePricedDay(day: PricedDay): string {
     return `${when}: worked, nothing payable — ${day.provision}`;
   }
   if (day.belowStatutoryFloor) {
-    return `${when}: ${day.provision}`;
+    // Both figures, on the line the employee reads. A payslip that says only
+    // what was paid cannot be checked against the Act by the person it is
+    // about, which is exactly who the minimum exists for.
+    const paid = day.clinicRateCents ?? day.totalCents;
+    const owed = day.statutoryFloorCents;
+    const gap = owed === null ? '' : ` Paid ${rm(paid)}; the Act's figure for this day is ${rm(owed)}.`;
+    return `${when}: ${day.provision}${gap}`;
   }
   if (day.pricedBy === 'CLINIC_RATE') {
     if (day.dayType === 'NORMAL_DAY') {

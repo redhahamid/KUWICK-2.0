@@ -272,24 +272,58 @@ test.describe('a refused rule set says why, beside the box that is wrong', () =>
     await expect(divisor).toBeFocused();
   });
 
-  test('refuses a multiplier below the Act and says so under that box', async ({ page }) => {
+  /*
+   * BELOW THE ACT IS A DECISION, NOT A MISTAKE.
+   *
+   * It used to be refused outright. An employer may choose to pay under the
+   * Act and owe the difference, and a product that overrules that is deciding
+   * something that is not its to decide. What it owes instead is that nobody
+   * does it by accident: the section, the minimum and the word BELOW before
+   * Save, a tick, a reason, and a mark that outlives the drawer.
+   */
+  test('warns about a multiplier below the Act and asks for more than a Save', async ({ page }) => {
     await page.setViewportSize(PHONE);
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
     await gotoAdmin(page, '/admin/hr/settings/payroll');
 
     await page.getByRole('button', { name: 'Add rule set' }).click();
-    await page.getByLabel('Name').fill('Below the Act');
-    // A clinic may pay MORE than the Act and never less. 1.25× is less.
-    const overtime = page.locator('#ruleset-ot-multiplier');
-    await overtime.fill('1.25');
+    await page.getByLabel('Name').fill(`Below the Act ${Date.now()}`);
+    await page.locator('#ruleset-ot-multiplier').fill('1.25');
+
+    // The warning is there BEFORE Save, naming the section and the minimum.
+    const notice = page.locator('#below-act-confirm');
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText('BELOW');
+    await expect(notice).toContainText('1.5×');
+    await expect(notice).toContainText('Section 60A(3)(a)');
+
+    // Pressing Save on its own is not the confirmation.
+    await page.getByRole('button', { name: 'Add rule set' }).last().click();
+    await expect(page.getByText(/Confirm that it is deliberate/i)).toBeVisible();
+
+    // Ticking without a reason is not either.
+    await notice.getByRole('checkbox').check();
+    await page.getByRole('button', { name: 'Add rule set' }).last().click();
+    await expect(page.getByText(/Say why this rule set pays below the Act/i)).toBeVisible();
+  });
+
+  test('stores the choice once it is made, and marks the row for good', async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await loginAdmin(page, ADMIN_ACCOUNTS.owner);
+    await gotoAdmin(page, '/admin/hr/settings/payroll');
+
+    const name = `Paid below ${Date.now()}`;
+    await page.getByRole('button', { name: 'Add rule set' }).click();
+    await page.getByLabel('Name').fill(name);
+    await page.locator('#ruleset-ot-multiplier').fill('1.25');
+    await page.locator('#below-act-confirm').getByRole('checkbox').check();
+    await page.locator('#below-act-why').fill('Agreed in the employment contracts');
     await page.getByRole('button', { name: 'Add rule set' }).last().click();
 
-    const reason = page.getByText(/Section 60A\(3\)\(a\) allows/i);
-    await expect(reason).toBeVisible();
-    const box = await overtime.boundingBox();
-    const said = await reason.boundingBox();
-    expect(said!.y - (box!.y + box!.height)).toBeLessThan(40);
-    await expect(overtime).toBeFocused();
+    // The permanent mark: the chip is on the row, not only in the drawer that
+    // has since closed, so whoever opens this screen next sees the choice.
+    const row = page.getByRole('row').filter({ hasText: name });
+    await expect(row).toContainText('Below the Act');
   });
 
   test('accepts a multiplier above the Act, because that pays more', async ({ page }) => {
@@ -304,7 +338,11 @@ test.describe('a refused rule set says why, beside the box that is wrong', () =>
     await page.getByRole('button', { name: 'Add rule set' }).last().click();
 
     // The rule set list says whose multipliers are in force, so nobody reads
-    // the Act's figure over a clinic's own.
-    await expect(page.getByText(/Clinic multipliers: 2×/)).toBeVisible();
+    // the Act's figure over a clinic's own. Scoped to this test's own row:
+    // every run adds one, and a page-wide match would pass on somebody else's.
+    const row = page.getByRole('row').filter({ hasText: name });
+    await expect(row).toContainText('Clinic multipliers: 2×');
+    // Above the Act carries no mark — there is nothing to warn about.
+    await expect(row).not.toContainText('Below the Act');
   });
 });

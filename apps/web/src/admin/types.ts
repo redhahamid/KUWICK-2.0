@@ -3056,6 +3056,22 @@ export interface MultiplierInForce {
   set: boolean;
 }
 
+/**
+ * A RULE SET THE CLINIC PUT UNDER THE ACT, and the record of that choice.
+ *
+ * Null on a rule set at or above the Act, so a non-null value is itself the
+ * answer to "is anything here below the minimum" — which is what the permanent
+ * mark on the row is drawn from.
+ */
+export interface BelowActStanding {
+  /** Multipliers under their own Act floor, whoever they happen to price. */
+  multipliers: { field: string; label: string; chosen: number; act: number; provision: string; sentence: string }[];
+  /** Employees within the First Schedule a clinic RM rate pays under the Act. */
+  rates: { staffId: string; name: string; wages: string; shortfalls: string[] }[];
+  /** Who said this was deliberate, when, and why. Null until somebody does. */
+  acknowledgement: { at: string; by: string | null; reason: string | null } | null;
+}
+
 export interface PayrollPolicyRow {
   id: string;
   name: string;
@@ -3078,6 +3094,14 @@ export interface PayrollPolicyRow {
     restDay: MultiplierInForce;
     publicHoliday: MultiplierInForce;
   };
+  /**
+   * Covered employees the First Schedule reaches today — who a minimum
+   * actually protects. Published on every rule set, because it is needed most
+   * on one that is still above the Act and about to be lowered.
+   */
+  protectedCount: number;
+  /** Non-null only while something on this rule set pays under the Act. */
+  belowAct: BelowActStanding | null;
   /** DOCTOR, CLINICAL, ADMIN, MANAGEMENT, OTHER, or null. */
   workforceCategory: string | null;
   /** "Doctors", "Everyone no other rule set covers", "Employees assigned by hand". */

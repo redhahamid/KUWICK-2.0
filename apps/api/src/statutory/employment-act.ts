@@ -247,24 +247,56 @@ export const OVERTIME_MULTIPLIER_FLOORS = [
 }[];
 
 /**
- * Why a chosen multiplier cannot be used, or null when it can.
+ * A MULTIPLIER THAT IS NOT A NUMBER ANYBODY MEANT, or null when it is usable.
  *
- * The same sentence the clinic reads in Settings and the same one the API
- * returns, because a refusal that is worded differently in two places is two
- * refusals to explain.
+ * THIS IS NOT THE ACT'S FLOOR. Nought, a negative and a figure no clinic on
+ * earth pays are typing mistakes, and refusing them protects the person at the
+ * keyboard. Paying below the Act is a different thing entirely: it is a
+ * decision an employer is entitled to take, it carries a liability, and it is
+ * recorded rather than refused — see `belowActMultiplier` below.
  */
 export function overtimeMultiplierRefusal(field: string, value: number): string | null {
   const floor = OVERTIME_MULTIPLIER_FLOORS.find((row) => row.field === field);
   if (!floor) return `${field} is not a multiplier this rule set holds.`;
   if (!Number.isFinite(value) || value <= 0) return `${floor.label} is a multiplier above zero, such as ${floor.act}.`;
   if (value > 10) return `${floor.label} of ${value}× is higher than any rate a clinic pays. Check the figure.`;
-  if (value < floor.act) {
-    return (
-      `${floor.label} of ${value}× pays less for ${floor.what} than ${floor.provision} allows, which is ${floor.act}×. ` +
-      'A higher multiplier is yours to set; a lower one is not.'
-    );
-  }
   return null;
+}
+
+/** One multiplier a clinic set below the Act's minimum, with both figures. */
+export interface BelowActMultiplier {
+  readonly field: string;
+  readonly label: string;
+  readonly chosen: number;
+  readonly act: number;
+  readonly provision: string;
+  /** One sentence naming what is being paid below what, and under which section. */
+  readonly sentence: string;
+}
+
+/**
+ * WHAT THE CLINIC IS CHOOSING, SAID PLAINLY, or null when it chose nothing of
+ * the sort.
+ *
+ * Not a refusal. The three provisions say "not less than", so a figure under
+ * them is a shortfall against a minimum the employer owes — and an employer
+ * may decide to run that liability. What Kuwick owes in return is that nobody
+ * does it by accident: the section, the minimum, and the word "below" in the
+ * same sentence, before Save.
+ */
+export function belowActMultiplier(field: string, value: number): BelowActMultiplier | null {
+  const floor = OVERTIME_MULTIPLIER_FLOORS.find((row) => row.field === field);
+  if (!floor || !Number.isFinite(value) || value >= floor.act) return null;
+  return {
+    field: floor.field,
+    label: floor.label,
+    chosen: value,
+    act: floor.act,
+    provision: floor.provision,
+    sentence:
+      `${floor.label} at ${value}× is BELOW the ${floor.act}× that ${floor.provision} sets as the minimum for ` +
+      `${floor.what}.`,
+  };
 }
 
 /**

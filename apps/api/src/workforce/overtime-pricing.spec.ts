@@ -257,20 +257,26 @@ describe('a clinic-rate rule set', () => {
     expect(priced.provision).toMatch(/Clinic rate, Clinical staff: RM30\.00 an hour/);
   });
 
-  it('holds a clinic rate to the Act’s floor for somebody the First Schedule reaches', () => {
-    // RM20 an hour is below the Act's RM22.50: the Act's figure is paid, the
-    // clinic's is kept for the exception to name, and the run blocks.
+  it('pays the clinic’s rate below the Act and records both figures', () => {
+    // RM20 an hour against the Act's RM22.50. This used to substitute the
+    // Act's figure and block the run; it now pays what the clinic set, having
+    // made the clinic acknowledge it by name in Settings. Overruling put a
+    // number on a payslip nobody in the clinic had chosen.
     const priced = priceDay(
       day({ overtimeMinutes: 120, overtimeApproved: true }),
       'NORMAL_DAY',
       withRates({ ...staff, overtimeHourlyCents: 2000 }),
     );
     expect(priced.belowStatutoryFloor).toBe(true);
-    expect(priced.totalCents).toBe(4500);
+    expect(priced.totalCents).toBe(4000);
     expect(priced.clinicRateCents).toBe(4000);
     expect(priced.statutoryFloorCents).toBe(4500);
-    expect(priced.provision).toMatch(/below the Employment Act's RM45\.00/);
-    expect(describePricedDay(priced)).toMatch(/^2026-08-12: Clinical staff pays RM40\.00/);
+    expect(priced.provision).toMatch(/BELOW the Employment Act's RM45\.00/);
+    // Both figures on the line the employee reads, because the minimum exists
+    // for exactly the person who would otherwise have no way to check it.
+    const said = describePricedDay(priced);
+    expect(said).toMatch(/Paid RM40\.00/);
+    expect(said).toMatch(/the Act's figure for this day is RM45\.00/);
   });
 
   it('prices a public holiday per shift, whatever the hours, and a short day as a session', () => {
@@ -278,7 +284,11 @@ describe('a clinic-rate rule set', () => {
     expect(shift.totalCents).toBe(50000);
     expect(shift.provision).toMatch(/RM500\.00 per public holiday shift/);
     const session = priceDay(day({ workedMinutes: 240 }), 'PUBLIC_HOLIDAY', withRates(doctors as never));
-    expect(session.totalCents).toBe(24000); // the Act's two days (RM240) outranks a RM150 session
+    // A RM150 session is under the Act's two days (RM240). Paid as set, with
+    // the Act's figure kept beside it.
+    expect(session.totalCents).toBe(15000);
+    expect(session.clinicRateCents).toBe(15000);
+    expect(session.statutoryFloorCents).toBe(24000);
     expect(session.belowStatutoryFloor).toBe(true);
     // On a rest day the same session clears the Act's half day (RM60).
     const restSession = priceDay(day({ workedMinutes: 240, date: new Date('2026-08-16T00:00:00.000Z') }), 'REST_DAY', withRates(doctors as never));
@@ -311,7 +321,9 @@ describe('a clinic-rate rule set', () => {
       withRates({ ...staff, overtimeHourlyCents: 2000 }),
     );
     expect(pricing.belowStatutoryFloor.map((row) => row.attendanceId)).toEqual(['a1']);
-    expect(pricing.totalCents).toBe(4500 + 30000);
+    // RM40 for the underpaid day, not the Act's RM45 — the clinic's figure is
+    // what is paid, and the day above it stands at the clinic's RM300.
+    expect(pricing.totalCents).toBe(4000 + 30000);
     expect(dayTypeLabel('NORMAL_DAY')).toBe('Overtime');
     expect(dayTypeLabel('REST_DAY')).toBe('Rest day pay');
     expect(dayTypeLabel('PUBLIC_HOLIDAY')).toBe('Public holiday pay');
@@ -414,5 +426,73 @@ describe('a clinic that pays above the Act', () => {
     const before = priceDay(day({ overtimeMinutes: 90, overtimeApproved: true }), 'NORMAL_DAY', ctx);
     const after = priceDay(day({ overtimeMinutes: 90, overtimeApproved: true }), 'NORMAL_DAY', { ...ctx, multipliers: null });
     expect(after).toEqual(before);
+  });
+});
+
+/*
+ * A CLINIC THAT CHOSE TO PAY BELOW THE ACT.
+ *
+ * The Act's multipliers were a hard floor: below them was refused in Settings
+ * and the run substituted the Act's figure. Neither is Kuwick's call. An
+ * employer may decide to pay under the Act and carry that liability, and a
+ * product that overrules it puts a number on a payslip nobody in the clinic
+ * chose — the same defect as a report printing "clinic policy" over a
+ * hardcoded divisor.
+ *
+ * What the engine owes instead is that the shortfall is never silent: both
+ * figures on the day, so the payslip prints them and the run can name the
+ * person who is short.
+ */
+describe('a clinic that pays below the Act', () => {
+  const under = { normalDay: 1.25, restDayExcess: 1.5, publicHolidayExcess: 2 };
+
+  it('pays the clinic’s multiplier and keeps the Act’s figure beside it', () => {
+    // 2 approved hours at RM15. The Act's 1.5× is RM45; the clinic's 1.25× is
+    // RM37.50, and RM37.50 is what the employee receives.
+    const priced = priceDay(day({ overtimeMinutes: 120, overtimeApproved: true }), 'NORMAL_DAY', { ...ctx, multipliers: under });
+    expect(priced.totalCents).toBe(3750);
+    expect(priced.clinicRateCents).toBe(3750);
+    expect(priced.statutoryFloorCents).toBe(4500);
+    expect(priced.belowStatutoryFloor).toBe(true);
+  });
+
+  it('puts the word BELOW on the payslip, not two numbers to compare', () => {
+    const priced = priceDay(day({ overtimeMinutes: 60, overtimeApproved: true }), 'NORMAL_DAY', { ...ctx, multipliers: under });
+    expect(priced.provision).toContain('BELOW the Act’s minimum of 1.5×'.replace('’', "'"));
+    const said = describePricedDay(priced);
+    expect(said).toMatch(/Paid RM18\.75/);
+    expect(said).toMatch(/the Act's figure for this day is RM22\.50/);
+  });
+
+  it('holds the day rate on a public holiday even when the hours are under the Act', () => {
+    // s.60D(3)(a)(i) pays the DAY at two days' wages and the clinic does not
+    // set that. 10 hours: RM240 for the day, then 2 hours at the clinic's 2×
+    // instead of the Act's 3× — RM60 where the Act gives RM90.
+    const priced = priceDay(day({ workedMinutes: 600, overtimeApproved: true }), 'PUBLIC_HOLIDAY', { ...ctx, multipliers: under });
+    expect(priced.dayPayCents).toBe(24000);
+    expect(priced.totalCents).toBe(24000 + 6000);
+    expect(priced.statutoryFloorCents).toBe(24000 + 9000);
+    expect(priced.belowStatutoryFloor).toBe(true);
+  });
+
+  it('says nothing above the First Schedule, where there is no minimum to fall under', () => {
+    // RM9,500 a month: ss.60, 60A and 60D do not reach this doctor, so 1.25×
+    // is simply the rate their contract gives them.
+    const contractual = { ...ctx, scope: overtimeScope(950000, AUGUST, 'PAY_AT_STATUTORY_RATES' as const), multipliers: under };
+    const priced = priceDay(day({ overtimeMinutes: 120, overtimeApproved: true }), 'NORMAL_DAY', contractual);
+    expect(priced.totalCents).toBe(3750);
+    expect(priced.belowStatutoryFloor).toBe(false);
+    expect(priced.statutoryFloorCents).toBeNull();
+  });
+
+  it('flags nothing when the clinic pays at or above the Act', () => {
+    const at = priceDay(day({ overtimeMinutes: 120, overtimeApproved: true }), 'NORMAL_DAY', ctx);
+    expect(at.belowStatutoryFloor).toBe(false);
+    const above = priceDay(day({ overtimeMinutes: 120, overtimeApproved: true }), 'NORMAL_DAY', {
+      ...ctx,
+      multipliers: { normalDay: 2, restDayExcess: 2, publicHolidayExcess: 3 },
+    });
+    expect(above.belowStatutoryFloor).toBe(false);
+    expect(above.totalCents).toBe(6000);
   });
 });

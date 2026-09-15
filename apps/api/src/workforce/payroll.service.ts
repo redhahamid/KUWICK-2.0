@@ -1389,15 +1389,25 @@ export class PayrollService {
         );
         const overtimeHours = pricing.normalDayHours;
 
-        // THE FLOOR. Within the First Schedule a clinic rate below the Act is
-        // paid at the Act's figure and blocks the run until the rule set is
-        // corrected — see CLINIC_RATE_BELOW_STATUTORY.
-        if (clinicRates && pricing.belowStatutoryFloor.length > 0) {
+        /*
+         * WHO IS BEING PAID BELOW THE ACT THIS MONTH, BY NAME.
+         *
+         * The clinic's figure is paid — it set the rate and acknowledged what
+         * it was doing — so this does not block. It is the record: within the
+         * First Schedule, this employee, these days, what they got and what
+         * the Act sets. It fires for a clinic RM rate and for a multiplier the
+         * clinic put under the Act alike, because to the person short of the
+         * money the two are the same event.
+         *
+         * `statutory` reads the FLOOR, not the total. The total is what was
+         * paid now that the Act's figure is no longer substituted for it.
+         */
+        if (pricing.belowStatutoryFloor.length > 0) {
           raise('CLINIC_RATE_BELOW_STATUTORY', employee, {
-            ruleSet: clinicRates.ruleSet,
+            ruleSet: clinicRates?.ruleSet ?? policyResolution.policy?.name ?? 'the rule set in force',
             days: pricing.belowStatutoryFloor.length,
-            clinic: formatCents(pricing.belowStatutoryFloor.reduce((sum, day) => sum + (day.clinicRateCents ?? 0), 0)),
-            statutory: formatCents(pricing.belowStatutoryFloor.reduce((sum, day) => sum + day.totalCents, 0)),
+            clinic: formatCents(pricing.belowStatutoryFloor.reduce((sum, day) => sum + (day.clinicRateCents ?? day.totalCents), 0)),
+            statutory: formatCents(pricing.belowStatutoryFloor.reduce((sum, day) => sum + (day.statutoryFloorCents ?? day.totalCents), 0)),
             wages: formatCents(fullMonthlyCents),
           });
         }

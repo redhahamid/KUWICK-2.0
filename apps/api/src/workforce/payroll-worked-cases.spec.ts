@@ -161,12 +161,22 @@ describe.each(WAGES)('RM%s a month, August 2026', (wage) => {
       expect(pricing.days.find((row) => row.dayType === 'PUBLIC_HOLIDAY')?.entitlement).toBe('CONTRACTUAL');
     } else {
       // RM20 an hour against the Act's RM22.31, and RM250 a holiday shift
-      // against the Act's RM223.08: the hour is paid at the Act's figure and
-      // blocks the run; the shift stands at the clinic rate.
+      // against the Act's RM223.08. The hours are paid AT THE CLINIC'S RM20 —
+      // the clinic set that rate and acknowledged it is under the Act, and
+      // substituting the Act's figure would put a number on the payslip that
+      // nobody in the clinic chose. The run warns per employee instead of
+      // blocking. The shift stands at the clinic rate, which clears the Act.
       const hourly = Math.round(wageCents / 26 / HOURS_PER_DAY);
       const actHours = Math.round(4 * hourly * 1.5) + Math.round(2.5 * hourly * 1.5);
+      const clinicHours = Math.round(4 * 2000) + Math.round(2.5 * 2000);
       expect(pricing.belowStatutoryFloor.map((row) => row.attendanceId)).toEqual(['a1', 'a2']);
-      expect(pricing.totalCents).toBe(actHours + 25000);
+      expect(pricing.totalCents).toBe(clinicHours + 25000);
+      // Both figures survive on the days, so the payslip and the warning can
+      // name the shortfall rather than reconstruct it from a rate table that
+      // has since changed.
+      expect(
+        pricing.belowStatutoryFloor.reduce((sum, row) => sum + (row.statutoryFloorCents ?? 0), 0),
+      ).toBe(actHours);
     }
     rows.push(
       `| ${wage} | OT mode B: ${wage > 4000 ? 'Doctors — RM500 a public holiday shift, no hourly rate' : 'Front desk — RM20/h, RM250 a public holiday shift'} | ` +

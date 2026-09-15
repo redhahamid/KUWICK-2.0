@@ -304,3 +304,62 @@ three nullable columns; NULL everywhere means no existing figure moves.
    for the DAY itself (s.60D(3)(a)(i), two days' wages however few hours were
    worked) — a different number, not settable here. `[O]` needed: which of the
    two was meant.
+
+## The Act's floor stops being Kuwick's decision
+
+`[O]` **The owner's ruling, and it reverses something the product had been
+doing since §6 shipped.** A multiplier or a clinic rate below the Act is
+allowed to save. Kuwick warns, requires an active confirmation with a reason,
+marks the rule set permanently, prints both rates on the payslip and names
+whoever was short on each run — but it does not refuse, and it does not
+substitute the Act's figure.
+
+`[D]` **What the product was doing before, and why it was wrong.** A clinic RM
+rate under the Act was paid at **the Act's figure** and the run **blocked**
+(`CLINIC_RATE_BELOW_STATUTORY`, severity BLOCKING, not overridable, with the
+comment "a reason typed here would be a reason for paying below the Act, and
+there is no such reason"). A below-Act multiplier was refused outright. Both
+overruled a decision that is the employer's to take, and the substitution put a
+figure on a payslip that nobody in the clinic had chosen — the same defect as
+the report that printed "clinic policy" over a hardcoded divisor.
+
+`[D]` **What it does now.**
+
+- The clinic's figure is paid. `PricedDay` carries `clinicRateCents` (paid),
+  `statutoryFloorCents` (what the Act requires) and `belowStatutoryFloor`.
+- `CLINIC_RATE_BELOW_STATUTORY` is a **WARNING**, raised per employee, and now
+  fires for a below-Act multiplier as well as a below-Act RM rate.
+- Saving a below-Act figure needs `belowActAcknowledged` plus a reason. Stored
+  with who and when, against a **fingerprint of exactly the figures
+  acknowledged** — dropping 1.4× to 1.1× asks again; renaming the rule set does
+  not.
+- The rule set list carries a permanent "Below the Act" chip with the
+  acknowledger's name and date, and how many covered employees the First
+  Schedule reaches.
+- Payslip lines print both rates and the word BELOW.
+
+`[D]` **The RM4,000 question the owner raised: yes, the engine can distinguish.**
+`overtimeScope()` resolves the First Schedule per employee at run time, so no
+warning is raised for anybody above RM4,000. `[O]` His ruling for the Settings
+drawer was the other way: warn **always** when a figure is below the Act, and
+say in the notice how many covered employees are protected — including "nobody
+today". A multiplier belongs to a rule set, not a person, and a rule set that
+covers only doctors today can cover an assistant tomorrow.
+
+`[D]` **A clinic RM rate is assessed differently from a multiplier, because it
+has to be.** RM20 an hour is under the Act for somebody on RM3,120 and over it
+for somebody on RM1,500. At save time it is judged against the **highest First
+Schedule wage the rule set would cover** — the Act's figures rise with the
+wage, so that is the employee a fixed amount fails first. Nobody covered means
+nothing to hold it to, and the later-joiner case is caught by the permanent
+mark and the run's per-employee warning.
+
+`[D]` **Migration** `20260915160000_payroll_policy_below_act_choice` — four
+nullable columns on `payroll_policies` (`below_act_terms`, `below_act_reason`,
+`below_act_acknowledged_at`, `below_act_acknowledged_by_staff_id`). All null
+together on every rule set that exists today.
+
+`[D]` **The hour, not the day — confirmed by the owner.** The three multipliers
+price an hour beyond normal hours: RM10 an hour becomes RM20 on a 2× day. The
+day itself on a rest day or public holiday stays the Act's arithmetic in days
+of ordinary rate, and is not settable.

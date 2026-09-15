@@ -172,6 +172,10 @@ describe('Rule sets and recurring items in the payroll run (e2e)', () => {
           clinicOvertimeHourly: '20.00',
           clinicPublicHolidayShift: '250.00',
           workforceCategory: 'ADMIN',
+          // RM20 an hour is under the Act for the clerk on RM3,000. Storing it
+          // is the clinic's to decide and Kuwick will, but not silently.
+          belowActAcknowledged: true,
+          belowActReason: 'Rate agreed in the front desk contracts',
         })
         .expect(201)
     ).body.id;
@@ -204,6 +208,45 @@ describe('Rule sets and recurring items in the payroll run (e2e)', () => {
       .expect(409);
   });
 
+  it('will not store a clinic rate under the Act for somebody it covers, unacknowledged', async () => {
+    /*
+     * A RM RATE IS UNDER THE ACT OR NOT DEPENDING ON WHOSE WAGE IT PRICES, so
+     * this is assessed against the highest First Schedule wage the rule set
+     * would cover — the Act's own figures rise with the wage, so that is the
+     * employee a fixed amount fails first. Same acknowledgement as a
+     * multiplier: the drawer has one rule, not two.
+     */
+    const held = await http()
+      .post('/workforce/payroll-policies')
+      .set('Authorization', bearer)
+      .send({ id: frontDeskPolicyId, name: 'Front desk', overtimeMode: 'CLINIC_RATE', clinicOvertimeHourly: '5.00', workforceCategory: 'ADMIN' })
+      .expect(400);
+    expect(JSON.stringify(held.body.message)).toContain('BELOW');
+
+    // And a rate that clears the Act needs nothing said about it at all.
+    await http()
+      .post('/workforce/payroll-policies')
+      .set('Authorization', bearer)
+      .send({ id: frontDeskPolicyId, name: 'Front desk', overtimeMode: 'CLINIC_RATE', clinicOvertimeHourly: '60.00', clinicPublicHolidayShift: '250.00', workforceCategory: 'ADMIN' })
+      .expect(201);
+
+    // Put it back for the tests that follow.
+    await http()
+      .post('/workforce/payroll-policies')
+      .set('Authorization', bearer)
+      .send({
+        id: frontDeskPolicyId,
+        name: 'Front desk',
+        overtimeMode: 'CLINIC_RATE',
+        clinicOvertimeHourly: '20.00',
+        clinicPublicHolidayShift: '250.00',
+        workforceCategory: 'ADMIN',
+        belowActAcknowledged: true,
+        belowActReason: 'Rate agreed in the front desk contracts',
+      })
+      .expect(201);
+  });
+
   it('says in Settings who a clinic rate would underpay, before payroll does', async () => {
     const list = await http().get('/workforce/payroll-policies').set('Authorization', bearer).expect(200);
     const frontDesk = list.body.policies.find((row: { id: string }) => row.id === frontDeskPolicyId);
@@ -226,21 +269,31 @@ describe('Rule sets and recurring items in the payroll run (e2e)', () => {
     expect(doctors.floor).toEqual({ assessed: 0, below: [] });
   });
 
-  it('prices the clerk’s hour at the Act’s floor and blocks the run naming the rule set', async () => {
+  it('pays the clerk’s hour at the clinic’s rate and names them in a warning', async () => {
+    /*
+     * THE ACT'S FIGURE IS NO LONGER SUBSTITUTED, AND THE RUN NO LONGER BLOCKS.
+     *
+     * Both were Kuwick overruling a decision that is the clinic's to take: an
+     * employer may pay below the Act and owe the difference. Paying the Act's
+     * figure instead put a number on the payslip that nobody in the clinic had
+     * chosen, and blocking treated a deliberate choice as an error. What is
+     * owed in return is that it is never silent — Settings marks the rule set
+     * permanently, the payslip prints both rates, and this names the person.
+     */
     await calculate();
     const own = await exceptionsFor(clerkId);
     const floor = own.find((row) => row.code === 'CLINIC_RATE_BELOW_STATUTORY');
-    expect(floor?.severity).toBe('BLOCKING');
-    expect(floor?.cause).toContain('"Front desk" rule set prices 1 day');
+    expect(floor?.severity).toBe('WARNING');
+    expect(floor?.cause).toContain('"Front desk" rule set pays 1 day');
     // Money in the catalogue's sentences carries no RM prefix, as every other exception's does.
     expect(floor?.cause).toContain('at 40.00 where the Employment Act');
-    expect(floor?.cause).toContain('gives 46.14');
+    expect(floor?.cause).toContain('requires 46.14');
 
     const inputs = await inputsFor(clerkId);
     const overtime = inputs.find((row) => row.label === 'Overtime');
     const holiday = inputs.find((row) => row.label === 'Public holiday pay');
-    // Two hours at the Act's RM15.38 × 1.5, not at RM20.
-    expect(overtime?.amount).toBe('46.14');
+    // Two hours at the clinic's RM20, not at the Act's RM15.38 × 1.5.
+    expect(overtime?.amount).toBe('40.00');
     expect(overtime?.source).toBe('ATTENDANCE');
     // The holiday shift stands at the clinic's RM250: above the Act's two days (RM230.76).
     expect(holiday?.amount).toBe('250.00');
