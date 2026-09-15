@@ -32,6 +32,34 @@ describe('the clinic manager (e2e)', () => {
 
   const server = () => app.getHttpServer();
 
+  /*
+   * WHAT THE BROWSER IS TOLD, which is a different question from what a token
+   * can do — and the one this file was not asking.
+   *
+   * Every other test here mints a bearer that already carries CLINIC_MANAGER
+   * and proves the endpoints behave. Staging then found the clinic manager
+   * unable to press Approve, with all of those tests green: the role was right,
+   * the account simply did not hold it, and nothing here would ever have
+   * noticed because no test went near a real sign-in.
+   *
+   * The screen does not read the token. It reads `staff.permissions` from the
+   * login payload (`useCan` in the web app) and disables what is not in it. So
+   * the chain that actually decides whether the button is alive — hire someone
+   * as a clinic manager, sign in as them, read the array — is tested here, end
+   * to end, with nothing minted by hand.
+   */
+  const signInAs = async (role: Role, fullName: string) => {
+    const email = `${crypto.randomUUID().slice(0, 8)}@manager-uat.kuwick.invalid`;
+    const password = 'ManagerUat!2026';
+    await request(server())
+      .post('/workforce/employees')
+      .set('Authorization', owner)
+      .send({ fullName, role, clinicId, position: 'Clinic manager', loginEmail: email, loginPassword: password })
+      .expect(201);
+    const login = await request(server()).post('/auth/login').send({ email, password }).expect(201);
+    return login.body.staff?.permissions as string[] | undefined;
+  };
+
   const staffWithRole = async (role: Role, fullName: string) => {
     const staff = await withTenantContext(prisma, tenantId, (tx) =>
       tx.staff.create({ data: { tenantId, role, fullName, clinicId } }),
@@ -163,5 +191,34 @@ describe('the clinic manager (e2e)', () => {
         .send({ decision: 'REJECTED', reason: 'Not reimbursable.' })
         .expect(201);
     });
+  });
+
+  /*
+   * THE GAP UAT FOUND, pinned so it cannot reopen quietly.
+   */
+  it('publishes the two approvals to the browser when somebody is hired as a clinic manager', async () => {
+    const permissions = await signInAs(Role.CLINIC_MANAGER, 'Rohana Yusof Two');
+
+    // Absent would mean "fall back and render everything", which is how a
+    // stale session behaves — not what a fresh sign-in may do.
+    expect(Array.isArray(permissions)).toBe(true);
+
+    // These two are the Approve and Reject buttons on Leave and on Claims.
+    expect(permissions).toContain('hr.leave.approve');
+    expect(permissions).toContain('hr.claim.approve');
+    expect(permissions).toContain('hr.view');
+
+    // And the withholding is published too, so the screens that must stay shut
+    // are shut before the click rather than after it.
+    expect(permissions).not.toContain('hr.salary.view');
+    expect(permissions).not.toContain('hr.payroll.view');
+    expect(permissions).not.toContain('hr.payroll.approve');
+  });
+
+  it('publishes no approval at all to a records clerk, through the same door', async () => {
+    const permissions = await signInAs(Role.HR_STAFF, 'Records Clerk Two');
+    expect(permissions).toContain('hr.view');
+    expect(permissions).not.toContain('hr.leave.approve');
+    expect(permissions).not.toContain('hr.claim.approve');
   });
 });

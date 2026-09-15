@@ -35,7 +35,7 @@
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { config } from 'dotenv';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient, type Role } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
 config({ path: join(__dirname, '..', '.env') });
@@ -155,8 +155,11 @@ async function main() {
 
   console.log('HR UAT seed — step 2 of 3: what a real month needs, and the portal’s story');
 
-  const { staff, central } = await inTenant(async (tx) => {
-    const rows = await tx.staff.findMany({ where: { tenantId }, select: { id: true, fullName: true, clinicId: true } });
+  const { staff, central, rolesFixed } = await inTenant(async (tx) => {
+    const rows = await tx.staff.findMany({
+      where: { tenantId },
+      select: { id: true, fullName: true, clinicId: true, role: true },
+    });
     const byName = new Map(rows.map((row) => [row.fullName, row]));
     const picked: Record<keyof typeof PEOPLE, { id: string; clinicId: string | null }> = {} as never;
     for (const [key, name] of Object.entries(PEOPLE) as [keyof typeof PEOPLE, string][]) {
@@ -166,10 +169,39 @@ async function main() {
     }
     const clinic = await tx.clinic.findFirst({ where: { tenantId, name: CENTRAL } });
     if (!clinic) throw new Error(`No branch called ${CENTRAL}.`);
-    return { staff: picked, central: clinic.id };
+
+    /*
+     * THE JOBS THIS SEED CLAIMS ITS ACCOUNTS HOLD, asserted rather than assumed.
+     *
+     * This file ends by printing "clinic manager — approves leave, claims and
+     * overtime" next to Rohana's login. That sentence is only true if her role
+     * says so, and her role is set in the BASE seed (step 1) — which is skipped
+     * whenever "Rebuild the demo tenant" is unticked, because a rebuild throws
+     * away whatever the owner was in the middle of testing.
+     *
+     * So on every tenant seeded before CLINIC_MANAGER existed, and on every run
+     * that spared the owner's testing, she stayed HR_STAFF: a records clerk,
+     * which approves nothing by design. Leave and Claims opened and every
+     * Approve button on them was dead — found in staging UAT, and the seed's own
+     * printout had been contradicting itself the whole time.
+     *
+     * Step 2 always runs, so the claim is repaired here. Idempotent: a world
+     * that already agrees is not written to.
+     */
+    const rolesFixed: string[] = [];
+    const jobs: { key: keyof typeof PEOPLE; role: Role }[] = [{ key: 'manager', role: 'CLINIC_MANAGER' }];
+    for (const job of jobs) {
+      const row = byName.get(PEOPLE[job.key]);
+      if (!row || row.role === job.role) continue;
+      await tx.staff.update({ where: { id: row.id }, data: { role: job.role } });
+      rolesFixed.push(`${row.fullName}: ${row.role} → ${job.role}`);
+    }
+
+    return { staff: picked, central: clinic.id, rolesFixed };
   });
 
   const summary: string[] = [];
+  for (const fixed of rolesFixed) summary.push(`Role corrected — ${fixed}`);
 
   await inTenant(async (tx) => {
     // The contract executive: on payroll from his start date. The base seed

@@ -81,6 +81,52 @@ components with free switches. Kuwick's catalogue becomes a recommendation.
 states every row ships `DRAFT` and that the file "does not assert that any flag
 is correct". Kuwick locks a treatment it declines to stand behind.
 
+## Piece 3, after staging — the role was right and nobody held it
+
+`[O]` The owner tested piece 3 on staging and found the clinic manager still
+unable to press Approve: Leave and Claims opened, Payroll was correctly refused,
+and every Approve and Reject button was dead.
+
+`[D]` **The role was never the problem.** `CLINIC_MANAGER` carries
+`hr.leave.approve` and `hr.claim.approve`, the guards enforce them, and a real
+sign-in publishes them. Rohana Yusof simply was not a clinic manager: her role
+is set in the BASE seed (`seed-admin-uat.ts`), which the seed workflow skips
+whenever **Rebuild the demo tenant** is unticked — which the owner unticked
+deliberately, to keep the testing a rebuild would have destroyed. She stayed
+`HR_STAFF`, a records clerk, which approves nothing by design.
+
+`[D]` **Reproduced exactly**: setting her back to `HR_STAFF` locally gives a
+login payload of three permissions — `hr.view`, `hr.employee.manage`,
+`hr.attendance.manage` — and no approval of any kind. That is the dead button.
+
+`[D]` **Why the tests did not catch it.** Every test in
+`clinic-manager-permissions.e2e-spec.ts` minted its own bearer with the role
+already in it — the file's own comment says so: *"The role rides in the token,
+so the bearer has to be minted with it."* They proved that GIVEN the role the
+endpoints behave. Nothing asserted that any account HOLDS the role, and nothing
+went through `/auth/login`, which is where the browser gets the
+`staff.permissions` array that `useCan` uses to enable the button. Two links in
+the chain had no test at all.
+
+`[D]` Fixed in two places: step 2 of the HR seed (which always runs) now asserts
+the jobs the seed claims its accounts hold and reports any it repaired; and two
+e2e tests now hire a clinic manager through the real endpoint, sign in as them,
+and read the published array.
+
+### `[A]` The gap underneath it, which is not fixed
+
+`[D]` **An existing employee's role cannot be changed anywhere in the product.**
+`staff.role` is written in exactly two places — creating an employee
+(`POST /workforce/employees`) and provisioning a tenant. `upsert-employee.dto.ts`
+has no `role` field, and Settings ▸ Roles assigns SystemRoles and custom roles,
+not the legacy `Role` column that `CLINIC_MANAGER` lives in.
+
+`[A]` So a clinic can hire a clinic manager, and cannot promote one. The nurse
+who takes over running the floor has to be re-created as a new employee. `[O]`
+This needs the owner's decision, not mine: role editing changes who may approve
+leave, claims and overtime, and probably deserves a stronger permission than the
+one that edits an address.
+
 ## Piece 4 — settings that do nothing, and the audit
 
 Three known members:
