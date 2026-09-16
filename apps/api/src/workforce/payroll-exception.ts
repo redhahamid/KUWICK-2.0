@@ -93,6 +93,44 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'Record their tax residence and MTD category so the figure is calculated from HASiL’s specification, enter the month’s PCB by hand, or record them as not paying PCB if that is genuinely their situation.',
     deepLink: () => '/admin/hr/payroll',
   },
+  /*
+   * SOMEBODY LEFT THIS MONTH, AND THEIR UNTAKEN LEAVE IS STILL OWED.
+   *
+   * The part-month itself was never the problem: `prorationFor` has always cut
+   * a leaver's last month to the days served, inclusive of the last day worked.
+   * What nothing did was SAY that the annual leave they never took is a debt
+   * the clinic still owes them. A leaver simply stopped appearing, the month
+   * footed correctly without them, and the payout was remembered or it was not.
+   *
+   * So this names them on the run, with the whole leave ledger — entitled,
+   * carried in, adjusted, taken, left — and BLOCKS until somebody says what
+   * happened to it. The days are arithmetic from the ledger and are certain.
+   * WHAT THEY ARE WORTH IS NOT COMPUTED: how s.60E(3) values untaken leave on a
+   * resignation, and whether days carried forward by clinic policy are valued
+   * the same way as the Act's own entitlement, are questions the product does
+   * not get to guess at. The breakdown is printed so whoever answers them can
+   * apply the answer.
+   *
+   * Overridable, because the override IS the record: a clinic that has paid the
+   * leave, or owes none, says so by name and the month closes.
+   */
+  LEAVER_UNTAKEN_LEAVE: {
+    code: 'LEAVER_UNTAKEN_LEAVE',
+    severity: 'BLOCKING',
+    overridable: true,
+    cause: (c) =>
+      `${c.name} left on ${c.lastDay} with ${c.remaining} ${Number(c.remaining) === 1 ? 'day' : 'days'} of annual leave ` +
+      `untaken: ${c.entitled} entitled${Number(c.carriedIn) > 0 ? `, ${c.carriedIn} carried in` : ''}` +
+      `${Number(c.adjustment) !== 0 ? `, ${c.adjustment} adjusted` : ''}, ${c.taken} taken.`,
+    consequence:
+      'Their last month is already cut to the days they served, and that part is right. The untaken leave is a separate ' +
+      'amount the clinic still owes and Kuwick does not work it out — so a month closed now is short by whatever those ' +
+      'days are worth, and the payslip looks complete.',
+    remediation:
+      'Work out what the untaken days are worth, add it as a payroll input on this run so it appears on the payslip with ' +
+      'a reason, then override this with what was paid. Override with the reason if there is genuinely nothing owed.',
+    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
+  },
   UNAPPROVED_OVERTIME: {
     code: 'UNAPPROVED_OVERTIME',
     severity: 'WARNING',

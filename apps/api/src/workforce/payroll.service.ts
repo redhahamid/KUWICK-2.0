@@ -55,7 +55,7 @@ import {
   materialiseUnpaidLeave,
   planMaterialisation,
 } from './payroll-materialisation';
-import { leaveDaysInYear } from './leave-balance';
+import { computeLeaveBalance, leaveDaysInYear, proRateEntitlement } from './leave-balance';
 import { describeProration, proratedBasicCents, prorationFor } from './proration';
 import { classifyDay, describePricedDay, priceOvertime } from './overtime-pricing';
 import { clinicRatesOf, multipliersOf, resolvePayrollPolicy } from './payroll-policy-resolution';
@@ -1215,6 +1215,75 @@ export class PayrollService {
           // INFO, not a blocker. A part-month is a normal event; what is not
           // acceptable is it happening invisibly.
           raise('PART_MONTH', employee, { note: prorationNote });
+        }
+
+        /*
+         * SOMEBODY LEFT, AND THEIR UNTAKEN LEAVE IS STILL OWED.
+         *
+         * The part-month above was never the gap: `prorationFor` has always cut
+         * a leaver's last month to the days served. The gap was that nothing
+         * SAID the annual leave they never took is a debt the clinic still
+         * carries — the leaver stopped appearing, the month footed without
+         * them, and the payout was remembered or it was not.
+         *
+         * Only for somebody whose last day falls inside this period, so it
+         * fires once per leaver and never on an ordinary month. The days come
+         * from the same ledger the Leave screen shows, so the two cannot
+         * disagree. WHAT THEY ARE WORTH IS NOT COMPUTED HERE — see the
+         * exception's own note.
+         */
+        if (proration.leftOn) {
+          const year = period.getUTCFullYear();
+          const [annualPolicy, storedBalance, yearRequests] = await Promise.all([
+            tx.employeeProfile
+              .findUnique({
+                where: { staffId: employee.staffId },
+                select: { leavePolicy: { select: { proRateOnJoin: true, entitlements: { where: { leaveType: 'ANNUAL' } } } } },
+              })
+              .then((row) => row?.leavePolicy ?? null),
+            tx.leaveBalance.findFirst({ where: { staffId: employee.staffId, leaveType: 'ANNUAL', benefitYear: year } }),
+            tx.leaveRequest.findMany({
+              where: {
+                staffId: employee.staffId,
+                leaveType: 'ANNUAL',
+                status: 'APPROVED',
+                startDate: { lt: new Date(Date.UTC(year + 1, 0, 1)) },
+                endDate: { gte: new Date(Date.UTC(year, 0, 1)) },
+              },
+              select: { startDate: true, endDate: true, status: true },
+            }),
+          ]);
+          const fullYear = Number(annualPolicy?.entitlements[0]?.daysPerYear ?? 0);
+          const entitledDays =
+            storedBalance !== null
+              ? Number(storedBalance.entitledDays)
+              : annualPolicy?.proRateOnJoin
+                ? proRateEntitlement(fullYear, year, employee.startDate, employee.endDate)
+                : fullYear;
+          const balance = computeLeaveBalance({
+            entitledDays,
+            carriedInDays: Number(storedBalance?.carriedInDays ?? 0),
+            adjustmentDays: Number(storedBalance?.adjustmentDays ?? 0),
+            year,
+            requests: yearRequests.map((row) => ({
+              startDate: row.startDate,
+              endDate: row.endDate,
+              status: row.status as 'PENDING' | 'APPROVED' | 'REJECTED',
+            })),
+          });
+          // Nothing left is nothing owed, and a clinic with no leave policy at
+          // all is a different piece of HR work that already has its own row.
+          if (balance.remaining > 0) {
+            raise('LEAVER_UNTAKEN_LEAVE', employee, {
+              name: employee.staff.fullName,
+              lastDay: proration.leftOn.toISOString().slice(0, 10),
+              entitled: balance.entitled,
+              carriedIn: balance.carriedIn,
+              adjustment: balance.adjustment,
+              taken: balance.taken,
+              remaining: balance.remaining,
+            });
+          }
         }
 
         // AGE DRIVES THE SCHEME, not just the rate: at 60 the employee's EPF
