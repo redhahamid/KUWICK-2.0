@@ -441,3 +441,34 @@ than at seed time, or to have the seeds refresh their date-bearing rows instead
 of skipping them. It is test-world plumbing and has never once been a product
 defect — but it costs a gate run and a proof every time, and the shifting
 failure set means the proof cannot be skipped.
+
+## `[D]` A stale API can make the proof itself worthless
+
+Found on 16 September 2026, while proving the s.60E(3) failures.
+
+`npm run dev:api` runs `nest start --watch`, which spawns `node dist/main` as a
+CHILD. Killing the watcher by pattern — `pkill -f "nest start --watch"` — kills
+the parent and **leaves the child holding port 3000**. The next `dev:api` then
+compiles cleanly, reports "Nest application successfully started", and fails to
+bind with `EADDRINUSE` a few lines later. The port answers 200 throughout,
+because the OLD process is still answering it.
+
+**Why that matters here and not only as an annoyance.** The proof this document
+recommends — check out the prior commit, restart both servers, re-run — is
+worthless for an API-side change if the restart silently did not take. Both arms
+then exercise the same stale API, the failing sets match for that reason, and
+the match proves nothing. Web-side changes are unaffected: vite is a different
+process and does serve the new code.
+
+`[A]` Two earlier proofs in this series were run without checking for this, so
+their API arm cannot be relied on. Neither conclusion is known to be wrong —
+both sets were re-proved cleanly afterwards — but the method was not sound.
+
+**What to do instead.** After starting the servers, before running the gate:
+
+```
+grep -c EADDRINUSE <the api log>   # must be 0
+```
+
+Zero, plus "successfully started", means this API is the one being tested. And
+kill the CHILDREN by pid, not the wrapper by pattern.
