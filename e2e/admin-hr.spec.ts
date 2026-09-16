@@ -1,11 +1,13 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from "@playwright/test";
 import {
   ADMIN_ACCOUNTS,
   collectAdminConsoleErrors,
+  currentPayrollPeriod,
   gotoAdmin,
   loginAdmin,
+  seededPayrollPeriod,
   statValue,
-} from './support/admin';
+} from "./support/admin";
 
 /**
  * SCENARIO 6 — an employee, their hours, and a payroll run.
@@ -17,19 +19,27 @@ import {
  * numbers would be worse than one that refuses, because somebody would file
  * them. So the refusal is tested as a feature.
  */
-test.describe('HR', () => {
-  test('the landing page says who is here and what is blocked on a manager', async ({ page }) => {
+test.describe("HR", () => {
+  test("the landing page says who is here and what is blocked on a manager", async ({
+    page,
+  }) => {
     const errors = collectAdminConsoleErrors(page);
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
-    await gotoAdmin(page, '/admin/hr/today');
+    await gotoAdmin(page, "/admin/hr/today");
 
-    await expect(page.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Today", exact: true }),
+    ).toBeVisible();
 
     // Somebody is actually on the floor, and the roster is read from the
     // canonical provider roster rather than a second HR-only schedule.
-    await expect(statValue(page, 'ON DUTY NOW')).not.toHaveText('0');
-    await expect(page.getByText(/Read from the provider roster/i)).toBeVisible();
-    await expect(page.getByText(/changing a shift happens there, not here/i)).toBeVisible();
+    await expect(statValue(page, "ON DUTY NOW")).not.toHaveText("0");
+    await expect(
+      page.getByText(/Read from the provider roster/i),
+    ).toBeVisible();
+    await expect(
+      page.getByText(/changing a shift happens there, not here/i),
+    ).toBeVisible();
 
     /*
      * WHAT NEEDS ATTENTION IS NAMED, not counted.
@@ -41,28 +51,32 @@ test.describe('HR', () => {
      * pinned here is the guarantee (every outstanding item is named and opens
      * the work), not a fixed set of labels.
      */
-    const attention = page.locator('.kw-panel', { hasText: 'Needs attention' });
+    const attention = page.locator(".kw-panel", { hasText: "Needs attention" });
     await expect(attention).toBeVisible();
-    const rows = attention.locator('.kw-panelRow');
+    const rows = attention.locator(".kw-panelRow");
     const count = await rows.count();
     if (count === 0) {
       await expect(attention).toContainText(/Nothing is waiting on you/i);
     } else {
       for (let index = 0; index < count; index += 1) {
         // A row that names work and goes nowhere is the failure this replaced.
-        await expect(rows.nth(index)).toHaveAttribute('href', /\/admin\/hr\//);
+        await expect(rows.nth(index)).toHaveAttribute("href", /\/admin\/hr\//);
       }
     }
 
     expect(errors).toEqual([]);
   });
 
-  test('account, employment and clinical credential stay three separate facts', async ({ page }) => {
+  test("account, employment and clinical credential stay three separate facts", async ({
+    page,
+  }) => {
     const errors = collectAdminConsoleErrors(page);
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
-    await gotoAdmin(page, '/admin/hr/employees');
+    await gotoAdmin(page, "/admin/hr/employees");
 
-    await expect(page.getByRole('heading', { name: 'Employees', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Employees", exact: true }),
+    ).toBeVisible();
 
     /*
      * THE DISTINCTION IS SHOWN, NOT EXPLAINED.
@@ -77,24 +91,34 @@ test.describe('HR', () => {
      * is an employee and not a clinician. Collapsing those is how a clinic ends
      * up letting the wrong person sign a prescription.
      */
-    await expect(page.getByRole('row', { name: /Dr Aisyah Rahman/ })).toContainText(/may sign/);
-    await expect(page.getByRole('row', { name: /Hafiz Osman/ })).toContainText(/Not a clinician/);
+    await expect(
+      page.getByRole("row", { name: /Dr Aisyah Rahman/ }),
+    ).toContainText(/may sign/);
+    await expect(page.getByRole("row", { name: /Hafiz Osman/ })).toContainText(
+      /Not a clinician/,
+    );
 
     expect(errors).toEqual([]);
   });
 
-  test('unapproved overtime is shown separately and is not paid', async ({ page }) => {
+  test("unapproved overtime is shown separately and is not paid", async ({
+    page,
+  }) => {
     const errors = collectAdminConsoleErrors(page);
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
-    await gotoAdmin(page, '/admin/hr/attendance');
+    await gotoAdmin(page, "/admin/hr/attendance");
 
-    await expect(page.getByRole('heading', { name: 'Attendance', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Attendance", exact: true }),
+    ).toBeVisible();
     // The GUARANTEE, not one wording of it. The subtitle was shortened when
     // the copy was cut back — "shown separately and is not paid" became "is not
     // paid" — and a test that pins the sentence rather than the promise breaks
     // on every edit while proving nothing extra. What must stay true is that
     // unapproved overtime is named as unpaid AND counted in its own column.
-    await expect(page.getByText(/Overtime nobody has approved is not paid/i)).toBeVisible();
+    await expect(
+      page.getByText(/Overtime nobody has approved is not paid/i),
+    ).toBeVisible();
 
     /*
      * TWO COLUMNS, DELIBERATELY — and they are the sheet's now, not the
@@ -116,40 +140,76 @@ test.describe('HR', () => {
      *     overtime in two columns, which is the guarantee itself.
      */
     await expect(page.getByText(/pending approval ·/i)).toBeVisible();
-    await expect(page.getByRole('columnheader', { name: 'OT status' })).toBeVisible();
+    await expect(
+      page.getByRole("columnheader", { name: "OT status" }),
+    ).toBeVisible();
 
-    await page.getByRole('tab', { name: 'Monthly summary' }).click();
-    await expect(page.getByRole('columnheader', { name: 'OT approved' })).toBeVisible();
-    await expect(page.getByRole('columnheader', { name: 'OT pending' })).toBeVisible();
+    await page.getByRole("tab", { name: "Monthly summary" }).click();
+    await expect(
+      page.getByRole("columnheader", { name: "OT approved" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("columnheader", { name: "OT pending" }),
+    ).toBeVisible();
 
     expect(errors).toEqual([]);
   });
 
-  test('payroll is honest in both directions: computed where it can be, blocked where it cannot', async ({ page }) => {
+  test("the seeded month reads as what it is, and the month nobody started says so", async ({
+    page,
+  }) => {
     const errors = collectAdminConsoleErrors(page);
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
+
     /*
-     * THE PERIOD IS EXPLICIT NOW. `/admin/hr/payroll` opens on the CURRENT
-     * month — which for a clinic that has not started it is an honest
-     * not-started screen, asserted separately below. The seeded month this
-     * test is about is August 2026, and a test that relied on "today happens
-     * to be the seeded month" was a test with a shelf life.
+     * THE PERIOD COMES FROM THE SEED'S OWN ARITHMETIC, not from a month
+     * somebody typed in.
+     *
+     * This spec used to open `?period=2026-08` with a comment explaining that
+     * hardcoding it removed a shelf life. It did the opposite. `seed-hr-uat.ts`
+     * runs `[-3, -2, -1]` RELATIVE TO TODAY, so the month it pays moves every
+     * time the calendar does; pinning the spec to August only moved the shelf
+     * life from the seed to the assertion, and on 1 September 2026 the spec
+     * began failing against a freshly seeded world while still passing against
+     * a stale database — the worst of both, because the red only appears once
+     * somebody re-seeds and then looks like their own change broke it.
+     *
+     * `seededPayrollPeriod()` already existed for exactly this, and nothing
+     * used it.
      */
-    await gotoAdmin(page, '/admin/hr/payroll?period=2026-08');
+    const seeded = seededPayrollPeriod();
+    await gotoAdmin(page, `/admin/hr/payroll?period=${seeded}`);
 
-    await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Payroll", exact: true }),
+    ).toBeVisible();
     // The month IS the landing screen — no dashboard between an owner and it.
-    await expect(page.locator('.hr-stats')).toBeVisible();
-    await expect(page.locator('.kw-payrollGrid')).toBeVisible();
+    await expect(page.locator(".hr-stats")).toBeVisible();
+    await expect(page.locator(".kw-payrollGrid")).toBeVisible();
 
-    // The month in progress reads as a status, not a promise: Calculated. An
-    // approved run on unchecked rates would read Provisional here instead of a
-    // plain green Approved — that substitution is the row-level admission.
-    //
-    // A chip rather than an antd tag, and sentence case rather than the enum:
-    // HR speaks one status vocabulary now (see components/Chip.tsx), and a
-    // screen that prints CALCULATED is talking to the database.
-    await expect(page.locator('.hr-chip', { hasText: 'Calculated' }).first()).toBeVisible();
+    /*
+     * THE STATUS IS THE ONE THE SEED ACTUALLY LEFT BEHIND: Paid.
+     *
+     * The seed does not stop at calculated. It drives every one of its three
+     * months create → calculate → approve → prepare the payment → record it
+     * paid, and it REFUSES to continue if a month carries a blocking exception
+     * (`seed-hr-uat.ts`: "the seed must complete the record instead"). So a
+     * seeded month is paid and clean by construction, and a spec asserting a
+     * `Calculated` chip here was asserting a state this world cannot reach.
+     *
+     * A chip rather than an antd tag, and sentence case rather than the enum:
+     * HR speaks one status vocabulary now (see components/Chip.tsx), and a
+     * screen that prints the status is talking to the database.
+     */
+    await expect(
+      page.locator(".hr-chip", { hasText: "Paid" }).first(),
+    ).toBeVisible();
+    // Every stage behind it is done, which is what paid MEANS on this screen.
+    for (const stage of ["Prepare", "Review", "Approve", "Pay"]) {
+      await expect(
+        page.locator(".hr-step", { hasText: stage }).first(),
+      ).toBeVisible();
+    }
 
     /*
      * THE ONE SAFETY INDICATOR — honest in BOTH directions. This spec used to
@@ -164,57 +224,71 @@ test.describe('HR', () => {
      * overstates is the same defect as one that understates: the reader who
      * catches it wrong once stops believing the rest of it.
      */
-    await expect(page.getByText(/Payroll statutory setup is not yet production-ready/i)).toHaveCount(0);
-    await expect(page.getByText(/must not be used to pay staff or file a return/i)).toHaveCount(0);
+    await expect(
+      page.getByText(/Payroll statutory setup is not yet production-ready/i),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText(/must not be used to pay staff or file a return/i),
+    ).toHaveCount(0);
 
     /*
-     * THE MONTH IS ALREADY OPEN. `/admin/hr/payroll` used to be a landing
-     * dashboard whose recent-runs table carried a link to the month; the
-     * register is now the landing itself, so the way to Review is the stage
-     * bar rather than a link that has to be found by the shape of its id.
-     */
-    // The stage's accessible name carries its hint too ("Review · Needs
-    // attention"), so it is matched by the stage rather than by exact text.
-    await page.locator('.hr-step', { hasText: 'Review' }).first().click();
-    await expect(page.getByText(/blocking exception\(s\) must be resolved before this run can be approved/i)).toBeVisible();
-
-    // The person who cannot be paid is NAMED, with the consequence and the
-    // remedy in full sentences.
-    await expect(page.getByText(/Wan Azman — Salary setup is incomplete/i)).toBeVisible();
-    await expect(page.getByText(/left out of the totals entirely rather than paid a figure nobody chose/i)).toBeVisible();
-
-    // PCB's remedy leads with the truthful path: complete the tax profile and
-    // the figure is CALCULATED from HASiL's specification. The old copy said
-    // "Kuwick does not work out monthly tax for you", which stopped being true
-    // when the engine shipped — and stayed on this screen for a while after.
-    await expect(page.getByText(/calculated from HASiL/i).first()).toBeVisible();
-
-    /*
-     * The month's own totals are real computed figures beside the blockers —
-     * net pay and employer cost, not zeroes behind an honest-looking banner.
+     * NOTHING BLOCKED MEANS NOTHING BLOCKED, and the rows still admit which
+     * ones a human should look at.
      *
-     * The labels are the ones the month header uses, because Review, Approve
-     * and the header now read the SAME five server totals; they used to be
-     * "TAKE-HOME PAY" and "TOTAL COST TO THE CLINIC" here and something else
-     * two screens away.
+     * This is what replaced the old half of this spec. It used to open the
+     * Review stage and assert a named blocked employee ("Wan Azman — Salary
+     * setup is incomplete"). That employee now has a salary and the seed
+     * cannot leave a blocker behind at all, so the assertion described a world
+     * the seed no longer builds. The virtue it was defending survives in a
+     * form this world can actually prove: a run that says it is clean says so
+     * without also flattening the rows that need a second look into "Ready".
      */
-    const summary = page.locator('.kw-summaryRows');
-    await expect(summary.getByText('Net pay', { exact: true })).toBeVisible();
-    await expect(summary.getByText('Cost to the clinic', { exact: true })).toBeVisible();
-    // And the figure beside net pay is the month's, not a zero.
-    await expect(summary).toContainText(/RM[\d,]+\.\d\d/);
+    await expect(page.getByText(/Nothing blocked/i).first()).toBeVisible();
+    await expect(
+      page.locator(".hr-chip", { hasText: "Check" }).first(),
+    ).toBeVisible();
+
+    /*
+     * The month's own totals are real computed figures — net pay and employer
+     * cost, not zeroes behind an honest-looking banner.
+     */
+    await expect(page.locator(".hr-stats")).toContainText(/RM[\d,]+\.\d\d/);
+
+    /*
+     * AND THE MONTH NOBODY STARTED SAYS SO, rather than inventing figures for
+     * it. The old spec's own comment promised this was "asserted separately
+     * below" and it never was.
+     */
+    const current = currentPayrollPeriod();
+    await gotoAdmin(page, `/admin/hr/payroll?period=${current}`);
+    await expect(page.getByText(/has not been started/i)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /Start .* payroll/i }),
+    ).toBeVisible();
+    // No run means no status chip to read, and no totals to misread.
+    await expect(page.locator(".hr-chip", { hasText: "Paid" })).toHaveCount(0);
 
     expect(errors).toEqual([]);
   });
 
-  test('a paid incentive is never recalculated with today rules', async ({ page }) => {
+  test("a paid incentive is never recalculated with today rules", async ({
+    page,
+  }) => {
     const errors = collectAdminConsoleErrors(page);
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
-    await gotoAdmin(page, '/admin/hr/incentives');
+    await gotoAdmin(page, "/admin/hr/incentives");
 
-    await expect(page.getByRole('heading', { name: 'Doctor Incentives' })).toBeVisible();
-    await expect(page.getByText(/versioned so a paid incentive is never recalculated with today's rules/i)).toBeVisible();
-    await expect(page.getByRole('row', { name: /APPROVED/ }).first()).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Doctor Incentives" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        /versioned so a paid incentive is never recalculated with today's rules/i,
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("row", { name: /APPROVED/ }).first(),
+    ).toBeVisible();
 
     expect(errors).toEqual([]);
   });
@@ -238,22 +312,26 @@ test.describe('HR', () => {
  * browser can say how far apart two boxes actually are, and the first fix
  * passed every test it had while being wrong on the screen it was used on.
  */
-test.describe('a refused rule set says why, beside the box that is wrong', () => {
+test.describe("a refused rule set says why, beside the box that is wrong", () => {
   const PHONE = { width: 390, height: 844 };
 
-  test('puts the reason directly under the divisor on a phone-width screen', async ({ page }) => {
+  test("puts the reason directly under the divisor on a phone-width screen", async ({
+    page,
+  }) => {
     await page.setViewportSize(PHONE);
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
-    await gotoAdmin(page, '/admin/hr/settings/payroll');
+    await gotoAdmin(page, "/admin/hr/settings/payroll");
 
-    await page.getByRole('button', { name: 'Add rule set' }).click();
-    await page.getByLabel('Name').fill('Phone width check');
-    const divisor = page.locator('#orp-ot-days');
-    await divisor.fill('30');
-    await page.getByRole('button', { name: 'Add rule set' }).last().click();
+    await page.getByRole("button", { name: "Add rule set" }).click();
+    await page.getByLabel("Name").fill("Phone width check");
+    const divisor = page.locator("#orp-ot-days");
+    await divisor.fill("30");
+    await page.getByRole("button", { name: "Add rule set" }).last().click();
 
     // Section 60I(1A) sets 26. Above it every hour of overtime is worth less.
-    const reason = page.getByText(/makes a day worth less than section 60I\(1A\)/i);
+    const reason = page.getByText(
+      /makes a day worth less than section 60I\(1A\)/i,
+    );
     await expect(reason).toBeVisible();
 
     const box = await divisor.boundingBox();
@@ -281,68 +359,80 @@ test.describe('a refused rule set says why, beside the box that is wrong', () =>
    * does it by accident: the section, the minimum and the word BELOW before
    * Save, a tick, a reason, and a mark that outlives the drawer.
    */
-  test('warns about a multiplier below the Act and asks for more than a Save', async ({ page }) => {
+  test("warns about a multiplier below the Act and asks for more than a Save", async ({
+    page,
+  }) => {
     await page.setViewportSize(PHONE);
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
-    await gotoAdmin(page, '/admin/hr/settings/payroll');
+    await gotoAdmin(page, "/admin/hr/settings/payroll");
 
-    await page.getByRole('button', { name: 'Add rule set' }).click();
-    await page.getByLabel('Name').fill(`Below the Act ${Date.now()}`);
-    await page.locator('#ruleset-ot-multiplier').fill('1.25');
+    await page.getByRole("button", { name: "Add rule set" }).click();
+    await page.getByLabel("Name").fill(`Below the Act ${Date.now()}`);
+    await page.locator("#ruleset-ot-multiplier").fill("1.25");
 
     // The warning is there BEFORE Save, naming the section and the minimum.
-    const notice = page.locator('#below-act-confirm');
+    const notice = page.locator("#below-act-confirm");
     await expect(notice).toBeVisible();
-    await expect(notice).toContainText('BELOW');
-    await expect(notice).toContainText('1.5×');
-    await expect(notice).toContainText('Section 60A(3)(a)');
+    await expect(notice).toContainText("BELOW");
+    await expect(notice).toContainText("1.5×");
+    await expect(notice).toContainText("Section 60A(3)(a)");
 
     // Pressing Save on its own is not the confirmation.
-    await page.getByRole('button', { name: 'Add rule set' }).last().click();
-    await expect(page.getByText(/Confirm that it is deliberate/i)).toBeVisible();
+    await page.getByRole("button", { name: "Add rule set" }).last().click();
+    await expect(
+      page.getByText(/Confirm that it is deliberate/i),
+    ).toBeVisible();
 
     // Ticking without a reason is not either.
-    await notice.getByRole('checkbox').check();
-    await page.getByRole('button', { name: 'Add rule set' }).last().click();
-    await expect(page.getByText(/Say why this rule set pays below the Act/i)).toBeVisible();
+    await notice.getByRole("checkbox").check();
+    await page.getByRole("button", { name: "Add rule set" }).last().click();
+    await expect(
+      page.getByText(/Say why this rule set pays below the Act/i),
+    ).toBeVisible();
   });
 
-  test('stores the choice once it is made, and marks the row for good', async ({ page }) => {
+  test("stores the choice once it is made, and marks the row for good", async ({
+    page,
+  }) => {
     await page.setViewportSize(PHONE);
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
-    await gotoAdmin(page, '/admin/hr/settings/payroll');
+    await gotoAdmin(page, "/admin/hr/settings/payroll");
 
     const name = `Paid below ${Date.now()}`;
-    await page.getByRole('button', { name: 'Add rule set' }).click();
-    await page.getByLabel('Name').fill(name);
-    await page.locator('#ruleset-ot-multiplier').fill('1.25');
-    await page.locator('#below-act-confirm').getByRole('checkbox').check();
-    await page.locator('#below-act-why').fill('Agreed in the employment contracts');
-    await page.getByRole('button', { name: 'Add rule set' }).last().click();
+    await page.getByRole("button", { name: "Add rule set" }).click();
+    await page.getByLabel("Name").fill(name);
+    await page.locator("#ruleset-ot-multiplier").fill("1.25");
+    await page.locator("#below-act-confirm").getByRole("checkbox").check();
+    await page
+      .locator("#below-act-why")
+      .fill("Agreed in the employment contracts");
+    await page.getByRole("button", { name: "Add rule set" }).last().click();
 
     // The permanent mark: the chip is on the row, not only in the drawer that
     // has since closed, so whoever opens this screen next sees the choice.
-    const row = page.getByRole('row').filter({ hasText: name });
-    await expect(row).toContainText('Below the Act');
+    const row = page.getByRole("row").filter({ hasText: name });
+    await expect(row).toContainText("Below the Act");
   });
 
-  test('accepts a multiplier above the Act, because that pays more', async ({ page }) => {
+  test("accepts a multiplier above the Act, because that pays more", async ({
+    page,
+  }) => {
     await page.setViewportSize(PHONE);
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
-    await gotoAdmin(page, '/admin/hr/settings/payroll');
+    await gotoAdmin(page, "/admin/hr/settings/payroll");
 
-    await page.getByRole('button', { name: 'Add rule set' }).click();
+    await page.getByRole("button", { name: "Add rule set" }).click();
     const name = `Overtime at two ${Date.now()}`;
-    await page.getByLabel('Name').fill(name);
-    await page.locator('#ruleset-ot-multiplier').fill('2');
-    await page.getByRole('button', { name: 'Add rule set' }).last().click();
+    await page.getByLabel("Name").fill(name);
+    await page.locator("#ruleset-ot-multiplier").fill("2");
+    await page.getByRole("button", { name: "Add rule set" }).last().click();
 
     // The rule set list says whose multipliers are in force, so nobody reads
     // the Act's figure over a clinic's own. Scoped to this test's own row:
     // every run adds one, and a page-wide match would pass on somebody else's.
-    const row = page.getByRole('row').filter({ hasText: name });
-    await expect(row).toContainText('Clinic multipliers: 2×');
+    const row = page.getByRole("row").filter({ hasText: name });
+    await expect(row).toContainText("Clinic multipliers: 2×");
     // Above the Act carries no mark — there is nothing to warn about.
-    await expect(row).not.toContainText('Below the Act');
+    await expect(row).not.toContainText("Below the Act");
   });
 });
