@@ -188,3 +188,99 @@ will delete it**, or replace it with his real January–June.
 
 The four employees, their clinic and the July run are real seed data and are
 meant to stay.
+
+---
+
+# CORRECTED — the month was wrong, and the history is now real
+
+`[O]` Two corrections from the account holder: **the four payslips are AUGUST
+2026, not July** (the clinic pays BOD fee, locum and overtime a month in
+arrears, so "BOD FEE JULY" is July's work paid in the August wages), and
+**BANDING A and C had genuinely opted out of SKBBK**, so his payslips were right
+about them. He then supplied BANDING C's real January–July 2026.
+
+The seed was moved to August and C's invented history replaced. Everything below
+supersedes the July figures above.
+
+## `[D]` August 2026, against his payslips
+
+| | His August | Kuwick | Difference |
+|---|---|---|---|
+| **A** gross | 2,391.58 | 2,391.58 | — |
+| A EPF employee / employer | 205.00 / 242.00 | 205.00 / 242.00 | — |
+| A SOCSO employee | 10.75 | 11.75 | **+1.00** |
+| A EIS | 4.30 | 4.70 | **+0.40** |
+| A SKBBK | none | none | — |
+| A net | 2,171.53 | 2,170.13 | **−1.40** |
+| **B** gross | 2,200.00 | 2,200.00 | — |
+| B EPF employee / employer | 231.00 / 273.00 | 231.00 / 273.00 | — |
+| B SOCSO employee | 10.25 | 10.75 | **+0.50** |
+| B EIS | 4.10 | 4.30 | **+0.20** |
+| B SKBBK | 15.35 | 16.15 | **+0.80** |
+| B net | 1,939.30 | 1,937.80 | **−1.50** |
+| **C** gross | 22,137.69 | 22,137.69 | — |
+| C EPF employee / employer | 1,078.00 / 1,176.00 | 1,078.00 / 1,176.00 | — |
+| C SOCSO employee | 29.75 | 29.75 | — |
+| C EIS | 11.90 | 11.90 | — |
+| C SKBBK | none | none | — |
+| **C PCB** | **4,005.25** | **3,930.20** | **−75.05** |
+| C net | 17,012.79 | 17,087.84 | +75.05 |
+
+`[D]` **BANDING D is not comparable.** Only C's history was replaced; A, B and D
+still carry the six invented months. A and B pay no PCB either way so their rows
+stand, but D's PCB of 1,232.20 means nothing — ignore it.
+
+## `[D]` The June SOCSO of RM74.40 is not an error
+
+`[O]` "SOCSO Jun ialah 74.40, bukan 29.75 seperti bulan lain. Saya tidak tahu
+kenapa."
+
+`[D]` **RM29.75 + RM44.65 = RM74.40** — exactly the First Category *employee
+total* from the PERKESO table he supplied: invalidity plus non-employment
+injury. SKBBK came into force on **1 June 2026**. So June is the scheme's first
+month, C was auto-enrolled, the payroll printed the two employee columns as one
+combined figure, and C then filed the opt-out — which is why July and August
+show RM29.75 alone.
+
+`[A]` Nothing to correct. And it is evidence for his own point: **his old
+payroll auto-enrolled, which is the behaviour Kuwick lacks.** The one thing
+worth checking is whether June's RM44.65 was actually remitted to PERKESO, since
+C later opted out.
+
+## `[D]` The remaining RM75.05 on C, and what it is not
+
+Kuwick prints its whole MTD working, so the figure is auditable:
+
+```
+P (chargeable income for the year)  223,386.47
+M / rate / B                        100,000 · 25% · 9,400
+n (months after August)             4
+relief                              9,000 individual
+EPF relief                          4,000, fully consumed by January-July
+year tax / year MTD                 40,746.61 / 40,246.70
+```
+
+`[D]` Ruled out as the cause:
+
+* **The incentive treatment.** Procedure incentives as additional remuneration
+  versus normal monthly pay moves August by **5 sen**.
+* **EPF relief.** Capped at RM4,000 for the year and entirely used by January–
+  July (7 × 1,078 = 7,546), which is what the specification requires.
+* **The other contributions.** EPF, SOCSO and EIS are exact on all four.
+
+`[A]` **What I cannot determine is his payroll's own working.** The MTD method
+needs an estimate of the REMAINING months' remuneration, and LHDN's
+specification leaves that estimate to the employer. Kuwick projects September to
+December at August's normal remuneration (RM20,137.69 a month). A payroll that
+projects differently — at the year's average, at basic only, at full gross —
+lands on a different figure, and more than one of those is defensible.
+
+**To settle it I need one of:** the PCB working printed on his August payslip,
+or the rule his payroll uses to project the remaining months. Until then the
+honest statement is that Kuwick is within **RM75.05, or 1.9%**, of his figure on
+a month where every other line agrees exactly.
+
+## `[A]` Still fabricated in his UAT tenant
+
+The six invented months for **A, B and D** remain. C's are now real. Say the
+word and I will clear A, B and D, or replace them with their real history.
