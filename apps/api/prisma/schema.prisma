@@ -7203,12 +7203,20 @@ model StaffBenefitUsage {
 /// PERKESO classification and is not the same question as EPF membership, tax
 /// residence, or a nationality typed into a text box — reading one off another
 /// is how a local ends up charged for a scheme they declined.
+/// WHO IS IN THE NON-EMPLOYMENT INJURY SCHEME (SKBBK).
+///
+/// AUTO-ENROLLED. Every employee contributes unless they opt out through
+/// PERKESO's own form, so an employee with no row here is ENROLLED, not
+/// unknown. This used to be the other way round — "voluntary for locals",
+/// nothing due until somebody explicitly opted them in — which meant a clinic
+/// that never touched the field deducted nothing from anybody.
 enum LindungParticipation {
-  /// A foreign worker. Participation is mandatory.
+  /// A foreign worker. Participation is mandatory and cannot be declined.
   MANDATORY_FOREIGN_WORKER
-  /// A local employee who has opted in.
-  VOLUNTARY_OPTED_IN
-  /// A local employee who has not opted in. Nothing is due.
+  /// In the scheme. The default: enrolment is automatic, not chosen.
+  /// (Stored as VOLUNTARY_OPTED_IN before the default was corrected.)
+  ENROLLED
+  /// Opted out through PERKESO. Nothing is due, and somebody decided that.
   NOT_PARTICIPATING
 }
 
@@ -8216,6 +8224,29 @@ enum OvertimeMode {
 /// NO BASIS IS APPLIED BY ANY CALCULATION IN THIS STAGE. Which basis is lawful
 /// is Employment Act territory (register EA-03) and is blocked. The structure
 /// exists so that Stage 3 is a configuration change, not a schema change.
+/// HOW THE REMAINING MONTHS OF THE YEAR ARE ESTIMATED FOR MONTHLY TAX.
+///
+/// The MTD method is cumulative and forward-looking: to work out this month's
+/// deduction it has to project what the employee will earn for the REST of the
+/// year (the specification's Y2). LHDN calls it "the estimated remuneration as
+/// Y1" and leaves the estimate to the employer, so this is genuinely a clinic's
+/// choice and not a figure the law settles.
+///
+/// It matters most where pay swings month to month. A doctor whose incentives
+/// and locum vary can see a month's tax move by hundreds of ringgit depending
+/// on which of these the payroll assumes.
+enum PcbProjectionBasis {
+  /// This month's own normal remuneration, repeated. The specification's own
+  /// default reading, and what Kuwick has always done.
+  CURRENT_MONTH
+  /// Basic salary alone. The most conservative: it deducts least now and leaves
+  /// the most to settle at the year's end.
+  BASIC_ONLY
+  /// Basic plus the allowances that recur every month, leaving out overtime,
+  /// commission, incentives and anything else that varies.
+  CONTRACTUAL_MONTHLY
+}
+
 model PayrollPolicy {
   id              String  @id @default(uuid())
   tenantId        String  @map("tenant_id")
@@ -8228,6 +8259,11 @@ model PayrollPolicy {
   /// so this is a floor a clinic may better and never worsen. Read by the run.
   overtimeDays        Int     @default(26) @map("overtime_days")
   overtimeHoursPerDay Decimal @default(7.5) @map("overtime_hours_per_day") @db.Decimal(4, 2)
+
+  /// HOW THE REST OF THE YEAR IS ESTIMATED FOR MONTHLY TAX (the MTD method's
+  /// Y2). Defaults to what Kuwick has always done, so no clinic's figures move
+  /// because this field appeared.
+  pcbProjectionBasis PcbProjectionBasis @default(CURRENT_MONTH) @map("pcb_projection_basis")
 
   /// WHAT A LEAVER IS OWED. The only basis left of the five, and the only one
   /// the Act does not answer for us. It is NOT yet applied: the final

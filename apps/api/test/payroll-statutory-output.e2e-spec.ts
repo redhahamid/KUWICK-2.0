@@ -104,7 +104,7 @@ describe('Payroll statutory outputs (e2e)', () => {
         pcbCategory: 'CATEGORY_1',
         qualifyingChildren: 0,
         restDayOfWeek: 0,
-        lindungParticipation: 'VOLUNTARY_OPTED_IN',
+        lindungParticipation: 'ENROLLED',
         reason: 'Recorded at hire',
       })
       .expect(201);

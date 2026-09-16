@@ -42,7 +42,7 @@ const PERIOD = '2026-07';
 const START = '2024-01-01';
 
 type Tx = Prisma.TransactionClient;
-type Lindung = 'NOT_PARTICIPATING' | 'VOLUNTARY_OPTED_IN' | 'MANDATORY_FOREIGN_WORKER';
+type Lindung = 'NOT_PARTICIPATING' | 'ENROLLED' | 'MANDATORY_FOREIGN_WORKER';
 
 interface Person {
   key: string;
@@ -75,7 +75,7 @@ const PEOPLE: Person[] = [
     employeeNo: 'BANDING-B',
     position: 'Akauntan',
     basic: '2100.00',
-    lindung: 'VOLUNTARY_OPTED_IN',
+    lindung: 'ENROLLED',
     inputs: [{ code: 'ALLOWANCE', amount: '100.00', label: 'Allowance' }],
   },
   {
@@ -98,7 +98,7 @@ const PEOPLE: Person[] = [
     employeeNo: 'BANDING-D',
     position: 'Doktor residen',
     basic: '8500.00',
-    lindung: 'VOLUNTARY_OPTED_IN',
+    lindung: 'ENROLLED',
     inputs: [
       { code: 'INCENTIVE', amount: '1364.00', label: 'Procedure incentives' },
       { code: 'COMMISSION', amount: '1288.90', label: 'Commission / other incentives' },

@@ -1,0 +1,20 @@
+-- SKBBK IS AUTO-ENROLLED, NOT OPT-IN.
+--
+-- The Non-Employment Injury Security Scheme enrols every employee
+-- automatically; an employee leaves it by filing PERKESO's own opt-out form.
+-- Kuwick had the polarity inverted: it called the scheme "voluntary for local
+-- employees", treated an unrecorded participation as unknowable, and deducted
+-- nothing until somebody explicitly opted an employee IN. A clinic that never
+-- touched the field therefore under-deducted from its whole workforce, silently.
+--
+-- The account holder's own June 2026 payslips are the proof: his old payroll
+-- auto-enrolled a doctor in the scheme's first month and printed RM74.40 --
+-- RM29.75 invalidity plus RM44.65 non-employment injury, the two employee
+-- columns of one Act 4 contribution -- and the doctor opted out afterwards.
+--
+-- VOLUNTARY_OPTED_IN was accurate under the old reading and is a lie under the
+-- correct one: nobody opts in to something they are enrolled in by default. The
+-- value is renamed in place. NOT_PARTICIPATING keeps its name because it stays
+-- true -- it now means "opted out", which is the only way to be outside the
+-- scheme.
+ALTER TYPE "LindungParticipation" RENAME VALUE 'VOLUNTARY_OPTED_IN' TO 'ENROLLED';

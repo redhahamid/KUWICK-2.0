@@ -211,6 +211,7 @@ export function PayrollSettingsPage() {
   // THE ORDINARY-RATE DIVISORS. Held as strings so a half-typed field is not
   // silently read as 0 while somebody is still typing it.
   const [otDays, setOtDays] = useState('26');
+  const [pcbProjection, setPcbProjection] = useState<'CURRENT_MONTH' | 'BASIC_ONLY' | 'CONTRACTUAL_MONTHLY'>('CURRENT_MONTH');
   const [hoursDay, setHoursDay] = useState('7.5');
   // THE CLINIC'S OWN MULTIPLIERS, blank for "the Act's". Strings for the same
   // reason the divisors are: "2." mid-keystroke is not the number 2.
@@ -243,6 +244,7 @@ export function PayrollSettingsPage() {
     setRestDay('');
     setSession('');
     setOtDays('26');
+    setPcbProjection('CURRENT_MONTH');
     setHoursDay('7.5');
     setMultipliers({ 'ruleset-ot-multiplier': '', 'ruleset-restday-multiplier': '', 'ruleset-holiday-multiplier': '' });
     setBelowActOk(false);
@@ -259,6 +261,7 @@ export function PayrollSettingsPage() {
     setRestDay(row.clinicRates?.restDayShift ?? '');
     setSession(row.clinicRates?.session ?? '');
     setOtDays(String(row.overtime.days ?? 26));
+    setPcbProjection(row.pcbProjectionBasis ?? 'CURRENT_MONTH');
     setHoursDay(String(row.overtime.hoursPerDay));
     // A box left blank is on the Act's, and stays blank so the placeholder can
     // say which figure that is rather than the clinic having to remember.
@@ -387,6 +390,7 @@ export function PayrollSettingsPage() {
         // from the schema's defaults and nobody would know which they got.
         overtimeDays: otDaysNum,
         overtimeHoursPerDay: hoursNum,
+        pcbProjectionBasis: pcbProjection,
         overtimeMode: mode,
         // Null clears a raised multiplier back to the Act's. Sent on every
         // save, in both modes: a clinic-rate rule set falls back to the Act's
@@ -780,6 +784,44 @@ export function PayrollSettingsPage() {
             * clinic's multiplier rather than a figure it replaced everywhere
             * else.
             */}
+          {/*
+            * Y2 — WHAT THE REST OF THE YEAR IS ASSUMED TO PAY.
+            *
+            * The monthly tax method is cumulative AND forward-looking: this
+            * month's deduction depends on what the employee is expected to earn
+            * for the remaining months. LHDN calls it "the estimated
+            * remuneration as Y1" and leaves the estimate to the employer, so it
+            * is genuinely a clinic's choice rather than a figure the law fixes.
+            *
+            * Nothing here changes what anybody OWES for the year — that settles
+            * at assessment either way. It changes how much of their money is
+            * held back each month until then.
+            */}
+          <div>
+            <label htmlFor="ruleset-pcb-projection">How the rest of the year is estimated for monthly tax</label>
+            <Select
+              id="ruleset-pcb-projection"
+              value={pcbProjection}
+              onChange={setPcbProjection}
+              style={{ width: '100%', maxWidth: 460 }}
+              options={[
+                { value: 'CURRENT_MONTH', label: 'This month’s pay, repeated (recommended)' },
+                { value: 'BASIC_ONLY', label: 'Basic salary only' },
+                { value: 'CONTRACTUAL_MONTHLY', label: 'Basic plus allowances that recur every month' },
+              ]}
+            />
+            <div className="hr-form__help">
+              {pcbProjection === 'CURRENT_MONTH'
+                ? 'Assumes the months ahead look like this one. The method’s own default, and the closest fit where pay is steady.'
+                : pcbProjection === 'BASIC_ONLY'
+                  ? 'Assumes only basic salary from now on, so a month with overtime or incentives deducts less tax than it otherwise would. The shortfall is settled at assessment.'
+                  : 'Assumes basic plus the allowances paid every month, and ignores overtime, commission, incentives and locum. Between the other two.'}
+            </div>
+            <div className="hr-form__help">
+              This does not change what anybody owes for the year. It changes how much is held back each month until the
+              year is assessed — and on pay that swings, the difference on one payslip runs to hundreds of ringgit.
+            </div>
+          </div>
           <div>
             <label>What an extra hour is worth</label>
             <div className="hr-grid3">

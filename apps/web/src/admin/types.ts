@@ -3080,6 +3080,11 @@ export interface PayrollPolicyRow {
   legalEmployerId: string | null;
   overtime: { days: number | null; hoursPerDay: number };
   /**
+   * How the rest of the year is estimated for monthly tax — the MTD method's
+   * Y2, which LHDN leaves to the employer.
+   */
+  pcbProjectionBasis: 'CURRENT_MONTH' | 'BASIC_ONLY' | 'CONTRACTUAL_MONTHLY';
+  /**
    * The only proration basis left, and the only one the Act does not answer.
    * Recorded, not applied: the final settlement is not built.
    */

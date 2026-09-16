@@ -37,6 +37,8 @@ export interface ResolvablePolicy {
   readonly overtimeMultiplier?: MoneyLike | null;
   readonly restDayMultiplier?: MoneyLike | null;
   readonly publicHolidayMultiplier?: MoneyLike | null;
+  /** How the rest of the year is estimated for monthly tax. Absent means Y1. */
+  readonly pcbProjectionBasis?: 'CURRENT_MONTH' | 'BASIC_ONLY' | 'CONTRACTUAL_MONTHLY' | null;
 }
 
 export type PolicyResolutionHow = 'ASSIGNED' | 'CATEGORY' | 'DEFAULT' | 'NONE';
@@ -105,4 +107,15 @@ export function clinicRatesOf(policy: ResolvablePolicy | null): ClinicRates | nu
     restDayShiftCents: cents(policy.clinicRestDayShift),
     sessionCents: cents(policy.clinicSessionRate),
   };
+}
+
+/**
+ * The rule set's PCB projection, or the specification's own default.
+ *
+ * A rule set that names none — and a run with no rule set at all — projects
+ * this month's normal remuneration, which is what every run did before the
+ * setting existed. Nothing moves because a clinic has not opened the screen.
+ */
+export function pcbProjectionOf(policy: ResolvablePolicy | null): 'CURRENT_MONTH' | 'BASIC_ONLY' | 'CONTRACTUAL_MONTHLY' {
+  return policy?.pcbProjectionBasis ?? 'CURRENT_MONTH';
 }

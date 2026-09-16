@@ -110,7 +110,7 @@ describe('resolveClassificationForPayroll', () => {
       [
         row('a', '2024-01-01', '2026-03-09'),
         row('b', '2026-03-10', null, {
-          lindungParticipation: 'VOLUNTARY_OPTED_IN',
+          lindungParticipation: 'ENROLLED',
           restDayOfWeek: 5,
           disabledSpouse: true,
         }),

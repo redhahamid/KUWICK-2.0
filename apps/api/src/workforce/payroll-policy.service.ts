@@ -145,6 +145,8 @@ export class PayrollPolicyService {
           name: row.name,
           legalEmployerId: row.legalEmployerId,
           overtime: { days: row.overtimeDays, hoursPerDay: Number(row.overtimeHoursPerDay) },
+          /** How this rule set estimates the rest of the year for monthly tax. */
+          pcbProjectionBasis: row.pcbProjectionBasis,
           termination: { basis: row.terminationBasis, days: row.terminationDays },
           overtimeMode: row.overtimeMode,
           // WHAT THE HOURS ARE PRICED AT, and whether the clinic chose it. The
@@ -454,6 +456,10 @@ export class PayrollPolicyService {
         name: dto.name,
         legalEmployerId,
         overtimeDays: dto.overtimeDays ?? 26,
+        // Absent keeps what the rule set has, and a new one starts on the
+        // specification's own default. Nothing moves because a clinic has not
+        // opened the screen.
+        ...(dto.pcbProjectionBasis === undefined ? {} : { pcbProjectionBasis: dto.pcbProjectionBasis }),
         overtimeHoursPerDay: dto.overtimeHoursPerDay ?? 7.5,
         terminationBasis: dto.terminationBasis ?? 'CALENDAR_DAYS',
         terminationDays: dto.terminationDays ?? 31,

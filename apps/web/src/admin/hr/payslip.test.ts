@@ -215,7 +215,7 @@ describe('the slip checks its own arithmetic', () => {
       ...LINE,
       lindungEmployee: 16.55,
       netPay: 2896.5,
-      snapshot: { ...LINE.snapshot!, statutoryClassification: { lindungParticipation: 'VOLUNTARY_OPTED_IN' } },
+      snapshot: { ...LINE.snapshot!, statutoryClassification: { lindungParticipation: 'ENROLLED' } },
     };
     const totals = payslipTotals(line);
     expect(totals.deductions).toBe(453.5);

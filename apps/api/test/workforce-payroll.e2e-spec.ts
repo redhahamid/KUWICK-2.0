@@ -362,7 +362,7 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         .set('Authorization', bearer)
         .send({
           effectiveFrom: '2026-09-01',
-          lindungParticipation: 'VOLUNTARY_OPTED_IN',
+          lindungParticipation: 'ENROLLED',
           reason: 'Signed up during the September enrolment window',
         })
         .expect(201);
@@ -398,7 +398,7 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         .expect(200);
       const septLine = septDetail.body.lines.find((l: { staffId: string }) => l.staffId === staffId);
       expect(Number(septLine.lindungEmployee)).toBeGreaterThan(0);
-      expect(septLine.snapshot.statutoryClassification.lindungParticipation).toBe('VOLUNTARY_OPTED_IN');
+      expect(septLine.snapshot.statutoryClassification.lindungParticipation).toBe('ENROLLED');
     });
 
     it('BLOCKS the month when the standing changed part-way through it', async () => {

@@ -58,11 +58,11 @@ export const LINDUNG_PHASES_NOT_HELD =
  * one off another is how a local gets charged for a scheme they declined.
  */
 export type LindungParticipation =
-  /** A foreign worker. Participation is mandatory. */
+  /** A foreign worker. Participation is mandatory and cannot be declined. */
   | 'MANDATORY_FOREIGN_WORKER'
-  /** A local employee who has opted in. */
-  | 'VOLUNTARY_OPTED_IN'
-  /** A local employee who has not opted in. Nothing is due. */
+  /** In the scheme — which is everybody who has not opted out. */
+  | 'ENROLLED'
+  /** Opted out through PERKESO's own form. Nothing is due. */
   | 'NOT_PARTICIPATING';
 
 export interface LindungContribution {
@@ -100,18 +100,23 @@ export function lindungContribution(
     };
   }
 
-  if (!participation) {
-    return {
-      kind: 'CANNOT_DETERMINE',
-      reason:
-        'Whether this employee is in LINDUNG 24 JAM is not recorded. It is voluntary for locals and mandatory for foreign workers, and neither can be read off any other field, so their contribution cannot be worked out.',
-    };
-  }
-
-  if (participation === 'NOT_PARTICIPATING') {
+  /*
+   * NOTHING RECORDED MEANS ENROLLED, BECAUSE ENROLMENT IS AUTOMATIC.
+   *
+   * This used to return CANNOT_DETERMINE — "it is voluntary for locals, so we
+   * cannot know" — and the run then deducted nothing. That reading had the
+   * scheme backwards. SKBBK enrols every employee; leaving it takes PERKESO's
+   * own opt-out form. So silence is not an open question, it is the default
+   * answer, and the default answer is IN.
+   *
+   * The old behaviour meant a clinic that never opened the field under-deducted
+   * from its entire workforce and nothing on any screen said so.
+   */
+  const effective: LindungParticipation = participation ?? 'ENROLLED';
+  if (effective === 'NOT_PARTICIPATING') {
     return {
       kind: 'NOT_ELIGIBLE',
-      reason: 'This employee has not joined LINDUNG 24 JAM. It is voluntary for local employees.',
+      reason: 'This employee has opted out of LINDUNG 24 JAM through PERKESO. Nothing is due.',
     };
   }
 
@@ -121,7 +126,7 @@ export function lindungContribution(
       value: {
         employeeCents: 0,
         employerCents: 0,
-        participation,
+        participation: effective,
         phase: 'PHASE_1',
         atCeiling: false,
         remittedByEmployer: true,
@@ -139,7 +144,7 @@ export function lindungContribution(
         value: {
           employeeCents: c1Nei,
           employerCents: 0,
-          participation,
+          participation: effective,
           phase: 'PHASE_1',
           atCeiling,
           remittedByEmployer: true,

@@ -144,7 +144,7 @@ describe('Synthetic payroll month (e2e)', () => {
     await request(server())
       .post(`/workforce/employees/${aina}/statutory-classification`)
       .set('Authorization', bearer)
-      .send({ effectiveFrom: '2026-07-01', lindungParticipation: 'VOLUNTARY_OPTED_IN', reason: 'Opted in from July' })
+      .send({ effectiveFrom: '2026-07-01', lindungParticipation: 'ENROLLED', reason: 'Opted in from July' })
       .expect(201);
 
     // Manual inputs: Farid's incentive, Mei's bonus and payroll-deducted zakat,

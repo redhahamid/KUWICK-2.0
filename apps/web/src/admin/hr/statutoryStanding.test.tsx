@@ -47,7 +47,9 @@ describe('the statutory standing panel', () => {
     // In the reader's words, not the database's — the same labels the editor
     // form offers, so the record and the form cannot disagree about a value.
     expect(screen.getByText('Malaysian citizen')).toBeTruthy();
-    expect(screen.getByText('Not participating')).toBeTruthy();
+    // "Opted out", not "Not participating": SKBBK enrols everybody, so being
+    // outside it is a decision somebody filed rather than a state of nature.
+    expect(screen.getByText('Opted out')).toBeTruthy();
     expect(screen.getByText('Sunday')).toBeTruthy();
     expect(screen.getByText('2')).toBeTruthy();
     expect(screen.getByText(/In force since 1 Jan 2024/i)).toBeTruthy();

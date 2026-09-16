@@ -85,7 +85,7 @@ describe('Payroll reports and finance contract (e2e)', () => {
 
     amiraId = await makeEmployee('Amira Reports', '6000.00', {
       taxProfile: true,
-      lindungParticipation: 'VOLUNTARY_OPTED_IN',
+      lindungParticipation: 'ENROLLED',
     });
     hanaId = await makeEmployee('Hana Reports', '4500.00', {
       taxProfile: false,

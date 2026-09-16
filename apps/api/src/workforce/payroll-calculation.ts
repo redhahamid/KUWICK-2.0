@@ -141,6 +141,72 @@ export const DEFAULT_COMPONENT_LIABILITY: Record<string, ComponentLiability> = O
   ]),
 );
 
+/**
+ * Y2 — WHAT THE REST OF THE YEAR IS ASSUMED TO PAY.
+ *
+ * The MTD method is forward-looking as well as cumulative: to work out this
+ * month's deduction it projects the employee's income for the remaining months.
+ * LHDN's specification calls it "the estimated remuneration as Y1" and leaves
+ * the estimate to the employer, so this is one of the few genuinely open
+ * choices in Malaysian payroll rather than a figure the law settles.
+ *
+ * It matters where pay swings. Reconciling a real August 2026 payslip for a
+ * doctor on RM9,750 basic whose incentives, director's fee and locum took the
+ * month to RM22,137.69, the same month came out at RM3,930.20 under
+ * CURRENT_MONTH and RM1,852.70 under BASIC_ONLY. Same employee, same law, a
+ * difference of RM2,077 — settled either way at the year's end, but a very
+ * different amount of the employee's money held until then.
+ *
+ * CURRENT_MONTH is the default and the specification's own reading. The other
+ * two deduct less now and leave more to settle later.
+ */
+export type PcbProjectionBasisCode = 'CURRENT_MONTH' | 'BASIC_ONLY' | 'CONTRACTUAL_MONTHLY';
+
+export function projectedFutureNormalCents(
+  basis: PcbProjectionBasisCode,
+  lines: PayrollComponentLine[],
+  /** Y1 — this month's own normal remuneration, already computed. */
+  grossNormalCents: number,
+): number {
+  if (basis === 'CURRENT_MONTH') return grossNormalCents;
+
+  /*
+   * Only EARNINGS that are liable to tax count toward a projection, for the
+   * same reason they count toward Y1: a projection of something untaxed would
+   * inflate the year and over-deduct every month.
+   *
+   * Additional remuneration is excluded from BOTH of the narrower bases. A
+   * bonus is not a monthly expectation, and the method already taxes it
+   * separately in the month it falls.
+   */
+  const counted = lines.filter(
+    (line) => line.kind === 'EARNING' && line.liability.pcb && !line.liability.additionalRemuneration,
+  );
+  const sum = (rows: PayrollComponentLine[]) => rows.reduce((total, row) => total + toCents(row.amount), 0);
+
+  if (basis === 'BASIC_ONLY') return sum(counted.filter((line) => line.code === BASIC_CODE));
+
+  /*
+   * CONTRACTUAL_MONTHLY — basic plus what recurs every month, which is what an
+   * employee can actually expect. `prorated` is the flag that separates them:
+   * a component a part month cuts down is one the contract fixes monthly, and
+   * overtime, commission, incentives and locum are none of them.
+   */
+  return sum(counted.filter((line) => line.code === BASIC_CODE || isFixedMonthly(line)));
+}
+
+/** A component the contract fixes for the month rather than one that varies. */
+function isFixedMonthly(line: PayrollComponentLine): boolean {
+  return FIXED_MONTHLY_CODES.has(line.code);
+}
+
+/**
+ * The components a contract fixes monthly. Named rather than inferred: whether
+ * an allowance recurs is a fact about the clinic's contracts, and reading it
+ * off a liability flag would be a guess dressed as a rule.
+ */
+const FIXED_MONTHLY_CODES = new Set(['ALLOWANCE', 'ATTENDANCE_ALLOWANCE']);
+
 // ---------------------------------------------------------------------------
 // Bases
 // ---------------------------------------------------------------------------
@@ -530,6 +596,8 @@ export function computePayslip(
   ytd?: PcbYearToDate,
   tp1: Tp1MonthCapture | null = null,
   epfBasisSelection: EpfBasisSelection | null = null,
+  /** How the clinic estimates the remaining months for monthly tax. */
+  pcbProjectionBasis: PcbProjectionBasisCode = 'CURRENT_MONTH',
 ): PayslipResult {
   const bases = computeBases(lines);
   // THE EMPLOYER'S SELECTED EPF BASIS, where one is recorded. The assessment
@@ -549,7 +617,25 @@ export function computePayslip(
   const zakatThisMonthCents = lines
     .filter((line) => line.code === 'ZAKAT' && line.kind === 'DEDUCTION')
     .reduce((sum, line) => sum + toCents(line.amount), 0);
-  const statutory = computeStatutory(statutoryBases, context, profile, ytd, zakatThisMonthCents, tp1);
+  /*
+   * Y2 — WHAT THE REST OF THE YEAR IS ASSUMED TO PAY.
+   *
+   * Computed from the same lines the month's own bases came from, so the
+   * projection and the month can never be built from different pictures of the
+   * payslip. CURRENT_MONTH reproduces exactly what every run did before the
+   * setting existed.
+   */
+  const statutory = computeStatutory(
+    statutoryBases,
+    context,
+    profile,
+    ytd,
+    zakatThisMonthCents,
+    tp1,
+    pcbProjectionBasis === 'CURRENT_MONTH'
+      ? undefined
+      : projectedFutureNormalCents(pcbProjectionBasis, lines, statutoryBases.pcbNormalCents),
+  );
 
   /*
    * THE PAYSLIP MUST NOT IMPLY THAT GROSS IS THE EPF BASE.

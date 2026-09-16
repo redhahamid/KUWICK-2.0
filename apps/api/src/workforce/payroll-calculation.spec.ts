@@ -4,6 +4,7 @@ import {
   PayrollComponentLine,
   computeBases,
   computeOvertime,
+  projectedFutureNormalCents,
   computePayslip,
   ordinaryRates,
   unpaidLeaveDeductionCents,
@@ -174,7 +175,10 @@ describe('SOCSO and EIS — different wages, different categories', () => {
     const socso = computeSocso(222924, CTX, under60);
     expect(socso.employerCents).toBe(3935);
     expect(socso.employeeCents).toBe(1125); // invalidity alone, as the workbook has it
-    expect(socso.note).toMatch(/invalidity 11\.25/i);
+    // The note names the invalidity COLUMN and says the non-employment injury
+    // column is on its own line. It used to claim the Second Category had no
+    // employee share at all, which the SKBBK schedule contradicts.
+    expect(socso.note).toMatch(/invalidity column, 11\.25/i);
     const eis = computeEis(222924, CTX, under60);
     expect(eis.employeeCents).toBe(450);
     expect(eis.employerCents).toBe(450);
@@ -200,6 +204,96 @@ describe('SOCSO and EIS — different wages, different categories', () => {
     const result = computeEis(600000, CTX, at60);
     expect(result.employeeCents).toBe(0);
     expect(result.employerCents).toBe(0);
+  });
+});
+
+/*
+ * Y2 — WHAT THE REST OF THE YEAR IS ASSUMED TO PAY.
+ *
+ * `estimatedFutureNormalCents` has been an input to the PCB engine since it was
+ * written and nothing ever supplied it, so every clinic silently got Y1. It is
+ * a real choice: LHDN's specification calls Y2 "the estimated remuneration as
+ * Y1" and leaves the estimate to the employer.
+ *
+ * The figures below are a real doctor's August 2026: RM9,750 basic, a RM2,000
+ * procedure incentive, a RM7,155.49 director's fee, RM550 commission and
+ * RM2,682.20 locum.
+ */
+describe('how the remaining months of the year are estimated', () => {
+  const august: PayrollComponentLine[] = [
+    earning('BASIC', 9750),
+    earning('INCENTIVE', 2000),
+    earning('DIRECTOR_FEE', 7155.49),
+    earning('COMMISSION', 550),
+    earning('LOCUM_FEE', 2682.2),
+  ];
+  // Y1: everything taxable except the incentive, which is additional.
+  const y1 = 2013769;
+
+  it('repeats this month by default, which is what every run did before the setting', () => {
+    expect(projectedFutureNormalCents('CURRENT_MONTH', august, y1)).toBe(y1);
+  });
+
+  it('projects basic alone when the clinic chooses that', () => {
+    expect(projectedFutureNormalCents('BASIC_ONLY', august, y1)).toBe(975000);
+  });
+
+  it('projects basic plus what recurs, leaving out everything that varies', () => {
+    // No fixed allowance on this doctor, so it lands on basic — and the point
+    // is what it EXCLUDES: the director's fee, commission and locum are not a
+    // monthly expectation however large they happen to be this month.
+    expect(projectedFutureNormalCents('CONTRACTUAL_MONTHLY', august, y1)).toBe(975000);
+  });
+
+  it('includes a fixed allowance in the contractual basis but not in basic only', () => {
+    const withAllowance = [...august, earning('ALLOWANCE', 300)];
+    expect(projectedFutureNormalCents('BASIC_ONLY', withAllowance, y1)).toBe(975000);
+    expect(projectedFutureNormalCents('CONTRACTUAL_MONTHLY', withAllowance, y1)).toBe(1005000);
+  });
+
+  it('never projects additional remuneration, on any basis', () => {
+    // A bonus is not a monthly expectation, and the method already taxes it
+    // separately in the month it falls. Projecting it would tax it twice over.
+    const withBonus = [...august, earning('BONUS', 5000)];
+    expect(projectedFutureNormalCents('BASIC_ONLY', withBonus, y1)).toBe(975000);
+    expect(projectedFutureNormalCents('CONTRACTUAL_MONTHLY', withBonus, y1)).toBe(975000);
+  });
+
+  it('never projects a deduction', () => {
+    const withCharge = [...august, deduction('UNIFORM', 100)];
+    expect(projectedFutureNormalCents('BASIC_ONLY', withCharge, y1)).toBe(975000);
+  });
+
+  it('moves the month’s tax, which is why it is a choice and not a detail', () => {
+    // The real reconciliation: the same August at RM3,930.20 projecting this
+    // month, and RM1,852.70 projecting basic. Same employee, same law.
+    const ytd = {
+      accumulatedGrossCents: 13569802,
+      accumulatedEpfCents: 754600,
+      accumulatedMtdPaidCents: 2309545,
+      accumulatedZakatCents: 0,
+      accumulatedDeductionsCents: 0,
+    };
+    const basis = { mode: 'BASIC_ONLY' as const, includedComponentCodes: [] as string[] };
+    const augustCtx = { periodEnd: new Date('2026-08-31T00:00:00.000Z') };
+    const doctor = {
+      age: 36,
+      epfMembership: 'MALAYSIAN_CITIZEN' as const,
+      epfEmployeeRate: null,
+      epfApplicable: true,
+      socsoApplicable: true,
+      eisApplicable: true,
+      lindungParticipation: 'NOT_PARTICIPATING' as const,
+      taxResidence: 'RESIDENT' as const,
+      pcbCategory: 1 as const,
+      qualifyingChildren: 0,
+      disabledSelf: false,
+      disabledSpouse: false,
+    };
+    const now = computePayslip(august, augustCtx, doctor, ytd, null, basis, 'CURRENT_MONTH');
+    const basicOnly = computePayslip(august, augustCtx, doctor, ytd, null, basis, 'BASIC_ONLY');
+    expect(now.statutory.pcbCents).toBe(393020);
+    expect(basicOnly.statutory.pcbCents).toBe(185270);
   });
 });
 
@@ -257,7 +351,7 @@ describe('the three bases are different, which is the whole point', () => {
     const july = { periodEnd: new Date('2026-07-31T00:00:00.000Z') }; // after 1 June 2026 commencement
     const optedIn = computePayslip([earning('BASIC', 2100)], july, {
       ...under60,
-      lindungParticipation: 'VOLUNTARY_OPTED_IN',
+      lindungParticipation: 'ENROLLED',
     });
     const notParticipating = computePayslip([earning('BASIC', 2100)], july, {
       ...under60,
@@ -626,7 +720,7 @@ describe('schedule commencement boundaries — resolved on the last day INSIDE t
   it('May 2026 owes LINDUNG nothing, even for somebody opted in', () => {
     const slip = computePayslip([earning('BASIC', 6000)], MAY_2026, {
       ...taxed,
-      lindungParticipation: 'VOLUNTARY_OPTED_IN',
+      lindungParticipation: 'ENROLLED',
     });
     expect(slip.statutory.lindung.employeeCents).toBe(0);
     expect(slip.statutory.lindung.note).toMatch(/not in force/i);
@@ -642,7 +736,7 @@ describe('schedule commencement boundaries — resolved on the last day INSIDE t
   it('June 2026 — the commencement month itself — charges a participant', () => {
     const slip = computePayslip([earning('BASIC', 6000)], JUNE_2026, {
       ...taxed,
-      lindungParticipation: 'VOLUNTARY_OPTED_IN',
+      lindungParticipation: 'ENROLLED',
     });
     expect(slip.statutory.lindung.employeeCents).toBeGreaterThan(0);
   });

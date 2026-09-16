@@ -58,7 +58,7 @@ import {
 import { computeLeaveBalance, leaveDaysInYear, proRateEntitlement } from './leave-balance';
 import { describeProration, proratedBasicCents, prorationFor } from './proration';
 import { classifyDay, describePricedDay, priceOvertime } from './overtime-pricing';
-import { clinicRatesOf, multipliersOf, resolvePayrollPolicy } from './payroll-policy-resolution';
+import { clinicRatesOf, multipliersOf, pcbProjectionOf, resolvePayrollPolicy } from './payroll-policy-resolution';
 import { workforceCategoryOf } from './workforce-category';
 import { LINDUNG_EFFECTIVE_FROM } from '../statutory/lindung-24-jam';
 import { CatalogueRow, ResolvedComponent, catalogueFor, checkOrdinaryRateBase } from './component-liability';
@@ -1868,6 +1868,9 @@ export class PayrollService {
           ytdTotal,
           tp1Capture,
           epfBasisSelection,
+          // How this clinic estimates the months after this one for monthly
+          // tax. The rule set's answer, or the specification's own default.
+          pcbProjectionOf(policyResolution.policy),
         );
 
         /*

@@ -80,8 +80,8 @@ export class UpsertEmployeeDto {
    * tax residence or nationality, which answer different questions.
    */
   @IsOptional()
-  @IsIn(['MANDATORY_FOREIGN_WORKER', 'VOLUNTARY_OPTED_IN', 'NOT_PARTICIPATING'])
-  lindungParticipation?: 'MANDATORY_FOREIGN_WORKER' | 'VOLUNTARY_OPTED_IN' | 'NOT_PARTICIPATING';
+  @IsIn(['MANDATORY_FOREIGN_WORKER', 'ENROLLED', 'NOT_PARTICIPATING'])
+  lindungParticipation?: 'MANDATORY_FOREIGN_WORKER' | 'ENROLLED' | 'NOT_PARTICIPATING';
   @IsOptional() @IsBoolean() eisApplicable?: boolean;
   @IsOptional() @IsBoolean() pcbApplicable?: boolean;
 

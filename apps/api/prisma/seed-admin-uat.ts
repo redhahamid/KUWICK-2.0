@@ -2389,7 +2389,7 @@ async function seedWorkforce(ids: Ids) {
               ? 'MANDATORY_FOREIGN_WORKER'
               : profile.key === 'counter2'
                 ? 'NOT_PARTICIPATING'
-                : 'VOLUNTARY_OPTED_IN',
+                : 'ENROLLED',
           // THE MTD PROFILE — for MOST of the clinic. The three the UAT
           // journey "fixes the legitimate way" (both clinic assistants and
           // the stock keeper) genuinely have none recorded, so the run's
@@ -3343,7 +3343,7 @@ async function seedWorkforce(ids: Ids) {
               ? 'MANDATORY_FOREIGN_WORKER'
               : profile.key === 'counter2'
                 ? 'NOT_PARTICIPATING'
-                : 'VOLUNTARY_OPTED_IN',
+                : 'ENROLLED',
           // The employing company's registration — the same s.14 fact the
           // legalEmployerStatutoryProfile row above records, threaded exactly
           // as the run's own calculation threads it. Omitting it priced the
@@ -3427,7 +3427,7 @@ async function seedWorkforce(ids: Ids) {
                   ? 'MANDATORY_FOREIGN_WORKER'
                   : profile.key === 'counter2'
                     ? 'NOT_PARTICIPATING'
-                    : 'VOLUNTARY_OPTED_IN',
+                    : 'ENROLLED',
               pcbApplicable: true,
               // Mirrors the classification rows: the three the UAT journey
               // fixes have no tax profile recorded.

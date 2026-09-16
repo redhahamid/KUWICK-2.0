@@ -33,8 +33,8 @@ const STANDING_LABELS: Record<string, string> = {
   PERMANENT_RESIDENT: 'Permanent resident',
   NON_CITIZEN_ELECTED_PRE_1998: 'Non-citizen, elected before 1 Aug 1998',
   NON_CITIZEN: 'Non-citizen',
-  NOT_PARTICIPATING: 'Not participating',
-  VOLUNTARY_OPTED_IN: 'Joined voluntarily',
+  NOT_PARTICIPATING: 'Opted out',
+  ENROLLED: 'Enrolled',
   MANDATORY_FOREIGN_WORKER: 'Mandatory — foreign worker',
   RESIDENT: 'Resident',
   NON_RESIDENT: 'Non-resident',
@@ -279,19 +279,28 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
               <div className="hr-form__help">The employee's own share only. The employer's share follows the Third Schedule.</div>
             </div>
             <div>
-              <label htmlFor="st-lindung">LINDUNG 24 JAM</label>
+              <label htmlFor="st-lindung">LINDUNG 24 JAM (SKBBK)</label>
               <Select
                 id="st-lindung"
                 value={lindung}
                 onChange={setLindung}
                 style={{ width: '100%' }}
-                placeholder="Not recorded"
+                placeholder="Enrolled — the default"
                 options={[
-                  { value: 'NOT_PARTICIPATING', label: 'Not participating' },
-                  { value: 'VOLUNTARY_OPTED_IN', label: 'Joined voluntarily (local employee)' },
+                  { value: 'ENROLLED', label: 'Enrolled' },
+                  { value: 'NOT_PARTICIPATING', label: 'Opted out through PERKESO' },
                   { value: 'MANDATORY_FOREIGN_WORKER', label: 'Mandatory — foreign worker' },
                 ]}
               />
+              {/*
+                * ENROLMENT IS AUTOMATIC, so leaving this alone contributes.
+                * Kuwick used to read silence as "we cannot know" and deduct
+                * nothing, which under-deducted from anybody nobody had touched.
+                */}
+              <div className="hr-form__help">
+                Every employee is enrolled unless they opt out through PERKESO's own form. Left blank, this employee
+                contributes. Choose Opted out only where the form has actually been filed.
+              </div>
             </div>
             <div>
               <label htmlFor="st-residence">Tax residence</label>

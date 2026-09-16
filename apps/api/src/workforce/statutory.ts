@@ -259,8 +259,11 @@ export function computeSocso(wageCents: number, context: StatutoryContext, profi
   const category = age >= 60 ? 'SECOND' : 'FIRST';
   return fromOutcome(socsoContribution(wageCents, category), (value) =>
     category === 'FIRST'
-      ? `First Category — Employment Injury and Invalidity. Employee share: invalidity ${(value.employeeInvalidityCents / 100).toFixed(2)}.`
-      : 'Second Category — Employment Injury only. No employee share under Act 4.',
+      ? `First Category — Employment Injury, Invalidity and Non-Employment Injury. Employee share shown here is the invalidity column, ${(value.employeeInvalidityCents / 100).toFixed(2)}; the non-employment injury column is on its own line.`
+      : // NOT "no employee share". The schedule gives the Second Category an
+        // employee non-employment-injury column too, and it is on its own line
+        // exactly as it is for the First. What ends at 60 is invalidity.
+        'Second Category — Employment Injury and Non-Employment Injury. No invalidity contribution from age 60; the non-employment injury column is on its own line.',
   );
 }
 
@@ -283,11 +286,24 @@ export function computeEis(wageCents: number, context: StatutoryContext, profile
 }
 
 /**
- * LINDUNG 24 JAM (SKBBK) — a scheme of its own, not a column of Act 4.
+ * LINDUNG 24 JAM (SKBBK) — THE THIRD COLUMN OF ACT 4'S OWN SCHEDULE.
  *
- * Employee-borne with no employer share, in force from 1 June 2026, voluntary
- * for locals and mandatory for foreign workers. The employer remits it; it does
- * not pay it, and the payslip has to be able to say so.
+ * This comment used to say "a scheme of its own, not a column of Act 4", which
+ * is the opposite of what `socso-act4.ts` says and the opposite of what
+ * PERKESO's schedule shows. The published table is headed "Act 4: new
+ * contribution rate INCLUDING the Non-Employment Injury Security Scheme", and
+ * the employee's share is printed as two columns — invalidity, and
+ * non-employment injury — of one contribution.
+ *
+ * It is computed here rather than inside `computeSocso` for one reason: the two
+ * columns are separately reportable and an employee may be out of this one
+ * while remaining in the rest. That is a presentation choice, not a claim that
+ * the scheme sits outside Act 4.
+ *
+ * EMPLOYEE-BORNE, no employer share, in force from 1 June 2026. AUTO-ENROLLED:
+ * every employee contributes unless they opt out through PERKESO, so an
+ * unrecorded participation reads as enrolled rather than as unknown. The
+ * employer remits it and does not pay it, and the payslip says so.
  */
 export function computeLindung(
   wagesCents: number,
@@ -368,6 +384,19 @@ export interface PcbMonthInput {
   readonly deductionsThisMonthCents: number;
   /** Whether a TP1 capture exists for this month — nil-with-form is a fact. */
   readonly tp1Captured: boolean;
+  /**
+   * Y2 — what each REMAINING month of the year is expected to pay.
+   *
+   * The MTD method is forward-looking: this month's deduction depends on the
+   * whole year's projected income, so somebody has to say what the rest of the
+   * year looks like. LHDN calls it "the estimated remuneration as Y1" and
+   * leaves the estimate to the employer, which is why it is a clinic setting
+   * rather than a constant.
+   *
+   * Absent means Y1 — the specification's own default, and what every Kuwick
+   * run did before the setting existed.
+   */
+  readonly estimatedFutureNormalCents?: number;
 }
 
 /** One month's TP1 capture, as the employer approved it off the form. */
@@ -435,6 +464,9 @@ export function computePcb(
     accumulatedGrossCents: ytd.accumulatedGrossCents,
     accumulatedEpfCents: ytd.accumulatedEpfCents,
     grossNormalCents: month.grossNormalCents,
+    ...(month.estimatedFutureNormalCents === undefined
+      ? {}
+      : { estimatedFutureNormalCents: month.estimatedFutureNormalCents }),
     epfOnNormalCents: month.epfOnNormalCents,
     grossAdditionalCents: month.grossAdditionalCents,
     epfOnAdditionalCents: month.epfOnAdditionalCents,
@@ -544,6 +576,8 @@ export function computeStatutory(
   ytd: PcbYearToDate = NO_YEAR_TO_DATE,
   zakatThisMonthCents = 0,
   tp1: Tp1MonthCapture | null = null,
+  /** Y2 — the clinic's estimate for the remaining months. Absent means Y1. */
+  estimatedFutureNormalCents?: number,
 ): StatutoryResult {
   const epf = computeEpf(bases.epfCents, context, profile);
 
@@ -589,6 +623,7 @@ export function computeStatutory(
       zakatThisMonthCents: zakatThisMonthCents + (tp1?.zakatSelfPaidCents ?? 0),
       deductionsThisMonthCents: tp1?.deductionsCents ?? 0,
       tp1Captured: tp1 !== null,
+      ...(estimatedFutureNormalCents === undefined ? {} : { estimatedFutureNormalCents }),
     },
     ytd,
     context.periodEnd,

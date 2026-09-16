@@ -20,8 +20,8 @@ export class RecordStatutoryClassificationDto {
   @IsOptional() @IsBoolean() socsoApplicable?: boolean;
   @IsOptional() @IsBoolean() eisApplicable?: boolean;
   @IsOptional()
-  @IsIn(['MANDATORY_FOREIGN_WORKER', 'VOLUNTARY_OPTED_IN', 'NOT_PARTICIPATING', null])
-  lindungParticipation?: 'MANDATORY_FOREIGN_WORKER' | 'VOLUNTARY_OPTED_IN' | 'NOT_PARTICIPATING' | null;
+  @IsIn(['MANDATORY_FOREIGN_WORKER', 'ENROLLED', 'NOT_PARTICIPATING', null])
+  lindungParticipation?: 'MANDATORY_FOREIGN_WORKER' | 'ENROLLED' | 'NOT_PARTICIPATING' | null;
 
   @IsOptional() @IsBoolean() pcbApplicable?: boolean;
   @IsOptional() @IsIn(['RESIDENT', 'NON_RESIDENT', null]) taxResidence?: 'RESIDENT' | 'NON_RESIDENT' | null;

@@ -34,6 +34,14 @@ export class UpsertPayrollPolicyDto {
 
   /** The ordinary rate of pay. s.60I(1A) sets 26 and the run refuses more. */
   @IsOptional() @IsInt() @Min(1) @Max(31) overtimeDays?: number;
+
+  /**
+   * HOW THE REST OF THE YEAR IS ESTIMATED FOR MONTHLY TAX (the MTD method's
+   * Y2). LHDN leaves the estimate to the employer, so it is a clinic's choice.
+   * Absent keeps what the rule set already has.
+   */
+  @IsOptional() @IsIn(['CURRENT_MONTH', 'BASIC_ONLY', 'CONTRACTUAL_MONTHLY'])
+  pcbProjectionBasis?: 'CURRENT_MONTH' | 'BASIC_ONLY' | 'CONTRACTUAL_MONTHLY';
   @IsOptional() @IsNumber() @Min(0.5) @Max(24) overtimeHoursPerDay?: number;
 
   /**
