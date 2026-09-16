@@ -62,6 +62,11 @@ on:
         type: boolean
         required: false
         default: true
+      seed_banding:
+        description: 'Also put BANDING A-D on it — the four August 2026 comparison employees, in their own clinic, with BANDING C real January-July year-to-date. Leaves the other employees alone.'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -373,6 +378,36 @@ jobs:
             echo "Rebuilding \"Klinik Contoh (UAT)\" from scratch. Anything typed into that tenant during testing is discarded; every other tenant is untouched."
           fi
           npx tsx prisma/seed-hr-uat.ts
+
+      - name: Seed the BANDING comparison (only when asked)
+        # THE FOUR COMPARISON EMPLOYEES, in a clinic of their own inside the
+        # same tenant. Separate from the step above and off by default, because
+        # it is a reconciliation fixture rather than part of the test world:
+        # somebody seeding the UAT tenant to test leave does not want four more
+        # employees appearing in every list.
+        #
+        # IT RUNS AFTER the HR UAT seed and cannot run instead of it: it needs
+        # the tenant "Klinik Contoh (UAT)", the legal employer "Klinik Contoh
+        # Sdn Bhd" and the owner account to sign in with, and it fails loudly
+        # rather than creating any of them.
+        #
+        # SAFE TO RE-RUN. Employees it already created are left alone, the
+        # month's earnings upsert on (employee, period, component), and the
+        # year-to-date upserts on (employer, employee, year, month) — and the
+        # import refuses outright to overwrite a month a payroll run actually
+        # calculated, so a re-run cannot quietly replace an approved August.
+        if: ${{ inputs.seed_banding }}
+        working-directory: apps/api
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+          ADMIN_UAT_RESET_URL: ${{ env.PG_DATABASE_URL }}
+          KUWICK_BANDING_SEED: 'yes'
+          ADMIN_UAT_PASSWORD: ${{ secrets.KUWICK_ADMIN_UAT_PASSWORD || 'AdminUat!2026' }}
+          KUWICK_API_URL: ${{ inputs.api_url || 'https://kuwick-api.onrender.com' }}
+        run: |
+          echo "Seeding BANDING A-D into \"BANDING (perbandingan Ogos 2026)\" and calculating 2026-08."
+          echo "Only BANDING C carries year-to-date. A, B and D carry none, so D's PCB is not a comparison."
+          npx tsx prisma/seed-banding-2026-08.ts
 
       - name: Migration status — must report fully applied
         working-directory: apps/api

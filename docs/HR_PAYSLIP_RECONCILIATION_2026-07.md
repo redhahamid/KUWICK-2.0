@@ -280,7 +280,45 @@ or the rule his payroll uses to project the remaining months. Until then the
 honest statement is that Kuwick is within **RM75.05, or 1.9%**, of his figure on
 a month where every other line agrees exactly.
 
-## `[A]` Still fabricated in his UAT tenant
+## `[D]` Nothing is fabricated in his UAT tenant any more
 
-The six invented months for **A, B and D** remain. C's are now real. Say the
-word and I will clear A, B and D, or replace them with their real history.
+The six invented months for A, B and D have been deleted and nothing put in
+their place, on his instruction. C's January–July are his own figures. So:
+
+* **A and B** compare on every line. Neither pays PCB at their wage, so having
+  no history costs the comparison nothing.
+* **C** compares on every line, and his PCB is the RM75.05 question above.
+* **D** has no history, so **D's PCB is not a comparison**. The screen will
+  print one; ignore it until he supplies D's real January–July.
+
+## `[D]` Putting BANDING on staging
+
+`[O]` "Empat pekerja BANDING A–D tiada dalam tenant UAT di staging … Saya mahu
+lihat sendiri di staging supaya boleh semak angka pada skrin."
+
+The seed had only ever run against a local database. It now runs from the
+Actions tab, as a second tick on the workflow that already builds the UAT world:
+
+1. Actions → **HR UAT Seed (manual)** → Run workflow.
+2. Leave **Rebuild "Klinik Contoh (UAT)"** as it is — ticked rebuilds the test
+   world, unticked keeps whatever has been typed into it.
+3. Tick **Also put BANDING A-D on it**.
+
+It lands them in a clinic of their own, `BANDING (perbandingan Ogos 2026)`,
+inside the same tenant, imports C's seven months of year-to-date and calculates
+August. The other employees are not touched, and the run is scoped to that
+clinic so they are not in it.
+
+`[D]` **The month is August, and the file says so now.** The seed still carried
+`PERIOD = '2026-07'` and no year-to-date — the correction to August above was
+made in this document and in a throwaway script, and never reached the seed
+itself. It is now `prisma/seed-banding-2026-08.ts`, it runs 2026-08, and it
+imports C's real January–July. Run locally against a fresh database it
+reproduces every figure in the August table above, C's PCB of 3,930.20 included.
+
+`[D]` **Safe to re-run.** Employees it already created keep their profile (a
+salary or classification posted twice would stack a second effective-dated
+version saying nothing new); the month's earnings upsert on employee-period-
+component, and the year-to-date on employer-employee-year-month. The import
+refuses outright to overwrite a month a payroll run calculated, so a re-run
+cannot replace an approved August with an opening balance.
