@@ -399,3 +399,45 @@ time, or having the seeds refresh their date-bearing rows instead of skipping
 them. `[O]` needed: it is test-world plumbing, not product behaviour, and it has
 never once been a real defect — but it costs a gate run every time a session
 crosses midnight in Malaysia.
+
+## The browser gate's failing set is not stable, and none of it is product code
+
+`[D]` **Three runs of the full browser gate over two days, and the four failures
+are not the same four each time:**
+
+| Spec | run A | run B | run C |
+| --- | --- | --- | --- |
+| `canvas-appointment:40` | fail | fail | fail |
+| `admin-hr:21` | pass | fail | fail |
+| `appointment-module:519` | pass | fail | pass |
+| `canvas-appointment:217` | pass | fail | pass |
+| `admin-integration:153` | pass | skip | fail |
+| `appointment-module:364` | pass | pass | fail |
+
+`[D]` **Every one of them was proven not to be a code change** the same way:
+check out the commit before the change, restart both servers against the same
+database, re-run. They fail identically. Done for runs B and C.
+
+`[D]` **Two causes, both in the test world rather than the product.**
+
+1. **The seeded fixtures are pinned to the clinic day the seed ran on.** The
+   attendance day is computed in `Asia/Kuala_Lumpur` while the container runs on
+   UTC, so a session that crosses 16:00 UTC is already on the clinic's tomorrow.
+   `ON DUTY NOW` reads 0 because nobody clocked in on a day that is minutes old,
+   and a bookable fixture day is yesterday's.
+2. **The world accumulates.** Each gate run books appointments against the same
+   fixture day and takes payments on the same clinic day. After several runs the
+   day is full — the calendar cell renders disabled — and the day-end takings a
+   test expects to find are on a date that has moved on. Re-running the seeds
+   does not help: they are idempotent and print "already seeded" over the stale
+   dates.
+
+`[A]` **The cure is a database built from empty per gate run**, which is exactly
+what CI does and why CI never sees any of this. Locally that needs a schema drop,
+which this environment refuses as a destructive action.
+
+`[O]` Worth deciding whether to make the fixtures relative at READ time rather
+than at seed time, or to have the seeds refresh their date-bearing rows instead
+of skipping them. It is test-world plumbing and has never once been a product
+defect — but it costs a gate run and a proof every time, and the shifting
+failure set means the proof cannot be skipped.
