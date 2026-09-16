@@ -340,35 +340,80 @@ async function main() {
       PEOPLE.flatMap((person) => person.inputs.map((input) => input.code)),
     ),
   ].sort();
+
+  /*
+   * THE LAST DAY OF THE MONTH BEING PRICED, which is the day the engine
+   * resolves the catalogue on (`catalogueFor(rows, periodEnd - 1 day)`).
+   */
+  const [py, pm] = PERIOD.split("-").map(Number);
+  const PERIOD_END = new Date(Date.UTC(py, pm, 0)).toISOString().slice(0, 10);
+
   await api(token, "POST", "/workforce/pay-components/seed");
-  const catalogue = (await api(token, "GET", "/workforce/pay-components")) as {
-    components: { code: string; active?: boolean }[];
+
+  /*
+   * COVERAGE, NOT PRESENCE — and the difference is what let a run through that
+   * then failed anyway.
+   *
+   * The first version of this check asked the catalogue list whether each code
+   * was there and active. It passed, the employees were created, and the
+   * calculation still raised UNKNOWN_COMPONENT, because `catalogueFor` resolves
+   * a component BY PERIOD: a row is skipped when it is inactive, when it starts
+   * after the month, or when it was closed before it. A code can be present,
+   * active, and still cover nothing in August.
+   *
+   * The list endpoint only returns OPEN versions, so it cannot answer this on
+   * its own either — the version covering August may be a closed one, with the
+   * open row starting in September. Each code's history carries every version
+   * and its window, so the question is asked there.
+   */
+  type Version = {
+    active?: boolean;
+    effectiveFrom: string;
+    effectiveTo: string | null;
   };
-  const present = new Map(
-    catalogue.components.map((row) => [row.code, row.active !== false]),
-  );
-  const absent = NEEDED.filter((code) => !present.has(code));
-  const switchedOff = NEEDED.filter((code) => present.get(code) === false);
-  if (absent.length > 0 || switchedOff.length > 0) {
-    const lines = [
-      "This tenant's pay component catalogue cannot carry the BANDING figures, so nothing was created.",
-    ];
-    if (absent.length > 0) {
-      lines.push(
-        `  Missing entirely: ${absent.join(", ")}.`,
-        '    Open Settings > Payroll items and press "Add standard items", then run this again.',
-      );
-    }
-    if (switchedOff.length > 0) {
-      lines.push(
-        `  Present but switched off: ${switchedOff.join(", ")}.`,
-        "    Turn them back on in Settings > Payroll items. Kuwick will not do it for you: whether",
-        "    a component is payable is the clinic's decision, not this seed's.",
-      );
-    }
-    throw new Error(lines.join("\n"));
+  const covers = (v: Version) =>
+    v.active !== false &&
+    v.effectiveFrom <= PERIOD_END &&
+    (v.effectiveTo === null || v.effectiveTo >= PERIOD_END);
+
+  const uncovered: string[] = [];
+  for (const code of NEEDED) {
+    const history = (await api(
+      token,
+      "GET",
+      `/workforce/pay-components/${code}/history`,
+    ).catch(() => null)) as { versions?: Version[] } | null;
+    const versions = history?.versions ?? [];
+    if (versions.some(covers)) continue;
+    uncovered.push(
+      versions.length === 0
+        ? `${code}: no version at all`
+        : `${code}: ${versions
+            .map(
+              (v) =>
+                `${v.effectiveFrom} to ${v.effectiveTo ?? "open"}${v.active === false ? " (switched off)" : ""}`,
+            )
+            .join("; ")}`,
+    );
   }
-  console.log(`  pay components checked: ${NEEDED.join(", ")}`);
+
+  if (uncovered.length > 0) {
+    throw new Error(
+      [
+        `This tenant's pay component catalogue does not cover ${PERIOD} for every code the`,
+        "BANDING figures need, so nothing was created. The engine resolves a component by",
+        `period, and on ${PERIOD_END} these do not resolve:`,
+        ...uncovered.map((line) => `  ${line}`),
+        "",
+        'Open Settings > Payroll items. A code with no version at all needs "Add standard',
+        `items\". A code whose versions all begin after ${PERIOD_END} was re-dated by a later`,
+        "change and has nothing standing for this month; give it a version that starts on or",
+        `before ${PERIOD_END}. Kuwick will not back-date or switch one on for you: what a`,
+        "component is liable to, and from when, is the clinic's dated decision.",
+      ].join("\n"),
+    );
+  }
+  console.log(`  pay components cover ${PERIOD}: ${NEEDED.join(", ")}`);
 
   const ids: Record<string, string> = {};
   for (const person of PEOPLE) {
