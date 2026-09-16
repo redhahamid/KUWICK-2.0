@@ -316,9 +316,37 @@ itself. It is now `prisma/seed-banding-2026-08.ts`, it runs 2026-08, and it
 imports C's real January–July. Run locally against a fresh database it
 reproduces every figure in the August table above, C's PCB of 3,930.20 included.
 
-`[D]` **Safe to re-run.** Employees it already created keep their profile (a
-salary or classification posted twice would stack a second effective-dated
-version saying nothing new); the month's earnings upsert on employee-period-
-component, and the year-to-date on employer-employee-year-month. The import
-refuses outright to overwrite a month a payroll run calculated, so a re-run
-cannot replace an approved August with an opening balance.
+`[D]` **Safe to re-run — and it was not, the first time it was claimed.**
+Employees it already created keep their profile (a salary or classification
+posted twice would stack a second effective-dated version saying nothing new);
+the month's earnings upsert on employee-period-component, and the year-to-date
+on employer-employee-year-month. The import refuses outright to overwrite a
+month a payroll run calculated, so a re-run cannot replace an approved August
+with an opening balance. The run itself was the one write left un-idempotent:
+a second pass died on `POST /workforce/payroll/runs` with "a payroll run for
+2026-08 already exists at this branch". It now reuses the month's run, and
+leaves a month that is already approved or paid exactly as it was.
+
+## `[D]` Why it failed on staging, and what the seed does about it
+
+The first staging run stopped halfway — A and B created, C and D not — with
+`"ALLOWANCE" is not an active pay component`. The tenant's catalogue was short
+of that one code.
+
+`[D]` **The catalogue is per tenant, and topping it up is not automatic.**
+`pay-components/seed` is additive and skips any code it already finds, so a
+preset added to Kuwick after a tenant was built never reaches that tenant by
+itself. The Payroll items screen offers exactly this as "Add N standard items";
+until somebody presses it, a run naming that component is refused. Reproduced
+by removing `ALLOWANCE` from a throwaway copy of a working database: the same
+error, at the same employee.
+
+The seed now asks for the top-up itself, then checks every code it is about to
+use **before creating anybody**, and refuses with all the bad codes named
+rather than dying at the first one. A half-seeded tenant looks seeded and is
+not, which is worse than one that was never touched.
+
+`[A]` **It does not switch a component back on.** The top-up fixes a code that
+is missing; a code that is present but switched off is reported, with the
+remedy, and left alone. Whether an allowance is payable is the clinic's
+decision, not a seed script's.

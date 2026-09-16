@@ -312,6 +312,64 @@ async function main() {
   if (!legalEmployerId)
     throw new Error(`No legal employer named ${EMPLOYER_NAME}.`);
 
+  /*
+   * THE CATALOGUE THIS SEED NEEDS, CHECKED BEFORE A SINGLE EMPLOYEE IS MADE.
+   *
+   * On staging this seed died halfway: A and B were created, then B's
+   * ALLOWANCE input was refused with "not an active pay component", leaving
+   * two of the four comparison employees on the tenant and two absent — the
+   * worst state to be left in, because the screen looks seeded and the figures
+   * are not there.
+   *
+   * WHY A TENANT CAN BE SHORT OF ONE. The catalogue is per tenant and the
+   * codes arrive with whatever seeded that tenant; `pay-components/seed` is
+   * additive and skips a code it already finds, so a preset added to Kuwick
+   * after a tenant was built never reaches it by itself. The Payroll items
+   * screen offers exactly this as "Add N standard items". The seed asks for it
+   * rather than assuming somebody pressed the button.
+   *
+   * IT IS NOT A FIX FOR EVERY CAUSE, and that is why the check follows it.
+   * `pay-components/seed` skips a code that exists in ANY version, while a
+   * payroll input needs one that is ACTIVE — so a code present but switched
+   * off is untouched by the top-up, and only the check below will catch it.
+   * Kuwick will not quietly switch a component back on: whether an allowance
+   * is payable is the clinic's decision, not this script's.
+   */
+  const NEEDED = [
+    ...new Set(
+      PEOPLE.flatMap((person) => person.inputs.map((input) => input.code)),
+    ),
+  ].sort();
+  await api(token, "POST", "/workforce/pay-components/seed");
+  const catalogue = (await api(token, "GET", "/workforce/pay-components")) as {
+    components: { code: string; active?: boolean }[];
+  };
+  const present = new Map(
+    catalogue.components.map((row) => [row.code, row.active !== false]),
+  );
+  const absent = NEEDED.filter((code) => !present.has(code));
+  const switchedOff = NEEDED.filter((code) => present.get(code) === false);
+  if (absent.length > 0 || switchedOff.length > 0) {
+    const lines = [
+      "This tenant's pay component catalogue cannot carry the BANDING figures, so nothing was created.",
+    ];
+    if (absent.length > 0) {
+      lines.push(
+        `  Missing entirely: ${absent.join(", ")}.`,
+        '    Open Settings > Payroll items and press "Add standard items", then run this again.',
+      );
+    }
+    if (switchedOff.length > 0) {
+      lines.push(
+        `  Present but switched off: ${switchedOff.join(", ")}.`,
+        "    Turn them back on in Settings > Payroll items. Kuwick will not do it for you: whether",
+        "    a component is payable is the clinic's decision, not this seed's.",
+      );
+    }
+    throw new Error(lines.join("\n"));
+  }
+  console.log(`  pay components checked: ${NEEDED.join(", ")}`);
+
   const ids: Record<string, string> = {};
   for (const person of PEOPLE) {
     const existing = await inTenant((tx) =>
@@ -447,10 +505,49 @@ async function main() {
     "  A, B and D carry NO year-to-date — D's PCB is therefore not comparable.",
   );
 
-  const run = (await api(token, "POST", "/workforce/payroll/runs", {
-    period: PERIOD,
-    clinicId,
-  })) as { id: string };
+  /*
+   * REUSE THE MONTH'S RUN RATHER THAN DEMANDING A NEW ONE.
+   *
+   * A second run of this seed used to die here with "A payroll run for 2026-08
+   * already exists at this branch", which made the workflow tick a one-shot:
+   * the only way to re-run it was to go and delete the run by hand. Every
+   * other write in this seed was made idempotent and this one was missed —
+   * found by running it twice against a copy of a database that had it once.
+   */
+  const runs = (await api(
+    token,
+    "GET",
+    `/workforce/payroll/runs?clinicId=${clinicId}&year=${PERIOD.slice(0, 4)}`,
+  )) as { id: string; period: string; status: string }[];
+  const already = runs.find(
+    (row) => row.period === PERIOD && row.status !== "CANCELLED",
+  );
+
+  /*
+   * A SETTLED MONTH IS LEFT EXACTLY AS IT WAS PAID. Recalculating an approved
+   * run is refused by the engine and should be: those figures were remitted.
+   * Saying so is more use than an error about a transition nobody asked for.
+   */
+  if (already && (already.status === "APPROVED" || already.status === "PAID")) {
+    console.log(
+      `\n${PERIOD} at "${CLINIC_NAME}" is already ${already.status.toLowerCase()} — left exactly as it was paid.`,
+    );
+    console.log(`Run ${already.id}. Nothing was recalculated.`);
+    await prisma.$disconnect();
+    return;
+  }
+
+  const run =
+    already ??
+    ((await api(token, "POST", "/workforce/payroll/runs", {
+      period: PERIOD,
+      clinicId,
+    })) as { id: string });
+  console.log(
+    already
+      ? `  reusing the existing ${PERIOD} run`
+      : `  created the ${PERIOD} run`,
+  );
   await api(token, "PATCH", `/workforce/payroll/runs/${run.id}/calculate`);
   console.log(`\nRun ${run.id} calculated for ${PERIOD} at "${CLINIC_NAME}".`);
   console.log(JSON.stringify({ runId: run.id, clinicId, staff: ids }, null, 2));
