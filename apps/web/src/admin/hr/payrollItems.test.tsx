@@ -47,6 +47,8 @@ const component = (over: Partial<PayComponentRow> = {}): PayComponentRow => ({
 });
 
 const list: PayComponentList = {
+  // A clinic whose catalogue is up to date, which is the ordinary case.
+  missingPresets: [],
   components: [
     component(),
     component({
@@ -133,8 +135,11 @@ const history: PayComponentHistory = {
 
 const upsertMutate = vi.fn();
 
+/** What `usePayComponents` returns for the test currently running. */
+let served: PayComponentList = list;
+
 vi.mock('../hooks/useAdmin', () => ({
-  usePayComponents: () => ({ data: list, isLoading: false, error: null }),
+  usePayComponents: () => ({ data: served, isLoading: false, error: null }),
   usePayComponentHistory: (code: string | null) => ({ data: code ? history : undefined, isLoading: false }),
   useSeedPayComponents: () => ({ mutate: vi.fn(), isPending: false }),
   useUpsertPayComponent: () => ({ mutate: upsertMutate, isPending: false }),
@@ -143,14 +148,16 @@ vi.mock('../../core/hooks/useCan', () => ({ useCan: () => true }));
 
 const { PayrollItemsPage } = await import('./PayrollItemsPage');
 
-const mount = () =>
-  render(
+const mount = (data: PayComponentList = list) => {
+  served = data;
+  return render(
     <AntApp>
       <MemoryRouter>
         <PayrollItemsPage />
       </MemoryRouter>
     </AntApp>,
   );
+};
 
 describe('the statutory treatment of a payroll item', () => {
   it('is editable on a SYSTEM item, which it was not before', () => {
@@ -282,5 +289,45 @@ describe('a component the clinic makes itself', () => {
 
     expect(upsertMutate).not.toHaveBeenCalled();
     expect(screen.getByText(/already exists/)).toBeTruthy();
+  });
+
+  /*
+   * A COMPONENT KUWICK ADDS LATER HAS TO BE REACHABLE.
+   *
+   * The seed is additive — it creates a code that is absent and skips one that
+   * is present — but its button was drawn only when the catalogue was EMPTY.
+   * So a clinic that seeded on day one could never receive anything added
+   * afterwards: the component would exist in the product, be missing from this
+   * screen, and the payroll run that told them to use it would name something
+   * they could not find. That is how the untaken-leave payout would have
+   * shipped broken for every existing clinic.
+   */
+  describe('standard items added after this clinic seeded', () => {
+    it('offers nothing when the catalogue is already complete', () => {
+      mount(list);
+      expect(screen.queryByRole('button', { name: /^Add .*standard item/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Seed the catalogue' })).toBeNull();
+    });
+
+    it('names the one item it would add, rather than counting it', () => {
+      mount({ ...list, missingPresets: [{ code: 'LEAVE_PAYOUT', name: 'Untaken annual leave paid out' }] });
+      expect(screen.getByRole('button', { name: 'Add Untaken annual leave paid out' })).toBeTruthy();
+    });
+
+    it('counts them once there is more than one', () => {
+      mount({
+        ...list,
+        missingPresets: [
+          { code: 'LEAVE_PAYOUT', name: 'Untaken annual leave paid out' },
+          { code: 'SOMETHING_ELSE', name: 'Something else' },
+        ],
+      });
+      expect(screen.getByRole('button', { name: 'Add 2 standard items' })).toBeTruthy();
+    });
+
+    it('still offers the first seed on an empty catalogue', () => {
+      mount({ ...list, components: [] });
+      expect(screen.getByRole('button', { name: 'Seed the catalogue' })).toBeTruthy();
+    });
   });
 });

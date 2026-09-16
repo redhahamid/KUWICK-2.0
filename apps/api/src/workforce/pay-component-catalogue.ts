@@ -60,7 +60,7 @@ export interface SeedPayComponent {
 }
 
 /**
- * The 15 components the engine already knows, expressed as rows.
+ * The components the engine already knows, expressed as rows.
  *
  * `hrdLiable` follows the shape of HRD Corp's own worked guidance — basic pay
  * less unpaid leave, plus FIXED allowances — so overtime, incentives and
@@ -215,6 +215,34 @@ export const SEED_PAY_COMPONENTS: SeedPayComponent[] = [
     code: 'CLAIM_REIMBURSEMENT', name: 'Claim reimbursement', type: 'ADDITION', category: 'PERQUISITE',
     includeIn: 'GROSS_AND_NET',
     pcbLiable: false, epfLiable: false, socsoLiable: false, eisLiable: false, hrdLiable: false,
+    includeInOrpBase: false, includeInUnpaidLeaveBase: false,
+    additionalRemuneration: false, prorated: false, employerSide: false,
+  },
+  {
+    /*
+     * UNTAKEN ANNUAL LEAVE, PAID OUT WHEN SOMEBODY LEAVES — s.60E(3).
+     *
+     * The run works out what is owed; this is the component it is paid under,
+     * so the amount reaches a payslip through the same door as every other
+     * figure rather than through a special case in the engine.
+     *
+     * THE FOUR FLAGS BELOW ARE THIS CLINIC'S POLICY AND NOT A STATEMENT OF LAW.
+     * EPF off, SOCSO on, EIS on, PCB on, matching what the account holder set
+     * for his other additional components. Whether a leave payout is "wages"
+     * turns on KWSP's and PERKESO's own definitions, and neither has been read
+     * here — so this ships as every other seeded treatment does: a starting
+     * position the clinic owns, editable on Payroll items with a reason, a
+     * date and a new version, and marked as the clinic's decision from the
+     * moment it is touched.
+     *
+     * Not in the ordinary-rate base: the payout is priced FROM the ordinary
+     * rate, and feeding it back in would raise the rate that produced it. Not
+     * prorated either — it is a settled amount for days already earned, not a
+     * monthly figure a part month cuts down.
+     */
+    code: 'LEAVE_PAYOUT', name: 'Untaken annual leave paid out', type: 'ADDITION', category: 'REMUNERATION',
+    includeIn: 'GROSS_AND_NET',
+    pcbLiable: true, epfLiable: false, socsoLiable: true, eisLiable: true, hrdLiable: false,
     includeInOrpBase: false, includeInUnpaidLeaveBase: false,
     additionalRemuneration: false, prorated: false, employerSide: false,
   },

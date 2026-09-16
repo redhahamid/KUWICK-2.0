@@ -106,6 +106,14 @@ describe('pay component statutory treatment (e2e)', () => {
     });
   });
 
+  it('leaves nothing standard missing once the catalogue is seeded', async () => {
+    // The other half of the seed button's condition. A clinic that has seeded
+    // is complete, so the "add what is missing" action stays out of its way —
+    // and a preset added to the catalogue later shows up here until it runs.
+    const res = await request(server()).get('/workforce/pay-components').set('Authorization', bearer).expect(200);
+    expect(res.body.missingPresets).toEqual([]);
+  });
+
   describe('a preset’s treatment belongs to the clinic', () => {
     it('lets the owner make an allowance EPF-exempt, which used to be refused outright', async () => {
       const before = await find('ALLOWANCE');
@@ -210,6 +218,69 @@ describe('pay component statutory treatment (e2e)', () => {
       expect(row.version).toBe(2);
       expect(row.epfLiable).toBe(false);
       expect(row.effectiveFrom).toBe('2026-10-01');
+    });
+  });
+
+  /*
+   * THE UNTAKEN-LEAVE PAYOUT ARRIVES AS AN ORDINARY COMPONENT.
+   *
+   * s.60E(3) settles WHAT is owed when somebody leaves with annual leave
+   * untaken. It says nothing about what that payment attracts for EPF, SOCSO,
+   * EIS and PCB, because that turns on each scheme's own definition of wages —
+   * four definitions, none of them read here.
+   *
+   * So the product does not answer it. It ships the payout as a preset with the
+   * same four switches every other component has, at this clinic's policy, and
+   * the next clinic sets its own with a reason and a date. A hardcoded answer
+   * would have been wrong at somebody, invisibly, on a final payslip nobody
+   * gets a second chance to query.
+   */
+  describe('the untaken annual leave payout', () => {
+    it('is seeded as a preset, at this clinic’s policy', async () => {
+      const payout = await find('LEAVE_PAYOUT');
+      expect(payout.systemControlled).toBe(true);
+      expect(payout.epfLiable).toBe(false);
+      expect(payout.socsoLiable).toBe(true);
+      expect(payout.eisLiable).toBe(true);
+      expect(payout.pcbLiable).toBe(true);
+    });
+
+    it('ships as Kuwick’s guess, so a clinic that never looked is not recorded as having decided', async () => {
+      const payout = await find('LEAVE_PAYOUT');
+      expect(payout.clinicOverride).toBe(false);
+      expect(payout.verificationStatus).toBe('DRAFT');
+    });
+
+    it('lets another clinic contribute EPF on it, with a reason and a date', async () => {
+      // The case the hardcoded answer would have got wrong: a clinic that reads
+      // KWSP's definition of wages as covering this and contributes on it.
+      const before = await find('LEAVE_PAYOUT');
+      await save(before, {
+        epfLiable: true,
+        effectiveFrom: '2026-11-01',
+        reason: 'We treat the leave payout as wages for EPF.',
+      }).expect(201);
+
+      const after = await find('LEAVE_PAYOUT');
+      expect(after.epfLiable).toBe(true);
+      expect(after.clinicOverride).toBe(true);
+      expect(after.changeReason).toBe('We treat the leave payout as wages for EPF.');
+      // Still a preset: the run looks it up by code, and renaming what it IS
+      // would break that.
+      expect(after.systemControlled).toBe(true);
+    });
+
+    it('keeps the old treatment as its own version, so an earlier month is not repriced', async () => {
+      const versions = await historyOf('LEAVE_PAYOUT');
+      expect(versions.length).toBeGreaterThanOrEqual(2);
+      // The seeded position is still there, closed, with EPF off.
+      expect(versions.some((row) => row.epfLiable === false)).toBe(true);
+      expect(versions.some((row) => row.epfLiable === true)).toBe(true);
+    });
+
+    it('refuses the same change with no reason', async () => {
+      const before = await find('LEAVE_PAYOUT');
+      await save(before, { socsoLiable: false, effectiveFrom: '2026-12-01' }).expect(400);
     });
   });
 

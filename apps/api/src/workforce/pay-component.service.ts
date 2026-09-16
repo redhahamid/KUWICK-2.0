@@ -107,6 +107,22 @@ export class PayComponentService {
         clinicOverride: row.clinicOverride,
         changeReason: row.changeReason,
       })),
+      /*
+       * PRESETS KUWICK HAS ADDED SINCE THIS CLINIC SEEDED, IF ANY.
+       *
+       * The seed is additive — it skips a code that exists and creates one
+       * that does not — but the button that runs it was drawn only on an EMPTY
+       * catalogue, so a clinic that seeded once could never receive a component
+       * added later. It would be described in a release note, absent from the
+       * screen, and the run that wanted it would point at a component nobody
+       * could find.
+       *
+       * Named rather than counted, because "one item is missing" invites the
+       * question this answers.
+       */
+      missingPresets: SEED_PAY_COMPONENTS.filter(
+        (preset) => !rows.some((row) => row.code === preset.code),
+      ).map((preset) => ({ code: preset.code, name: preset.name })),
       /**
        * Said on the screen, not only in a document. Every flag above is a
        * clinic's configuration that no authority has confirmed.

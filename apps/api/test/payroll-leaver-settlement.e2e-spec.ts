@@ -241,7 +241,7 @@ describe('a leaver’s settlement (e2e)', () => {
     expect(leave?.overridable).toBe(false);
   });
 
-  it('says it is owed on a resignation, and says why it is not on this payslip', async () => {
+  it('says it is owed on a resignation, and names the component it is paid under', async () => {
     const runId = await runFor('2026-08');
     const gate = await http().get(`/workforce/payroll/runs/${runId}/exceptions`).set('Authorization', bearer).expect(200);
     const row = (gate.body.exceptions as { code: string; consequence: string; remediation: string }[]).find(
@@ -250,10 +250,16 @@ describe('a leaver’s settlement (e2e)', () => {
     // The half of s.60E(3) a clinic whose staff resign would otherwise assume
     // does not apply to it.
     expect(row?.consequence).toContain('resignation as much as on a dismissal');
-    // And the honest limit: what a leave payout attracts for EPF, SOCSO, EIS
-    // and PCB is not settled, so the amount is named and not quietly added.
-    expect(row?.consequence).toContain('NOT on this payslip');
-    expect(row?.remediation).toContain('payroll input');
+    /*
+     * AND WHY THE RUN NAMES IT RATHER THAN ADDING IT.
+     *
+     * Not because the statutory treatment is unknown — that is settled now, as
+     * a preset with four switches the clinic owns. Because a final payslip is
+     * the one nobody gets a second chance to query, so the amount is entered by
+     * a person who looked at it.
+     */
+    expect(row?.consequence).toContain('NOT added to this payslip on its own');
+    expect(row?.remediation).toContain('Untaken annual leave paid out');
   });
 
   it('says nothing about a month nobody left in', async () => {

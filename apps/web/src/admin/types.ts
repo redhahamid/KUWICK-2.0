@@ -1852,6 +1852,11 @@ export interface PayComponentHistory {
 
 export interface PayComponentList {
   components: PayComponentRow[];
+  /**
+   * Standard items Kuwick has added since this clinic seeded its catalogue.
+   * Empty for a clinic that is up to date, which is most of the time.
+   */
+  missingPresets: { code: string; name: string }[];
   verificationNotice: { anyVerified: boolean; statement: string };
 }
 

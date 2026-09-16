@@ -148,11 +148,12 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       `worth ${c.amount} at ${c.dailyRate} a day.`,
     consequence:
       'Section 60E(3) owes this when either party ends the contract before the leave is taken, so it is owed on a ' +
-      'resignation as much as on a dismissal. It is NOT on this payslip: what a leave payout attracts for EPF, SOCSO, ' +
-      'EIS and PCB has not been established, and adding it under a guessed treatment would file the wrong figures.',
+      'resignation as much as on a dismissal. It is NOT added to this payslip on its own: an amount that appears ' +
+      'without anybody entering it is one nobody checked, and this is the last payslip they will ever be able to ' +
+      'query.',
     remediation:
-      'Record it as a payroll input on this run under the component whose treatment you have established, so it reaches ' +
-      'the payslip with a reason.',
+      'Add it to this run as an "Untaken annual leave paid out" input for the amount above. What that component ' +
+      'attracts for EPF, SOCSO, EIS and PCB is set on Payroll items and is your clinic\u2019s to decide.',
     deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
   },
   /*
@@ -175,8 +176,8 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'resignation included. The clinic recorded a decision not to pay it, so this employee receives that much less ' +
       'than the Act requires and the difference is owed if it is ever claimed.',
     remediation:
-      'Nothing is required to finish this run. To pay it, turn the payout on in the leave policy and recalculate; the ' +
-      'figure above is what it would add.',
+      'Nothing is required to finish this run. To pay it instead, turn the payout on in the leave policy, then add an ' +
+      '"Untaken annual leave paid out" input for the amount above.',
     deepLink: () => '/admin/hr/settings/attendance-leave',
   },
   UNAPPROVED_OVERTIME: {

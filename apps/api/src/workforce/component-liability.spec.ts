@@ -43,6 +43,49 @@ describe('one source of truth for what a component is liable to', () => {
     expect(Object.keys(DEFAULT_COMPONENT_LIABILITY)).toHaveLength(SEED_PAY_COMPONENTS.length);
   });
 
+  /*
+   * THE LEAVE PAYOUT IS A COMPONENT, NOT A SPECIAL CASE IN THE ENGINE.
+   *
+   * s.60E(3) tells the run WHAT is owed; it says nothing about what the payment
+   * attracts for EPF, SOCSO, EIS and PCB, because that turns on each scheme's
+   * own definition of wages. The product's answer is to make it an ordinary
+   * component with ordinary switches, so the clinic sets its own treatment with
+   * a reason and a date, and nothing about it is hardcoded.
+   */
+  describe('the untaken annual leave payout', () => {
+    const payout = SEED_PAY_COMPONENTS.find((component) => component.code === 'LEAVE_PAYOUT');
+
+    it('ships at this clinic’s policy, which is a starting position and not a claim about the law', () => {
+      // EPF off, SOCSO on, EIS on, PCB on — what the account holder set for his
+      // other additional components. Another clinic may read KWSP's definition
+      // differently and set it differently, which is the whole point of it
+      // being a row rather than a constant.
+      expect(payout?.epfLiable).toBe(false);
+      expect(payout?.socsoLiable).toBe(true);
+      expect(payout?.eisLiable).toBe(true);
+      expect(payout?.pcbLiable).toBe(true);
+    });
+
+    it('never enters the ordinary-rate base, because the rate is what produced it', () => {
+      // The payout is days x the ordinary rate. Feeding it back into the base
+      // would raise the rate that computed it — the same trap overtime is held
+      // out of, arriving by a different door.
+      expect(payout?.includeInOrpBase).toBe(false);
+      expect(payout?.includeInUnpaidLeaveBase).toBe(false);
+    });
+
+    it('is not prorated, because the days were earned before the part month began', () => {
+      // A leaver's last month is already cut to the days served. Cutting the
+      // settlement by the same fraction would take the reduction twice.
+      expect(payout?.prorated).toBe(false);
+      expect(payout?.employerSide).toBe(false);
+    });
+
+    it('reaches the engine through the derived map, like every other component', () => {
+      expect(DEFAULT_COMPONENT_LIABILITY.LEAVE_PAYOUT).toEqual(liabilityOf(payout!));
+    });
+  });
+
   it('keeps zakat OUT of the taxable base, because the MTD engine already relieves it', () => {
     // Counted in both places, RM200 of zakat under-deducted PCB by RM38.00 in
     // the month measured. Under-deducted tax is the employee's bill later.

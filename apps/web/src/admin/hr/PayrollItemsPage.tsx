@@ -132,6 +132,17 @@ export function PayrollItemsPage() {
   const upsert = useUpsertPayComponent();
   const mayManage = useCan('hr.statutory.manage');
   const rows = components.data?.components ?? [];
+  /*
+   * STANDARD ITEMS THIS CLINIC HAS NOT GOT YET.
+   *
+   * The seed is additive, but its button was drawn only on an EMPTY catalogue
+   * — so a clinic that seeded once could never receive a component Kuwick
+   * added later. It would exist in the product, be absent from this screen,
+   * and the payroll run that named it would point at something nobody could
+   * find. Drawn whenever there is something to add, named so the reader can
+   * see what they would be getting.
+   */
+  const missing = components.data?.missingPresets ?? [];
 
   /** The one switch that is waiting for a date and a reason. */
   const [pending, setPending] = useState<{ row: PayComponentRow; flag: Flag; next: boolean } | null>(null);
@@ -245,19 +256,28 @@ export function PayrollItemsPage() {
               Add an item
             </button>
           ) : null}
-          {mayManage && rows.length === 0 ? (
+          {mayManage && (rows.length === 0 || missing.length > 0) ? (
             <button
               type="button"
               className="hr-btn hr-btn--primary"
               disabled={seed.isPending}
               onClick={() =>
                 seed.mutate(undefined, {
-                  onSuccess: () => message.success('Catalogue seeded — every flag unchecked'),
+                  onSuccess: () =>
+                    message.success(
+                      rows.length === 0
+                        ? 'Catalogue seeded — every flag unchecked'
+                        : `Added ${missing.length === 1 ? missing[0].name : `${missing.length} standard items`}. Check the flags before using it.`,
+                    ),
                   onError: (e: Error) => message.error(e.message),
                 })
               }
             >
-              Seed the catalogue
+              {rows.length === 0
+                ? 'Seed the catalogue'
+                : missing.length === 1
+                  ? `Add ${missing[0].name}`
+                  : `Add ${missing.length} standard items`}
             </button>
           ) : null}
         </>
