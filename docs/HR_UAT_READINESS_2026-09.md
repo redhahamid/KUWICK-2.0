@@ -27,7 +27,27 @@ differ without anything on screen saying so.
 
 ---
 
-## 1. `[D]` A partly tax-exempt allowance will be taxed in full — HIGHEST RISK
+## 1. `[D]` A partly tax-exempt allowance will be taxed in full — NOT THIS CLINIC
+
+`[O]` **Checked against five real payslips and it does not reach this clinic.**
+"Semua elaun di klinik saya dicukai penuh — tiada elaun yang sebahagiannya
+dikecualikan PCB. Yang tidak dikenakan PCB ialah tuntutan (claim
+reimbursement), dan itu memang bukan pendapatan, sudah pun komponen berasingan
+dalam Kuwick."
+
+`[D]` That is consistent with the catalogue: `CLAIM_REIMBURSEMENT` ships
+`pcbLiable: false` outright, which is a different mechanism from an annual cap
+and needs none of what follows. **Deferred, not fixed.** The defect below is
+real for a clinic that does cap an allowance; it is simply not on the path of
+this UAT.
+
+`[A]` Half of the fix was written before the payslips were checked and was then
+REVERTED rather than left in. A cap the engine reads with no memory of what the
+year has already spent would reset every month and exempt twelve times the
+ceiling — worse than not reading it at all. It ships whole or not at all.
+
+### The defect itself, for whoever picks it up
+
 
 `pay_components.pcbExemptionLimitCents` exists, is editable, is carried onto the
 payslip's provenance, and **no calculation reads it.** Confirmed by tracing every
@@ -48,7 +68,7 @@ is a real answer, not a nice one — the cap is annual and somebody has to watch
 payslips show an allowance whose taxable amount differs from its paid amount, this
 is the first thing to check.
 
-## 2. `[D]` The year-to-date loses which pay was "additional remuneration"
+## 2. `[D]` The year-to-date loses which pay was "additional remuneration" — FIXED
 
 The component flag `additionalRemuneration` DOES drive the current month: the
 calculation splits `pcbAdditional` from `pcbNormal` by it, and the MTD method
@@ -65,8 +85,15 @@ total.
 **What that means for the comparison.** Month one matches. Month two onward, the
 MTD reads back a year-to-date that is missing that pay, so the tax drifts. Only
 bites a clinic that marks something other than Bonus or Incentive as additional
-remuneration — `[A]` which this clinic may well not do, and which is why it has
-never shown up.
+remuneration.
+
+`[D]` **Fixed.** The calculation now writes `pcbNormalCents` and
+`pcbAdditionalCents` into the run's own breakdown, and approval reads the real
+figure instead of the hardcoded pair. Proven by removing the fix and watching
+the test fail the way the defect predicted — RM3,000 of a long-service award
+recorded as RM0 for the year — then restoring it. The old fallbacks stay for
+rows approved before the split was written down, because nothing recalculates a
+settled month and an old year keeps the figure it was filed on.
 
 ## 3. `[D]` The EA form's box classification is not driven by the component
 

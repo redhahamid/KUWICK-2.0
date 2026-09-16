@@ -2088,6 +2088,25 @@ export class PayrollService {
                 socsoCents: payslip.bases.socsoCents,
                 eisCents: payslip.bases.eisCents,
                 ordinaryRateBaseCents: payslip.bases.ordinaryRateBaseCents,
+                /*
+                 * THE TAX BASE IN ITS TWO HALVES, WRITTEN DOWN.
+                 *
+                 * LHDN taxes ADDITIONAL remuneration — a bonus, a once-yearly
+                 * incentive, anything the clinic marks as such — by a different
+                 * part of the MTD method from normal monthly pay, and the
+                 * cumulative method needs the year's additional total kept
+                 * apart from the year's normal total.
+                 *
+                 * The calculation has always split them correctly. It never
+                 * wrote the split down, so approval had nothing to read and
+                 * fell back to `bonus + incentives`: two hardcoded columns that
+                 * ignore the clinic's own additionalRemuneration flag. A
+                 * component marked additional was taxed right in its own month
+                 * and then vanished from the year, and every later month
+                 * computed on a year that was missing it.
+                 */
+                pcbNormalCents: payslip.bases.pcbNormalCents,
+                pcbAdditionalCents: payslip.bases.pcbAdditionalCents,
               },
               /*
                * THE EMPLOYER'S SELECTED EPF BASIS AS APPLIED — mode, the
@@ -2450,6 +2469,7 @@ export class PayrollService {
 
       const breakdown = (line.breakdown ?? {}) as {
         additionalRemunerationCents?: number;
+        bases?: { pcbAdditionalCents?: number };
         components?: { code: string; kind: string; amount: unknown }[];
       };
       const cents = (value: unknown) => (value === null || value === undefined ? 0 : toCents(value as never));
@@ -2474,10 +2494,27 @@ export class PayrollService {
         taxYear,
         month,
         grossCents: cents(line.grossPay),
-        // Bonus and incentive are ADDITIONAL remuneration for tax and are taxed
-        // by a different part of the MTD method from normal monthly pay, so the
-        // year-to-date has to keep them apart rather than only carrying a total.
-        additionalRemunerationCents: breakdown.additionalRemunerationCents ?? cents(line.bonus) + cents(line.incentives),
+        /*
+         * ADDITIONAL REMUNERATION, AS THE RUN ACTUALLY COMPUTED IT.
+         *
+         * Taxed by a different part of the MTD method from normal monthly pay,
+         * so the year has to keep the two apart rather than carry one total.
+         *
+         * Read from the run's own tax base. It used to be `bonus + incentives`
+         * — two hardcoded columns — so a clinic that marked anything ELSE as
+         * additional remuneration had it taxed correctly in its own month and
+         * then dropped from the year, and every month afterwards computed on a
+         * year that was missing it. The flag was obeyed for one month and
+         * forgotten for the other eleven.
+         *
+         * The fallbacks are for rows approved before the split was written
+         * down, in the order they became available. Nothing recalculates a
+         * settled month, so an old year keeps the figure it was filed on.
+         */
+        additionalRemunerationCents:
+          breakdown.bases?.pcbAdditionalCents ??
+          breakdown.additionalRemunerationCents ??
+          cents(line.bonus) + cents(line.incentives),
         pcbCents: cents(line.pcb),
         zakatCents: zakatViaPayrollCents + (tp1?.zakatSelfPaidCents ?? 0),
         epfEmployeeCents: cents(line.epfEmployee),
