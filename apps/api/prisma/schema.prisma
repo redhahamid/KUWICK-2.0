@@ -1103,6 +1103,7 @@ model Staff {
   statutoryRuleSetsAuthored    StatutoryRuleSet[]            @relation("StatutoryRuleSetAuthor")
   statutoryRuleSetsVerified    StatutoryRuleSet[]            @relation("StatutoryRuleSetVerifier")
   payrollPoliciesBelowActAcknowledged PayrollPolicy[]         @relation("PayrollPolicyBelowActAcknowledger")
+  leavePoliciesNotPayingAcknowledged  LeavePolicy[]           @relation("LeavePolicyNotPayingAcknowledger")
   payrollRunsAuthored          PayrollRun[]                  @relation("PayrollRunAuthor")
   payrollRunsApproved          PayrollRun[]                  @relation("PayrollRunApprover")
   payrollLines                 PayrollLine[]                 @relation("PayrollLineStaff")
@@ -6868,6 +6869,27 @@ model LeavePolicy {
   active           Boolean @default(true)
   /// Whether unused annual leave carries into the next year, and how much.
   carryForwardDays Int?    @map("carry_forward_days")
+
+  /// WHETHER UNTAKEN ANNUAL LEAVE IS PAID OUT WHEN SOMEBODY LEAVES.
+  ///
+  /// TRUE by default, because that is what s.60E(3) says: where either party
+  /// ends the contract before the employee has taken the paid annual leave they
+  /// are entitled to, the employer pays the ordinary rate of pay for each
+  /// untaken day. "Either party" — a resignation is covered exactly as a
+  /// dismissal, which is the reading the account holder confirmed against the
+  /// Act's text.
+  ///
+  /// FALSE IS ALLOWED, AND IS NOT SILENT. An employer who decides not to pay it
+  /// is choosing not to meet a statutory obligation, and that is their decision
+  /// to take and their exposure to carry — but nobody does it by accident here.
+  /// The three columns under it record who chose, when, and why, exactly as a
+  /// below-Act overtime multiplier does; Settings marks the policy permanently;
+  /// and every run names the leaver and the amount that was not paid.
+  payUntakenLeaveOnExit Boolean @default(true) @map("pay_untaken_leave_on_exit")
+  /// Why, in the words of whoever chose it. Required to switch the payout off.
+  notPayingReason                String?   @map("not_paying_reason")
+  notPayingAcknowledgedAt        DateTime? @map("not_paying_acknowledged_at")
+  notPayingAcknowledgedByStaffId String?   @map("not_paying_acknowledged_by_staff_id")
   /// Whether entitlement is pro-rated for a mid-year joiner.
   proRateOnJoin    Boolean @default(true) @map("pro_rate_on_join")
   notes            String?
@@ -6875,9 +6897,10 @@ model LeavePolicy {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant       Tenant                   @relation(fields: [tenantId], references: [id])
-  entitlements LeavePolicyEntitlement[]
-  employees    EmployeeProfile[]
+  tenant                     Tenant                   @relation(fields: [tenantId], references: [id])
+  entitlements               LeavePolicyEntitlement[]
+  employees                  EmployeeProfile[]
+  notPayingAcknowledgedBy    Staff?                   @relation("LeavePolicyNotPayingAcknowledger", fields: [notPayingAcknowledgedByStaffId], references: [id])
 
   @@unique([tenantId, name])
   @@map("leave_policies")

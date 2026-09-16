@@ -93,6 +93,92 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'Record their tax residence and MTD category so the figure is calculated from HASiL’s specification, enter the month’s PCB by hand, or record them as not paying PCB if that is genuinely their situation.',
     deepLink: () => '/admin/hr/payroll',
   },
+  /*
+   * SOMEBODY LEFT THIS MONTH, AND THEIR UNTAKEN LEAVE IS STILL OWED.
+   *
+   * The part-month itself was never the problem: `prorationFor` has always cut
+   * a leaver's last month to the days served, inclusive of the last day worked.
+   * What nothing did was SAY that the annual leave they never took is a debt
+   * the clinic still owes them. A leaver simply stopped appearing, the month
+   * footed correctly without them, and the payout was remembered or it was not.
+   *
+   * So this names them on the run, with the whole leave ledger — entitled,
+   * carried in, adjusted, taken, left — and BLOCKS until somebody says what
+   * happened to it. The days are arithmetic from the ledger and are certain.
+   * WHAT THEY ARE WORTH IS NOT COMPUTED: how s.60E(3) values untaken leave on a
+   * resignation, and whether days carried forward by clinic policy are valued
+   * the same way as the Act's own entitlement, are questions the product does
+   * not get to guess at. The breakdown is printed so whoever answers them can
+   * apply the answer.
+   *
+   * Overridable, because the override IS the record: a clinic that has paid the
+   * leave, or owes none, says so by name and the month closes.
+   */
+  LEAVER_UNTAKEN_LEAVE: {
+    code: 'LEAVER_UNTAKEN_LEAVE',
+    severity: 'BLOCKING',
+    overridable: true,
+    cause: (c) =>
+      `${c.name} left on ${c.lastDay} with ${c.remaining} ${Number(c.remaining) === 1 ? 'day' : 'days'} of annual leave ` +
+      `untaken, worth ${c.amount} at ${c.dailyRate} a day, and no leave policy is assigned to them.`,
+    consequence:
+      'Those days come from a balance somebody keyed by hand, and the leave policy — which is where this clinic says ' +
+      'whether it pays untaken leave out when somebody leaves — is missing, so nobody can tell from this run whether ' +
+      'section 60E(3) is being met. Their last month is already cut to the days they served; this is the separate debt.',
+    remediation: 'Assign them a leave policy, which is also where the payout choice is set, then recalculate.',
+    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
+  },
+  /*
+   * THE PAYOUT, COMPUTED. Section 60E(3), settled by the account holder against
+   * the Act's own text: it reaches a RESIGNATION as well as a dismissal, the
+   * final year is pro-rated by complete months, and the rate is the ordinary
+   * rate of pay.
+   *
+   * INFO, because nothing is wrong. The figure is named rather than silently
+   * added: putting money on a payslip needs its EPF, SOCSO, EIS and PCB
+   * treatment decided, and that is a separate statutory question nobody has
+   * answered yet. Naming the amount is the part that is certain.
+   */
+  LEAVER_LEAVE_PAYOUT_DUE: {
+    code: 'LEAVER_LEAVE_PAYOUT_DUE',
+    severity: 'INFO',
+    overridable: false,
+    cause: (c) =>
+      `${c.name} left on ${c.lastDay} with ${c.days} ${Number(c.days) === 1 ? 'day' : 'days'} of annual leave untaken, ` +
+      `worth ${c.amount} at ${c.dailyRate} a day.`,
+    consequence:
+      'Section 60E(3) owes this when either party ends the contract before the leave is taken, so it is owed on a ' +
+      'resignation as much as on a dismissal. It is NOT on this payslip: what a leave payout attracts for EPF, SOCSO, ' +
+      'EIS and PCB has not been established, and adding it under a guessed treatment would file the wrong figures.',
+    remediation:
+      'Record it as a payroll input on this run under the component whose treatment you have established, so it reaches ' +
+      'the payslip with a reason.',
+    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
+  },
+  /*
+   * THE PAYOUT THE CLINIC CHOSE NOT TO MAKE.
+   *
+   * WARNING, not BLOCKING, and not overridable — there is nothing to override.
+   * The clinic set the policy and acknowledged what it was doing by name; this
+   * is the record, per employee and per month, of what that decision cost this
+   * particular person. The same shape as a below-Act overtime multiplier.
+   */
+  LEAVER_LEAVE_PAYOUT_WITHHELD: {
+    code: 'LEAVER_LEAVE_PAYOUT_WITHHELD',
+    severity: 'WARNING',
+    overridable: false,
+    cause: (c) =>
+      `${c.name} left on ${c.lastDay} with ${c.days} ${Number(c.days) === 1 ? 'day' : 'days'} of annual leave untaken, ` +
+      `worth ${c.amount}, and the "${c.policy}" leave policy does not pay it out.`,
+    consequence:
+      'Section 60E(3) requires this to be paid when either party ends the contract before the leave is taken — a ' +
+      'resignation included. The clinic recorded a decision not to pay it, so this employee receives that much less ' +
+      'than the Act requires and the difference is owed if it is ever claimed.',
+    remediation:
+      'Nothing is required to finish this run. To pay it, turn the payout on in the leave policy and recalculate; the ' +
+      'figure above is what it would add.',
+    deepLink: () => '/admin/hr/settings/attendance-leave',
+  },
   UNAPPROVED_OVERTIME: {
     code: 'UNAPPROVED_OVERTIME',
     severity: 'WARNING',

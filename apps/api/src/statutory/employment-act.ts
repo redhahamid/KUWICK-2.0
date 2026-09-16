@@ -462,3 +462,84 @@ export function checkNormalHours(hoursPerDay: number, hoursPerWeek: number): str
   }
   return problems;
 }
+
+/**
+ * SECTION 60E(3) — UNTAKEN ANNUAL LEAVE WHEN THE CONTRACT ENDS.
+ *
+ * The account holder checked the Act's own text against a second source and
+ * settled four questions this engine had refused to guess at. What follows is
+ * his answer, written down so the next person does not have to ask again.
+ *
+ * 1. IT REACHES A RESIGNATION. The provision bites when EITHER party terminates
+ *    the contract before the employee has taken the paid annual leave they are
+ *    entitled to — "either party", so a person who resigns is covered exactly
+ *    as one who is dismissed. s.60E(2A) likewise speaks of "termination of the
+ *    contract of service" without asking who ended it. This is a statutory
+ *    obligation, not a company practice.
+ *
+ * 2. THE FINAL YEAR IS PRO-RATED BY COMPLETED MONTHS. An employee who has not
+ *    completed twelve months of continuous service in the year their contract
+ *    ends takes annual leave in proportion to the complete months they worked.
+ *
+ * 3. AND THE ROUNDING IS PRESCRIBED, not a matter of taste: a fraction of a day
+ *    less than half is disregarded, and more than half becomes a whole day.
+ *
+ * 4. THE RATE IS THE ORDINARY RATE OF PAY — monthly wages over 26, s.60I(1A) —
+ *    or a more generous rate if the employer chooses one.
+ *
+ * EXACTLY HALF A DAY IS NOT COVERED BY THE WORDING GIVEN. "Less than half is
+ * disregarded, more than half rounds up" leaves 0.5 unsaid. This rounds it UP,
+ * because the Act sets minimums and the direction that cannot underpay is the
+ * one to take when the text is silent. Said out loud rather than buried: it is
+ * an assumption, it is worth half a day of somebody's pay, and it is the one
+ * line here the account holder has not confirmed.
+ */
+export function proRatedAnnualLeaveOnExit(
+  fullYearDays: number,
+  completeMonthsWorked: number,
+): number {
+  if (fullYearDays <= 0 || completeMonthsWorked <= 0) return 0;
+  if (completeMonthsWorked >= 12) return fullYearDays;
+  const exact = (fullYearDays * completeMonthsWorked) / 12;
+  const whole = Math.floor(exact);
+  const fraction = exact - whole;
+  // Less than half: gone. Half or more: a whole day.
+  return fraction < 0.5 ? whole : whole + 1;
+}
+
+/**
+ * Complete months of service inside one year, for the rule above.
+ *
+ * A month counts when it was worked end to end. Somebody who starts on 1
+ * January and leaves on 15 August completed January through July — seven — and
+ * the half of August they worked is a fraction the rule above disregards
+ * through the day count, not a month.
+ */
+export function completeMonthsWorkedInYear(year: number, startDate: Date | null, endDate: Date | null): number {
+  const yearStart = Date.UTC(year, 0, 1);
+  const yearEnd = Date.UTC(year, 11, 31);
+  const day = (value: Date) => Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate());
+  const from = startDate ? Math.max(day(startDate), yearStart) : yearStart;
+  const to = endDate ? Math.min(day(endDate), yearEnd) : yearEnd;
+  if (to < from) return 0;
+
+  let months = 0;
+  for (let month = 0; month < 12; month += 1) {
+    const monthStart = Date.UTC(year, month, 1);
+    const monthLast = Date.UTC(year, month + 1, 0);
+    if (from <= monthStart && to >= monthLast) months += 1;
+  }
+  return months;
+}
+
+/**
+ * What the untaken days are worth, in cents.
+ *
+ * The ordinary rate of pay for each day, which is s.60I(1A)'s monthly wages
+ * over 26 unless the employer has adopted a formula that pays more. Rounded to
+ * the sen once, at the end.
+ */
+export function untakenLeavePayoutCents(days: number, dailyOrdinaryRateCents: number): number {
+  if (days <= 0 || dailyOrdinaryRateCents <= 0) return 0;
+  return Math.round(days * dailyOrdinaryRateCents);
+}
