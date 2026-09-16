@@ -1650,9 +1650,52 @@ export function useLeaveBalances(params: { clinicId?: string; year?: number } = 
   });
 }
 
+/**
+ * A LEAVE POLICY, INCLUDING WHAT HAPPENS TO UNTAKEN DAYS WHEN SOMEBODY LEAVES.
+ *
+ * `notPaying` is null while the policy pays the untaken days out, which is both
+ * the default and what s.60E(3) requires. Non-null is the permanent mark: who
+ * decided otherwise, when, and in whose words.
+ */
+export interface LeavePolicyRow {
+  id: string;
+  name: string;
+  active: boolean;
+  carryForwardDays: number | null;
+  proRateOnJoin: boolean;
+  notes: string | null;
+  employees: number;
+  payUntakenLeaveOnExit: boolean;
+  notPaying: { reason: string | null; at: string | null; by: string | null } | null;
+  entitlements: { leaveType: string; daysPerYear: number; paid: boolean; requiresAttachment: boolean }[];
+}
+
 export function useLeavePolicies() {
   return useQuery({
     queryKey: ['admin-hr', 'leave-policies'],
-    queryFn: () => apiClient.get<{ id: string; name: string }[]>('/workforce/leave/policies'),
+    queryFn: () => apiClient.get<LeavePolicyRow[]>('/workforce/leave/policies'),
+  });
+}
+
+export function useSaveLeavePolicy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      id?: string;
+      name: string;
+      carryForwardDays?: number;
+      proRateOnJoin?: boolean;
+      active?: boolean;
+      notes?: string;
+      payUntakenLeaveOnExit?: boolean;
+      notPayingAcknowledged?: boolean;
+      notPayingReason?: string;
+    }) => apiClient.post<{ id: string }>('/workforce/leave/policies', body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-hr', 'leave-policies'] });
+      // Balances are computed from the entitlement this policy names, so a
+      // stale list would show the old figure beside the new rule.
+      queryClient.invalidateQueries({ queryKey: ['admin-hr', 'leave-balances'] });
+    },
   });
 }

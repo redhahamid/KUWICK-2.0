@@ -227,7 +227,7 @@ export function HrSettingsPage() {
     },
     {
       title: 'Attendance & leave policies',
-      description: 'Grace period, what counts as a full day, and what counts as overtime.',
+      description: 'Grace period, what counts as a full day, and whether untaken leave is paid out when somebody leaves.',
       to: '/admin/hr/settings/attendance-leave',
       icon: <IconClock />,
       tone: attendance.data?.source === 'KUWICK_DEFAULT' ? 'muted' : 'done',

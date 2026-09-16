@@ -56,7 +56,11 @@ export class LeaveService {
     await requirePermission(this.rawPrisma, 'hr.view');
     const policies = await this.prisma.leavePolicy.findMany({
       orderBy: { name: 'asc' },
-      include: { entitlements: true, _count: { select: { employees: true } } },
+      include: {
+        entitlements: true,
+        _count: { select: { employees: true } },
+        notPayingAcknowledgedBy: { select: { fullName: true } },
+      },
     });
     return policies.map((policy) => ({
       id: policy.id,
@@ -65,6 +69,21 @@ export class LeaveService {
       carryForwardDays: policy.carryForwardDays,
       proRateOnJoin: policy.proRateOnJoin,
       notes: policy.notes,
+      payUntakenLeaveOnExit: policy.payUntakenLeaveOnExit,
+      /*
+       * WHO CHOSE NOT TO PAY IT, AND WHEN. Null while the policy pays, which is
+       * the default and the Act's own position. Non-null is the permanent mark
+       * Settings shows: a name, a date and the reason in their words, so the
+       * next person to open this screen learns it from the screen rather than
+       * from a leaver asking where their money is.
+       */
+      notPaying: policy.payUntakenLeaveOnExit
+        ? null
+        : {
+            reason: policy.notPayingReason,
+            at: policy.notPayingAcknowledgedAt?.toISOString() ?? null,
+            by: policy.notPayingAcknowledgedBy?.fullName ?? null,
+          },
       employees: policy._count.employees,
       entitlements: policy.entitlements.map((entitlement) => ({
         leaveType: entitlement.leaveType,
@@ -80,6 +99,59 @@ export class LeaveService {
       const existing = dto.id ? await tx.leavePolicy.findUnique({ where: { id: dto.id } }) : null;
       if (dto.id && !existing) throw new NotFoundException('Leave policy not found');
 
+      /*
+       * THE CHOICE NOT TO PAY UNTAKEN LEAVE, TAKEN BY SOMEBODY WITH A NAME.
+       *
+       * Section 60E(3) owes the ordinary rate of pay for every day of annual
+       * leave the employee was entitled to and had not taken when the contract
+       * ended — ended by EITHER party, so a resignation is covered as squarely
+       * as a dismissal. Kuwick's default is to pay it, because that is what the
+       * Act says.
+       *
+       * An employer may still choose otherwise, and Kuwick stores that choice
+       * rather than refusing it — the same posture as a below-Act overtime
+       * multiplier. What it will not do is let the choice be made silently: the
+       * off position needs the tick and the reason together, and the answer is
+       * kept against the person's name and the date.
+       *
+       * Switching the payout back ON clears the whole record, because there is
+       * no longer a decision to hold anyone to. Leaving it off through an
+       * unrelated edit — a rename, a changed entitlement — keeps the
+       * acknowledgement already given, so ordinary housekeeping does not demand
+       * the same conversation twice.
+       */
+      const paying = dto.payUntakenLeaveOnExit ?? existing?.payUntakenLeaveOnExit ?? true;
+      const alreadyWithheld = existing !== null && !existing.payUntakenLeaveOnExit;
+      const withholding = (() => {
+        if (paying) {
+          return { payUntakenLeaveOnExit: true, notPayingReason: null, notPayingAcknowledgedAt: null, notPayingAcknowledgedByStaffId: null };
+        }
+        if (alreadyWithheld) {
+          return {
+            payUntakenLeaveOnExit: false,
+            notPayingReason: existing.notPayingReason,
+            notPayingAcknowledgedAt: existing.notPayingAcknowledgedAt,
+            notPayingAcknowledgedByStaffId: existing.notPayingAcknowledgedByStaffId,
+          };
+        }
+        const reason = (dto.notPayingReason ?? '').trim();
+        if (!dto.notPayingAcknowledged || reason.length < 4) {
+          throw new BadRequestException(
+            'Section 60E(3) of the Employment Act requires untaken annual leave to be paid at the ordinary rate of pay ' +
+              'when the contract of service ends, whichever party ends it — a resignation as much as a dismissal. ' +
+              'Turning the payout off means this clinic is choosing not to meet that obligation. That is yours to ' +
+              'decide, and Kuwick will store it — but not silently. Confirm that this is deliberate and say why, and ' +
+              'the choice is recorded against your name and today\u2019s date.',
+          );
+        }
+        return {
+          payUntakenLeaveOnExit: false,
+          notPayingReason: reason,
+          notPayingAcknowledgedAt: new Date(),
+          notPayingAcknowledgedByStaffId: actor.id,
+        };
+      })();
+
       const policy = existing
         ? await tx.leavePolicy.update({
             where: { id: existing.id },
@@ -89,6 +161,7 @@ export class LeaveService {
               proRateOnJoin: dto.proRateOnJoin,
               notes: dto.notes,
               active: dto.active ?? existing.active,
+              ...withholding,
             },
           })
         : await tx.leavePolicy.create({
@@ -98,6 +171,7 @@ export class LeaveService {
               carryForwardDays: dto.carryForwardDays,
               proRateOnJoin: dto.proRateOnJoin ?? true,
               notes: dto.notes,
+              ...withholding,
             },
           });
 
@@ -126,7 +200,12 @@ export class LeaveService {
         action: 'employee.changed',
         entityType: 'LeavePolicy',
         entityId: policy.id,
-        after: { name: policy.name, entitlements: dto.entitlements?.length ?? 0 },
+        after: {
+          name: policy.name,
+          entitlements: dto.entitlements?.length ?? 0,
+          payUntakenLeaveOnExit: policy.payUntakenLeaveOnExit,
+          ...(policy.payUntakenLeaveOnExit ? {} : { notPayingReason: policy.notPayingReason }),
+        },
         source: 'hr.leavePolicies',
       });
       return policy;

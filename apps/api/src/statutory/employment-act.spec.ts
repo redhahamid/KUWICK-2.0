@@ -4,7 +4,10 @@ import {
   OVERTIME_MULTIPLIERS,
   OVERTIME_MULTIPLIER_FLOORS,
   belowActMultiplier,
+  completeMonthsWorkedInYear,
   overtimeMultiplierRefusal,
+  proRatedAnnualLeaveOnExit,
+  untakenLeavePayoutCents,
   checkNormalHours,
   checkOrdinaryRatePolicy,
   daysInMonth,
@@ -238,5 +241,64 @@ describe('a multiplier the clinic chose', () => {
       ['publicHolidayMultiplier', 3],
     ]);
     expect(ACT_OVERTIME_MULTIPLIERS).toEqual({ normalDay: 1.5, restDayExcess: 2, publicHolidayExcess: 3 });
+  });
+});
+
+/*
+ * SECTION 60E(3) — WHAT UNTAKEN ANNUAL LEAVE IS WORTH WHEN SOMEBODY LEAVES.
+ *
+ * The four open questions were put to the account holder rather than guessed,
+ * and he checked the Act's text against a second source. These pin his answers:
+ * pro-rated by COMPLETE MONTHS, fractions under half a day disregarded and over
+ * half rounded up to a whole one, valued at the ordinary rate of pay.
+ */
+describe('untaken annual leave when the contract ends', () => {
+  it('pro-rates by the complete months worked, not by days', () => {
+    // Twelve days a year, seven complete months: 12 x 7 / 12 = 7 exactly.
+    expect(proRatedAnnualLeaveOnExit(12, 7)).toBe(7);
+    // Sixteen days, five months: 6.67 — two thirds of a day, rounded up.
+    expect(proRatedAnnualLeaveOnExit(16, 5)).toBe(7);
+  });
+
+  it('disregards a fraction under half a day', () => {
+    // 12 x 1 / 12 = 1 exactly; 12 x 4 / 12 = 4. A case with a small fraction:
+    // 8 days over 5 months is 3.33, and the third of a day goes.
+    expect(proRatedAnnualLeaveOnExit(8, 5)).toBe(3);
+    // 8 over 7 months is 4.67 — over half, so a whole day.
+    expect(proRatedAnnualLeaveOnExit(8, 7)).toBe(5);
+  });
+
+  it('rounds exactly half a day UP, which is the assumption in the code', () => {
+    // 12 days over 6 months and a half is not expressible in months, so the
+    // clean case is 14 over 9: 10.5. The wording says "less than half is
+    // disregarded, more than half rounds up" and leaves half itself unsaid.
+    // Up is the direction that cannot underpay. Flagged, not hidden.
+    expect(proRatedAnnualLeaveOnExit(14, 9)).toBe(11);
+  });
+
+  it('gives the whole year to somebody who completed it, and nothing to nobody', () => {
+    expect(proRatedAnnualLeaveOnExit(12, 12)).toBe(12);
+    expect(proRatedAnnualLeaveOnExit(12, 0)).toBe(0);
+    expect(proRatedAnnualLeaveOnExit(0, 7)).toBe(0);
+  });
+
+  it('counts a month only when it was worked end to end', () => {
+    // 1 January to 15 August 2026: January through July are complete, August is
+    // not. Seven.
+    expect(completeMonthsWorkedInYear(2026, new Date('2026-01-01T00:00:00Z'), new Date('2026-08-15T00:00:00Z'))).toBe(7);
+    // Leaving on the last day of August makes August complete: eight.
+    expect(completeMonthsWorkedInYear(2026, new Date('2026-01-01T00:00:00Z'), new Date('2026-08-31T00:00:00Z'))).toBe(8);
+    // Joining on the 2nd loses January.
+    expect(completeMonthsWorkedInYear(2026, new Date('2026-01-02T00:00:00Z'), new Date('2026-08-31T00:00:00Z'))).toBe(7);
+    // Employed all year and still there: twelve.
+    expect(completeMonthsWorkedInYear(2026, new Date('2025-06-01T00:00:00Z'), null)).toBe(12);
+  });
+
+  it('values the days at the ordinary rate of pay, rounded once', () => {
+    // RM2,600 a month over 26 is RM100 a day. Nine days is RM900.
+    expect(untakenLeavePayoutCents(9, 10000)).toBe(90000);
+    // A rate with a fraction of a sen rounds at the end, not per day.
+    expect(untakenLeavePayoutCents(7, 9615)).toBe(67305);
+    expect(untakenLeavePayoutCents(0, 10000)).toBe(0);
   });
 });

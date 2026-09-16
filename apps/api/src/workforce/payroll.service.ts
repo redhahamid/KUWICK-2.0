@@ -66,8 +66,11 @@ import {
   FIRST_SCHEDULE_WAGE_CEILING_CENTS,
   MAX_HOURS_PER_DAY,
   checkOrdinaryRatePolicy,
+  completeMonthsWorkedInYear,
   overtimeScope,
   OvertimeScope,
+  proRatedAnnualLeaveOnExit,
+  untakenLeavePayoutCents,
 } from '../statutory/employment-act';
 import { CreatePayrollRunDto } from './dto/create-payroll-run.dto';
 import { PayrollAdjustmentDto } from './dto/payroll-adjustment.dto';
@@ -1217,6 +1220,16 @@ export class PayrollService {
           raise('PART_MONTH', employee, { note: prorationNote });
         }
 
+        // The Ordinary Rate of Pay is built from the earnings that COUNT toward
+        // it — basic and ORP-liable allowances — and never from overtime, or an
+        // hour of overtime would raise the rate paid for the next one.
+        // THE FULL monthly wage, never the prorated one — see the s.18A note.
+        const orpBase = fullMonthlyCents;
+        // s.18A governs the unpaid-leave divisor, so the month's own length
+        // goes in rather than a configured 31.
+        const rates = ordinaryRates(orpBase, orpConfig, days);
+
+
         /*
          * SOMEBODY LEFT, AND THEIR UNTAKEN LEAVE IS STILL OWED.
          *
@@ -1226,11 +1239,16 @@ export class PayrollService {
          * carries — the leaver stopped appearing, the month footed without
          * them, and the payout was remembered or it was not.
          *
-         * Only for somebody whose last day falls inside this period, so it
-         * fires once per leaver and never on an ordinary month. The days come
+         * Section 60E(3) is the provision, and it reaches further than it looks:
+         * it owes the ordinary rate of pay for every untaken day where EITHER
+         * PARTY ends the contract. A resignation is covered exactly as a
+         * dismissal, which is the reading the account holder confirmed against
+         * the Act's own text. A clinic whose staff all resign is not outside it.
+         *
+         * Raised only for somebody whose last day falls inside this period, so
+         * it fires once per leaver and never on an ordinary month. The days come
          * from the same ledger the Leave screen shows, so the two cannot
-         * disagree. WHAT THEY ARE WORTH IS NOT COMPUTED HERE — see the
-         * exception's own note.
+         * disagree about what was taken.
          */
         if (proration.leftOn) {
           const year = period.getUTCFullYear();
@@ -1238,7 +1256,16 @@ export class PayrollService {
             tx.employeeProfile
               .findUnique({
                 where: { staffId: employee.staffId },
-                select: { leavePolicy: { select: { proRateOnJoin: true, entitlements: { where: { leaveType: 'ANNUAL' } } } } },
+                select: {
+                  leavePolicy: {
+                    select: {
+                      name: true,
+                      proRateOnJoin: true,
+                      payUntakenLeaveOnExit: true,
+                      entitlements: { where: { leaveType: 'ANNUAL' } },
+                    },
+                  },
+                },
               })
               .then((row) => row?.leavePolicy ?? null),
             tx.leaveBalance.findFirst({ where: { staffId: employee.staffId, leaveType: 'ANNUAL', benefitYear: year } }),
@@ -1254,14 +1281,42 @@ export class PayrollService {
             }),
           ]);
           const fullYear = Number(annualPolicy?.entitlements[0]?.daysPerYear ?? 0);
-          const entitledDays =
+          const recordedEntitlement =
             storedBalance !== null
               ? Number(storedBalance.entitledDays)
               : annualPolicy?.proRateOnJoin
                 ? proRateEntitlement(fullYear, year, employee.startDate, employee.endDate)
                 : fullYear;
+
+          /*
+           * THE ACT'S OWN FLOOR UNDER THE FINAL YEAR'S ENTITLEMENT.
+           *
+           * Section 60E(2A): an employee who has not completed twelve months of
+           * continuous service in the year the contract ends is entitled to
+           * annual leave in proportion to the COMPLETE MONTHS they worked, a
+           * fraction under half a day disregarded and half a day or more
+           * rounded up to a whole one.
+           *
+           * Kuwick's own pro-rating is by calendar days to the nearest half
+           * day, which is what the Leave screen has always shown and is usually
+           * the more generous of the two. Usually is not always — sixteen days
+           * over five complete months is 6.5 by calendar days and 7 under the
+           * Act — so the two are compared and the employee gets the better,
+           * which is all the Act ever asks.
+           */
+          const statutoryEntitlement = proRatedAnnualLeaveOnExit(
+            fullYear,
+            completeMonthsWorkedInYear(year, employee.startDate, employee.endDate),
+          );
+          const entitledDays = Math.max(recordedEntitlement, statutoryEntitlement);
+
           const balance = computeLeaveBalance({
             entitledDays,
+            // DAYS CARRIED IN ARE WORTH WHAT THIS YEAR'S DAYS ARE WORTH. The Act
+            // says nothing about carry-forward at all — the cap and the lapsing
+            // are clinic policy — but once a day is in the balance it is a day
+            // of paid annual leave the employee is entitled to and has not
+            // taken, which is the only test s.60E(3) applies.
             carriedInDays: Number(storedBalance?.carriedInDays ?? 0),
             adjustmentDays: Number(storedBalance?.adjustmentDays ?? 0),
             year,
@@ -1271,18 +1326,39 @@ export class PayrollService {
               status: row.status as 'PENDING' | 'APPROVED' | 'REJECTED',
             })),
           });
-          // Nothing left is nothing owed, and a clinic with no leave policy at
-          // all is a different piece of HR work that already has its own row.
+
+          // Nothing left is nothing owed, and the arithmetic below would print
+          // a row about RM0.00.
           if (balance.remaining > 0) {
-            raise('LEAVER_UNTAKEN_LEAVE', employee, {
+            const lastDay = proration.leftOn.toISOString().slice(0, 10);
+            const payoutCents = untakenLeavePayoutCents(balance.remaining, rates.overtimeDailyCents);
+            const ledger = {
               name: employee.staff.fullName,
-              lastDay: proration.leftOn.toISOString().slice(0, 10),
+              lastDay,
               entitled: balance.entitled,
               carriedIn: balance.carriedIn,
               adjustment: balance.adjustment,
               taken: balance.taken,
-              remaining: balance.remaining,
-            });
+              days: balance.remaining,
+              amount: formatCents(payoutCents),
+              dailyRate: formatCents(rates.overtimeDailyCents),
+            };
+
+            if (annualPolicy === null) {
+              /*
+               * NO POLICY, SO NEITHER HALF OF THE ANSWER IS KNOWN. The days here
+               * came from a balance row somebody keyed by hand; what is missing
+               * is not only the entitlement but the clinic's decision about
+               * paying it out, which lives on the policy. Blocking, and
+               * overridable, because the override is the record of what was
+               * actually done about it.
+               */
+              raise('LEAVER_UNTAKEN_LEAVE', employee, { ...ledger, remaining: balance.remaining });
+            } else if (annualPolicy.payUntakenLeaveOnExit) {
+              raise('LEAVER_LEAVE_PAYOUT_DUE', employee, ledger);
+            } else {
+              raise('LEAVER_LEAVE_PAYOUT_WITHHELD', employee, { ...ledger, policy: annualPolicy.name });
+            }
           }
         }
 
@@ -1361,15 +1437,6 @@ export class PayrollService {
             ),
           }));
         const unpaidDays = unpaidLeaveRows.reduce((total, row) => total + row.days, 0);
-
-        // The Ordinary Rate of Pay is built from the earnings that COUNT toward
-        // it — basic and ORP-liable allowances — and never from overtime, or an
-        // hour of overtime would raise the rate paid for the next one.
-        // THE FULL monthly wage, never the prorated one — see the s.18A note.
-        const orpBase = fullMonthlyCents;
-        // s.18A governs the unpaid-leave divisor, so the month's own length
-        // goes in rather than a configured 31.
-        const rates = ordinaryRates(orpBase, orpConfig, days);
 
         // -------------------------------------------------------------------
         // MATERIALISATION — upstream facts become reviewable rows.

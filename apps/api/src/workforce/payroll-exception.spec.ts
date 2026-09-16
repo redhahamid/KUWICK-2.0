@@ -106,6 +106,8 @@ describe('payroll exceptions', () => {
       '/admin/hr/settings',
       // Piece 3d — the rule sets a clinic-rate floor exception points at.
       '/admin/hr/settings/payroll',
+      // s.60E(3) — where the clinic says whether it pays untaken leave out.
+      '/admin/hr/settings/attendance-leave',
       // Parameterised routes are listed as PATTERNS, so a link to one person
       // proves the route exists rather than being waved through by a literal.
       '/admin/hr/employees/:staffId',
