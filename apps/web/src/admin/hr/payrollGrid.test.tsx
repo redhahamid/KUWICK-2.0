@@ -6,7 +6,7 @@ import type { PayrollJourney } from '../types';
 
 vi.mock('../hooks/useAdmin', () => ({}));
 
-const { GRID_COLUMNS, PayrollGrid, planGridEdit } = await import('./PayrollGrid');
+const { covers, GRID_COLUMNS, PayrollGrid, planGridEdit } = await import('./PayrollGrid');
 
 type PayRow = PayrollJourney['pay']['rows'][number];
 
@@ -100,6 +100,50 @@ function row(over: Partial<PayRow> = {}): PayRow {
   } as PayRow;
 }
 
+type Totals = PayrollJourney['pay']['totals'];
+
+/** The server's sums for the month, in the shape the foot reads them. */
+function totals(over: Partial<Totals> = {}): Totals {
+  return {
+    basic: '3200.00',
+    unpaidLeave: '0.00',
+    salaryEarned: '3200.00',
+    allowances: '250.00',
+    overtime: '98.48',
+    incentive: '0.00',
+    otherEarnings: '0.00',
+    additions: '348.48',
+    gross: '3548.48',
+    statutoryEmployee: '414.85',
+    statutoryNotCalculated: 0,
+    pcb: '24.65',
+    pcbMissing: 0,
+    lindung: '0.00',
+    lindungNotDetermined: 0,
+    otherDeductions: '0.00',
+    deductions: '439.50',
+    net: '3108.98',
+    employerContributions: '530.25',
+    employerCost: '4078.73',
+    additionalEarnings: '250.00',
+    socsoEis: '24.85',
+    socsoEisNotCalculated: 0,
+    epfEmployee: '390.00',
+    socsoEmployee: '17.75',
+    eisEmployee: '7.10',
+    epfNotCalculated: 0,
+    socsoNotCalculated: 0,
+    eisNotCalculated: 0,
+    claims: '0.00',
+    otherIncome: '250.00',
+    overtimeHours: 4,
+    unpaidDays: 0,
+    addsUp: true,
+    discrepancy: null,
+    ...over,
+  } as Totals;
+}
+
 const noop = () => {};
 
 function grid(props: Partial<Parameters<typeof PayrollGrid>[0]> = {}) {
@@ -107,6 +151,8 @@ function grid(props: Partial<Parameters<typeof PayrollGrid>[0]> = {}) {
     <MemoryRouter>
       <PayrollGrid
         rows={[row()]}
+        totals={totals()}
+        counted={1}
         runId="run-1"
         canEdit
         edit={null}
@@ -125,6 +171,18 @@ function grid(props: Partial<Parameters<typeof PayrollGrid>[0]> = {}) {
 function headers() {
   const rows = [...document.querySelectorAll('thead tr')];
   return [...rows[rows.length - 1].querySelectorAll('th')].map((cell) => cell.textContent?.trim() ?? '');
+}
+
+/** The group headers above them — which band each stretch of columns belongs to. */
+function groups() {
+  const cells = [...document.querySelectorAll('thead tr.hr-grid__grp th')];
+  return cells.filter((cell) => cell.textContent?.trim()).map((cell) => [cell.textContent?.trim(), Number(cell.getAttribute('colspan') ?? 1)]);
+}
+
+/** The foot, column by column, in GRID_COLUMNS order. */
+function foot() {
+  const cells = [...document.querySelectorAll('tfoot td')];
+  return GRID_COLUMNS.map((_column, index) => cells[index + 1].textContent?.trim() ?? '');
 }
 
 describe('the payroll grid', () => {
@@ -151,6 +209,7 @@ describe('the payroll grid', () => {
       'PCB',
       'Other',
       'Net pay',
+      'Contributions',
       '',
     ]);
     const at = (title: string) => GRID_COLUMNS.findIndex((column) => column.title === title);
@@ -158,7 +217,42 @@ describe('the payroll grid', () => {
       expect(at(title), `${title} must come before Gross`).toBeLessThan(at('Gross'));
     }
     expect(at('EPF')).toBeGreaterThan(at('Gross'));
-    expect(at('Net pay')).toBe(GRID_COLUMNS.length - 1);
+    // Net pay is the last of the EMPLOYEE's money — what the clinic pays on
+    // top comes after it, because it never comes off anybody's pay.
+    const employee = GRID_COLUMNS.filter((column) => column.band !== 'employer');
+    expect(at('Net pay')).toBe(employee.length - 1);
+    expect(GRID_COLUMNS[GRID_COLUMNS.length - 1].band).toBe('employer');
+  });
+
+  /*
+   * WHOSE MONEY, WITHOUT DOUBLING THE COLUMNS. A column headed "EPF" beside a
+   * column headed "EPF" is how a clinic remits the employee's share twice; a
+   * group header over the deductions says whose they are, and what the clinic
+   * pays on top gets its own group at the end — one column, not three.
+   */
+  it('says in the group headers whether a deduction is the employee’s or the employer’s', () => {
+    viewport(1440);
+    grid();
+    expect(groups()).toEqual([
+      ['Record', 1],
+      ['Earnings', 5],
+      ['Deductions — employee', 5],
+      ['Employer pays', 1],
+    ]);
+    // Every column is spanned: the group row and the leaf row are the same width.
+    const grp = [...document.querySelectorAll('thead tr.hr-grid__grp th')];
+    const span = grp.reduce((total, cell) => total + Number(cell.getAttribute('colspan') ?? 1), 0);
+    expect(span).toBe(headers().length);
+    // The export has no group header row, so it carries the fuller name.
+    const named = GRID_COLUMNS.filter((column) => column.band === 'deductions' || column.band === 'employer');
+    expect(named.map((column) => column.exportTitle ?? column.title)).toEqual([
+      'EPF (employee)',
+      'SOCSO (employee)',
+      'EIS (employee)',
+      'PCB',
+      'Other deductions',
+      'Employer contributions',
+    ]);
   });
 
   /*
@@ -210,8 +304,94 @@ describe('the payroll grid', () => {
     });
     expect(screen.getByText('Blocked')).toBeVisible();
     expect(screen.getByRole('link', { name: 'Fix' })).toHaveAttribute('href', '/admin/hr/employees/staff-9');
-    expect(screen.getByText('Check')).toBeVisible();
+    expect(screen.getByText('Needs attention')).toBeVisible();
     expect(screen.getByText('Ready')).toBeVisible();
+  });
+
+  /*
+   * A STATUS SAYS HOW SERIOUS, NEVER WHAT. "Check" told a reader nothing they
+   * could act on, and the reason was reachable only by hovering — which a
+   * phone cannot do. The server already sends the reason for the most serious
+   * thing wrong, so the row prints it.
+   */
+  it('prints why a row is blocked or needs attention, on the row, not only in a hover', () => {
+    viewport(1440);
+    grid({
+      rows: [
+        row({ staffId: 'staff-9', name: 'Wan Azman', blockers: 1, reason: 'Bank account missing' }),
+        row({ staffId: 'staff-2', name: 'Siti Zaleha', warnings: 1, reason: 'EPF basis differs from the assessment' }),
+        row(),
+      ],
+      leftOut: [{ staffId: 'staff-7', name: 'Nur Aisyah', position: 'Panel clerk', reason: 'No salary on record' }],
+    });
+    expect(screen.getByText('Bank account missing')).toBeVisible();
+    expect(screen.getByText('EPF basis differs from the assessment')).toBeVisible();
+    expect(screen.getByText('No salary on record')).toBeVisible();
+    // The full text stays on `title` for the reason too long for the column.
+    expect(screen.getByTitle('Bank account missing')).toBeVisible();
+    // A ready row has no reason and prints none.
+    const ready = [...document.querySelectorAll('tbody tr')][2] as HTMLElement;
+    expect(within(ready).getByText('Ready')).toBeVisible();
+    expect(ready.querySelector('.hr-standing__why')).toBeNull();
+  });
+
+  /*
+   * THE MONTH FOOTS, from the SERVER'S sums. Not one of these figures is
+   * added up here: a column the browser totals is a column that can disagree
+   * with the payslip by a sen.
+   */
+  it('foots every column on the server’s totals, and names what the foot covers', () => {
+    viewport(1440);
+    grid({ rows: [row(), row({ staffId: 'staff-2', name: 'Siti Zaleha' })], counted: 2 });
+    expect(foot()).toEqual([
+      '3,200.00',
+      '250.00',
+      '4.0',
+      '0',
+      '0.00',
+      '3,548.48',
+      '390.00',
+      '17.75',
+      '7.10',
+      '24.65',
+      '0.00',
+      '3,108.98',
+      '530.25',
+    ]);
+    expect(screen.getByText('Total')).toBeVisible();
+    expect(screen.getByText('All 2 employees')).toBeVisible();
+  });
+
+  /*
+   * A FILTERED VIEW AND THE MONTH ARE DIFFERENT NUMBERS, and somebody the run
+   * left out has no line, so no figure of theirs is in the total either. The
+   * foot says both rather than leaving them to be discovered.
+   */
+  it('says so when the foot is not the total of the rows above it', () => {
+    expect(covers(1, 1, 0)).toBe('All 1 employee');
+    expect(covers(16, 16, 0)).toBe('All 16 employees');
+    expect(covers(3, 16, 0)).toBe('All 16 employees, not the 3 shown');
+    expect(covers(16, 16, 1)).toBe('All 16 employees · 1 left out has no figures');
+    expect(covers(3, 16, 2)).toBe('All 16 employees, not the 3 shown · 2 left out have no figures');
+    viewport(1440);
+    grid({ rows: [row()], counted: 16 });
+    expect(screen.getByText('All 16 employees, not the 1 shown')).toBeVisible();
+  });
+
+  /*
+   * A SHORT SUM IS NOT THE ANSWER. A statutory total runs over the rows where
+   * the scheme was worked out; when one row is unknown the figure is smaller
+   * than what the clinic owes, so the foot prints the count beside it.
+   */
+  it('names the people a statutory total leaves out instead of passing a short sum off as the whole', () => {
+    viewport(1440);
+    grid({ rows: [row({ epfEmployee: null, pcb: null })], totals: totals({ epfNotCalculated: 1, pcbMissing: 2 }) });
+    expect(screen.getByText('1 not worked out')).toBeVisible();
+    expect(screen.getByTitle('1 person is not in this total: EPF was not worked out for them.')).toBeVisible();
+    expect(screen.getByText('2 not worked out')).toBeVisible();
+    expect(screen.getByTitle('2 people are not in this total: PCB was not worked out for them.')).toBeVisible();
+    // Nothing is claimed about the columns that are always worked out.
+    expect(document.querySelectorAll('.hr-grid__short')).toHaveLength(2);
   });
 
   it('still lists somebody the run left out — blocked, with dashes, and a Fix to their record', () => {
@@ -244,6 +424,8 @@ describe('the payroll grid', () => {
       <MemoryRouter>
         <PayrollGrid
           rows={[row()]}
+          totals={totals()}
+          counted={1}
           runId="run-1"
           canEdit
           edit={{ staffId: 'staff-1', otherIncome: '250.00', otherDeduction: '0.00' }}
@@ -266,12 +448,17 @@ describe('the payroll grid', () => {
     expect(fixes).toEqual(['/admin/hr/attendance?staffId=staff-1', '/admin/hr/leave?staffId=staff-1']);
   });
 
-  it('becomes one card per person on a phone', () => {
+  it('becomes one card per person on a phone, with the month as the last card', () => {
     viewport(390);
-    grid({ rows: [row(), row({ staffId: 'staff-2', name: 'Siti Zaleha' })] });
+    grid({ rows: [row(), row({ staffId: 'staff-2', name: 'Siti Zaleha' })], counted: 2 });
     expect(document.querySelector('table')).toBeNull();
-    expect(document.querySelectorAll('.kw-payCard')).toHaveLength(2);
+    expect(document.querySelectorAll('.kw-payCard')).toHaveLength(3);
     expect(screen.getByText('Siti Zaleha')).toBeVisible();
+    const total = document.querySelector('.kw-payCard--total') as HTMLElement;
+    expect(within(total).getByText('Total')).toBeVisible();
+    expect(within(total).getByText('All 2 employees')).toBeVisible();
+    expect(within(total).getByText('3,548.48')).toBeVisible();
+    expect(within(total).getByText('3,108.98')).toBeVisible();
   });
 });
 

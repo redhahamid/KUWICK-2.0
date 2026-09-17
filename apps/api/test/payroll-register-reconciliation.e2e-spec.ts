@@ -96,6 +96,54 @@ describe('payroll register reconciliation (e2e)', () => {
     return staff.id;
   }
 
+  /**
+   * SOMEBODY THE ENGINE REFUSES TO GUESS FOR. An election under Borang KWSP
+   * 17A away from the Third Schedule's own rate is an instrument this system
+   * holds no document for, so EPF is refused — while SOCSO and EIS, which
+   * turn on age, are worked out as usual. One scheme unknown on a person the
+   * run still pays, and a run exception with a cause behind it.
+   */
+  async function employeeWithRefusedEpf(name: string, salary: string) {
+    const staff = await withTenantContext(prisma, tenantId, (tx) =>
+      tx.staff.create({ data: { tenantId, role: Role.FRONT_DESK_CLINICAL_STAFF, fullName: name, clinicId } }),
+    );
+    await request(server())
+      .post(`/workforce/employees/${staff.id}`)
+      .set('Authorization', owner)
+      .send({
+        employeeNo: `E-${Math.floor(Math.random() * 1_000_000)}`,
+        position: 'Clinic Assistant',
+        employmentStatus: 'ACTIVE',
+        startDate: '2024-01-01',
+        dateOfBirth: '1988-03-02',
+      })
+      .expect(201);
+    await request(server())
+      .post(`/workforce/employees/${staff.id}/statutory-classification`)
+      .set('Authorization', owner)
+      .send({
+        effectiveFrom: '2020-01-01',
+        epfMembership: 'MALAYSIAN_CITIZEN',
+        // Part A prints 11% for a citizen under 60.
+        epfEmployeeRate: 9,
+        lindungParticipation: 'NOT_PARTICIPATING',
+        pcbApplicable: false,
+        reason: 'Recorded at hire',
+      })
+      .expect(201);
+    await request(server())
+      .patch(`/workforce/employees/${staff.id}/legal-employer`)
+      .set('Authorization', owner)
+      .send({ legalEmployerId })
+      .expect(200);
+    await request(server())
+      .post(`/workforce/employees/${staff.id}/salary`)
+      .set('Authorization', owner)
+      .send({ amount: salary, basis: 'MONTHLY', effectiveFrom: '2024-01-01', reason: 'Starting salary' })
+      .expect(201);
+    return staff.id;
+  }
+
   const addInput = (staffId: string, componentCode: string, amount: string) =>
     request(server())
       .post('/workforce/payroll/inputs')
@@ -315,6 +363,104 @@ describe('payroll register reconciliation (e2e)', () => {
     expect(cents(view.pay.totals.statutoryEmployee)).toBe(
       known.reduce((acc: number, row: Record<string, string | null>) => acc + cents(row.statutoryEmployee)!, 0),
     );
+  });
+
+  it('counts the people each scheme’s own total leaves out, so a short column is not read as the answer', async () => {
+    /*
+     * `statutoryNotCalculated` counts the people whose THREE schemes could not
+     * be added together — it cannot say which one was missing, and the
+     * register foots EPF, SOCSO and EIS in columns of their own. A count of 3
+     * printed under EPF when it was SOCSO that was unknown is a wrong answer
+     * with a number attached, so each scheme carries its own count.
+     *
+     * An elected EPF share is the real case: an election under Borang KWSP 17A
+     * away from the Third Schedule's own rate is an instrument this system
+     * holds no document for, so EPF is refused rather than approximated —
+     * while SOCSO and EIS, which turn on age, are worked out as usual. One
+     * scheme unknown, two known, on the same person.
+     */
+    await employeeWithRefusedEpf('Tan Mei Ling', '2900.00');
+
+    const { view } = await journey();
+    const rows = view.pay.rows as Record<string, string | null>[];
+    const missing = (field: string) => rows.filter((row) => row[field] === null).length;
+    const totals = view.pay.totals;
+
+    /*
+     * THE CASE IS REAL BEFORE ANYTHING IS ASSERTED ABOUT THE COUNTS. Without
+     * it the whole test passes on 0 === 0 and proves nothing — and it is the
+     * ONE unknown scheme beside two known ones that makes a per-scheme count
+     * say something a single `statutoryNotCalculated` cannot.
+     */
+    expect({ rows: rows.length, epf: missing('epfEmployee'), socso: missing('socsoEmployee'), eis: missing('eisEmployee') }).toEqual({
+      rows: 4,
+      epf: 1,
+      socso: 0,
+      eis: 0,
+    });
+
+    expect({
+      epf: totals.epfNotCalculated,
+      socso: totals.socsoNotCalculated,
+      eis: totals.eisNotCalculated,
+    }).toEqual({
+      epf: missing('epfEmployee'),
+      socso: missing('socsoEmployee'),
+      eis: missing('eisEmployee'),
+    });
+
+    // And each column's figure is the sum over the people it DOES cover —
+    // the unknown row skipped, never added as nil.
+    for (const field of ['epfEmployee', 'socsoEmployee', 'eisEmployee'] as const) {
+      expect({ field, total: cents(totals[field]) }).toEqual({
+        field,
+        total: rows.reduce((acc, row) => acc + (cents(row[field]) ?? 0), 0),
+      });
+    }
+  });
+
+  it('gives a row the reason for the thing its own status counts, not for something else', async () => {
+    /*
+     * THE CHIP AND THE REASON HAVE TO BE ABOUT THE SAME THING.
+     *
+     * `blockers` and `warnings` count the RUN'S exception rows. The reason
+     * under them used to come from the employee's READINESS — a different
+     * source entirely — so a person whose RECORD is complete but whose MONTH
+     * raised an exception got a status chip with nothing behind it: a screen
+     * saying "look at this" and refusing to say at what. The register prints
+     * the reason on the row now rather than hiding it in a hover, which made
+     * the empty one visible.
+     *
+     * The fixture is that exact shape, and nothing weaker will do: somebody
+     * READY on their own record who clocked in and never clocked out. Their
+     * readiness has nothing to say; the month does.
+     */
+    const halfPunched = await employee('Tan Mei Ling', '2900.00');
+    await request(server())
+      .post('/workforce/attendance/clock')
+      .set('Authorization', owner)
+      .send({ staffId: halfPunched, clinicId, at: '2026-08-03T01:00:00.000Z', source: 'MANUAL' })
+      .expect(201);
+
+    const { view } = await journey();
+    const rows = view.pay.rows as Record<string, string | null | number>[];
+    const flagged = rows.filter((row) => Number(row.blockers) > 0 || Number(row.warnings) > 0);
+
+    // Non-vacuous, and the RIGHT shape: flagged by the month, ready on the record.
+    expect(flagged.map((row) => ({ name: row.name, state: row.state, warnings: row.warnings }))).toEqual([
+      { name: 'Tan Mei Ling', state: 'READY', warnings: 1 },
+    ]);
+
+    // So the row says what the month found, in the words the attention list
+    // uses for it — not the silence the employee's own record has to offer.
+    const causes = (view.review.attention as { what: string }[]).map((item) => item.what);
+    expect(flagged[0].reason).toBe('1 day has no clock-in or clock-out.');
+    expect(causes).toContain(flagged[0].reason);
+
+    // A clean row still says nothing, because nothing is wrong with it.
+    for (const row of rows.filter((r) => Number(r.blockers) === 0 && Number(r.warnings) === 0)) {
+      expect({ name: row.name, reason: row.reason }).toEqual({ name: row.name, reason: null });
+    }
   });
 
   it('keeps the approved month frozen, and the register reads the snapshot', async () => {

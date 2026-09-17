@@ -301,7 +301,7 @@ export function PayrollEmployeePage() {
                   row.blockers > 0 ? (
                     <StatusChip tone="block">Blocked</StatusChip>
                   ) : row.warnings > 0 && uncheckedWarnings.length > 0 ? (
-                    <StatusChip tone="attn">Check</StatusChip>
+                    <StatusChip tone="attn">Needs attention</StatusChip>
                   ) : (
                     <StatusChip tone="done">Ready</StatusChip>
                   )

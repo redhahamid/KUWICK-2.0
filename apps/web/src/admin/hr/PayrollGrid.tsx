@@ -38,10 +38,23 @@ type PayRow = PayrollJourney['pay']['rows'][number];
  *
  * STATUTORY IS NEVER TYPED HERE. EPF and PCB can be overridden only on the
  * person's own payroll page, with a reason that is logged with a name.
+ *
+ * WHOSE MONEY EACH COLUMN IS. The group headers answer it, not a doubled set
+ * of columns: EPF, SOCSO, EIS, PCB and Other sit under DEDUCTIONS — EMPLOYEE
+ * because they come off the person's pay, and what the clinic pays on top has
+ * its own group at the end, outside net. Gross less the deductions is still
+ * net, read left to right.
+ *
+ * THE MONTH FOOTS. Every column adds up under itself — from the server's own
+ * sums, never a column this grid added. The foot names what it covers,
+ * because the total for the month and the total for a filtered view are
+ * different numbers, and it prints the people a statutory column leaves out
+ * rather than passing a short sum off as the whole answer.
  */
 
 export type CellKind = 'record' | 'editable' | 'auto';
-type Band = 'earnings' | 'deductions' | 'net';
+type Band = 'earnings' | 'deductions' | 'net' | 'employer';
+type Totals = PayrollJourney['pay']['totals'];
 
 export interface GridColumn {
   key: string;
@@ -51,7 +64,19 @@ export interface GridColumn {
   /** The row field rendered; money fields are server-formatted strings. */
   field: keyof PayRow;
   /** The totals key the column foots on — for the stat cards and the export. */
-  total: keyof PayrollJourney['pay']['totals'];
+  total: keyof Totals;
+  /**
+   * The name this column carries in the CSV, when its header alone would not
+   * say whose money it is. A grid has a group header above the column to
+   * answer that; an exported file has one header row and nothing else.
+   */
+  exportTitle?: string;
+  /**
+   * The totals key counting the people the column's total LEAVES OUT. Only a
+   * statutory column has one: its sum runs over the rows where the scheme was
+   * worked out, so a null row makes the figure smaller than what is owed.
+   */
+  missing?: keyof Totals;
   money: boolean;
   strong?: boolean;
   net?: boolean;
@@ -84,12 +109,68 @@ export const GRID_COLUMNS: GridColumn[] = [
   },
   { key: 'claims', title: 'Claims', band: 'earnings', kind: 'auto', field: 'claims', total: 'claims', money: true },
   { key: 'gross', title: 'Gross', band: 'earnings', kind: 'auto', field: 'grossPay', total: 'gross', money: true, strong: true },
-  { key: 'epf', title: 'EPF', band: 'deductions', kind: 'auto', field: 'epfEmployee', total: 'epfEmployee', money: true },
-  { key: 'socso', title: 'SOCSO', band: 'deductions', kind: 'auto', field: 'socsoEmployee', total: 'socsoEmployee', money: true },
-  { key: 'eis', title: 'EIS', band: 'deductions', kind: 'auto', field: 'eisEmployee', total: 'eisEmployee', money: true },
-  { key: 'pcb', title: 'PCB', band: 'deductions', kind: 'auto', field: 'pcb', total: 'pcb', money: true },
-  { key: 'otherDeductions', title: 'Other', band: 'deductions', kind: 'editable', field: 'otherDeductions', total: 'otherDeductions', money: true },
+  {
+    key: 'epf',
+    title: 'EPF',
+    band: 'deductions',
+    kind: 'auto',
+    field: 'epfEmployee',
+    total: 'epfEmployee',
+    missing: 'epfNotCalculated',
+    money: true,
+    exportTitle: 'EPF (employee)',
+  },
+  {
+    key: 'socso',
+    title: 'SOCSO',
+    band: 'deductions',
+    kind: 'auto',
+    field: 'socsoEmployee',
+    total: 'socsoEmployee',
+    missing: 'socsoNotCalculated',
+    money: true,
+    exportTitle: 'SOCSO (employee)',
+  },
+  {
+    key: 'eis',
+    title: 'EIS',
+    band: 'deductions',
+    kind: 'auto',
+    field: 'eisEmployee',
+    total: 'eisEmployee',
+    missing: 'eisNotCalculated',
+    money: true,
+    exportTitle: 'EIS (employee)',
+  },
+  { key: 'pcb', title: 'PCB', band: 'deductions', kind: 'auto', field: 'pcb', total: 'pcb', missing: 'pcbMissing', money: true },
+  {
+    key: 'otherDeductions',
+    title: 'Other',
+    band: 'deductions',
+    kind: 'editable',
+    field: 'otherDeductions',
+    total: 'otherDeductions',
+    money: true,
+    exportTitle: 'Other deductions',
+  },
   { key: 'net', title: 'Net pay', band: 'net', kind: 'auto', field: 'netPay', total: 'net', money: true, strong: true, net: true },
+  /*
+   * WHAT THE CLINIC PAYS ON TOP, in ONE column rather than a second EPF,
+   * SOCSO and EIS beside the employee's. It is the employer's statutory share
+   * plus any levy, summed on the line by the engine and passed through — the
+   * same figure the month header calls "Employer contributions". It sits
+   * after net because it never comes off anybody's pay.
+   */
+  {
+    key: 'employerContributions',
+    title: 'Contributions',
+    band: 'employer',
+    kind: 'auto',
+    field: 'employerContributions',
+    total: 'employerContributions',
+    money: true,
+    exportTitle: 'Employer contributions',
+  },
 ];
 
 /** "4,200.00" — the server's figure, grouped, without the currency the column header implies. */
@@ -185,6 +266,8 @@ export interface LeftOutRow {
 export function PayrollGrid({
   rows,
   leftOut = [],
+  totals,
+  counted,
   runId,
   canEdit,
   edit,
@@ -196,6 +279,10 @@ export function PayrollGrid({
 }: {
   rows: PayRow[];
   leftOut?: LeftOutRow[];
+  /** The server's sums for the WHOLE month — what the foot prints. */
+  totals: Totals;
+  /** How many people those sums cover, which is not always how many are shown. */
+  counted: number;
   runId: string;
   canEdit: boolean;
   edit: GridEdit | null;
@@ -213,11 +300,12 @@ export function PayrollGrid({
    * 390px can only be done by shrinking the type until nobody can read it.
    */
   if (!screens.md) {
-    return <PayrollCards rows={rows} leftOut={leftOut} link={employeeLink} />;
+    return <PayrollCards rows={rows} leftOut={leftOut} totals={totals} counted={counted} link={employeeLink} />;
   }
 
   const earnings = GRID_COLUMNS.filter((column) => column.band === 'earnings');
   const deductions = GRID_COLUMNS.filter((column) => column.band === 'deductions');
+  const employer = GRID_COLUMNS.filter((column) => column.band === 'employer');
 
   return (
     <div className="kw-payrollGrid hr-scrollX">
@@ -228,8 +316,9 @@ export function PayrollGrid({
             <th />
             <th className="is-record">Record</th>
             <th colSpan={earnings.length - 1}>Earnings</th>
-            <th colSpan={deductions.length}>Deductions</th>
+            <th colSpan={deductions.length}>Deductions — employee</th>
             <th />
+            <th colSpan={employer.length}>Employer pays</th>
             <th />
           </tr>
           <tr>
@@ -302,10 +391,10 @@ export function PayrollGrid({
                 </Link>
               </td>
               <td>
-                <StatusChip tone="block">Blocked</StatusChip>
+                <Standing tone="block" label="Blocked" reason={row.reason} />
               </td>
               {GRID_COLUMNS.map((column) => (
-                <td key={column.key} className={`hr-num ${column.kind === 'editable' ? 'is-editable' : column.kind === 'record' ? 'is-record' : 'is-auto'}`} title={row.reason ?? undefined}>
+                <td key={column.key} className={`hr-num ${column.kind === 'editable' ? 'is-editable' : column.kind === 'record' ? 'is-record' : 'is-auto'}`}>
                   —
                 </td>
               ))}
@@ -317,9 +406,66 @@ export function PayrollGrid({
             </tr>
           ))}
         </tbody>
+        <tfoot>
+          <tr>
+            <th scope="row">
+              <span className="hr-grid__footLabel">Total</span>
+              <span className="hr-grid__footWho">{covers(rows.length, counted, leftOut.length)}</span>
+            </th>
+            <td />
+            {GRID_COLUMNS.map((column) => (
+              <Foot key={column.key} column={column} totals={totals} />
+            ))}
+            <td />
+          </tr>
+        </tfoot>
       </table>
     </div>
   );
+}
+
+/**
+ * WHAT THE FOOT COVERS, said plainly. The sums are the month's, so a filtered
+ * view shows a total that is not the total of the rows above it — and people
+ * the run left out have no line, so no figure of theirs is in it either.
+ * Both are named rather than left to be discovered.
+ */
+export function covers(shown: number, counted: number, leftOut: number): string {
+  const people = `All ${counted} ${counted === 1 ? 'employee' : 'employees'}`;
+  const clauses = [shown === counted ? people : `${people}, not the ${shown} shown`];
+  if (leftOut > 0) clauses.push(`${leftOut} left out ${leftOut === 1 ? 'has' : 'have'} no figures`);
+  return clauses.join(' · ');
+}
+
+/** One column's foot — the server's sum, and the people it does not cover. */
+function Foot({ column, totals }: { column: GridColumn; totals: Totals }) {
+  const short = column.missing ? (totals[column.missing] as number) : 0;
+  const className = ['hr-num', column.strong ? 'hr-strong' : '', column.net ? 'hr-net' : ''].filter(Boolean).join(' ');
+  return (
+    <td className={className}>
+      {figure(column, totals[column.total])}
+      {short > 0 ? (
+        <span
+          className="hr-grid__short"
+          title={`${short} ${short === 1 ? 'person is' : 'people are'} not in this total: ${column.title} was not worked out for them.`}
+        >
+          {short} not worked out
+        </span>
+      ) : null}
+    </td>
+  );
+}
+
+/**
+ * ONE COLUMN'S FIGURE, formatted the way that column formats — used by the
+ * cell and by the foot, so a total cannot be printed differently from the
+ * figures above it. A money null renders "—": a statutory figure the engine
+ * could not work out is not nil.
+ */
+function figure(column: GridColumn, raw: unknown): ReactNode {
+  if (!column.money) return column.key === 'overtimeHours' ? hours(Number(raw)) : days(Number(raw));
+  const text = grouped(raw as string | null);
+  return text === null ? <span title="Not worked out">—</span> : text;
 }
 
 function Cell({
@@ -353,17 +499,9 @@ function Cell({
     );
   }
 
-  const raw = row[column.field];
-  let shown: ReactNode;
-  if (column.money) {
-    const text = grouped(raw as string | null);
-    shown = text === null ? <span title="Not worked out">—</span> : text;
-  } else {
-    shown = column.key === 'overtimeHours' ? hours(Number(raw)) : days(Number(raw));
-  }
   return (
     <td className={className}>
-      {shown}
+      {figure(column, row[column.field])}
       {editing && column.fixTo ? (
         <Link className="hr-fixLink" to={column.fixTo(row)} title="From the records. Correct it where it was recorded.">
           Fix
@@ -374,30 +512,53 @@ function Cell({
 }
 
 /**
- * WHETHER THIS PERSON IS READY, BESIDE THIS PERSON. Green ready · gold worth
- * a look · red cannot be paid safely. The reason is on the chip, and Fix
- * goes straight to the remedy for the most serious thing wrong.
+ * WHETHER THIS PERSON IS READY, BESIDE THIS PERSON. Green ready · gold needs
+ * attention · red cannot be paid safely. Fix goes straight to the remedy for
+ * the most serious thing wrong.
+ *
+ * AND WHAT IS WRONG, ON THE ROW. A status word can only ever say how serious
+ * something is; it cannot say what it is, which is why "Check" told a reader
+ * nothing they could act on. The server already sends the reason for the most
+ * serious thing wrong, so the row PRINTS it under the chip instead of hiding
+ * it in a hover a phone cannot perform — with the full text still on `title`
+ * for the rare reason too long for the column.
+ *
+ * "Needs attention" is the name the server gives this state (NEEDS_ATTENTION),
+ * so the screen and the API say the same word for the same thing.
  */
 function RowStatus({ row }: { row: PayRow }) {
-  if (row.blockers > 0) {
-    return (
-      <span title={row.reason ?? undefined}>
-        <StatusChip tone="block">Blocked</StatusChip>
-      </span>
-    );
-  }
-  if (row.warnings > 0) {
-    return (
-      <span title={row.reason ?? undefined}>
-        <StatusChip tone="attn">Check</StatusChip>
-      </span>
-    );
-  }
+  if (row.blockers > 0) return <Standing tone="block" label="Blocked" reason={row.reason} />;
+  if (row.warnings > 0) return <Standing tone="attn" label="Needs attention" reason={row.reason} />;
   return <StatusChip tone="done">Ready</StatusChip>;
 }
 
-/** The phone register — one card per person, four figures and a status. */
-function PayrollCards({ rows, leftOut, link }: { rows: PayRow[]; leftOut: LeftOutRow[]; link: (staffId: string) => string }) {
+function Standing({ tone, label, reason }: { tone: 'block' | 'attn'; label: string; reason: string | null }) {
+  return (
+    <span className="hr-standing">
+      <StatusChip tone={tone}>{label}</StatusChip>
+      {reason ? (
+        <span className="hr-standing__why" title={reason}>
+          {reason}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/** The phone register — one card per person, four figures and a status, then the month's. */
+function PayrollCards({
+  rows,
+  leftOut,
+  totals,
+  counted,
+  link,
+}: {
+  rows: PayRow[];
+  leftOut: LeftOutRow[];
+  totals: Totals;
+  counted: number;
+  link: (staffId: string) => string;
+}) {
   return (
     <div className="kw-payCards">
       {rows.map((row) => (
@@ -445,6 +606,26 @@ function PayrollCards({ rows, leftOut, link }: { rows: PayRow[]; leftOut: LeftOu
           </div>
         </div>
       ))}
+      <div className="kw-payCard kw-payCard--total">
+        <div className="kw-payCard__head">
+          <span className="hr-who__name">Total</span>
+          <span className="kw-payCard__covers">{covers(rows.length, counted, leftOut.length)}</span>
+        </div>
+        <dl className="kw-payCard__figures">
+          <div>
+            <dt>Gross</dt>
+            <dd className="kw-num">{grouped(totals.gross)}</dd>
+          </div>
+          <div>
+            <dt>Deductions</dt>
+            <dd className="kw-num">{grouped(totals.deductions)}</dd>
+          </div>
+          <div className="kw-payCard__net">
+            <dt>Net</dt>
+            <dd className="kw-num">{grouped(totals.net)}</dd>
+          </div>
+        </dl>
+      </div>
     </div>
   );
 }

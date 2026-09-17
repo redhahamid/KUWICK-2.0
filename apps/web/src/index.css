@@ -6723,15 +6723,19 @@ button.kw-stage__button:hover { background: var(--kw-surface-2); }
   cursor: pointer;
 }
 
+/* The month, once, under the people — the phone's totals row. */
 .kw-payCard--total {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
   background: var(--kw-surface-3);
   font-size: 13px;
 }
 
-.kw-payCard--total strong { font-size: 16px; color: var(--kw-navy); }
+.kw-payCard--total .kw-payCard__head { align-items: baseline; }
+
+.kw-payCard__covers {
+  font-size: 11.5px;
+  color: var(--kw-text-muted);
+  text-align: right;
+}
 
 /* --- Approve: the sentence, and Finalise's remaining outputs --------------- */
 

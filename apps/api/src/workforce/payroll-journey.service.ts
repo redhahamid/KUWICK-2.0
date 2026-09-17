@@ -489,6 +489,11 @@ export class PayrollJourneyService {
       // under. `statutory` above is EPF+SOCSO+EIS added together and is what
       // the month header reads; a column headed EPF must foot on EPF.
       epf: 0, socso: 0, eis: 0,
+      // And per scheme, the people each column's total LEAVES OUT. A sum over
+      // the rows where a scheme was worked out is a smaller number than the
+      // clinic owes whenever one row is unknown, so the register's totals row
+      // prints the count beside the figure rather than footing on silence.
+      epfNotCalculated: 0, socsoNotCalculated: 0, eisNotCalculated: 0,
       // THE GRID'S OWN COLUMNS (Piece 3d). Claims are the reimbursed claims on
       // the line; "other income" is everything that reached gross which is
       // not basic, overtime or a claim — allowances, incentives, bonus,
@@ -520,6 +525,19 @@ export class PayrollJourneyService {
       // a Fix button that opens a warning while a blocker sits under it is a
       // button that wastes the one click somebody gave it.
       const fixLink = blockers.find((e) => e.deepLink)?.deepLink ?? warnings.find((e) => e.deepLink)?.deepLink ?? null;
+      /*
+       * AND THE REASON FOR THE SAME THING THE CHIP COUNTS.
+       *
+       * The status beside a name counts the RUN'S exception rows, while the
+       * reason under it used to come from the employee's readiness — two
+       * different sources. So a person whose record is complete but whose
+       * MONTH raised an exception got an amber chip with nothing behind it:
+       * a screen saying "look at this" and refusing to say at what. This
+       * takes the cause of the most serious exception, the same one `fixLink`
+       * opens, and keeps the readiness reason for the case where the trouble
+       * really is the record rather than the month.
+       */
+      const worst = blockers[0] ?? warnings[0] ?? null;
       const basicCents = toCents(line.basicSalary);
       const unpaidCents = toCents(line.unpaidLeaveDeduction);
       const allowanceCents = toCents(line.allowances);
@@ -587,8 +605,11 @@ export class PayrollJourneyService {
       // skipped, never added as nil — the count beside the header says how
       // many are missing.
       if (line.epfEmployee !== null) sums.epf += toCents(line.epfEmployee);
+      else sums.epfNotCalculated += 1;
       if (line.socsoEmployee !== null) sums.socso += toCents(line.socsoEmployee);
+      else sums.socsoNotCalculated += 1;
       if (line.eisEmployee !== null) sums.eis += toCents(line.eisEmployee);
+      else sums.eisNotCalculated += 1;
       if (statutoryCents === null) sums.statutoryNotCalculated += 1;
       else sums.statutory += statutoryCents;
       if (pcbCents === null) sums.pcbMissing += 1;
@@ -607,7 +628,7 @@ export class PayrollJourneyService {
          * see the note above `standingByStaff`.
          */
         state: standing?.state ?? ('READY' as const),
-        reason: standing?.reason ?? null,
+        reason: worst?.cause ?? standing?.reason ?? null,
         blockers: blockers.length,
         warnings: warnings.length,
         fixLink,
@@ -762,6 +783,10 @@ export class PayrollJourneyService {
       epfEmployee: formatCents(sums.epf),
       socsoEmployee: formatCents(sums.socso),
       eisEmployee: formatCents(sums.eis),
+      /** Beside each of the three, the people it does not cover. */
+      epfNotCalculated: sums.epfNotCalculated,
+      socsoNotCalculated: sums.socsoNotCalculated,
+      eisNotCalculated: sums.eisNotCalculated,
       claims: formatCents(sums.claims),
       otherIncome: formatCents(sums.otherIncome),
       overtimeHours: Math.round(sums.overtimeHours * 100) / 100,

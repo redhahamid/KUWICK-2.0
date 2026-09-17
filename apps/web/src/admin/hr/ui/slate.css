@@ -1467,6 +1467,64 @@ a.hr-who:hover .hr-who__name {
 .hr-grid tbody tr:last-child td {
   border-bottom: 0;
 }
+/*
+ * THE MONTH FOOTS. A rule above it, the same tint as a worked-out cell, and
+ * what it covers named under the word — a total for the month and a total for
+ * a filtered view are different numbers, and the foot always shows the
+ * month's.
+ */
+.hr-grid tfoot th,
+.hr-grid tfoot td {
+  background: #f2f5f6;
+  border-top: 2px solid var(--hr-line2);
+  border-bottom: 0;
+  font-weight: 600;
+  vertical-align: top;
+}
+.hr-grid__footLabel {
+  display: block;
+}
+.hr-grid__footWho,
+.hr-grid__short {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+}
+.hr-grid__footWho {
+  color: var(--hr-ink3);
+}
+/* The people a column's total does not cover — gold, like the status it mirrors. */
+.hr-grid__short {
+  color: var(--hr-gold);
+}
+/*
+ * WHY, UNDER THE WORD. A status says how serious something is and can never
+ * say what it is; the reason the server sends is the answer, so the row prints
+ * it rather than hiding it in a hover no phone can perform. The full text
+ * stays on `title` for the reason too long for the column.
+ */
+.hr-standing {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.hr-standing__why {
+  max-width: 210px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--hr-ink3);
+}
+/* On the phone the status sits at the right of the card, so its reason does too. */
+.kw-payCards .hr-standing {
+  align-items: flex-end;
+  text-align: right;
+}
+.kw-payCards .hr-standing__why {
+  max-width: 190px;
+}
 .hr-grid .hr-who__avatar {
   width: 26px;
   height: 26px;

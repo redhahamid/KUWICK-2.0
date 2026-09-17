@@ -36,7 +36,8 @@ diset sekali sahaja dan jarang dibuka.
    tarik masuk gaji, lebih masa yang diluluskan, cuti tanpa gaji, tuntutan,
    elaun bulanan dan insentif.
 8. **Tahap Review** memberitahu apa yang menghalang. Apa-apa bertanda
-   **Blocked** mesti dibetulkan dahulu; **Check** hanya perlu dipandang.
+   **Blocked** mesti dibetulkan dahulu; **Needs attention** hanya perlu
+   dipandang.
 9. **Tahap Approve** mengunci bulan itu. Selepas ini angka tidak boleh berubah
    lagi tanpa membuka semula run.
 10. **Tahap Pay**: muat turun senarai bank, bayar di portal bank anda sendiri,
@@ -632,8 +633,21 @@ Selepas bermula, bulan itu berjalan melalui empat tahap:
 | **Approve** | Meluluskan mengunci bulan. Ini saat wang terikat |
 | **Pay** | Slip gaji, senarai pembayaran bank, dan angka berkanun untuk difailkan |
 
-Setiap baris ada statusnya sendiri: **Ready**, **Check**, atau **Blocked**.
-Tapisan di atas jadual membolehkan anda lihat **Blocked** sahaja.
+Setiap baris ada statusnya sendiri: **Ready**, **Needs attention**, atau
+**Blocked**. Sebab bagi setiap status tertulis terus di bawah cip itu, pada
+baris yang sama. Tapisan di atas jadual membolehkan anda lihat **Blocked**
+sahaja.
+
+Tajuk berkumpulan di atas lajur berkata wang siapa. **Deductions — employee**
+ialah bahagian pekerja, ditolak dari gaji mereka. **Employer pays** ialah
+caruman majikan di atas gaji itu (KWSP, PERKESO, SIP majikan, dan levi HRD
+kalau klinik berdaftar) — ia tidak pernah ditolak dari sesiapa, sebab itu ia
+duduk selepas **Net pay**.
+
+Di bawah jadual ada baris **Total** untuk setiap lajur, dikira oleh pelayan.
+Ia sentiasa jumlah seluruh bulan: kalau tapisan atau carian sedang menyempitkan
+senarai, baris itu berkata begitu. Lajur berkanun juga berkata berapa orang
+yang tidak termasuk dalam jumlahnya, kalau ada angka yang tidak dapat dikira.
 
 **Apa yang boleh ditekan.**
 
@@ -811,8 +825,9 @@ Yang paling kerap:
 | *Salary changed from … part-way through …* | Lihat soalan seterusnya | — |
 | *Deductions exceed earnings* | Gaji bersih akan jadi negatif | Kurangkan satu potongan, atau bahagikan pemulihan kepada beberapa bulan |
 
-**Check** berbeza dari **Blocked**: ia patut dipandang tetapi tidak menghalang
-kelulusan. Contoh: tiada akaun bank, atau lebih masa belum diluluskan.
+**Needs attention** berbeza dari **Blocked**: ia patut dipandang tetapi tidak
+menghalang kelulusan. Contoh: tiada akaun bank, atau lebih masa belum
+diluluskan.
 
 ### Gaji naik pertengahan bulan — macam mana?
 

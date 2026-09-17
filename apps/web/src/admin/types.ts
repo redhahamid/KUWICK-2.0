@@ -2416,6 +2416,16 @@ export interface PayrollJourney {
       epfEmployee: string;
       socsoEmployee: string;
       eisEmployee: string;
+      /**
+       * Beside each of the three, the people its total LEAVES OUT. A column
+       * summed over the rows where a scheme was worked out is smaller than
+       * what the clinic owes whenever one row is unknown; the grid's totals
+       * row prints this count rather than presenting the sum as the whole
+       * answer. Same rule as `pcbMissing`.
+       */
+      epfNotCalculated: number;
+      socsoNotCalculated: number;
+      eisNotCalculated: number;
       /** The grid's columns — see the row. */
       claims: string;
       otherIncome: string;

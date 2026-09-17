@@ -93,11 +93,13 @@ export function PayrollWorkspace({ runId, monthNav }: { runId: string; monthNav?
     if (!data) return;
     downloadCsv(
       `payroll-${data.run.period}`,
-      ['Employee', 'Position', 'Status', ...GRID_COLUMNS.map((column) => column.title)],
+      // The export carries the column's fuller name where the grid leans on
+      // the group header above it to say whose money the column is.
+      ['Employee', 'Position', 'Status', ...GRID_COLUMNS.map((column) => column.exportTitle ?? column.title)],
       rows.map((row) => [
         row.name,
         row.position,
-        row.blockers > 0 ? 'Blocked' : row.warnings > 0 ? 'Check' : 'Ready',
+        row.blockers > 0 ? 'Blocked' : row.warnings > 0 ? 'Needs attention' : 'Ready',
         ...GRID_COLUMNS.map((column) => row[column.field] as string | number | null),
       ]),
     );
@@ -339,7 +341,7 @@ function PrepareStep({
           options={[
             { value: 'all', label: `All ${rows.length + leftOut.length}` },
             { value: 'blocked', label: `Blocked ${blocked.length + leftOut.length}` },
-            { value: 'check', label: `Check ${check.length}` },
+            { value: 'check', label: `Needs attention ${check.length}` },
           ]}
         />
       </Toolbar>
@@ -353,6 +355,8 @@ function PrepareStep({
         <PayrollGrid
           rows={shown}
           leftOut={shownLeftOut}
+          totals={data.pay.totals}
+          counted={rows.length}
           runId={runId}
           canEdit={canEdit}
           edit={edit}

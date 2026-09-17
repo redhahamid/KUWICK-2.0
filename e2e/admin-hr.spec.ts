@@ -242,11 +242,19 @@ test.describe("HR", () => {
      * the seed no longer builds. The virtue it was defending survives in a
      * form this world can actually prove: a run that says it is clean says so
      * without also flattening the rows that need a second look into "Ready".
+     *
+     * "Needs attention" is the chip's word, and it is the server's own name
+     * for the state (NEEDS_ATTENTION). It used to read "Check", which said how
+     * serious the row was and never what was wrong with it — so the reason now
+     * sits on the row beneath the chip, and this asserts both.
      */
     await expect(page.getByText(/Nothing blocked/i).first()).toBeVisible();
+    const attention = page.locator(".hr-chip", { hasText: "Needs attention" }).first();
+    await expect(attention).toBeVisible();
+    // The reason, on the row — not only in a hover a phone cannot perform.
     await expect(
-      page.locator(".hr-chip", { hasText: "Check" }).first(),
-    ).toBeVisible();
+      page.locator(".hr-standing").filter({ has: attention }).locator(".hr-standing__why").first(),
+    ).not.toBeEmpty();
 
     /*
      * The month's own totals are real computed figures — net pay and employer
