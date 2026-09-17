@@ -68,6 +68,7 @@ describe('payroll register reconciliation (e2e)', () => {
         employeeNo: `E-${Math.floor(Math.random() * 1_000_000)}`,
         position: 'Clinic Assistant',
         employmentStatus: 'ACTIVE',
+        employmentType: 'PERMANENT',
         startDate: '2024-01-01',
         dateOfBirth: '1990-06-15',
       })
@@ -114,6 +115,7 @@ describe('payroll register reconciliation (e2e)', () => {
         employeeNo: `E-${Math.floor(Math.random() * 1_000_000)}`,
         position: 'Clinic Assistant',
         employmentStatus: 'ACTIVE',
+        employmentType: 'PERMANENT',
         startDate: '2024-01-01',
         dateOfBirth: '1988-03-02',
       })
@@ -192,6 +194,17 @@ describe('payroll register reconciliation (e2e)', () => {
       .send({ name: `Reconciliation Employer ${randomId().slice(0, 8)}` })
       .expect(201);
     legalEmployerId = employer.body.id;
+    /*
+     * REGISTERED WITH HRD CORP, so the levy is a real figure in this world.
+     * Without it every levy on every line is nil and the assertion that the
+     * employer columns add up to what the employer pays proves nothing about
+     * the levy — which is exactly the column a three-way split would drop.
+     */
+    await request(server())
+      .post(`/workforce/legal-employers/${legalEmployerId}/statutory-profile`)
+      .set('Authorization', owner)
+      .send({ effectiveFrom: '2020-01-01', hrdRegistration: 'MANDATORY_SECTION_14', reason: 'Registered under section 14' })
+      .expect(201);
     await request(server()).post('/workforce/pay-components/seed').set('Authorization', owner).expect(201);
 
     // A month with something in every column the register opens with, because
@@ -305,6 +318,14 @@ describe('payroll register reconciliation (e2e)', () => {
       ['socsoEmployee', (r: Record<string, string | null>) => r.socsoEmployee],
       ['eisEmployee', (r: Record<string, string | null>) => r.eisEmployee],
       ['pcb', (r: Record<string, string | null>) => r.pcb],
+      ['lindung', (r: Record<string, string | null>) => r.lindungEmployee],
+      // The employer's side, scheme by scheme. A clinic files KWSP with the
+      // first alone and PERKESO with the next two apart, so each has to foot
+      // on its own column and not on a share of a lump.
+      ['epfEmployer', (r: Record<string, string | null>) => r.epfEmployer],
+      ['socsoEmployer', (r: Record<string, string | null>) => r.socsoEmployer],
+      ['eisEmployer', (r: Record<string, string | null>) => r.eisEmployer],
+      ['hrdLevy', (r: Record<string, string | null>) => r.hrdLevy],
     ] as const) {
       footings[key] = cents(totals[key]);
       expected[key] = sum(pick);
@@ -327,6 +348,52 @@ describe('payroll register reconciliation (e2e)', () => {
     // out in a browser until this existed — a payroll subtraction done by a
     // screen.
     expect(cents(totals.employerContributions)).toBe(cents(totals.employerCost)! - cents(totals.gross)!);
+
+    /*
+     * AND THE FOUR EMPLOYER COLUMNS ARE THAT FIGURE.
+     *
+     * The register itemises what the employer pays — EPF, SOCSO, EIS and the
+     * HRD levy — because a clinic files with the items, not their sum. Three
+     * of them would leave the levy out, and the group would be headed
+     * "Employer pays" over figures that are not what the employer pays.
+     */
+    // The levy is a real figure in this world — otherwise the sum below
+    // would hold with the levy column deleted and prove nothing about it.
+    expect(cents(totals.hrdLevy)).toBeGreaterThan(0);
+    expect(
+      cents(totals.epfEmployer)! + cents(totals.socsoEmployer)! + cents(totals.eisEmployer)! + cents(totals.hrdLevy)!,
+    ).toBe(cents(totals.employerContributions));
+  });
+
+  it('keeps a scheme’s two sides unknown together, which is what lets one count serve both columns', async () => {
+    /*
+     * The register prints "N not worked out" under EPF (employee) and under
+     * EPF (employer) from ONE count, because `computeEpf` and its siblings
+     * return the employee and employer share together: either both are
+     * figures or both are null. If that ever stopped being true the counts
+     * would be quietly wrong on one side, which is why it is pinned here
+     * rather than left as a comment.
+     */
+    await employeeWithRefusedEpf('Tan Mei Ling', '2900.00');
+    const { view } = await journey();
+    const rows = view.pay.rows as Record<string, string | null>[];
+
+    const pairs = [
+      ['epfEmployee', 'epfEmployer'],
+      ['socsoEmployee', 'socsoEmployer'],
+      ['eisEmployee', 'eisEmployer'],
+    ] as const;
+    const disagreeing = rows.flatMap((row) =>
+      pairs
+        .filter(([employee, employer]) => (row[employee] === null) !== (row[employer] === null))
+        .map(([employee]) => ({ name: row.name, scheme: employee })),
+    );
+    expect(disagreeing).toEqual([]);
+
+    // Non-vacuous: somebody really does have an unknown scheme here, so the
+    // check above is comparing null against null for a real row.
+    expect(rows.filter((row) => row.epfEmployee === null).map((row) => row.name)).toEqual(['Tan Mei Ling']);
+    expect(rows.filter((row) => row.epfEmployer === null).map((row) => row.name)).toEqual(['Tan Mei Ling']);
   });
 
   it('carries the drawer and the register on ONE row, so they cannot disagree', async () => {

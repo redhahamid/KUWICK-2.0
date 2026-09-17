@@ -494,6 +494,23 @@ export class PayrollJourneyService {
       // clinic owes whenever one row is unknown, so the register's totals row
       // prints the count beside the figure rather than footing on silence.
       epfNotCalculated: 0, socsoNotCalculated: 0, eisNotCalculated: 0,
+      /*
+       * THE EMPLOYER'S SHARE OF EACH SCHEME, ON ITS OWN.
+       *
+       * `employerContributions` is the four added together, and a clinic
+       * cannot file anything with it: KWSP's form wants the EPF employer
+       * share alone, PERKESO's wants SOCSO and EIS separately, and the levy
+       * is its own return. They are summed here for the same reason as every
+       * other column — a figure a browser adds up is a figure that can
+       * disagree with the payslip.
+       *
+       * The levy carries its own count. The three schemes do not need one:
+       * a scheme's employee and employer shares are worked out together and
+       * are null together, so `epfNotCalculated` and its two siblings count
+       * both columns. `payroll-register-reconciliation.e2e-spec.ts` pins that.
+       */
+      epfEmployer: 0, socsoEmployer: 0, eisEmployer: 0,
+      hrdLevy: 0, hrdLevyNotDetermined: 0,
       // THE GRID'S OWN COLUMNS (Piece 3d). Claims are the reimbursed claims on
       // the line; "other income" is everything that reached gross which is
       // not basic, overtime or a claim — allowances, incentives, bonus,
@@ -610,6 +627,13 @@ export class PayrollJourneyService {
       else sums.socsoNotCalculated += 1;
       if (line.eisEmployee !== null) sums.eis += toCents(line.eisEmployee);
       else sums.eisNotCalculated += 1;
+      // The employer's side of the same three, and the levy — each over the
+      // rows where it was actually worked out.
+      if (line.epfEmployer !== null) sums.epfEmployer += toCents(line.epfEmployer);
+      if (line.socsoEmployer !== null) sums.socsoEmployer += toCents(line.socsoEmployer);
+      if (line.eisEmployer !== null) sums.eisEmployer += toCents(line.eisEmployer);
+      if (line.hrdLevy !== null) sums.hrdLevy += toCents(line.hrdLevy);
+      else sums.hrdLevyNotDetermined += 1;
       if (statutoryCents === null) sums.statutoryNotCalculated += 1;
       else sums.statutory += statutoryCents;
       if (pcbCents === null) sums.pcbMissing += 1;
@@ -787,6 +811,15 @@ export class PayrollJourneyService {
       epfNotCalculated: sums.epfNotCalculated,
       socsoNotCalculated: sums.socsoNotCalculated,
       eisNotCalculated: sums.eisNotCalculated,
+      /**
+       * THE EMPLOYER'S SHARE PER SCHEME, and the levy — what the clinic files
+       * with, which `employerContributions` added together cannot be used for.
+       */
+      epfEmployer: formatCents(sums.epfEmployer),
+      socsoEmployer: formatCents(sums.socsoEmployer),
+      eisEmployer: formatCents(sums.eisEmployer),
+      hrdLevy: formatCents(sums.hrdLevy),
+      hrdLevyNotDetermined: sums.hrdLevyNotDetermined,
       claims: formatCents(sums.claims),
       otherIncome: formatCents(sums.otherIncome),
       overtimeHours: Math.round(sums.overtimeHours * 100) / 100,

@@ -50,6 +50,14 @@ type PayRow = PayrollJourney['pay']['rows'][number];
  * because the total for the month and the total for a filtered view are
  * different numbers, and it prints the people a statutory column leaves out
  * rather than passing a short sum off as the whole answer.
+ *
+ * NO FIGURE IS MERGED TO SAVE WIDTH. Seventeen money columns do not fit on
+ * any screen, and the answer is not to add two of them together: the clinic
+ * files KWSP with the EPF employer share ALONE and PERKESO with SOCSO and EIS
+ * APART, so a column holding their sum is a column nothing can be done with.
+ * The grid scrolls instead, and the two columns that say whose row it is —
+ * the name and the status — are pinned to the left edge so a figure is never
+ * read against the wrong person.
  */
 
 export type CellKind = 'record' | 'editable' | 'auto';
@@ -142,6 +150,24 @@ export const GRID_COLUMNS: GridColumn[] = [
     money: true,
     exportTitle: 'EIS (employee)',
   },
+  /*
+   * SKBBK — LINDUNG 24 JAM. Act 4's own schedule prints it as a third column
+   * beside SOCSO and EIS, and it is EMPLOYEE-borne: the engine takes it off
+   * gross with EPF, SOCSO, EIS and PCB (payroll-calculation.ts), and the
+   * payslip gives it its own line. A deduction a clinic can see on the
+   * payslip and not in the register is a deduction they cannot check.
+   */
+  {
+    key: 'lindung',
+    title: 'SKBBK',
+    band: 'deductions',
+    kind: 'auto',
+    field: 'lindungEmployee',
+    total: 'lindung',
+    missing: 'lindungNotDetermined',
+    money: true,
+    exportTitle: 'SKBBK / Lindung 24 Jam (employee)',
+  },
   { key: 'pcb', title: 'PCB', band: 'deductions', kind: 'auto', field: 'pcb', total: 'pcb', missing: 'pcbMissing', money: true },
   {
     key: 'otherDeductions',
@@ -155,21 +181,66 @@ export const GRID_COLUMNS: GridColumn[] = [
   },
   { key: 'net', title: 'Net pay', band: 'net', kind: 'auto', field: 'netPay', total: 'net', money: true, strong: true, net: true },
   /*
-   * WHAT THE CLINIC PAYS ON TOP, in ONE column rather than a second EPF,
-   * SOCSO and EIS beside the employee's. It is the employer's statutory share
-   * plus any levy, summed on the line by the engine and passed through — the
-   * same figure the month header calls "Employer contributions". It sits
-   * after net because it never comes off anybody's pay.
+   * WHAT THE CLINIC PAYS ON TOP — ITEMISED, because a clinic files with the
+   * items and not with their sum.
+   *
+   * This was one "Contributions" column for a day. It could not be used for
+   * anything: KWSP's form asks for the EPF employer share alone, PERKESO's
+   * asks for SOCSO and EIS separately, and the levy is its own return. So the
+   * four figures the engine already wrote on the line are four columns, and
+   * together they still make the "Employer contributions" the month header
+   * shows — `employerCost - gross`, which is exactly these four.
+   *
+   * They sit after net because none of them ever comes off anybody's pay.
    */
   {
-    key: 'employerContributions',
-    title: 'Contributions',
+    key: 'epfEmployer',
+    title: 'EPF',
     band: 'employer',
     kind: 'auto',
-    field: 'employerContributions',
-    total: 'employerContributions',
+    field: 'epfEmployer',
+    total: 'epfEmployer',
+    missing: 'epfNotCalculated',
     money: true,
-    exportTitle: 'Employer contributions',
+    exportTitle: 'EPF (employer)',
+  },
+  {
+    key: 'socsoEmployer',
+    title: 'SOCSO',
+    band: 'employer',
+    kind: 'auto',
+    field: 'socsoEmployer',
+    total: 'socsoEmployer',
+    missing: 'socsoNotCalculated',
+    money: true,
+    exportTitle: 'SOCSO (employer)',
+  },
+  {
+    key: 'eisEmployer',
+    title: 'EIS',
+    band: 'employer',
+    kind: 'auto',
+    field: 'eisEmployer',
+    total: 'eisEmployer',
+    missing: 'eisNotCalculated',
+    money: true,
+    exportTitle: 'EIS (employer)',
+  },
+  /*
+   * AND THE LEVY, which is the fourth thing in that sum. Without it the group
+   * would be headed "Employer pays" over three figures that do not add up to
+   * what the employer pays, for any clinic registered with HRD Corp.
+   */
+  {
+    key: 'hrdLevy',
+    title: 'HRD levy',
+    band: 'employer',
+    kind: 'auto',
+    field: 'hrdLevy',
+    total: 'hrdLevy',
+    missing: 'hrdLevyNotDetermined',
+    money: true,
+    exportTitle: 'HRD levy (employer)',
   },
 ];
 
@@ -312,8 +383,8 @@ export function PayrollGrid({
       <table className="hr-grid">
         <thead>
           <tr className="hr-grid__grp">
-            <th />
-            <th />
+            <th className="hr-grid__freeze hr-grid__freeze--who" />
+            <th className="hr-grid__freeze hr-grid__freeze--status" />
             <th className="is-record">Record</th>
             <th colSpan={earnings.length - 1}>Earnings</th>
             <th colSpan={deductions.length}>Deductions — employee</th>
@@ -322,8 +393,8 @@ export function PayrollGrid({
             <th />
           </tr>
           <tr>
-            <th>Employee</th>
-            <th>Status</th>
+            <th className="hr-grid__freeze hr-grid__freeze--who">Employee</th>
+            <th className="hr-grid__freeze hr-grid__freeze--status">Status</th>
             {GRID_COLUMNS.map((column) => (
               <th key={column.key} className={`hr-num${column.kind === 'record' && column.key === 'basic' ? ' is-record' : ''}`}>
                 {column.title}
@@ -337,8 +408,8 @@ export function PayrollGrid({
             const editing = edit?.staffId === row.staffId;
             return (
               <tr key={row.staffId} className={editing ? 'is-editing' : undefined}>
-                <td>
-                  <Link className="hr-who" to={employeeLink(row.staffId)}>
+                <td className="hr-grid__freeze hr-grid__freeze--who">
+                  <Link className="hr-who" to={employeeLink(row.staffId)} title={row.name}>
                     <span className="hr-who__avatar">{initialsOf(row.name)}</span>
                     <span>
                       <span className="hr-who__name">{row.name}</span>
@@ -346,7 +417,7 @@ export function PayrollGrid({
                     </span>
                   </Link>
                 </td>
-                <td>{editing ? <StatusChip tone="info">Editing</StatusChip> : <RowStatus row={row} />}</td>
+                <td className="hr-grid__freeze hr-grid__freeze--status">{editing ? <StatusChip tone="info">Editing</StatusChip> : <RowStatus row={row} />}</td>
                 {GRID_COLUMNS.map((column) => (
                   <Cell key={column.key} column={column} row={row} editing={editing} edit={edit} onEditChange={onEditChange} />
                 ))}
@@ -381,8 +452,8 @@ export function PayrollGrid({
           })}
           {leftOut.map((row) => (
             <tr key={row.staffId}>
-              <td>
-                <Link className="hr-who" to={`/admin/hr/employees/${row.staffId}`}>
+              <td className="hr-grid__freeze hr-grid__freeze--who">
+                <Link className="hr-who" to={`/admin/hr/employees/${row.staffId}`} title={row.name}>
                   <span className="hr-who__avatar">{initialsOf(row.name)}</span>
                   <span>
                     <span className="hr-who__name">{row.name}</span>
@@ -390,7 +461,7 @@ export function PayrollGrid({
                   </span>
                 </Link>
               </td>
-              <td>
+              <td className="hr-grid__freeze hr-grid__freeze--status">
                 <Standing tone="block" label="Blocked" reason={row.reason} />
               </td>
               {GRID_COLUMNS.map((column) => (
@@ -408,11 +479,11 @@ export function PayrollGrid({
         </tbody>
         <tfoot>
           <tr>
-            <th scope="row">
+            <th scope="row" className="hr-grid__freeze hr-grid__freeze--who">
               <span className="hr-grid__footLabel">Total</span>
               <span className="hr-grid__footWho">{covers(rows.length, counted, leftOut.length)}</span>
             </th>
-            <td />
+            <td className="hr-grid__freeze hr-grid__freeze--status" />
             {GRID_COLUMNS.map((column) => (
               <Foot key={column.key} column={column} totals={totals} />
             ))}

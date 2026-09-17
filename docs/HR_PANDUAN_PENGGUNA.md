@@ -638,11 +638,26 @@ Setiap baris ada statusnya sendiri: **Ready**, **Needs attention**, atau
 baris yang sama. Tapisan di atas jadual membolehkan anda lihat **Blocked**
 sahaja.
 
-Tajuk berkumpulan di atas lajur berkata wang siapa. **Deductions — employee**
-ialah bahagian pekerja, ditolak dari gaji mereka. **Employer pays** ialah
-caruman majikan di atas gaji itu (KWSP, PERKESO, SIP majikan, dan levi HRD
-kalau klinik berdaftar) — ia tidak pernah ditolak dari sesiapa, sebab itu ia
-duduk selepas **Net pay**.
+Tajuk berkumpulan di atas lajur berkata wang siapa.
+
+**Deductions — employee** ialah bahagian pekerja, ditolak dari gaji mereka:
+KWSP, PERKESO, SIP, **SKBBK** (Lindung 24 Jam) dan PCB. SKBBK ditanggung
+pekerja sama seperti PERKESO dan SIP, walaupun majikan yang menghantarnya —
+sebab itu ia duduk di sini dan bukan di sebelah kanan.
+
+**Employer pays** ialah apa yang klinik bayar di atas gaji itu, **satu lajur
+untuk setiap satu**: KWSP majikan, PERKESO majikan, SIP majikan, dan levi HRD.
+Ia berasingan sebab borang yang anda isi memerlukannya berasingan — borang
+KWSP mahu bahagian majikan KWSP sahaja, borang PERKESO mahu PERKESO dan SIP
+berlainan. Satu angka gabungan tidak boleh diisi ke dalam mana-mana borang.
+Keempat-empatnya tidak pernah ditolak dari gaji sesiapa, sebab itu ia duduk
+selepas **Net pay**, dan jumlah keempat-empatnya ialah angka **Employer
+contributions** pada kad di atas skrin.
+
+Jadual ini lebih lebar daripada kebanyakan skrin, jadi ia menatal ke tepi.
+Lajur **Employee** dan **Status** kekal terpaku di kiri semasa anda menatal,
+supaya anda sentiasa tahu baris siapa yang sedang dibaca. Tiada angka
+digabungkan untuk menjimatkan ruang.
 
 Di bawah jadual ada baris **Total** untuk setiap lajur, dikira oleh pelayan.
 Ia sentiasa jumlah seluruh bulan: kalau tapisan atau carian sedang menyempitkan

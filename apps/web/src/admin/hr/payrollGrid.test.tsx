@@ -63,14 +63,14 @@ function row(over: Partial<PayRow> = {}): PayRow {
     employerCost: '4078.73',
     statutoryEmployee: '414.85',
     pcb: '24.65',
-    lindungEmployee: null,
+    lindungEmployee: '0.00',
     epfEmployee: '390.00',
     epfEmployer: '461.00',
     socsoEmployee: '17.75',
     socsoEmployer: '62.15',
     eisEmployee: '7.10',
     eisEmployer: '7.10',
-    hrdLevy: null,
+    hrdLevy: '32.00',
     employerContributions: '530.25',
     additionalEarnings: '250.00',
     socsoEis: '24.85',
@@ -134,6 +134,11 @@ function totals(over: Partial<Totals> = {}): Totals {
     epfNotCalculated: 0,
     socsoNotCalculated: 0,
     eisNotCalculated: 0,
+    epfEmployer: '461.00',
+    socsoEmployer: '62.15',
+    eisEmployer: '7.10',
+    hrdLevy: '32.00',
+    hrdLevyNotDetermined: 0,
     claims: '0.00',
     otherIncome: '250.00',
     overtimeHours: 4,
@@ -179,10 +184,14 @@ function groups() {
   return cells.filter((cell) => cell.textContent?.trim()).map((cell) => [cell.textContent?.trim(), Number(cell.getAttribute('colspan') ?? 1)]);
 }
 
-/** The foot, column by column, in GRID_COLUMNS order. */
+/**
+ * The foot, column by column, in GRID_COLUMNS order — the FIGURE only. The
+ * count of people a column leaves out is its own element beside it, and has
+ * its own case below.
+ */
 function foot() {
   const cells = [...document.querySelectorAll('tfoot td')];
-  return GRID_COLUMNS.map((_column, index) => cells[index + 1].textContent?.trim() ?? '');
+  return GRID_COLUMNS.map((_column, index) => (cells[index + 1].firstChild?.textContent ?? '').trim());
 }
 
 describe('the payroll grid', () => {
@@ -206,21 +215,28 @@ describe('the payroll grid', () => {
       'EPF',
       'SOCSO',
       'EIS',
+      'SKBBK',
       'PCB',
       'Other',
       'Net pay',
-      'Contributions',
+      // Under EMPLOYER PAYS. Same scheme names, the other side of them — the
+      // group header above says which, and the export carries both in full.
+      'EPF',
+      'SOCSO',
+      'EIS',
+      'HRD levy',
       '',
     ]);
-    const at = (title: string) => GRID_COLUMNS.findIndex((column) => column.title === title);
-    for (const title of ['Basic', 'Other income', 'OT h', 'Unpaid d', 'Claims']) {
-      expect(at(title), `${title} must come before Gross`).toBeLessThan(at('Gross'));
+    // Keyed, not titled: EPF, SOCSO and EIS each name two columns now.
+    const at = (key: string) => GRID_COLUMNS.findIndex((column) => column.key === key);
+    for (const key of ['basic', 'otherIncome', 'overtimeHours', 'unpaidDays', 'claims']) {
+      expect(at(key), `${key} must come before gross`).toBeLessThan(at('gross'));
     }
-    expect(at('EPF')).toBeGreaterThan(at('Gross'));
+    expect(at('epf')).toBeGreaterThan(at('gross'));
     // Net pay is the last of the EMPLOYEE's money — what the clinic pays on
     // top comes after it, because it never comes off anybody's pay.
     const employee = GRID_COLUMNS.filter((column) => column.band !== 'employer');
-    expect(at('Net pay')).toBe(employee.length - 1);
+    expect(at('net')).toBe(employee.length - 1);
     expect(GRID_COLUMNS[GRID_COLUMNS.length - 1].band).toBe('employer');
   });
 
@@ -236,8 +252,8 @@ describe('the payroll grid', () => {
     expect(groups()).toEqual([
       ['Record', 1],
       ['Earnings', 5],
-      ['Deductions — employee', 5],
-      ['Employer pays', 1],
+      ['Deductions — employee', 6],
+      ['Employer pays', 4],
     ]);
     // Every column is spanned: the group row and the leaf row are the same width.
     const grp = [...document.querySelectorAll('thead tr.hr-grid__grp th')];
@@ -249,10 +265,60 @@ describe('the payroll grid', () => {
       'EPF (employee)',
       'SOCSO (employee)',
       'EIS (employee)',
+      'SKBBK / Lindung 24 Jam (employee)',
       'PCB',
       'Other deductions',
-      'Employer contributions',
+      'EPF (employer)',
+      'SOCSO (employer)',
+      'EIS (employer)',
+      'HRD levy (employer)',
     ]);
+  });
+
+  /*
+   * WHAT THE CLINIC FILES WITH. KWSP's form asks for the EPF employer share
+   * alone and PERKESO's asks for SOCSO and EIS apart, so a single column
+   * holding their sum is a column nothing can be done with. The levy is the
+   * fourth thing in that sum: without it the group would be headed "Employer
+   * pays" over three figures that are not what the employer pays.
+   */
+  it('itemises what the employer pays, scheme by scheme, instead of one figure nothing can be filed with', () => {
+    viewport(1440);
+    grid();
+    const employer = GRID_COLUMNS.filter((column) => column.band === 'employer');
+    expect(employer.map((column) => [column.key, column.field, column.total])).toEqual([
+      ['epfEmployer', 'epfEmployer', 'epfEmployer'],
+      ['socsoEmployer', 'socsoEmployer', 'socsoEmployer'],
+      ['eisEmployer', 'eisEmployer', 'eisEmployer'],
+      ['hrdLevy', 'hrdLevy', 'hrdLevy'],
+    ]);
+    // Nothing is summed here: the four foot on four separate server totals.
+    expect(new Set(employer.map((column) => column.total)).size).toBe(4);
+    const first = document.querySelector('tbody tr') as HTMLElement;
+    for (const amount of ['461.00', '62.15', '32.00']) {
+      expect(within(first).getByText(amount)).toBeVisible();
+    }
+  });
+
+  /*
+   * SKBBK IS THE EMPLOYEE'S. Act 4's schedule prints Lindung 24 Jam as a
+   * column beside SOCSO and EIS, the engine takes it off gross with them, and
+   * the payslip gives it its own line — so the register carries it under
+   * DEDUCTIONS — EMPLOYEE and not among what the employer pays.
+   */
+  it('carries SKBBK as an employee deduction, beside SOCSO and EIS', () => {
+    viewport(1440);
+    grid({ rows: [row({ lindungEmployee: '26.60' })], totals: totals({ lindung: '26.60' }) });
+    const skbbk = GRID_COLUMNS.find((column) => column.key === 'lindung');
+    expect({ band: skbbk?.band, field: skbbk?.field, total: skbbk?.total }).toEqual({
+      band: 'deductions',
+      field: 'lindungEmployee',
+      total: 'lindung',
+    });
+    // Between EIS and PCB, which is where the schedule prints it.
+    const keys = GRID_COLUMNS.map((column) => column.key);
+    expect(keys.slice(keys.indexOf('eis'), keys.indexOf('pcb') + 1)).toEqual(['eis', 'lindung', 'pcb']);
+    expect(screen.getAllByText('26.60')).toHaveLength(2); // the row and the foot
   });
 
   /*
@@ -265,31 +331,36 @@ describe('the payroll grid', () => {
     viewport(1440);
     grid();
     const cells = [...document.querySelectorAll('tbody tr:first-child td')];
-    const kind = (title: string) => {
-      const index = 2 + GRID_COLUMNS.findIndex((column) => column.title === title);
+    const kind = (key: string) => {
+      const index = 2 + GRID_COLUMNS.findIndex((column) => column.key === key);
       const cell = cells[index];
       return cell.classList.contains('is-editable') ? 'editable' : cell.classList.contains('is-record') ? 'record' : cell.classList.contains('is-auto') ? 'auto' : '?';
     };
-    expect(kind('Basic')).toBe('record');
-    expect(kind('OT h')).toBe('record');
-    expect(kind('Unpaid d')).toBe('record');
-    expect(kind('Other income')).toBe('editable');
-    expect(kind('Other')).toBe('editable');
-    expect(kind('Claims')).toBe('auto');
-    expect(kind('Gross')).toBe('auto');
-    expect(kind('EPF')).toBe('auto');
-    expect(kind('Net pay')).toBe('auto');
+    expect(kind('basic')).toBe('record');
+    expect(kind('overtimeHours')).toBe('record');
+    expect(kind('unpaidDays')).toBe('record');
+    expect(kind('otherIncome')).toBe('editable');
+    expect(kind('otherDeductions')).toBe('editable');
+    expect(kind('claims')).toBe('auto');
+    expect(kind('gross')).toBe('auto');
+    expect(kind('epf')).toBe('auto');
+    expect(kind('lindung')).toBe('auto');
+    expect(kind('epfEmployer')).toBe('auto');
+    expect(kind('net')).toBe('auto');
   });
 
   it('prints the server’s figures grouped, and a dash for a statutory figure never worked out', () => {
     // NULL means "not worked out". Rendering it as 0.00 tells a clinic it
     // owes nothing, which is the one wrong answer that gets acted on.
     viewport(1440);
-    grid({ rows: [row({ basicSalary: '4200.00', epfEmployee: null, pcb: null })] });
+    // A scheme's employee and employer shares are worked out together, so
+    // they go unknown together — the fixture says so rather than inventing an
+    // employer figure for an EPF that could not be worked out.
+    grid({ rows: [row({ basicSalary: '4200.00', epfEmployee: null, epfEmployer: null, pcb: null })] });
     const first = document.querySelector('tbody tr') as HTMLElement;
     expect(within(first).getByText('4,200.00')).toBeVisible();
     expect(within(first).getByText('3,548.48')).toBeVisible();
-    expect(within(first).getAllByTitle('Not worked out')).toHaveLength(2);
+    expect(within(first).getAllByTitle('Not worked out')).toHaveLength(3);
     expect(within(first).getAllByText('0.00', { exact: true }).length).toBeGreaterThan(0); // claims really are nil
   });
 
@@ -353,10 +424,14 @@ describe('the payroll grid', () => {
       '390.00',
       '17.75',
       '7.10',
+      '0.00',
       '24.65',
       '0.00',
       '3,108.98',
-      '530.25',
+      '461.00',
+      '62.15',
+      '7.10',
+      '32.00',
     ]);
     expect(screen.getByText('Total')).toBeVisible();
     expect(screen.getByText('All 2 employees')).toBeVisible();
@@ -385,13 +460,18 @@ describe('the payroll grid', () => {
    */
   it('names the people a statutory total leaves out instead of passing a short sum off as the whole', () => {
     viewport(1440);
-    grid({ rows: [row({ epfEmployee: null, pcb: null })], totals: totals({ epfNotCalculated: 1, pcbMissing: 2 }) });
-    expect(screen.getByText('1 not worked out')).toBeVisible();
-    expect(screen.getByTitle('1 person is not in this total: EPF was not worked out for them.')).toBeVisible();
+    grid({
+      rows: [row({ epfEmployee: null, epfEmployer: null, pcb: null })],
+      totals: totals({ epfNotCalculated: 1, pcbMissing: 2 }),
+    });
+    // One unknown EPF leaves BOTH of its columns short — the employee's and
+    // the employer's — because the two shares are worked out together.
+    expect(screen.getAllByText('1 not worked out')).toHaveLength(2);
+    expect(screen.getAllByTitle('1 person is not in this total: EPF was not worked out for them.')).toHaveLength(2);
     expect(screen.getByText('2 not worked out')).toBeVisible();
     expect(screen.getByTitle('2 people are not in this total: PCB was not worked out for them.')).toBeVisible();
     // Nothing is claimed about the columns that are always worked out.
-    expect(document.querySelectorAll('.hr-grid__short')).toHaveLength(2);
+    expect(document.querySelectorAll('.hr-grid__short')).toHaveLength(3);
   });
 
   it('still lists somebody the run left out — blocked, with dashes, and a Fix to their record', () => {
@@ -405,6 +485,34 @@ describe('the payroll grid', () => {
     expect(within(last).getByText('Blocked')).toBeVisible();
     expect(within(last).getByRole('link', { name: 'Fix' })).toHaveAttribute('href', '/admin/hr/employees/staff-7');
     expect(within(last).getAllByText('—').length).toBe(GRID_COLUMNS.length);
+  });
+
+  /*
+   * WHOSE ROW IS THIS. Seventeen money columns do not fit on any screen and
+   * none of them may be merged away, so the grid scrolls — and a figure read
+   * against the wrong person is worse than a figure you had to scroll to.
+   * The name and the status are pinned to the left edge in EVERY band the
+   * table has, header and foot included, or they scroll away exactly when
+   * they are needed.
+   */
+  it('pins the name and the status to the left, in the header, the rows and the foot', () => {
+    viewport(1440);
+    grid({ leftOut: [{ staffId: 'staff-7', name: 'Wan Azman', position: 'Panel clerk', reason: 'No salary on record' }] });
+    const frozen = (scope: string) =>
+      [...document.querySelectorAll(`${scope} .hr-grid__freeze`)].map((cell) =>
+        cell.classList.contains('hr-grid__freeze--who') ? 'who' : cell.classList.contains('hr-grid__freeze--status') ? 'status' : '?',
+      );
+    // Two header rows, two body rows (one paid, one left out) and the foot.
+    expect(frozen('thead')).toEqual(['who', 'status', 'who', 'status']);
+    expect(frozen('tbody')).toEqual(['who', 'status', 'who', 'status']);
+    expect(frozen('tfoot')).toEqual(['who', 'status']);
+    // And they are the FIRST two cells of every one of those rows, not just
+    // present somewhere in it.
+    for (const tr of document.querySelectorAll('thead tr, tbody tr, tfoot tr')) {
+      const cells = [...tr.children];
+      expect(cells[0].className).toContain('hr-grid__freeze--who');
+      expect(cells[1].className).toContain('hr-grid__freeze--status');
+    }
   });
 
   it('links the name to the person’s own payroll page for the run', () => {

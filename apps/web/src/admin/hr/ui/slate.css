@@ -1468,6 +1468,63 @@ a.hr-who:hover .hr-who__name {
   border-bottom: 0;
 }
 /*
+ * THE NAME AND THE STATUS STAY PUT.
+ *
+ * Seventeen money columns do not fit on any screen, and merging two of them
+ * to save width would produce a figure a clinic cannot file with — so the
+ * grid scrolls sideways and the two columns that say WHOSE row it is are
+ * pinned to the left edge. A figure read against the wrong person is worse
+ * than a figure you had to scroll to.
+ *
+ * The frozen cells need an opaque background of their own, or the money
+ * slides under them; the pane's edge is drawn on the status cell so a
+ * scrolled row reads as two panes rather than one run-on line.
+ */
+.hr-grid__freeze {
+  position: sticky;
+  z-index: 2;
+  background: var(--hr-surface);
+}
+.hr-grid__freeze--who {
+  left: 0;
+  width: 200px;
+  min-width: 200px;
+  max-width: 200px;
+}
+.hr-grid__freeze--status {
+  left: 200px;
+}
+.hr-grid__freeze--status::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--hr-line2);
+}
+/* A long name ends in an ellipsis rather than spilling into the status. */
+.hr-grid__freeze--who .hr-who > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+}
+.hr-grid__freeze--who .hr-who__name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Above the money in every band it crosses: header, editing row, foot. */
+.hr-grid thead .hr-grid__freeze {
+  z-index: 3;
+}
+.hr-grid tfoot .hr-grid__freeze {
+  background: #f2f5f6;
+}
+.hr-grid tr.is-editing .hr-grid__freeze {
+  background: #f4fbf9;
+}
+
+/*
  * THE MONTH FOOTS. A rule above it, the same tint as a worked-out cell, and
  * what it covers named under the word — a total for the month and a total for
  * a filtered view are different numbers, and the foot always shows the

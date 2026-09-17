@@ -2426,6 +2426,22 @@ export interface PayrollJourney {
       epfNotCalculated: number;
       socsoNotCalculated: number;
       eisNotCalculated: number;
+      /**
+       * THE EMPLOYER'S SHARE OF EACH SCHEME, and the HRD levy — the four
+       * `employerContributions` adds together. A clinic files with these, not
+       * with the sum: KWSP's form wants the EPF employer share alone and
+       * PERKESO's wants SOCSO and EIS apart.
+       *
+       * The three schemes have no count of their own because an employee and
+       * employer share are worked out together and are null together, so
+       * `epfNotCalculated` and its siblings count both columns. The levy is
+       * its own scheme and carries its own.
+       */
+      epfEmployer: string;
+      socsoEmployer: string;
+      eisEmployer: string;
+      hrdLevy: string;
+      hrdLevyNotDetermined: number;
       /** The grid's columns — see the row. */
       claims: string;
       otherIncome: string;
