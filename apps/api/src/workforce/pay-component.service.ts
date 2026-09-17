@@ -533,6 +533,65 @@ export class PayComponentService {
         return saved;
       }
 
+      /*
+       * MOVING A PLAN'S DATE WITH NOTHING ELSE CHANGED.
+       *
+       * Reaching here means no treatment field moved — the block above returns
+       * whenever one does. Until now that also meant the date could not move:
+       * `data` carries no `effectiveFrom`, so the in-place update below kept
+       * whatever the version already had, and an owner whose switches were
+       * already right had no way to say "same treatment, different month". The
+       * only route was to save a flag at a value they did not want and then
+       * correct it — two versions, and a decision in the audit log that was
+       * never made, to move one date.
+       *
+       * Allowed only while the version HAS NOT STARTED, for the reason the
+       * correction path above already gives: nothing is paid under a plan, so
+       * moving it rewrites no money. A version in force keeps its date.
+       *
+       * The approved-run guard applies here too, so a plan still cannot be
+       * moved into a month that is settled.
+       */
+      if (open && notYetStarted && dto.effectiveFrom) {
+        const from = new Date(`${dto.effectiveFrom.slice(0, 10)}T00:00:00.000Z`);
+        if (from.getTime() !== open.effectiveFrom.getTime()) {
+          if (!dto.reason || dto.reason.trim().length < 4) {
+            throw new BadRequestException(
+              `Moving when "${dto.code}" starts changes which months it prices. Send a reason: it is kept with ` +
+                'this version and shown beside the figures it produces.',
+            );
+          }
+          const approvedCovering = await tx.payrollRun.count({
+            where: {
+              status: { in: ['APPROVED', 'PAID'] },
+              period: { gte: new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1)) },
+            },
+          });
+          if (approvedCovering > 0) {
+            throw new ConflictException(
+              `${approvedCovering} approved payroll run(s) cover ${dto.effectiveFrom.slice(0, 10)} or later. ` +
+                'What was paid is settled; start this version from a period that has not been approved.',
+            );
+          }
+          const moved = await tx.payComponent.update({
+            where: { id: open.id },
+            data: { ...data, effectiveFrom: from, clinicOverride: true, changeReason: dto.reason.trim() },
+          });
+          await recordAudit(tx, actor, {
+            action: 'payComponent.versionCorrected',
+            entityType: 'PayComponent',
+            entityId: moved.id,
+            reason:
+              `Moved v${moved.version} of ${moved.code} from ` +
+              `${open.effectiveFrom.toISOString().slice(0, 10)} to ${from.toISOString().slice(0, 10)} ` +
+              `before it took effect; its treatment is unchanged: ${dto.reason.trim()}`,
+            before: open,
+            after: moved,
+          });
+          return moved;
+        }
+      }
+
       const saved = open
         ? await tx.payComponent.update({ where: { id: open.id }, data })
         : await tx.payComponent.create({

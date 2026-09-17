@@ -331,3 +331,43 @@ describe('a component the clinic makes itself', () => {
     });
   });
 });
+
+/*
+ * MOVING A PLAN'S DATE WITHOUT PRETENDING TO CHANGE A FLAG.
+ *
+ * The account holder's Allowance had the four switches he wanted and the wrong
+ * month — a version dated from October when August needed covering. The only
+ * route through was to save a flag at a value he did not want and then correct
+ * it: two versions, and an audit log recording a decision nobody made, to move
+ * one date.
+ */
+describe('a version that has not started', () => {
+  it('offers its date for correction on its own', () => {
+    mount();
+    // MILEAGE is the clinic-overridden row; BONUS is the one dated 2099.
+    expect(screen.getAllByRole('button', { name: /Change the month/i }).length).toBeGreaterThan(0);
+  });
+
+  it('sends the same treatment with a new date, and no invented flag', async () => {
+    mount();
+    upsertMutate.mockClear();
+    fireEvent.click(screen.getAllByRole('button', { name: /Change the month/i })[0]);
+    fireEvent.change(screen.getByLabelText(/Why/i), { target: { value: 'The month was wrong.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(upsertMutate).toHaveBeenCalled());
+    const sent = upsertMutate.mock.calls[0][0] as Record<string, unknown>;
+    expect(sent.effectiveFrom).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(sent.reason).toBe('The month was wrong.');
+    // No key called "null", and nothing claiming a switch moved.
+    expect(Object.keys(sent)).not.toContain('null');
+  });
+
+  it('will not save the move without a reason, because it is kept with the version', async () => {
+    mount();
+    upsertMutate.mockClear();
+    fireEvent.click(screen.getAllByRole('button', { name: /Change the month/i })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByText(/Say why/i)).toBeTruthy());
+    expect(upsertMutate).not.toHaveBeenCalled();
+  });
+});

@@ -145,7 +145,7 @@ export function PayrollItemsPage() {
   const missing = components.data?.missingPresets ?? [];
 
   /** The one switch that is waiting for a date and a reason. */
-  const [pending, setPending] = useState<{ row: PayComponentRow; flag: Flag; next: boolean } | null>(null);
+  const [pending, setPending] = useState<{ row: PayComponentRow; flag: Flag | null; next: boolean } | null>(null);
   const [from, setFrom] = useState<Dayjs>(dayjs().add(1, 'month').startOf('month'));
   const [reason, setReason] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
@@ -194,10 +194,21 @@ export function PayrollItemsPage() {
       return;
     }
     upsert.mutate(
-      { ...whole(pending.row), [pending.flag]: pending.next, effectiveFrom: from.format('YYYY-MM-DD'), reason: reason.trim() },
+      {
+        ...whole(pending.row),
+        // A null flag is a DATE-ONLY correction: the treatment already says what
+        // the clinic wants and only the month it starts in is wrong.
+        ...(pending.flag ? { [pending.flag]: pending.next } : {}),
+        effectiveFrom: from.format('YYYY-MM-DD'),
+        reason: reason.trim(),
+      },
       {
         onSuccess: () => {
-          message.success(`${pending.row.name}: ${FLAGS.find((f) => f.key === pending.flag)?.title} ${pending.next ? 'on' : 'off'} from ${from.format('MMM YYYY')}.`);
+          message.success(
+            pending.flag
+              ? `${pending.row.name}: ${FLAGS.find((f) => f.key === pending.flag)?.title} ${pending.next ? 'on' : 'off'} from ${from.format('MMM YYYY')}.`
+              : `${pending.row.name} now starts ${from.format('MMM YYYY')}, with the same treatment.`,
+          );
           cancel();
         },
         onError: (error: Error) => setProblem(error.message),
@@ -314,6 +325,64 @@ export function PayrollItemsPage() {
                     <div className="hr-small hr-decided">
                       <StatusChip tone="info">Your clinic</StatusChip>
                       <span className="hr-faint">from {dayjs(row.effectiveFrom).format('D MMM YYYY')}</span>
+                      {/*
+                        A PLAN'S DATE IS EDITABLE ON ITS OWN. Where the switches
+                        already say what the clinic wants and only the month is
+                        wrong, there was no way through: the date rode along
+                        with a treatment change, so the route was to save a flag
+                        at a value nobody wanted and then correct it — two
+                        versions, and a decision in the log that was never made.
+                      */}
+                      {notStarted(row) ? (
+                        <button
+                          type="button"
+                          className="hr-historyLink"
+                          onClick={() => {
+                            setPending({ row, flag: null, next: false });
+                            setFrom(dayjs(row.effectiveFrom).startOf('month'));
+                            setReason('');
+                            setProblem(null);
+                          }}
+                        >
+                          Change the month
+                        </button>
+                      ) : null}
+                      {pending?.row.id === row.id && pending.flag === null ? (
+                        <div className="hr-popover" role="dialog" aria-label={`Change when ${row.name} starts`}>
+                          <div className="hr-small">
+                            This change has not started yet, so its date can move without becoming a second version.
+                            The treatment stays exactly as it is.
+                          </div>
+                          <label htmlFor={`movefrom-${row.id}`}>From which month</label>
+                          <DatePicker
+                            id={`movefrom-${row.id}`}
+                            picker="month"
+                            value={from}
+                            allowClear={false}
+                            format="MMM YYYY"
+                            style={{ width: '100%' }}
+                            onChange={(value) => value && setFrom(value.startOf('month'))}
+                          />
+                          <label htmlFor={`movewhy-${row.id}`}>Why</label>
+                          <Input
+                            id={`movewhy-${row.id}`}
+                            value={reason}
+                            placeholder="Kept with this version"
+                            maxLength={500}
+                            onChange={(event) => setReason(event.target.value)}
+                            onPressEnter={save}
+                          />
+                          {problem ? <div className="hr-small" style={{ color: 'var(--hr-red)', marginTop: 6 }}>{problem}</div> : null}
+                          <div className="hr-popover__actions">
+                            <button type="button" className="hr-btn hr-btn--sm" onClick={cancel}>
+                              Cancel
+                            </button>
+                            <button type="button" className="hr-btn hr-btn--sm hr-btn--primary" onClick={save} disabled={upsert.isPending}>
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
                       {row.changeReason ? <span className="hr-decided__why">{row.changeReason}</span> : null}
                     </div>
                   ) : null}
