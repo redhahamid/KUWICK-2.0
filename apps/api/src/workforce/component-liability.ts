@@ -1,4 +1,4 @@
-import { ComponentKind, ComponentLiability } from './payroll-calculation';
+import { ComponentKind, ComponentLiability } from "./payroll-calculation";
 
 /**
  * WHAT A COMPONENT IS LIABLE TO — from the catalogue, and only from there.
@@ -55,6 +55,13 @@ export interface ResolvedComponent {
   /** How well the statutory treatment above is evidenced. */
   readonly verification: string;
   readonly sourceRef: string | null;
+  /**
+   * WHETHER THE CLINIC STILL OFFERS THIS, which is not the same question as
+   * whether it resolves. Carried so a screen that OFFERS components can leave
+   * out the ones nobody is keying any more, while the calculation goes on
+   * pricing months that already name them.
+   */
+  readonly active: boolean;
 }
 
 export interface CatalogueRow extends LiabilityFlags {
@@ -81,14 +88,36 @@ export interface CatalogueRow extends LiabilityFlags {
  * The LATEST row in force wins, so a corrected version supersedes its
  * predecessor without either being deleted.
  */
-export function catalogueFor(rows: readonly CatalogueRow[], on: Date): Map<string, ResolvedComponent> {
+export function catalogueFor(
+  rows: readonly CatalogueRow[],
+  on: Date,
+): Map<string, ResolvedComponent> {
   const byCode = new Map<string, CatalogueRow>();
   for (const row of rows) {
-    if (!row.active) continue;
+    /*
+     * `active` IS NOT A DATE, SO IT IS NOT ASKED HERE.
+     *
+     * It used to be, and switching a component off was therefore retroactive
+     * to the beginning of time: this table is resolved BY PERIOD, but the
+     * active test carried no date, so an allowance switched off today stopped
+     * covering August, June, every month — and any unapproved month holding an
+     * input that named it blocked with UNKNOWN_COMPONENT on money that had
+     * been fine the day before. The account holder hit exactly that: the
+     * comparison run went empty because a switch on a settings screen had
+     * quietly removed the component from a month already keyed with it.
+     *
+     * "In use" reads as "offer this when somebody keys pay", and that is all
+     * it now means. A new payroll input naming a switched-off component is
+     * still refused (`payroll-input.service.ts`), and the screens that OFFER
+     * components filter on `active` themselves. What a past month is liable to
+     * is decided by the dated versions below, which is the whole point of
+     * there being dated versions.
+     */
     if (row.effectiveFrom > on) continue;
     if (row.effectiveTo !== null && row.effectiveTo < on) continue;
     const held = byCode.get(row.code);
-    if (!held || row.effectiveFrom > held.effectiveFrom) byCode.set(row.code, row);
+    if (!held || row.effectiveFrom > held.effectiveFrom)
+      byCode.set(row.code, row);
   }
 
   const resolved = new Map<string, ResolvedComponent>();
@@ -100,6 +129,7 @@ export function catalogueFor(rows: readonly CatalogueRow[], on: Date): Map<strin
       liability: liabilityOf(row),
       verification: row.verificationStatus,
       sourceRef: row.sourceRef,
+      active: row.active,
     });
   }
   return resolved;
@@ -114,8 +144,8 @@ export function catalogueFor(rows: readonly CatalogueRow[], on: Date): Map<strin
  * does.
  */
 function kindOf(row: CatalogueRow): ComponentKind {
-  if (row.type !== 'DEDUCTION') return 'EARNING';
-  return row.includeIn === 'NET_ONLY' ? 'DEDUCTION' : 'WAGE_REDUCTION';
+  if (row.type !== "DEDUCTION") return "EARNING";
+  return row.includeIn === "NET_ONLY" ? "DEDUCTION" : "WAGE_REDUCTION";
 }
 
 /**
@@ -134,15 +164,17 @@ function kindOf(row: CatalogueRow): ComponentKind {
  * recurring components instead — work this system has not done. Returns the
  * reason it is unsafe, or null.
  */
-export function checkOrdinaryRateBase(catalogue: Map<string, ResolvedComponent>): string | null {
+export function checkOrdinaryRateBase(
+  catalogue: Map<string, ResolvedComponent>,
+): string | null {
   const inBase = [...catalogue.values()]
     .filter((component) => component.liability.ordinaryRateOfPay)
     .map((component) => component.code)
     .sort();
-  if (inBase.length === 1 && inBase[0] === 'BASIC') return null;
+  if (inBase.length === 1 && inBase[0] === "BASIC") return null;
   return (
     `The ordinary rate of pay is built from the contractual monthly salary alone, but the pay component ` +
-    `catalogue marks ${inBase.join(', ') || 'nothing'} as part of that base. Until Kuwick assembles the base from ` +
+    `catalogue marks ${inBase.join(", ") || "nothing"} as part of that base. Until Kuwick assembles the base from ` +
     `an employee's recurring contractual components, marking anything other than basic pay would price overtime ` +
     `from a figure the run does not actually use.`
   );
