@@ -92,6 +92,72 @@ describe('Adding an employee (e2e)', () => {
     expect(staff?.userId).toBeNull();
   });
 
+  /*
+   * THE EMPLOYING COMPANY, THERE AND BACK.
+   *
+   * The create has no field for it — a payroll run then refuses the person
+   * with NO_LEGAL_EMPLOYER, and that refusal is not overridable, so this is
+   * the wall a clinic hits on its first month. The screen that clears it needs
+   * two things from the server: an endpoint that sets the company, and the
+   * company's ID on the record so the box can open on the right one. The name
+   * alone is enough to PRINT the fact and not enough to EDIT it, which is how
+   * the record ended up showing an employer no screen could change.
+   */
+  it('lets the employing company be set, and reads it back by id so a screen can edit it', async () => {
+    const created = await create({
+      fullName: 'Tan Mei Ling Ujian',
+      role: Role.FRONT_DESK_CLINICAL_STAFF,
+      clinicId,
+      employeeNo: 'E-2100',
+      position: 'Clinic Assistant',
+      startDate: '2026-09-01',
+    }).expect(201);
+    const staffId = created.body.staff.id as string;
+
+    // The wall: nothing in the create names a company.
+    const fresh = await request(server())
+      .get(`/workforce/employees/${staffId}/record`)
+      .set('Authorization', bearer)
+      .expect(200);
+    expect({ id: fresh.body.employment.legalEmployerId, name: fresh.body.employment.legalEmployerName }).toEqual({
+      id: null,
+      name: null,
+    });
+
+    const employer = await request(server())
+      .post('/workforce/legal-employers')
+      .set('Authorization', bearer)
+      .send({ name: `Klinik Ambil Sdn Bhd ${randomId().slice(0, 8)}` })
+      .expect(201);
+
+    await request(server())
+      .patch(`/workforce/employees/${staffId}/legal-employer`)
+      .set('Authorization', bearer)
+      .send({ legalEmployerId: employer.body.id })
+      .expect(200);
+
+    const after = await request(server())
+      .get(`/workforce/employees/${staffId}/record`)
+      .set('Authorization', bearer)
+      .expect(200);
+    expect({ id: after.body.employment.legalEmployerId, name: after.body.employment.legalEmployerName }).toEqual({
+      id: employer.body.id,
+      name: employer.body.name,
+    });
+
+    // And it can be taken off again, which is what clearing the box means.
+    await request(server())
+      .patch(`/workforce/employees/${staffId}/legal-employer`)
+      .set('Authorization', bearer)
+      .send({ legalEmployerId: null })
+      .expect(200);
+    const cleared = await request(server())
+      .get(`/workforce/employees/${staffId}/record`)
+      .set('Authorization', bearer)
+      .expect(200);
+    expect(cleared.body.employment.legalEmployerId).toBeNull();
+  });
+
   it('creates a working login when one is asked for', async () => {
     const email = uniqueEmail('rahim');
     await create({

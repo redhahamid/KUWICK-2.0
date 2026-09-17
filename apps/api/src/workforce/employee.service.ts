@@ -315,6 +315,16 @@ export class EmployeeService {
         employmentType: profile.employmentType,
         employmentStatus: profile.employmentStatus,
         clinicName: clinic?.name ?? null,
+        /*
+         * WHO EMPLOYS THEM — the id as well as the name.
+         *
+         * The name alone is enough to PRINT the fact and not enough to EDIT
+         * it, which is how the record ended up displaying an employing
+         * company that no screen could set. A payroll run refuses on
+         * NO_LEGAL_EMPLOYER and the refusal is not overridable, so a person
+         * added entirely through the screens could not be paid at all.
+         */
+        legalEmployerId: profile.legalEmployerId,
         legalEmployerName: profile.legalEmployer?.name ?? null,
         manager: profile.manager?.fullName ?? null,
         startDate: profile.startDate,

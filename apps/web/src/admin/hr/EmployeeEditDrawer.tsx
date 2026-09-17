@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { App, DatePicker, Input, Select } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useEmployees, useUpsertEmployee } from '../hooks/useAdmin';
+import { useAssignEmployer, useEmployees, useLegalEmployers, useUpsertEmployee } from '../hooks/useAdmin';
 import { Drawer, ProblemNotice, useProblemFocus } from './ui';
 import type { EmployeeRecord } from '../types';
 
@@ -19,6 +19,20 @@ import type { EmployeeRecord } from '../types';
  *
  * Which statutory scheme applies, the EPF part and rate, the tax residence —
  * those are the dated standing, recorded on the Statutory tab, not here.
+ *
+ * THE EMPLOYING COMPANY IS THE ONE FIELD HERE THAT IS NOT PART OF THE PROFILE.
+ * It has its own endpoint because it has its own rules: an archived company is
+ * refused, and so is a move once the person appears on an APPROVED run —
+ * their contributions were reported under the company that was on the run, and
+ * changing the record afterwards would leave the submission and the record
+ * disagreeing with nobody able to say which is right. So this drawer sends it
+ * FIRST and separately: a refusal there leaves the rest of the record
+ * untouched, rather than half-saving a change the company move then rejects.
+ *
+ * It was read-only until now — the record printed "Employed by" and no screen
+ * in the product could set it. A payroll run refuses on NO_LEGAL_EMPLOYER and
+ * that refusal is not overridable, so somebody added entirely through the
+ * screens could never be paid.
  */
 export type EditSection = 'profile' | 'employment' | 'statutory' | 'bank';
 
@@ -35,7 +49,9 @@ const parse = (value: string | null | undefined) => (value ? dayjs(value) : null
 export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffId: string; data: EmployeeRecord; section: EditSection | null; onClose: () => void }) {
   const { message } = App.useApp();
   const upsert = useUpsertEmployee();
+  const assignEmployer = useAssignEmployer();
   const people = useEmployees({});
+  const employers = useLegalEmployers();
   const [problem, setProblem] = useState<string | null>(null);
   // The drawer body scrolls and Save sits in the pinned footer, so a banner at
   // the top of the body is invisible from where the button is. Move the view.
@@ -62,6 +78,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
   const [startDate, setStartDate] = useState<Dayjs | null>(null);
   const [confirmedDate, setConfirmedDate] = useState<Dayjs | null>(null);
   const [notes, setNotes] = useState('');
+  const [legalEmployerId, setLegalEmployerId] = useState<string | undefined>();
   // Statutory numbers
   const [epfNumber, setEpfNumber] = useState('');
   const [socsoNumber, setSocsoNumber] = useState('');
@@ -94,6 +111,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
     setStartDate(parse(em.startDate));
     setConfirmedDate(parse(em.confirmedDate));
     setNotes(em.notes ?? '');
+    setLegalEmployerId(em.legalEmployerId ?? undefined);
     setEpfNumber('');
     setSocsoNumber('');
     setTaxNumber('');
@@ -104,7 +122,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section, data]);
 
-  const save = () => {
+  const save = async () => {
     if (!section) return;
     const blank = (value: string) => (value.trim() ? value.trim() : undefined);
     let body: Record<string, unknown> = {};
@@ -150,19 +168,37 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
         return;
       }
     }
-    upsert.mutate(
-      { staffId, ...body },
-      {
-        onSuccess: () => {
-          message.success('Saved.');
-          onClose();
-        },
-        onError: (error: Error) => setProblem(error.message),
-      },
-    );
+    try {
+      /*
+       * THE COMPANY MOVE GOES FIRST, and only when it changed. It is the one
+       * thing here the server can refuse outright — an archived company, or a
+       * person already on an approved run — and a refusal has to leave the
+       * record as it was rather than half-written.
+       */
+      if (section === 'employment' && (legalEmployerId ?? null) !== (data.employment.legalEmployerId ?? null)) {
+        await assignEmployer.mutateAsync({ staffId, legalEmployerId: legalEmployerId ?? null });
+      }
+      await upsert.mutateAsync({ staffId, ...body });
+      message.success('Saved.');
+      onClose();
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : 'The server refused the change and did not say why.');
+    }
   };
 
   const managers = (people.data ?? []).filter((row) => row.staffId !== staffId && row.hasProfile);
+  /*
+   * ACTIVE COMPANIES, PLUS THE ONE THEY ARE ALREADY ON. An archived company
+   * is refused by the server, so offering it would be offering a dead end —
+   * but a person sitting on one must still see where they are, or the box
+   * reads empty and the screen looks like it lost the fact.
+   */
+  const employerOptions = (employers.data ?? [])
+    .filter((row) => row.active || row.id === data.employment.legalEmployerId)
+    .map((row) => ({
+      value: row.id,
+      label: row.active ? row.name : `${row.name} (archived)`,
+    }));
 
   return (
     <Drawer
@@ -179,7 +215,12 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
           <button type="button" className="hr-btn" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="hr-btn hr-btn--primary" onClick={save} disabled={upsert.isPending}>
+          <button
+            type="button"
+            className="hr-btn hr-btn--primary"
+            onClick={() => void save()}
+            disabled={upsert.isPending || assignEmployer.isPending}
+          >
             Save
           </button>
         </>
@@ -305,6 +346,25 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
               </div>
             </div>
             <div>
+              <label htmlFor="ed-employer">Employed by</label>
+              <Select
+                id="ed-employer"
+                value={legalEmployerId}
+                onChange={setLegalEmployerId}
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                placeholder={employerOptions.length > 0 ? 'Not recorded' : 'No company is on file yet'}
+                style={{ width: '100%' }}
+                options={employerOptions}
+                notFoundContent="No company on file. Add one in Settings, Company and statutory."
+              />
+              <div className="hr-form__help">
+                The company that pays them and files their EPF, SOCSO and tax. Payroll refuses to work out a month for
+                anybody without one, and that refusal cannot be passed. A branch is where they work; it files nothing.
+              </div>
+            </div>
+            <div>
               <label htmlFor="ed-mgr">Reports to</label>
               <Select
                 id="ed-mgr"
@@ -322,7 +382,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
               <label htmlFor="ed-notes">Notes</label>
               <Input.TextArea id="ed-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
             </div>
-            <div className="hr-form__help">The branch a person works at and the company that employs them are set on their account and on Company &amp; statutory.</div>
+            <div className="hr-form__help">The branch a person works at is set on their account.</div>
           </>
         ) : null}
 

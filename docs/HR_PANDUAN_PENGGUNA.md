@@ -73,6 +73,19 @@ Tekan **+ New employer**, atau **Edit** pada baris sedia ada.
 Lajur **Could it file?** ialah pemeriksaan ringkas: **Complete** bermakna semua
 nombor majikan ada. Kalau tidak, ia tulis berapa yang hilang dan yang mana.
 
+**Mendaftarkan syarikat di sini tidak mengikat sesiapa kepadanya.** Setiap
+pekerja perlu diberitahu syarikat mana yang menggajinya, seorang demi seorang:
+buka rekod pekerja · tab **Employment & salary** · **Edit** · medan **Employed
+by**. Tanpa itu, payroll akan menolak orang itu dengan *No employing company
+is recorded*, dan penolakan itu tidak boleh dilepasi. Kuwick menghalangnya
+sebab KWSP, PERKESO dan cukai semuanya difailkan atas nama syarikat, bukan
+atas nama cawangan.
+
+Menukar syarikat pekerja akan **ditolak** kalau orang itu sudah ada pada run
+gaji yang diluluskan — caruman mereka sudah dilaporkan atas nama syarikat lama,
+dan menukarnya sekarang akan membuat borang dan rekod bercanggah. Rekodkan
+perubahan itu bermula dari bulan yang belum diluluskan.
+
 **Butang HRD class.** Hanya untuk klinik yang berdaftar dengan HRD Corp.
 Pilih **In force from** (bulan ia mula berkuat kuasa), kemudian **Registration
 class**: *Registered — s.14 mandatory (1%)*, *Registered — s.15 optional

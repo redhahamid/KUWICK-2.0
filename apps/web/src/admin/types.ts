@@ -1301,7 +1301,13 @@ export interface EmployeeRecord {
     employmentType: string;
     employmentStatus: string;
     clinicName: string | null;
-    /** Who employs them. Not the same fact as which branch they work at. */
+    /**
+     * Who employs them. Not the same fact as which branch they work at — and
+     * the id travels beside the name so the record can be EDITED and not only
+     * read. A payroll run refuses on NO_LEGAL_EMPLOYER, and that refusal
+     * cannot be overridden.
+     */
+    legalEmployerId: string | null;
     legalEmployerName: string | null;
     manager: string | null;
     startDate: string | null;
