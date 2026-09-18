@@ -71,8 +71,11 @@ function chipFor(row: StaffClaimRow): { tone: 'attn' | 'done' | 'block' | 'muted
 export function ClaimsPage() {
   const { message } = App.useApp();
   const { clinicId } = useClinicFilter();
-  const claims = useStaffClaims({});
-  const employees = useEmployees({});
+  // THE SELECTED BRANCH'S CLAIMS, from the query rather than from a filter
+  // applied after they arrive. The cards, the month buttons and the four tabs
+  // all read `rows`, so scoping the fetch settles every one of them at once.
+  const claims = useStaffClaims({ clinicId });
+  const employees = useEmployees({ clinicId });
   const benefits = useStaffBenefits({ year: clinicDayjs(new Date()).year(), clinicId });
   const decide = useDecideStaffClaim();
   /*

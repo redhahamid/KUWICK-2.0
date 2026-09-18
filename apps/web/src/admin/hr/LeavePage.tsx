@@ -75,10 +75,18 @@ export function LeavePage() {
   const { message } = App.useApp();
   const { clinicId } = useClinicFilter();
   const { data: staff } = useStaff();
-  const requests = useLeaveRequests();
+  // EVERYTHING ON THIS SCREEN IS THE SELECTED BRANCH'S.
+  //
+  // The queue is what the cards count, what the tabs filter and what the
+  // calendar draws, so the branch has to reach the QUERY: a filter applied
+  // after the fact would still have the server sending other branches' people
+  // down the wire. Same parameter the employee list takes, same server-side
+  // scope behind it.
+  const requests = useLeaveRequests({ clinicId });
   // The job title is on the employment record, not on the staff row, and the
-  // mockup names it under every person. One list, read once.
-  const employees = useEmployees({});
+  // mockup names it under every person. One list, read once — of the same
+  // branch, or it fetches the whole tenant to label a handful of rows.
+  const employees = useEmployees({ clinicId });
   const balances = useLeaveBalances({ clinicId, year: dayjs().year() });
   const createRequest = useCreateLeaveRequest();
   const approve = useApproveLeaveRequest();

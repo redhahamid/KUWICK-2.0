@@ -1196,7 +1196,7 @@ export function useReopenPayroll() {
 // than being numbers typed into a payroll run.
 // ===========================================================================
 
-export function useStaffClaims(params: { staffId?: string; status?: string; period?: string } = {}) {
+export function useStaffClaims(params: { staffId?: string; status?: string; period?: string; clinicId?: string } = {}) {
   return useQuery({
     queryKey: ['admin-hr', 'staff-claims', params],
     queryFn: () => apiClient.get<StaffClaimRow[]>(`/workforce/claims${qs(params)}`),

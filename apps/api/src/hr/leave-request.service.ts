@@ -3,7 +3,7 @@ import { LeaveStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { withAdminTx } from '../finance/admin-actor';
+import { requireScope, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { DecideLeaveRequestDto } from './dto/decide-leave-request.dto';
@@ -35,9 +35,24 @@ export class LeaveRequestService {
     });
   }
 
-  findAll(staffId?: string, status?: LeaveStatus) {
+  /**
+   * THE QUEUE, FOR THE BRANCHES THIS ACCOUNT MANAGES.
+   *
+   * It used to be `where: { staffId, status }` and nothing else — no branch
+   * and no permission — so the branch filter did nothing on the Leave screen
+   * and a freshly created branch with nobody in it listed the whole tenant's
+   * staff. Scoped exactly as the employee list is: the branch comes through
+   * the actor's SCOPE, a requested branch outside it is refused rather than
+   * quietly emptied, and naming none means the branches this account manages
+   * — never every branch there is.
+   *
+   * A leave request has no `clinicId` of its own; it reaches its branch
+   * through the person, which is what `staff: scope.where(...)` says.
+   */
+  async findAll(staffId?: string, status?: LeaveStatus, clinicId?: string) {
+    const { scope } = await requireScope(this.rawPrisma, 'hr.view');
     return this.prisma.leaveRequest.findMany({
-      where: { staffId, status },
+      where: { staffId, status, staff: scope.where(clinicId) },
       // The certificate the leave policy asked for travels with the request
       // (Piece 3g): a manager deciding a medical leave has to be able to see
       // it without leaving the queue. The bytes stay behind `hr.view`.

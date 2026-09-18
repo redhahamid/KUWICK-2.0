@@ -153,6 +153,129 @@ describe('branch authorization (e2e)', () => {
   });
 
   // -------------------------------------------------------------------------
+  /*
+   * THE LEAVE QUEUE AND THE CLAIMS QUEUE ARE BRANCH READS TOO.
+   *
+   * Both listed the whole tenant: leave filtered on `staffId` and `status` and
+   * nothing else, claims checked the permission and then read every row. The
+   * branch filter above them did nothing, so a clinic that had just created an
+   * empty branch and switched to it was shown other branches' staff on those
+   * two screens while Employees, Attendance, Payroll and Reports all correctly
+   * showed nothing. Both reach their branch through the PERSON — a leave
+   * request has no branch column at all, and a claim's is nullable and left
+   * null by the ordinary create — so that is where the scope belongs.
+   */
+  describe('the leave and claims queues answer for one branch', () => {
+    let inA: string;
+    let inB: string;
+    /*
+     * A CLINIC MANAGER, HOME BRANCH A. The front-desk account above does not
+     * hold `hr.view` at all, so a refusal to it proves the permission and says
+     * nothing about the SCOPE — which is what these cases are about. This
+     * account may open HR, and may open it only for branch A.
+     */
+    let branchAManager: string;
+
+    const person = async (name: string, clinicId: string) => {
+      // Through the endpoint, because a claim needs an EMPLOYMENT record and a
+      // bare staff row has none — `create` answers 404 for one.
+      const created = await request(server())
+        .post('/workforce/employees')
+        .set('Authorization', owner)
+        .send({
+          fullName: name,
+          role: Role.FRONT_DESK_CLINICAL_STAFF,
+          clinicId,
+          position: 'Clinic Assistant',
+          startDate: '2024-01-01',
+        })
+        .expect(201);
+      const staff = { id: created.body.staff.id as string };
+      await request(server())
+        .post('/leave-requests')
+        .set('Authorization', owner)
+        .send({ staffId: staff.id, leaveType: 'ANNUAL', startDate: '2026-09-10', endDate: '2026-09-11' })
+        .expect(201);
+      await request(server())
+        .post('/workforce/claims')
+        .set('Authorization', owner)
+        .send({
+          staffId: staff.id,
+          category: 'TRAVEL',
+          amountClaimed: '80.00',
+          claimDate: '2026-09-10',
+          description: `Mileage for ${name}`,
+        })
+        .expect(201);
+      return staff.id;
+    };
+
+    const namesOn = async (path: string, clinicId?: string) => {
+      const query = clinicId ? `${path}${path.includes('?') ? '&' : '?'}clinicId=${clinicId}` : path;
+      const answer = await request(server()).get(query).set('Authorization', owner).expect(200);
+      return (answer.body as Record<string, unknown>[])
+        .map((row) => (row.staffName as string) ?? ((row.staff as { fullName?: string } | undefined)?.fullName ?? '?'))
+        .sort();
+    };
+
+    beforeEach(async () => {
+      inA = await person('Leave Person A', clinicA);
+      inB = await person('Leave Person B', clinicB);
+      const manager = await withTenantContext(prisma, tenantId, (tx) =>
+        tx.staff.create({
+          data: { tenantId, role: Role.CLINIC_MANAGER, fullName: 'Branch A Manager', clinicId: clinicA },
+        }),
+      );
+      branchAManager = bearerFor(tenantId, manager.id, Role.CLINIC_MANAGER);
+    });
+
+    it('lists only the named branch, on both queues', async () => {
+      expect(await namesOn('/leave-requests', clinicA)).toEqual(['Leave Person A']);
+      expect(await namesOn('/leave-requests', clinicB)).toEqual(['Leave Person B']);
+      expect(await namesOn('/workforce/claims', clinicA)).toEqual(['Leave Person A']);
+      expect(await namesOn('/workforce/claims', clinicB)).toEqual(['Leave Person B']);
+    });
+
+    it('still answers for every branch the account holds when none is named', async () => {
+      // Non-vacuous the other way: the rows really are both there, so the
+      // case above is a filter working and not an empty database.
+      expect(await namesOn('/leave-requests')).toEqual(['Leave Person A', 'Leave Person B']);
+      expect(await namesOn('/workforce/claims')).toEqual(['Leave Person A', 'Leave Person B']);
+      expect({ inA: Boolean(inA), inB: Boolean(inB) }).toEqual({ inA: true, inB: true });
+    });
+
+    it('REFUSES a branch the account does not hold, rather than answering empty', async () => {
+      // An empty answer for a branch you may not see is indistinguishable
+      // from "that branch has no leave", which is how a scope hole hides.
+      await request(server())
+        .get(`/leave-requests?clinicId=${clinicB}`)
+        .set('Authorization', branchAManager)
+        .expect(403);
+      await request(server())
+        .get(`/workforce/claims?clinicId=${clinicB}`)
+        .set('Authorization', branchAManager)
+        .expect(403);
+      // And it is the BRANCH being refused, not the module: its own branch answers.
+      await request(server())
+        .get(`/leave-requests?clinicId=${clinicA}`)
+        .set('Authorization', branchAManager)
+        .expect(200);
+      await request(server())
+        .get(`/workforce/claims?clinicId=${clinicA}`)
+        .set('Authorization', branchAManager)
+        .expect(200);
+    });
+
+    it('does not hand a branch-scoped account the other branch by leaving the branch off', async () => {
+      const leave = await request(server()).get('/leave-requests').set('Authorization', branchAManager).expect(200);
+      const claims = await request(server()).get('/workforce/claims').set('Authorization', branchAManager).expect(200);
+      expect((leave.body as { staff?: { fullName?: string } }[]).map((row) => row.staff?.fullName)).toEqual([
+        'Leave Person A',
+      ]);
+      expect((claims.body as { staffName: string }[]).map((row) => row.staffName)).toEqual(['Leave Person A']);
+    });
+  });
+
   describe('payroll authority is not granted by an action permission', () => {
     it('REFUSES approval from an account without the approve permission', async () => {
       const run = await request(server())

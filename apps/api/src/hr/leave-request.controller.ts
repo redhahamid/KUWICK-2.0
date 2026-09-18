@@ -9,8 +9,12 @@ export class LeaveRequestController {
   constructor(private readonly leaveRequests: LeaveRequestService) {}
 
   @Get()
-  findAll(@Query('staffId') staffId?: string, @Query('status') status?: LeaveStatus) {
-    return this.leaveRequests.findAll(staffId, status);
+  findAll(
+    @Query('staffId') staffId?: string,
+    @Query('status') status?: LeaveStatus,
+    @Query('clinicId') clinicId?: string,
+  ) {
+    return this.leaveRequests.findAll(staffId, status, clinicId);
   }
 
   @Post()

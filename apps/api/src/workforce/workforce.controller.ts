@@ -166,8 +166,9 @@ export class WorkforceController {
     @Query('staffId') staffId?: string,
     @Query('status') status?: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED',
     @Query('period') period?: string,
+    @Query('clinicId') clinicId?: string,
   ) {
-    return this.claims.list({ staffId, status, period });
+    return this.claims.list({ staffId, status, period, clinicId });
   }
 
   @Get('claims/:id/history')

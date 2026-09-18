@@ -3,7 +3,7 @@ import { StaffClaimStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { AdminTx, requirePermission, withAdminTx } from '../finance/admin-actor';
+import { AdminTx, requirePermission, requireScope, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { formatCents, toCents } from '../finance/money';
 import { CreateStaffClaimDto, DecideStaffClaimDto, SettleStaffClaimDto } from './dto/staff-claim.dto';
@@ -35,10 +35,29 @@ export class StaffClaimService {
     private readonly rawPrisma: PrismaService,
   ) {}
 
-  async list(params: { staffId?: string; status?: StaffClaimStatus; period?: string } = {}) {
-    await requirePermission(this.rawPrisma, 'hr.view');
+  /**
+   * THE CLAIMS QUEUE, FOR THE BRANCHES THIS ACCOUNT MANAGES.
+   *
+   * It checked the permission and then read every claim in the tenant, so the
+   * branch filter did nothing on the Claims screen and a freshly created
+   * branch with nobody in it listed other branches' staff. Scoped exactly as
+   * the employee list is — `requireScope` asserts the same permission and
+   * hands back the branches this account may see, refusing a requested branch
+   * outside them rather than quietly returning nothing.
+   *
+   * Scoped through the PERSON and not through the claim's own `clinicId`:
+   * that column is nullable and `create` leaves it null unless a caller
+   * happens to send one, so scoping on it would hide almost every claim there
+   * is. Where somebody works is a fact about them. The benefit accounts beside
+   * this list were already scoped this way (`benefit.service.ts`), which is
+   * why the allowance card on that screen was right while the claims under it
+   * were not.
+   */
+  async list(params: { staffId?: string; status?: StaffClaimStatus; period?: string; clinicId?: string } = {}) {
+    const { scope } = await requireScope(this.rawPrisma, 'hr.view');
     const rows = await this.prisma.staffClaim.findMany({
       where: {
+        staff: scope.where(params.clinicId),
         ...(params.staffId ? { staffId: params.staffId } : {}),
         ...(params.status ? { status: params.status } : {}),
         ...(params.period ? { payrollPeriod: new Date(`${params.period.slice(0, 7)}-01T00:00:00.000Z`) } : {}),

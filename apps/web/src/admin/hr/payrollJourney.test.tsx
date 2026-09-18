@@ -340,10 +340,17 @@ describe('counts are not the filter', () => {
      * Piece 3e made this structural rather than careful: the page asks for
      * every claim ONCE and the tab is applied to the rows in memory, so a
      * count cannot be computed from a filtered fetch even by accident. What
-     * is pinned here is that shape — one unfiltered query, and the status
-     * never reaching it.
+     * is pinned here is that shape — the status and the month, which are the
+     * things a READER switches, never reaching the query.
+     *
+     * The BRANCH is not one of those. It scopes the whole screen rather than a
+     * tab within it, and it has to reach the query or the server sends other
+     * branches' claims down the wire for the page to hide — which is what it
+     * did until the branch filter was found to do nothing here. "Every claim"
+     * means every claim of the branch being looked at.
      */
-    expect(code(claimsSource)).toMatch(/const claims = useStaffClaims\(\{\}\)/);
+    expect(code(claimsSource)).toMatch(/const claims = useStaffClaims\(\{ clinicId \}\)/);
+    expect(code(claimsSource)).not.toMatch(/useStaffClaims\(\{[^}]*\bmonth\b/);
     expect(code(claimsSource)).toMatch(/const rows = useMemo\(\(\) => claims\.data \?\? \[\]/);
     expect(code(claimsSource)).not.toMatch(/useStaffClaims\(\{\s*status/);
     expect(code(claimsSource)).toMatch(/const waiting = rows\.filter/);
