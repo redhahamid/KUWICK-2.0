@@ -2923,6 +2923,7 @@ export interface RecordStatutoryClassificationBody {
   effectiveFrom: string;
   epfApplicable?: boolean;
   epfMembership?: string | null;
+  epfEmployeeRate?: number | null;
   socsoApplicable?: boolean;
   eisApplicable?: boolean;
   lindungParticipation?: string | null;

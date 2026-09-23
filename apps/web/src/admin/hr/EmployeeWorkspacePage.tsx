@@ -14,7 +14,7 @@ import { EmployeeSalaryPanel } from './EmployeeSalaryPanel';
 import { RecurringItemsPanel } from './RecurringItemsPanel';
 import { EpfBasisPanel } from './EpfBasisPanel';
 import { EmployeeTaxPanel } from './EmployeeTaxPanel';
-import { StatutoryStandingManager } from './StatutoryStandingManager';
+import { DAY_NAMES, StatutoryStandingManager } from './StatutoryStandingManager';
 import { EmployeeEditDrawer, type EditSection } from './EmployeeEditDrawer';
 import { MarkResignedModal } from './MarkResignedModal';
 import type { EmployeeRecord } from '../types';
@@ -63,7 +63,6 @@ const TAB_ALIASES: Record<string, TabKey> = {
 };
 
 const TYPE_LABEL: Record<string, string> = { PERMANENT: 'Permanent', CONTRACT: 'Contract', PART_TIME: 'Part-time', LOCUM: 'Locum', INTERN: 'Intern' };
-const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const GONE = new Set(['RESIGNED', 'TERMINATED']);
 
 const date = (value: string | null | undefined) => (value ? dayjs(value).format('D MMM YYYY') : null);

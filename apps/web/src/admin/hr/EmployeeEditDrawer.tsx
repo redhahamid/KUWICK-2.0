@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react';
 import { App, DatePicker, Input, Select } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useAssignEmployer, useEmployees, useLegalEmployers, useUpsertEmployee } from '../hooks/useAdmin';
+import {
+  useAssignEmployer,
+  useEmployees,
+  useLegalEmployers,
+  useRecordStatutoryClassification,
+  useStatutoryClassifications,
+  useUpsertEmployee,
+} from '../hooks/useAdmin';
 import { Drawer, ProblemNotice, useProblemFocus } from './ui';
+import { DAY_NAMES } from './StatutoryStandingManager';
 import type { EmployeeRecord } from '../types';
 
 /**
@@ -33,6 +41,14 @@ import type { EmployeeRecord } from '../types';
  * in the product could set it. A payroll run refuses on NO_LEGAL_EMPLOYER and
  * that refusal is not overridable, so somebody added entirely through the
  * screens could never be paid.
+ *
+ * THE REST DAY IS THE SECOND SUCH FIELD, and it is here for the same reason.
+ * It is part of the dated standing and it is recorded there — but the terms
+ * tab is where it is PRINTED, under Working days, and payroll blocks on it.
+ * The only input in the product sat behind a form that could not reach an
+ * employee's first month at all, so a clinic hiring from 1 January could not
+ * run January. Section 60(1) gives every employee one whole rest day a week
+ * and the employer is the one who appoints it; it belongs with the terms.
  */
 export type EditSection = 'profile' | 'employment' | 'statutory' | 'bank';
 
@@ -52,6 +68,11 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
   const assignEmployer = useAssignEmployer();
   const people = useEmployees({});
   const employers = useLegalEmployers();
+  const standing = useStatutoryClassifications(staffId);
+  const recordStanding = useRecordStatutoryClassification();
+  const versions = standing.data ?? [];
+  // Newest first, as the history endpoint orders them.
+  const standingNow = versions.find((row) => row.current);
   const [problem, setProblem] = useState<string | null>(null);
   // The drawer body scrolls and Save sits in the pinned footer, so a banner at
   // the top of the body is invisible from where the button is. Move the view.
@@ -79,6 +100,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
   const [confirmedDate, setConfirmedDate] = useState<Dayjs | null>(null);
   const [notes, setNotes] = useState('');
   const [legalEmployerId, setLegalEmployerId] = useState<string | undefined>();
+  const [restDay, setRestDay] = useState<number | undefined>();
   // Statutory numbers
   const [epfNumber, setEpfNumber] = useState('');
   const [socsoNumber, setSocsoNumber] = useState('');
@@ -112,6 +134,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
     setConfirmedDate(parse(em.confirmedDate));
     setNotes(em.notes ?? '');
     setLegalEmployerId(em.legalEmployerId ?? undefined);
+    setRestDay(standingNow?.restDayOfWeek ?? data.statutory.restDayOfWeek ?? undefined);
     setEpfNumber('');
     setSocsoNumber('');
     setTaxNumber('');
@@ -121,6 +144,62 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
     setProblem(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section, data]);
+
+  /*
+   * The standing comes from its own query and can still be in flight when the
+   * drawer opens. Fill the field when it lands; never over a choice already
+   * made.
+   */
+  useEffect(() => {
+    if (!section || !standingNow) return;
+    setRestDay((chosen) => chosen ?? standingNow.restDayOfWeek ?? undefined);
+  }, [section, standingNow]);
+
+  /**
+   * WHERE A REST DAY SET HERE IS WRITTEN.
+   *
+   * NEVER RECORDED BEFORE — it was always true and no version ever said
+   * otherwise, so it is written onto every version that is silent about it.
+   * Correcting only the earliest would leave a later version still silent and
+   * that month still blocked, with nothing on this screen to say why.
+   *
+   * ALREADY RECORDED — this is a CHANGE, and a change is dated: a new version
+   * from the first of this month, leaving the months already worked out with
+   * the day they were worked out with.
+   */
+  const monthStart = dayjs().startOf('month');
+  const everRecorded = versions.some((row) => row.restDayOfWeek !== null);
+  const changeFrom =
+    versions[0] && dayjs(versions[0].effectiveFrom).isAfter(monthStart)
+      ? versions[0].effectiveFrom
+      : monthStart.format('YYYY-MM-DD');
+
+  const saveRestDay = async () => {
+    if (restDay === undefined) return;
+    if (everRecorded) {
+      if (restDay === standingNow?.restDayOfWeek) return;
+      await recordStanding.mutateAsync({
+        staffId,
+        effectiveFrom: changeFrom,
+        restDayOfWeek: restDay,
+        reason: 'Rest day changed on the employment record',
+      });
+      return;
+    }
+    const reason = 'Rest day recorded on the employment record';
+    if (versions.length === 0) {
+      await recordStanding.mutateAsync({
+        staffId,
+        effectiveFrom: day(startDate) ?? changeFrom,
+        restDayOfWeek: restDay,
+        reason,
+      });
+      return;
+    }
+    for (const row of versions) {
+      await recordStanding.mutateAsync({ staffId, effectiveFrom: row.effectiveFrom, restDayOfWeek: restDay, reason });
+    }
+  };
 
   const save = async () => {
     if (!section) return;
@@ -179,6 +258,18 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
         await assignEmployer.mutateAsync({ staffId, legalEmployerId: legalEmployerId ?? null });
       }
       await upsert.mutateAsync({ staffId, ...body });
+      if (section === 'employment') {
+        // The record is written by now. A refusal here — a month already
+        // approved with a different day in it — is about the rest day alone,
+        // and has to say so rather than read as the whole save failing.
+        try {
+          await saveRestDay();
+        } catch (error) {
+          const why = error instanceof Error ? error.message : 'the server did not say why.';
+          setProblem(`The employment record is saved, but the rest day was refused: ${why}`);
+          return;
+        }
+      }
       message.success('Saved.');
       onClose();
     } catch (error) {
@@ -187,6 +278,24 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
   };
 
   const managers = (people.data ?? []).filter((row) => row.staffId !== staffId && row.hasProfile);
+  /*
+   * SAY WHICH DATE THIS LANDS ON, before it lands on it. The rest day is part
+   * of a dated standing, so setting it here has to state the date it is being
+   * set from — otherwise the screen is making a dating decision on the
+   * clinic's behalf and not telling them.
+   */
+  const restDayNote = (() => {
+    if (versions.length === 0) {
+      return `Recorded from ${startDate ? startDate.format('D MMM YYYY') : 'their start date'}, where their statutory standing will start.`;
+    }
+    if (!everRecorded) {
+      const first = dayjs(versions[versions.length - 1].effectiveFrom).format('D MMM YYYY');
+      return versions.length === 1
+        ? `Recorded from ${first}, where their standing starts, so their first month has one.`
+        : `Recorded from ${first} onwards, across all ${versions.length} versions of their standing, because none of them records one.`;
+    }
+    return `A change takes effect from ${dayjs(changeFrom).format('D MMM YYYY')}. Earlier months keep the day they were worked out with.`;
+  })();
   /*
    * ACTIVE COMPANIES, PLUS THE ONE THEY ARE ALREADY ON. An archived company
    * is refused by the server, so offering it would be offering a dead end —
@@ -362,6 +471,21 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
               <div className="hr-form__help">
                 The company that pays them and files their EPF, SOCSO and tax. Payroll refuses to work out a month for
                 anybody without one, and that refusal cannot be passed. A branch is where they work; it files nothing.
+              </div>
+            </div>
+            <div>
+              <label htmlFor="ed-rest">Rest day</label>
+              <Select
+                id="ed-rest"
+                value={restDay}
+                onChange={setRestDay}
+                placeholder="Not recorded"
+                style={{ width: '100%' }}
+                options={DAY_NAMES.map((name, index) => ({ value: index, label: name }))}
+              />
+              <div className="hr-form__help">
+                {restDayNote} Section 60(1) gives one whole day a week and the employer appoints it. Payroll refuses to
+                work out a month without it, and that refusal cannot be passed.
               </div>
             </div>
             <div>

@@ -107,6 +107,11 @@ export type AuditAction =
   /** The employer selected which wages EPF is contributed on — a dated preference. */
   | 'employeeContributionBasis.recorded'
   | 'employeeStatutoryClassification.recorded'
+  /// The standing already on a date restated, rather than a second version
+  /// opened on the same day. The first standing an employee ever gets is
+  /// written from their join date by the Add employee form and carries only
+  /// what that form asked for; the rest of it has to land on that same row.
+  | 'employeeStatutoryClassification.corrected'
   | 'legalEmployerStatutory.recorded'
   | 'payComponent.seeded'
   | 'payComponent.created'

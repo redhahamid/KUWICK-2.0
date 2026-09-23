@@ -2,7 +2,8 @@ import { BadRequestException, ConflictException, Inject, Injectable, NotFoundExc
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { requirePermission, withAdminTx } from '../finance/admin-actor';
+import { AdminTx, requirePermission, withAdminTx } from '../finance/admin-actor';
+import { ActingStaff } from '../clinical/clinical-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { hrdLevyRatePercent } from '../statutory/hrd-levy';
 import {
@@ -75,6 +76,42 @@ export function toClassificationRow(row: PrismaClassification): StatutoryClassif
     disabledSpouse: row.disabledSpouse,
     restDayOfWeek: row.restDayOfWeek,
     overtimeContractPolicy: row.overtimeContractPolicy,
+  };
+}
+
+/**
+ * The standing a statement leaves behind: the base carried forward, and only
+ * what was actually sent applied on top.
+ *
+ * Shared by both paths on purpose. A correction and a new version have to mean
+ * the same thing by "what you did not send, you did not change", or a clerk
+ * completing January would silently blank the EPF Part that January already
+ * had.
+ */
+function applyToBase(
+  base: StatutoryClassificationRow | null,
+  dto: RecordStatutoryClassificationDto,
+): Omit<StatutoryClassificationRow, 'id' | 'effectiveFrom' | 'effectiveTo'> {
+  const pick = <K extends ClassificationField>(key: K, fallback: StatutoryClassificationRow[K]) =>
+    (dto[key as keyof RecordStatutoryClassificationDto] === undefined
+      ? (base?.[key] ?? fallback)
+      : dto[key as keyof RecordStatutoryClassificationDto]) as StatutoryClassificationRow[K];
+
+  return {
+    epfApplicable: pick('epfApplicable', true),
+    epfMembership: pick('epfMembership', null),
+    epfEmployeeRate: pick('epfEmployeeRate', null),
+    socsoApplicable: pick('socsoApplicable', true),
+    eisApplicable: pick('eisApplicable', true),
+    lindungParticipation: pick('lindungParticipation', null),
+    pcbApplicable: pick('pcbApplicable', true),
+    taxResidence: pick('taxResidence', null),
+    pcbCategory: pick('pcbCategory', null),
+    qualifyingChildren: pick('qualifyingChildren', 0),
+    disabledSelf: pick('disabledSelf', false),
+    disabledSpouse: pick('disabledSpouse', false),
+    restDayOfWeek: pick('restDayOfWeek', null),
+    overtimeContractPolicy: pick('overtimeContractPolicy', null),
   };
 }
 
@@ -168,6 +205,17 @@ export class StatutoryClassificationService {
    * carried forward and the sent fields applied on top, so a caller changing
    * one classification does not have to restate the other thirteen — and what
    * is stored is still the whole standing.
+   *
+   * WHERE A STANDING ALREADY STARTS ON THAT DATE, THIS RESTATES IT.
+   *
+   * Two versions cannot both start on the same day — one of them would have a
+   * range of no days — so a same-date statement can only ever have meant the
+   * row that is there. It used to be refused outright, which was unreachable
+   * advice: the first standing an employee ever has is written from their JOIN
+   * DATE by the Add employee form and carries only the three things that form
+   * asks for. Everything else about their first month — LINDUNG, the rest day,
+   * the MTD category — has nowhere else to go, because there is no earlier
+   * date to record it from and a later date leaves that month unanswered.
    */
   async record(staffId: string, dto: RecordStatutoryClassificationDto) {
     return withAdminTx(this.rawPrisma, 'hr.employee.manage', async (tx, actor) => {
@@ -177,14 +225,6 @@ export class StatutoryClassificationService {
       const from = new Date(`${dto.effectiveFrom}T00:00:00.000Z`);
       if (Number.isNaN(from.getTime())) throw new BadRequestException('effectiveFrom must be a YYYY-MM-DD date.');
 
-      const clash = await tx.employeeStatutoryClassification.findFirst({ where: { staffId, effectiveFrom: from } });
-      if (clash) {
-        throw new ConflictException(
-          `A statutory classification already starts on ${dto.effectiveFrom} for this employee. ` +
-            'Correct that row rather than adding a second one for the same day.',
-        );
-      }
-
       /*
        * AN APPROVED MONTH IS SETTLED.
        *
@@ -192,7 +232,8 @@ export class StatutoryClassificationService {
        * more force: a classification change dated into an approved period
        * would leave the approved run's snapshot and the employee record giving
        * different answers about which EPF Part was used, and the run is the
-       * one the employee was paid from.
+       * one the employee was paid from. Restating a row is no different —
+       * arguably worse, since it leaves no second version to notice.
        */
       const approvedCovering = await tx.payrollRun.count({
         where: {
@@ -209,6 +250,9 @@ export class StatutoryClassificationService {
         );
       }
 
+      const standing = await tx.employeeStatutoryClassification.findFirst({ where: { staffId, effectiveFrom: from } });
+      if (standing) return this.correct(tx, actor, standing, dto, from);
+
       const open = await tx.employeeStatutoryClassification.findFirst({
         where: { staffId, effectiveTo: null },
         orderBy: { effectiveFrom: 'desc' },
@@ -221,27 +265,7 @@ export class StatutoryClassificationService {
 
       // Carry the standing in force forward, then apply what was sent.
       const base = open ? toClassificationRow(open) : null;
-      const pick = <K extends ClassificationField>(key: K, fallback: StatutoryClassificationRow[K]) =>
-        (dto[key as keyof RecordStatutoryClassificationDto] === undefined
-          ? (base?.[key] ?? fallback)
-          : dto[key as keyof RecordStatutoryClassificationDto]) as StatutoryClassificationRow[K];
-
-      const next: Omit<StatutoryClassificationRow, 'id' | 'effectiveFrom' | 'effectiveTo'> = {
-        epfApplicable: pick('epfApplicable', true),
-        epfMembership: pick('epfMembership', null),
-        epfEmployeeRate: pick('epfEmployeeRate', null),
-        socsoApplicable: pick('socsoApplicable', true),
-        eisApplicable: pick('eisApplicable', true),
-        lindungParticipation: pick('lindungParticipation', null),
-        pcbApplicable: pick('pcbApplicable', true),
-        taxResidence: pick('taxResidence', null),
-        pcbCategory: pick('pcbCategory', null),
-        qualifyingChildren: pick('qualifyingChildren', 0),
-        disabledSelf: pick('disabledSelf', false),
-        disabledSpouse: pick('disabledSpouse', false),
-        restDayOfWeek: pick('restDayOfWeek', null),
-        overtimeContractPolicy: pick('overtimeContractPolicy', null),
-      };
+      const next = applyToBase(base, dto);
 
       // A version that states nothing new is a row with no fact in it. It would
       // also be indistinguishable, in the history, from a change somebody
@@ -286,6 +310,54 @@ export class StatutoryClassificationService {
 
       return saved;
     });
+  }
+
+  /**
+   * Restate the standing that already starts on that date, in place.
+   *
+   * The row keeps its dates and its original recorder; the audit row carries
+   * who restated it and what it said before. Nothing about the shape of the
+   * history changes — the same number of versions, the same ranges — because
+   * this is not a change of standing, it is the same standing said properly.
+   *
+   * Asking for what the row already says is not an error. A screen that is
+   * ambiguous about whether it saved makes people press the button twice, and
+   * being told "duplicate" for pressing it twice teaches them to distrust a
+   * save that worked.
+   */
+  private async correct(
+    tx: AdminTx,
+    actor: ActingStaff,
+    standing: PrismaClassification & { reason: string | null; note: string | null },
+    dto: RecordStatutoryClassificationDto,
+    from: Date,
+  ) {
+    const base = toClassificationRow(standing);
+    const next = applyToBase(base, dto);
+    const changed = classificationDiff(base, { ...next, id: standing.id, effectiveFrom: from, effectiveTo: standing.effectiveTo });
+    const reason = dto.reason ?? standing.reason;
+    const note = dto.note ?? standing.note;
+
+    if (changed.length === 0 && reason === standing.reason && note === standing.note) return standing;
+
+    const saved = await tx.employeeStatutoryClassification.update({
+      where: { id: standing.id },
+      data: { ...next, reason, note },
+    });
+
+    await recordAudit(tx, actor, {
+      action: 'employeeStatutoryClassification.corrected',
+      entityType: 'EmployeeStatutoryClassification',
+      entityId: standing.id,
+      reason: `Restated the statutory classification starting ${isoDate(from)}: ${
+        changed.length > 0 ? changed.map((key) => CLASSIFICATION_FIELDS[key]).join(', ') : 'reason only'
+      }`,
+      before: base as unknown as Record<string, unknown>,
+      after: { ...next, effectiveFrom: isoDate(from) } as unknown as Record<string, unknown>,
+      source: 'hr.employees',
+    });
+
+    return saved;
   }
 
   // -------------------------------------------------------------------------

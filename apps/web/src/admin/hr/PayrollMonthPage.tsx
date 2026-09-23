@@ -2,7 +2,7 @@ import { App } from 'antd';
 import dayjs from 'dayjs';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
-import { useCreatePayrollRun, usePayrollHome } from '../hooks/useAdmin';
+import { useCalculatePayroll, useCreatePayrollRun, usePayrollHome } from '../hooks/useAdmin';
 import { useCan } from '../../core/hooks/useCan';
 import { PayrollStartGate } from './PayrollStartGate';
 import { PayrollWorkspace } from './PayrollRunPage';
@@ -48,6 +48,7 @@ export function PayrollMonthPage() {
 
   const home = usePayrollHome({ period, clinicId });
   const createRun = useCreatePayrollRun();
+  const calculate = useCalculatePayroll();
   const data = home.data;
 
   const monthNav = (
@@ -108,18 +109,39 @@ export function PayrollMonthPage() {
                     <button
                       type="button"
                       className="hr-btn hr-btn--primary"
-                      disabled={!canStart || createRun.isPending}
-                      onClick={() =>
-                        createRun.mutate(
-                          { period: `${period}-01`, clinicId },
-                          {
-                            // Straight into the grid, on the stage the work
-                            // starts at — not back to a summary of what happened.
-                            onSuccess: (created) => navigate(`/admin/hr/payroll/${(created as { id: string }).id}?step=prepare`),
-                            onError: (error: Error) => message.error(error.message),
-                          },
-                        )
-                      }
+                      disabled={!canStart || createRun.isPending || calculate.isPending}
+                      onClick={async () => {
+                        /*
+                         * STARTING A MONTH WORKS IT OUT.
+                         *
+                         * Creating the run only opened an empty one: the grid
+                         * then drew a dash in every cell, RM0.00 in every
+                         * total and every employee LEFT OUT, with "Continue to
+                         * review" refusing — because a run with no lines has
+                         * nobody in it. The only way forward was a button
+                         * called "Save draft", which does not sound like the
+                         * thing that makes a month appear, and the panel above
+                         * this button has already promised that Kuwick will
+                         * work the payslips out.
+                         *
+                         * A failure here still opens the run. The month exists
+                         * either way, and the grid says more about why it is
+                         * empty than a toast on a screen you never left.
+                         */
+                        try {
+                          const created = (await createRun.mutateAsync({ period: `${period}-01`, clinicId })) as { id: string };
+                          try {
+                            await calculate.mutateAsync(created.id);
+                          } catch (error) {
+                            message.error((error as Error).message);
+                          }
+                          // Straight into the grid, on the stage the work
+                          // starts at — not back to a summary of what happened.
+                          navigate(`/admin/hr/payroll/${created.id}?step=prepare`);
+                        } catch (error) {
+                          message.error((error as Error).message);
+                        }
+                      }}
                     >
                       Start {label} payroll
                     </button>

@@ -320,6 +320,25 @@ describe('the approval gate', () => {
   });
 });
 
+describe('starting a month', () => {
+  /**
+   * "Start January 2026 payroll" created the run and stopped. The grid then
+   * drew a dash in every cell, RM0.00 in every total and all three employees
+   * LEFT OUT — because a run with no lines has nobody in it — and "Continue to
+   * review" refused. The only way on was a button called "Save draft", which
+   * does not sound like the thing that makes a month appear, while the panel
+   * above the start button had already promised that Kuwick would work the
+   * payslips out. Found walking a new branch's first January end to end.
+   */
+  it('works the month out, rather than opening a grid of dashes', () => {
+    const source = code(homeSource);
+    expect(source).toMatch(/createRun\.mutateAsync/);
+    expect(source).toMatch(/calculate\.mutateAsync/);
+    // In that order, and not behind a condition the screen decides for itself.
+    expect(source.indexOf('createRun.mutateAsync')).toBeLessThan(source.indexOf('calculate.mutateAsync'));
+  });
+});
+
 describe('the provisional safety indicator', () => {
   it('is on payroll home and on the run, and is not dismissible', () => {
     expect(code(homeSource)).toMatch(/<ProvisionalBanner/);

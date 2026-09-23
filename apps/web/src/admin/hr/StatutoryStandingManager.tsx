@@ -3,9 +3,10 @@ import { App, DatePicker, Input, InputNumber, Modal, Select } from 'antd';
 import dayjs from 'dayjs';
 import { useRecordStatutoryClassification, useStatutoryClassifications } from '../hooks/useAdmin';
 import { useCan } from '../../core/hooks/useCan';
-import { PanelHead } from './ui';
+import { FieldProblem, PanelHead, ProblemNotice, useProblemFocus } from './ui';
 import { Table } from './ui/Table';
 import { IconEdit } from './ui/icons';
+import type { FormProblem } from './ui';
 import type { EmployeeRecord, StatutoryClassificationVersion } from '../types';
 
 /**
@@ -25,7 +26,8 @@ import type { EmployeeRecord, StatutoryClassificationVersion } from '../types';
  *     asks for what is not, and the engine keeps refusing to guess anything
  *     the form does not say.
  */
-const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+/** The rest day is stored as 0–6. One list of names, so three screens cannot disagree about which day 0 is. */
+export const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 /** The stored codes, in the words the editor uses. A screen that prints MALAYSIAN_CITIZEN is talking to a developer. */
 const STANDING_LABELS: Record<string, string> = {
@@ -114,7 +116,26 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
   const current = versions.find((row) => row.current);
 
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  /**
+   * The version being restated, if this is a correction rather than a change.
+   *
+   * The two are different acts and the form says which it is doing. A CHANGE
+   * is dated from when it starts and leaves the earlier months alone; a
+   * CORRECTION is the row saying properly what it always meant, so its date is
+   * the row's own and cannot be moved.
+   */
+  const [target, setTarget] = useState<StatutoryClassificationVersion | null>(null);
+  const [error, setError] = useState<FormProblem>(null);
+  /*
+   * THE REFUSAL HAS TO BE WHERE THE PERSON PRESSING RECORD IS LOOKING.
+   *
+   * This form is long enough to scroll and its button sits at the bottom, so a
+   * banner drawn at the top of the body is a banner nobody sees. Reported from
+   * UAT as "the modal stays open after a successful record, so I press Record
+   * again and get told it is a duplicate" — which is what a refusal rendered
+   * off-screen looks like from the chair.
+   */
+  useProblemFocus(error);
   const [from, setFrom] = useState(dayjs().startOf('month'));
   const [epfMembership, setEpfMembership] = useState<string | undefined>();
   const [epfRate, setEpfRate] = useState<number | undefined>();
@@ -131,20 +152,33 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
   const [otPolicy, setOtPolicy] = useState<string | undefined>();
   const [reason, setReason] = useState('');
 
-  const openForm = () => {
-    // Prefill the standing in force so recording one change does not require
-    // restating the other nine. An unresolved standing prefills nothing.
-    setFrom(dayjs().startOf('month'));
-    setEpfMembership(current?.epfMembership ?? s.epfMembership ?? undefined);
-    setEpfRate(current?.epfEmployeeRate ?? undefined);
-    setLindung(current?.lindungParticipation ?? s.lindungParticipation ?? undefined);
-    setTaxResidence(current?.taxResidence ?? s.taxResidence ?? undefined);
-    setPcbCategory(current?.pcbCategory ?? s.pcbCategory ?? undefined);
-    setChildren(current?.qualifyingChildren ?? s.qualifyingChildren ?? null);
-    setDisabledSelf(current?.disabledSelf ?? null);
-    setDisabledSpouse(current?.disabledSpouse ?? null);
-    setRestDay(current?.restDayOfWeek ?? s.restDayOfWeek ?? undefined);
-    setOtPolicy(current?.overtimeContractPolicy ?? s.overtimeContractPolicy ?? undefined);
+  /**
+   * `row` given, the form corrects that version; otherwise it records a change
+   * from a date the user chooses.
+   *
+   * A correction prefills from THE ROW ITSELF and from nothing else. Filling it
+   * from the standing in force would quietly carry this month's answers back
+   * into a month that never had them — which is the opposite of what somebody
+   * opening January came to do.
+   */
+  const openForm = (row?: StatutoryClassificationVersion) => {
+    const base = row ?? current;
+    // Only a change may fall back on the resolved record; a correction may not.
+    const fallback = row ? null : s;
+    setTarget(row ?? null);
+    setFrom(row ? dayjs(row.effectiveFrom) : dayjs().startOf('month'));
+    setEpfMembership(base?.epfMembership ?? fallback?.epfMembership ?? undefined);
+    setEpfRate(base?.epfEmployeeRate ?? undefined);
+    setLindung(base?.lindungParticipation ?? fallback?.lindungParticipation ?? undefined);
+    setTaxResidence(base?.taxResidence ?? fallback?.taxResidence ?? undefined);
+    setPcbCategory(base?.pcbCategory ?? fallback?.pcbCategory ?? undefined);
+    setChildren(base?.qualifyingChildren ?? fallback?.qualifyingChildren ?? null);
+    setDisabledSelf(base?.disabledSelf ?? null);
+    setDisabledSpouse(base?.disabledSpouse ?? null);
+    setRestDay(base?.restDayOfWeek ?? fallback?.restDayOfWeek ?? undefined);
+    setOtPolicy(base?.overtimeContractPolicy ?? fallback?.overtimeContractPolicy ?? undefined);
+    // Never the old reason: a correction has its own, and it is the only place
+    // the history will say why the row stopped saying what it said.
     setReason('');
     setError(null);
     setOpen(true);
@@ -157,7 +191,7 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
         current={current}
         actions={
           mayManage ? (
-            <button type="button" className="hr-btn hr-btn--sm" onClick={openForm}>
+            <button type="button" className="hr-btn hr-btn--sm" onClick={() => openForm()}>
               <IconEdit />
               Record a change
             </button>
@@ -193,21 +227,42 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
               width: 200,
               render: (_: unknown, row) => `${row.recordedBy ?? 'Unknown'} · ${dayjs(row.recordedAt).format('D MMM YYYY')}`,
             },
+            /*
+             * EVERY VERSION IS CORRECTABLE, INCLUDING THE FIRST.
+             *
+             * The first one is written from the join date by the Add employee
+             * form and carries only the three things that form asks for. With
+             * no way in, everything else about that employee's first month —
+             * LINDUNG, the rest day, the MTD category — was unreachable, and
+             * their first payroll blocked on fields with no input anywhere.
+             */
+            {
+              title: '',
+              key: 'correct',
+              width: 110,
+              render: (_: unknown, row) =>
+                mayManage ? (
+                  <button type="button" className="hr-btn hr-btn--sm" onClick={() => openForm(row)}>
+                    <IconEdit />
+                    Correct
+                  </button>
+                ) : null,
+            },
           ]}
         />
       ) : null}
 
       <Modal
         open={open}
-        title="Record a statutory standing"
-        okText="Record"
+        title={target ? `Correct the standing from ${dayjs(target.effectiveFrom).format('D MMM YYYY')}` : 'Record a statutory standing'}
+        okText={target ? 'Save correction' : 'Record'}
         width={620}
         confirmLoading={record.isPending}
         onCancel={() => setOpen(false)}
         onOk={async () => {
           setError(null);
           if (!reason.trim()) {
-            setError('Say why this is being recorded — a standing with no reason is not a record.');
+            setError({ field: 'st-reason', message: 'Say why this is being recorded — a standing with no reason is not a record.' });
             return;
           }
           try {
@@ -228,21 +283,44 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
               ...(otPolicy !== undefined ? { overtimeContractPolicy: otPolicy } : {}),
               reason: reason.trim(),
             });
-            message.success('Recorded. Payroll resolves it from the date it takes effect.');
-            setOpen(false);
           } catch (e) {
-            setError(e instanceof Error ? e.message : 'The server refused the change and did not say why.');
+            setError({ message: e instanceof Error ? e.message : 'The server refused the change and did not say why.' });
+            return;
           }
+          /*
+           * CLOSING IS THE SAVE'S OWN CONSEQUENCE, so it is outside the try.
+           * Inside it, anything that threw after the write — a toast, a
+           * format — was caught and shown as a refusal, leaving the form up
+           * over a record that had already been written and inviting the same
+           * statement to be sent a second time.
+           */
+          setOpen(false);
+          message.success(
+            target
+              ? `Corrected. ${dayjs(target.effectiveFrom).format('D MMM YYYY')} onwards reads this, and no second version was opened.`
+              : 'Recorded. Payroll resolves it from the date it takes effect.',
+          );
         }}
       >
-        {error ? <div className="hr-notice hr-notice--attn">{error}</div> : null}
+        <ProblemNotice problem={error} />
         <div className="hr-form" style={{ marginTop: 12 }}>
           <div>
             <label htmlFor="st-from">In force from</label>
-            <DatePicker id="st-from" value={from} onChange={(v) => v && setFrom(v)} style={{ width: '100%' }} allowClear={false} format="D MMM YYYY" />
+            <DatePicker
+              id="st-from"
+              value={from}
+              onChange={(v) => v && setFrom(v)}
+              style={{ width: '100%' }}
+              allowClear={false}
+              format="D MMM YYYY"
+              // A correction is that row said properly. Moving its date would
+              // make it a different version of a different period.
+              disabled={Boolean(target)}
+            />
             <div className="hr-form__help">
-              Date it from the first day of a month. A standing that changes part-way through a month blocks that month's payroll, because a contribution is worked out for a whole wage
-              period.
+              {target
+                ? 'The date this version starts, which a correction does not move. To start a new version from a later date, close this and use Record a change.'
+                : "Date it from the first day of a month. A standing that changes part-way through a month blocks that month's payroll, because a contribution is worked out for a whole wage period."}
             </div>
           </div>
 
@@ -397,6 +475,7 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
           <div>
             <label htmlFor="st-reason">Reason</label>
             <Input.TextArea id="st-reason" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Recorded at hire, corrected after the LHDN category confirmation…" />
+            <FieldProblem problem={error} field="st-reason" />
           </div>
         </div>
       </Modal>
