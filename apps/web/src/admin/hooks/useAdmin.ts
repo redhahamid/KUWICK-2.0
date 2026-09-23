@@ -1251,14 +1251,14 @@ export function useSettleStaffClaim() {
   );
 }
 
-export function useLocumSessions(params: { from?: string; to?: string; staffId?: string; status?: string } = {}) {
+export function useLocumSessions(params: { from?: string; to?: string; staffId?: string; status?: string; clinicId?: string } = {}) {
   return useQuery({
     queryKey: ['admin-hr', 'locum-sessions', params],
     queryFn: () => apiClient.get<LocumSessionRow[]>(`/workforce/locum/sessions${qs(params)}`),
   });
 }
 
-export function useLocumPayable(params: { from: string; to: string }) {
+export function useLocumPayable(params: { from: string; to: string; clinicId?: string }) {
   return useQuery({
     queryKey: ['admin-hr', 'locum-payable', params],
     queryFn: () => apiClient.get<LocumPayableSummary>(`/workforce/locum/payable${qs(params)}`),
@@ -1434,7 +1434,7 @@ export function usePayrollMonthComparisonReport(runId: string | undefined) {
   });
 }
 
-export function usePayrollClaimsReport(params: { from: string; to: string }) {
+export function usePayrollClaimsReport(params: { from: string; to: string; clinicId?: string }) {
   return useQuery({
     queryKey: ['admin-hr', 'payroll-report', 'claims', params],
     queryFn: () => apiClient.get<PayrollClaimsReport>(`/workforce/payroll/reports/claims${qs(params)}`),
@@ -1507,13 +1507,10 @@ export function usePayrollPcbSummaryReport(runId: string | undefined) {
   });
 }
 
-export function usePayrollYtdReport(year: number, legalEmployerId?: string) {
+export function usePayrollYtdReport(params: { year: number; legalEmployerId?: string; clinicId?: string }) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-report', 'ytd', year, legalEmployerId],
-    queryFn: () =>
-      apiClient.get<PayrollYtdReport>(
-        `/workforce/payroll/reports/ytd?year=${year}${legalEmployerId ? `&legalEmployerId=${legalEmployerId}` : ''}`,
-      ),
+    queryKey: ['admin-hr', 'payroll-report', 'ytd', params],
+    queryFn: () => apiClient.get<PayrollYtdReport>(`/workforce/payroll/reports/ytd${qs(params)}`),
   });
 }
 

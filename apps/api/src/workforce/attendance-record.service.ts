@@ -3,7 +3,7 @@ import { AttendanceCorrectionStatus, AttendancePunchKind, AttendanceSource, Atte
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { AdminTx, actorCan, requirePermission, resolveClinicId, withAdminTx } from '../finance/admin-actor';
+import { AdminTx, actorCan, requireScope, resolveClinicId, withAdminTx } from '../finance/admin-actor';
 import { requireActor, withTenantTx } from '../clinical/clinical-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { computePunchedDay, hoursOf, totalTimesheet } from './attendance-hours';
@@ -433,12 +433,13 @@ export class AttendanceRecordService {
    * able to see what is waiting on them.
    */
   async correctionRequests(params: { clinicId?: string; status?: AttendanceCorrectionStatus } = {}) {
-    const actor = await requirePermission(this.rawPrisma, 'hr.view');
-    const clinicId = params.clinicId ?? actor.clinicId ?? undefined;
+    // The branch through the actor's SCOPE, reached through the person who
+    // asked — see `timesheet()` for why not through the record.
+    const { scope } = await requireScope(this.rawPrisma, 'hr.view');
     const rows = await this.prisma.attendanceCorrectionRequest.findMany({
       where: {
         status: params.status ?? AttendanceCorrectionStatus.PENDING,
-        ...(clinicId ? { attendanceRecord: { clinicId } } : {}),
+        staff: scope.where(params.clinicId),
       },
       orderBy: { createdAt: 'asc' },
       include: {
@@ -556,14 +557,28 @@ export class AttendanceRecordService {
     });
   }
 
-  /** A month's timesheet for one branch, with the totals payroll will read. */
+  /**
+   * A month's timesheet for one branch, with the totals payroll will read.
+   *
+   * THE BRANCH COMES THROUGH THE ACTOR'S SCOPE, AND A RECORD REACHES IT
+   * THROUGH THE PERSON.
+   *
+   * It was `params.clinicId ?? actor.clinicId`, applied to the record's own
+   * `clinicId`: any account could name any branch, an account with no home
+   * branch read the whole tenant by naming none, and a punch HR entered with
+   * the wrong branch selected moved somebody's day onto another branch's
+   * sheet. The record's branch is where the punch was stamped; the person's
+   * is where they work, which is what the filter above the screen means and
+   * what payroll reads when it runs a branch's month. Going through the
+   * person also keeps the sheet in step with the leave and claims queues,
+   * which reach their branch the same way.
+   */
   async timesheet(params: { clinicId?: string; from: string; to: string; staffId?: string }) {
-    const actor = await requirePermission(this.rawPrisma, 'hr.view');
-    const clinicId = params.clinicId ?? actor.clinicId ?? undefined;
+    const { scope } = await requireScope(this.rawPrisma, 'hr.view');
 
     const records = await this.prisma.attendanceRecord.findMany({
       where: {
-        ...(clinicId ? { clinicId } : {}),
+        staff: scope.where(params.clinicId),
         ...(params.staffId ? { staffId: params.staffId } : {}),
         workDate: { gte: dateOnly(params.from), lte: dateOnly(params.to) },
       },
@@ -674,8 +689,21 @@ export class AttendanceRecordService {
    * absent, and what needs approval.
    */
   async today(clinicIdInput?: string) {
-    const actor = await requirePermission(this.rawPrisma, 'hr.view');
-    const clinicId = clinicIdInput ?? actor.clinicId ?? undefined;
+    /*
+     * THE BOARD ANSWERS FOR ONE BRANCH — ALL OF IT.
+     *
+     * The punches were filtered by branch and the rest of the board was not:
+     * everybody on leave in the tenant, every waiting leave request, every
+     * submitted claim, every correction request. So an empty branch reported
+     * a doctor from another branch as on leave, and the counts on the rail
+     * disagreed with the queues they link to, which are scoped. Everything
+     * here now reaches its branch through the PERSON, via the actor's scope —
+     * a branch outside it is refused, none means the branches the account
+     * holds — except the roster, whose shifts belong to a branch outright.
+     */
+    const { scope } = await requireScope(this.rawPrisma, 'hr.view');
+    const clinicId = scope.assert(clinicIdInput) ?? (scope.clinicIds.length === 1 ? scope.clinicIds[0] : undefined);
+    const people = { staff: scope.where(clinicIdInput) };
     // TODAY AS THE CLINIC READS IT. At 07:30 in Kuala Lumpur the UTC date is
     // still yesterday, and a board that opens on yesterday tells the morning
     // shift they are not scheduled.
@@ -685,27 +713,27 @@ export class AttendanceRecordService {
     const [records, onLeave, pendingLeave, unapprovedOvertime, missingPunches, pendingClaims, pendingCorrections] =
       await Promise.all([
         this.prisma.attendanceRecord.findMany({
-          where: { ...(clinicId ? { clinicId } : {}), workDate: day },
+          where: { ...people, workDate: day },
           include: { staff: { select: { id: true, fullName: true, role: true } } },
         }),
         this.prisma.leaveRequest.findMany({
-          where: { status: 'APPROVED', startDate: { lte: day }, endDate: { gte: day } },
+          where: { ...people, status: 'APPROVED', startDate: { lte: day }, endDate: { gte: day } },
           include: { staff: { select: { id: true, fullName: true } } },
         }),
-        this.prisma.leaveRequest.count({ where: { status: 'PENDING' } }),
+        this.prisma.leaveRequest.count({ where: { ...people, status: 'PENDING' } }),
         this.prisma.attendanceRecord.count({
-          where: { ...(clinicId ? { clinicId } : {}), overtimeMinutes: { gt: 0 }, overtimeApproved: false },
+          where: { ...people, overtimeMinutes: { gt: 0 }, overtimeApproved: false },
         }),
         this.prisma.attendanceRecord.count({
-          where: { ...(clinicId ? { clinicId } : {}), status: 'MISSING_PUNCH' },
+          where: { ...people, status: 'MISSING_PUNCH' },
         }),
-        this.prisma.staffClaim.count({ where: { status: 'SUBMITTED' } }),
-        this.prisma.attendanceCorrectionRequest.count({ where: { status: 'PENDING' } }),
+        this.prisma.staffClaim.count({ where: { ...people, status: 'SUBMITTED' } }),
+        this.prisma.attendanceCorrectionRequest.count({ where: { ...people, status: 'PENDING' } }),
       ]);
 
     // Matched on the roster's own date, not on a UTC window over `startsAt`.
     const shifts = await this.prisma.providerShift.findMany({
-      where: { shiftDate: day, ...(clinicId ? { clinicId } : {}) },
+      where: { shiftDate: day, ...scope.where(clinicIdInput) },
       orderBy: { startsAt: 'asc' },
       include: { staff: { select: { id: true, fullName: true, role: true, professionalType: true } } },
     });

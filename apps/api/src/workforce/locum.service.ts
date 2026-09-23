@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Inject, Injectable, NotFoundExc
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { requirePermission, withAdminTx } from '../finance/admin-actor';
+import { requireScope, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { formatCents, toCents } from '../finance/money';
 import {
@@ -54,9 +54,12 @@ export class LocumService {
     return null;
   }
 
-  async list(params: { from?: string; to?: string; staffId?: string; status?: string } = {}) {
-    await requirePermission(this.rawPrisma, 'hr.view');
-    const where: Record<string, unknown> = {};
+  async list(params: { from?: string; to?: string; staffId?: string; status?: string; clinicId?: string } = {}) {
+    // A session is recorded AT a branch, so the branch is the row's own —
+    // through the actor's scope, which refuses one outside it and reads the
+    // branches the account holds when none is named.
+    const { scope } = await requireScope(this.rawPrisma, 'hr.view');
+    const where: Record<string, unknown> = { ...scope.where(params.clinicId) };
     if (params.staffId) where.staffId = params.staffId;
     if (params.status) where.status = params.status;
     if (params.from || params.to) {
@@ -291,10 +294,11 @@ export class LocumService {
    * locum equivalent of a payroll run summary — the thing an owner looks at to
    * answer "who else am I paying this month".
    */
-  async payableSummary(from: string, to: string) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.view');
+  async payableSummary(from: string, to: string, clinicId?: string) {
+    const { scope } = await requireScope(this.rawPrisma, 'hr.payroll.view');
     const rows = await this.prisma.locumSession.findMany({
       where: {
+        ...scope.where(clinicId),
         sessionDate: { gte: new Date(`${from}T00:00:00.000Z`), lte: new Date(`${to}T00:00:00.000Z`) },
         status: { in: ['COMPLETED', 'APPROVED'] },
       },

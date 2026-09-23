@@ -8,6 +8,7 @@ import { Table } from './ui/Table';
 import { ringgit } from '../components/DataTable';
 import { useEmployees, useImportYtdOpening, useLegalEmployers } from '../hooks/useAdmin';
 import { useCan } from '../../core/hooks/useCan';
+import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import type { YtdOpeningMonthBody } from '../types';
 
 /**
@@ -40,7 +41,8 @@ export function YtdOpeningImportPage() {
   const { message } = App.useApp();
   const mayImport = useCan('hr.payroll.approve');
   const employers = useLegalEmployers();
-  const employees = useEmployees({ status: 'ACTIVE' });
+  const { clinicId } = useClinicFilter();
+  const employees = useEmployees({ clinicId, status: 'ACTIVE' });
   const importMutation = useImportYtdOpening();
 
   const [legalEmployerId, setLegalEmployerId] = useState<string | undefined>();

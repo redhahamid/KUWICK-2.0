@@ -3,7 +3,7 @@ import { LeaveType } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { requirePermission, withAdminTx } from '../finance/admin-actor';
+import { requirePermission, requireScope, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { computeLeaveBalance, leaveDays, proRateEntitlement } from './leave-balance';
 import { UpsertLeavePolicyDto } from './dto/upsert-leave-policy.dto';
@@ -358,14 +358,16 @@ export class LeaveService {
    * Read-only, `hr.view`, and it invents no entitlement rule of its own.
    */
   async balancesForEveryone(params: { clinicId?: string; year?: number } = {}) {
-    await requirePermission(this.rawPrisma, 'hr.view');
+    // The branch through the actor's scope: one outside it is refused, none
+    // means the branches the account holds — never the whole tenant.
+    const { scope } = await requireScope(this.rawPrisma, 'hr.view');
     const year = params.year ?? new Date().getUTCFullYear();
 
     const profiles = await this.prisma.employeeProfile.findMany({
       where: {
         staff: {
           active: true,
-          ...(params.clinicId ? { clinicId: params.clinicId } : {}),
+          ...scope.where(params.clinicId),
         },
       },
       include: {

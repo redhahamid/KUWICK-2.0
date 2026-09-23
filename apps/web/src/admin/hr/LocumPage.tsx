@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { App, Button, DatePicker, Input, Modal, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
+import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, ringgit } from '../components/DataTable';
 import {
@@ -32,8 +33,11 @@ export function LocumPage() {
   const from = `${month}-01`;
   const to = dayjs(from).endOf('month').format('YYYY-MM-DD');
 
-  const sessions = useLocumSessions({ from, to });
-  const payable = useLocumPayable({ from, to });
+  // The branch on the filter above the screen reaches the query, so the
+  // sessions and the payable are one branch's when one branch is selected.
+  const { clinicId } = useClinicFilter();
+  const sessions = useLocumSessions({ from, to, clinicId });
+  const payable = useLocumPayable({ from, to, clinicId });
   const approve = useApproveLocumSession();
   const settle = useSettleLocumSession();
   const update = useUpdateLocumSession();

@@ -3,7 +3,7 @@ import { IncentiveRunStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { AdminTx, requirePermission, withAdminTx } from '../finance/admin-actor';
+import { AdminTx, requirePermission, requireScope, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { fromCents, toCents } from '../finance/money';
 import { computeProcedureIncentive, computeSalesCommission, ruleInForce } from './incentive-calculation';
@@ -392,10 +392,13 @@ export class IncentiveService {
   }
 
   async list(params: { clinicId?: string; year?: number } = {}) {
-    await requirePermission(this.rawPrisma, 'hr.view');
+    // A run belongs to a branch (or to every branch, clinicId null). The
+    // branch comes through the actor's scope: one outside it is refused,
+    // none means the branches the account holds.
+    const { scope } = await requireScope(this.rawPrisma, 'hr.view');
     const runs = await this.prisma.incentiveRun.findMany({
       where: {
-        ...(params.clinicId ? { clinicId: params.clinicId } : {}),
+        ...scope.where(params.clinicId),
         ...(params.year
           ? { period: { gte: new Date(Date.UTC(params.year, 0, 1)), lt: new Date(Date.UTC(params.year + 1, 0, 1)) } }
           : {}),

@@ -209,16 +209,18 @@ export class WorkforceController {
     @Query('to') to?: string,
     @Query('staffId') staffId?: string,
     @Query('status') status?: string,
+    @Query('clinicId') clinicId?: string,
   ) {
-    return this.locum.list({ from, to, staffId, status });
+    return this.locum.list({ from, to, staffId, status, clinicId });
   }
 
   @Get('locum/payable')
   locumPayable(
     @Query('from', RequiredDateParam) from: string,
     @Query('to', RequiredDateParam) to: string,
+    @Query('clinicId') clinicId?: string,
   ) {
-    return this.locum.payableSummary(from, to);
+    return this.locum.payableSummary(from, to, clinicId || undefined);
   }
 
   @Post('locum/sessions')
@@ -284,10 +286,14 @@ export class WorkforceController {
   }
 
   @Get('payroll/reports/ytd')
-  reportYtd(@Query('year') year?: string, @Query('legalEmployerId') legalEmployerId?: string) {
+  reportYtd(
+    @Query('year') year?: string,
+    @Query('legalEmployerId') legalEmployerId?: string,
+    @Query('clinicId') clinicId?: string,
+  ) {
     const parsedYear = Number(year);
     if (!Number.isInteger(parsedYear)) throw new BadRequestException('year must be a whole year, e.g. 2026.');
-    return this.reports.ytd(parsedYear, legalEmployerId || undefined);
+    return this.reports.ytd(parsedYear, legalEmployerId || undefined, clinicId || undefined);
   }
 
   @Get('payroll/runs/:id/reports/pcb')
@@ -336,9 +342,10 @@ export class WorkforceController {
   reportClaims(
     @Query('from', RequiredDateParam) from: string,
     @Query('to', RequiredDateParam) to: string,
+    @Query('clinicId') clinicId?: string,
   ) {
     assertDateOrder(from, to);
-    return this.reports.claims({ from, to });
+    return this.reports.claims({ from, to, clinicId: clinicId || undefined });
   }
 
   // --- Effective-dated salary ----------------------------------------------

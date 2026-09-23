@@ -168,8 +168,11 @@ export function TimesheetPage() {
   // rows only exist once a branch is chosen. The sheet says so rather than
   // quietly showing fewer people.
   const roster = useRosterRange(clinicId, day, day);
-  const employees = useEmployees({});
-  const leave = useLeaveRequests();
+  // THE BRANCH'S PEOPLE AND THE BRANCH'S LEAVE. Both were fetched for the
+  // whole tenant, so with an empty branch selected the sheet still listed a
+  // doctor from another branch and counted her as "1 on leave".
+  const employees = useEmployees({ clinicId });
+  const leave = useLeaveRequests({ clinicId });
 
   const nameOf = useMemo(() => {
     const map = new Map<string, string>();

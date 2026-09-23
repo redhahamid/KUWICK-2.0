@@ -1,7 +1,7 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
-import { requirePermission, withAdminTx } from '../finance/admin-actor';
+import { requirePermission, withScopedAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { formatCents, toCents } from '../finance/money';
 import { daysInMonth } from '../statutory/employment-act';
@@ -55,15 +55,19 @@ export class PayrollReportService {
    * payslip PDF) already write audit rows — the reports were the unrecorded
    * way out of the building.
    */
-  private async requireReportActor(report: string, scope: Record<string, unknown>) {
-    await withAdminTx(this.rawPrisma, 'hr.payroll.export.reports', async (tx, actor) => {
+  private async requireReportActor(report: string, asked: Record<string, unknown>) {
+    // Hands back the BRANCH scope as well: a report that takes a branch
+    // refuses one outside it and reads the branches the account holds when
+    // none is named, the same as every other HR read.
+    return withScopedAdminTx(this.rawPrisma, 'hr.payroll.export.reports', async (tx, actor, scope) => {
       await recordAudit(tx, actor, {
         action: 'payrollReport.served',
         entityType: 'PayrollReport',
         entityId: report,
-        after: scope,
+        after: asked,
         source: 'hr.payroll',
       });
+      return scope;
     });
   }
 
@@ -507,8 +511,8 @@ export class PayrollReportService {
    * can see that it held — every approved claim in the period, the route its
    * approver chose, and whether it has actually been settled that way.
    */
-  async claims(params: { from: string; to: string }) {
-    await this.requireReportActor('claims', { from: params.from, to: params.to });
+  async claims(params: { from: string; to: string; clinicId?: string }) {
+    const scope = await this.requireReportActor('claims', { from: params.from, to: params.to, clinicId: params.clinicId ?? null });
     const from = new Date(`${params.from}T00:00:00.000Z`);
     const to = new Date(`${params.to}T23:59:59.999Z`);
 
@@ -526,7 +530,9 @@ export class PayrollReportService {
      * settlement are current facts, not facts about the period.
      */
     const claims = await this.prisma.staffClaim.findMany({
-      where: { status: { in: ['APPROVED', 'REJECTED'] }, claimDate: { gte: from, lte: to } },
+      // The branch through the person, as the claims queue reads it: a
+      // claim's own `clinicId` is nullable and left null by the ordinary create.
+      where: { staff: scope.where(params.clinicId), status: { in: ['APPROVED', 'REJECTED'] }, claimDate: { gte: from, lte: to } },
       include: {
         staff: { select: { fullName: true } },
         decidedBy: { select: { fullName: true } },
@@ -801,10 +807,14 @@ export class PayrollReportService {
    * employer's money, and a YTD that folded them in would misstate what this
    * employer paid.
    */
-  async ytd(year: number, legalEmployerId?: string) {
-    await this.requireReportActor('ytd', { year, legalEmployerId: legalEmployerId ?? null });
+  async ytd(year: number, legalEmployerId?: string, clinicId?: string) {
+    const scope = await this.requireReportActor('ytd', { year, legalEmployerId: legalEmployerId ?? null, clinicId: clinicId ?? null });
+    // The employing company and the branch are different questions — one
+    // company can employ people at several branches — so both filters apply,
+    // and the branch is reached through the person.
+    const people = { staff: scope.where(clinicId) };
     const months = await this.prisma.employeeYtd.findMany({
-      where: { taxYear: year, ...(legalEmployerId ? { legalEmployerId } : {}) },
+      where: { ...people, taxYear: year, ...(legalEmployerId ? { legalEmployerId } : {}) },
       orderBy: [{ staffId: 'asc' }, { month: 'asc' }],
     });
     const staffIds = [...new Set(months.map((row) => row.staffId))];
@@ -813,7 +823,7 @@ export class PayrollReportService {
       this.prisma.staff.findMany({ where: { id: { in: staffIds } }, select: { id: true, fullName: true } }),
       this.prisma.legalEmployer.findMany({ where: { id: { in: employerIds } }, select: { id: true, name: true } }),
       this.prisma.employeeTp3Record.findMany({
-        where: { taxYear: year, ...(legalEmployerId ? { legalEmployerId } : {}) },
+        where: { ...people, taxYear: year, ...(legalEmployerId ? { legalEmployerId } : {}) },
       }),
     ]);
     const nameOf = new Map(staffRows.map((row) => [row.id, row.fullName]));

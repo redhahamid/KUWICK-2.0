@@ -333,10 +333,10 @@ export function PayrollReportsPage() {
         {report === 'EMPLOYER_COST' && selectedRun ? <EmployerCostReport runId={selectedRun} /> : null}
         {report === 'STATUTORY_TOTALS' && selectedRun ? <StatutoryReport runId={selectedRun} /> : null}
         {report === 'VARIANCE' && selectedRun ? <ComparisonReport runId={selectedRun} /> : null}
-        {report === 'CLAIMS' ? <ClaimsReport from={from} to={to} /> : null}
+        {report === 'CLAIMS' ? <ClaimsReport from={from} to={to} clinicId={clinicId} /> : null}
         {report === 'PAYROLL_HISTORY' && staffId ? <HistoryReport staffId={staffId} year={year} /> : null}
         {report === 'PCB_SUMMARY' && selectedRun ? <PcbSummaryReport runId={selectedRun} /> : null}
-        {report === 'YTD' ? <YtdReport year={year} legalEmployerId={employerId} /> : null}
+        {report === 'YTD' ? <YtdReport year={year} legalEmployerId={employerId} clinicId={clinicId} /> : null}
         {report === 'OVERTIME' && selectedRun ? <OvertimeReport runId={selectedRun} /> : null}
         {report === 'UNPAID_LEAVE' && selectedRun ? <UnpaidLeaveReport runId={selectedRun} /> : null}
         {report === 'INCENTIVES' && selectedRun ? <IncentivesReport runId={selectedRun} /> : null}
@@ -1057,8 +1057,8 @@ function ComparisonReport({ runId }: { runId: string }) {
   );
 }
 
-function ClaimsReport({ from, to }: { from: string; to: string }) {
-  const query = usePayrollClaimsReport({ from, to });
+function ClaimsReport({ from, to, clinicId }: { from: string; to: string; clinicId?: string }) {
+  const query = usePayrollClaimsReport({ from, to, clinicId });
   if (!query.data) return null;
   const data = query.data;
   type Row = (typeof data.rows)[number];
@@ -1302,8 +1302,8 @@ function PcbSummaryReport({ runId }: { runId: string }) {
   );
 }
 
-function YtdReport({ year, legalEmployerId }: { year: number; legalEmployerId?: string }) {
-  const query = usePayrollYtdReport(year, legalEmployerId);
+function YtdReport({ year, legalEmployerId, clinicId }: { year: number; legalEmployerId?: string; clinicId?: string }) {
+  const query = usePayrollYtdReport({ year, legalEmployerId, clinicId });
   if (!query.data) return null;
   const data = query.data;
   type Row = PayrollYtdReport['rows'][number];

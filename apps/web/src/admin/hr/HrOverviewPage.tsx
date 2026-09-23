@@ -50,7 +50,8 @@ export function HrOverviewPage() {
   const readiness = usePayrollReadiness({ period, clinicId });
   const payroll = usePayrollHome({ period, clinicId });
   const employees = useEmployees({ clinicId });
-  const leave = useLeaveRequests();
+  // Leave this week, for the branch on the filter — the same branch the board above answers for.
+  const leave = useLeaveRequests({ clinicId });
 
   const data = today.data;
   const notSetUpYet = (readiness.data?.summary.total ?? 0) === 0;
