@@ -141,3 +141,71 @@ The same journey is a permanent API test: `first-month-payroll.e2e-spec.ts`.
   the rest day or LINDUNG among what payroll will still be missing. Same
   prompt.
 - **[D]** No migration. No schema change.
+
+## Retest gaps (same area), fixed in the follow-up
+
+### 7. A draft could not be discarded, and "never recalculated"
+
+- **[D]** Recalculating a three-person branch took 5,095 ms on a cold API,
+  crossed Prisma's default five-second interactive-transaction budget, and
+  came back **500 Internal server error** (P2028). Every press of the button
+  did the same, so the draft read as permanently dead. Reproduced locally on
+  a draft created before the Prompt 1 fix.
+- **[A]** On Render with a Supabase pooler in another region the budget is
+  crossed without a cold start.
+- **[D]** There was no discard control. `PayrollRunStatus.CANCELLED` exists
+  in the schema but nothing sets it, and `home()` does not exclude it, so it
+  was not a safe path.
+
+**Fix [D]:** ordinary writes get a 30-second transaction budget, a
+calculation gets 120 seconds, and a calculation that still runs out says so
+in words (503) rather than as a 500. `DELETE /workforce/payroll/runs/:id`
+discards a DRAFT or CALCULATED run — the row and its lines go, an audit entry
+`payroll.discarded` remains — and refuses APPROVED and PAID. The month can be
+started again. **Discard draft** sits in the run's header for anybody who may
+run payroll while the run is unapproved. The grid's footer button now says
+**Work the month out again** unless a row is being edited, when it says
+**Save draft**.
+
+### 8. An employee record could never be deleted
+
+- **[D]** The directory said so, and `MarkResignedModal` explains why for
+  anybody paid. A wrong entry, a duplicate or a hire who never turned up had
+  no exit and counted against readiness every month.
+
+**Fix [D]:** `DELETE /workforce/employees/:staffId`. Refused with the months
+named when any APPROVED or PAID run has a line for them; refused, naming the
+exit, when they have attendance, leave, claims, locum sessions or incentive
+results — those rows are the evidence they worked here. Otherwise the staff
+row and everything the schema cascades from it go (profile, salary and
+standing history, recurring items, balances, files, role assignments), their
+lines on unapproved runs go and those runs are refooted from what is left,
+their hand-keyed inputs go, and their login goes. Audit `employee.deleted`
+keeps who they were. **Delete record** is in the ⋯ menu on the Employees
+list and on the record page; a reason is required.
+
+### 9. A standing could not be recorded before the latest row
+
+- **[D]** `record()` refused any date not after the row in force: "The
+  current statutory classification starts on 2026-09-01, which is not before
+  2026-06-01." Mid-year migration and back-entry were impossible.
+
+**Fix [D]:** a statement dated inside an existing version splits it: the
+earlier part keeps its values, the new version runs from the date to
+wherever the old one ran to, and nothing after it moves. A date before the
+first version gets a version that ends the day before it. The approved-run
+refusal is unchanged and still protects settled months.
+
+### 10. A standing row recorded in error could not be removed
+
+**Fix [D]:** `DELETE /workforce/employees/:staffId/statutory-classification/:id`
+removes a version no APPROVED or PAID month was worked out from; the version
+before it runs on to where the deleted one ran to. Where an approved month
+reads the version, refused with the month named. Audit
+`employeeStatutoryClassification.deleted`. **Delete** sits beside **Correct**
+on every version.
+
+Permanent tests: `payroll-run-discard.e2e-spec.ts`,
+`employee-delete.e2e-spec.ts`, `statutory-standing-backdate.e2e-spec.ts`,
+`deleteEmployee.test.tsx`, and new cases in
+`statutoryStandingCorrection.test.tsx`. No migration.

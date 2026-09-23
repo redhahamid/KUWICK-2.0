@@ -94,12 +94,36 @@ export async function loadCustomRolePermissions(
  * Open a transaction with app.tenant_id set inside it, so a multi-write
  * clinical correction is atomic and still tenant-scoped.
  */
-export function withTenantTx<T>(prisma: PrismaService, fn: (tx: ClinicalTx) => Promise<T>): Promise<T> {
+/**
+ * How long a transaction may run. Prisma's default is five seconds, which
+ * is plenty for a correction and not for working out a month of payroll:
+ * that one crossed it on a cold API and a three-person branch, and the
+ * month died with "Internal server error" and no way back. The heavy
+ * callers say how long they need; everything else keeps the default.
+ */
+export type TenantTxOptions = { timeout?: number; maxWait?: number };
+
+/**
+ * The default budget for an ordinary write. Five seconds was Prisma's, and a
+ * routine delete crossed it on a cold API in the test suite; a hosted
+ * database in another region does not need a cold start to. Thirty seconds
+ * still catches a transaction that has genuinely hung.
+ */
+const DEFAULT_TX: Required<TenantTxOptions> = { timeout: 30_000, maxWait: 10_000 };
+
+export function withTenantTx<T>(
+  prisma: PrismaService,
+  fn: (tx: ClinicalTx) => Promise<T>,
+  options: TenantTxOptions = {},
+): Promise<T> {
   const tenantId = currentTenantId();
-  return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
-    return fn(tx);
-  });
+  return prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+      return fn(tx);
+    },
+    { ...DEFAULT_TX, ...options },
+  );
 }
 
 /**

@@ -2,7 +2,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { ActingStaff, requireActor, withTenantTx } from '../clinical/clinical-actor';
+import { ActingStaff, requireActor, TenantTxOptions, withTenantTx } from '../clinical/clinical-actor';
 import { Permission, assertCan, can } from '../core/permissions';
 import { BranchScope, prismaScopeSource, resolveBranchScope } from '../core/branch-scope';
 
@@ -25,12 +25,17 @@ export async function withAdminTx<T>(
   prisma: PrismaService,
   permission: Permission,
   fn: (tx: AdminTx, actor: ActingStaff) => Promise<T>,
+  options: TenantTxOptions = {},
 ): Promise<T> {
-  return withTenantTx(prisma, async (tx) => {
-    const actor = await requireActor(tx);
-    assertCan(actor, permission, actor.assignedRoles, actor.directGrants);
-    return fn(tx, actor);
-  });
+  return withTenantTx(
+    prisma,
+    async (tx) => {
+      const actor = await requireActor(tx);
+      assertCan(actor, permission, actor.assignedRoles, actor.directGrants);
+      return fn(tx, actor);
+    },
+    options,
+  );
 }
 
 /** Read-side equivalent: authorise, then read. No transaction semantics needed. */
@@ -93,8 +98,9 @@ export async function withScopedAdminTx<T>(
   prisma: PrismaService,
   permission: Permission,
   fn: (tx: AdminTx, actor: ActingStaff, scope: BranchScope) => Promise<T>,
+  options: TenantTxOptions = {},
 ): Promise<T> {
-  return withAdminTx(prisma, permission, async (tx, actor) => fn(tx, actor, await branchScopeOf(tx, actor)));
+  return withAdminTx(prisma, permission, async (tx, actor) => fn(tx, actor, await branchScopeOf(tx, actor)), options);
 }
 
 /** The read-side equivalent. */

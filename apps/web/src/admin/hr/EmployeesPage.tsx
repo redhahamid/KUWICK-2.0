@@ -12,6 +12,7 @@ import { IconCalendar, IconDownload, IconEdit, IconEmployees, IconInfo, IconMore
 import { downloadCsv } from './ui/csv';
 import { CompleteProfileDrawer } from './CompleteProfileDrawer';
 import { MarkResignedModal } from './MarkResignedModal';
+import { DeleteEmployeeModal } from './DeleteEmployeeModal';
 import { BenefitsView } from './BenefitsView';
 import type { EmployeeRow, PayrollReadinessItem } from '../types';
 
@@ -22,7 +23,9 @@ import type { EmployeeRow, PayrollReadinessItem } from '../types';
  * employment; whether EPF, SOCSO and EIS apply to them and whether a bank
  * account is on file — four dots, green or red; when they joined; and whether
  * the record is complete enough to pay. Then Edit, and a menu of the three
- * things you can do: View · Edit · Mark as resigned. THERE IS NO DELETE. A
+ * things you can do: View · Edit · Mark as resigned · Delete. Delete is
+ * only for a record that should never have existed — the server refuses
+ * anybody an approved run paid and anybody who worked here. A
  * person who was paid is a person the year's forms still name.
  *
  * THE DOTS ARE TWO DIFFERENT FACTS. EPF, SOCSO and EIS read the statutory
@@ -101,6 +104,7 @@ export function EmployeesPage() {
   const [seg, setSeg] = useState<Seg>('ACTIVE');
   const [completing, setCompleting] = useState<{ staffId: string; fullName: string } | null>(null);
   const [resigning, setResigning] = useState<{ staffId: string; fullName: string } | null>(null);
+  const [deleting, setDeleting] = useState<{ staffId: string; fullName: string } | null>(null);
 
   // ?staffId= still redirects to that person, so links written before the
   // employee record was a route still land on them.
@@ -219,6 +223,7 @@ export function EmployeesPage() {
     >
       <CompleteProfileDrawer staffId={completing?.staffId ?? null} fullName={completing?.fullName ?? ''} onClose={() => setCompleting(null)} />
       <MarkResignedModal staffId={resigning?.staffId ?? null} fullName={resigning?.fullName ?? ''} open={Boolean(resigning)} onClose={() => setResigning(null)} />
+      <DeleteEmployeeModal staffId={deleting?.staffId ?? null} fullName={deleting?.fullName ?? ''} open={Boolean(deleting)} onClose={() => setDeleting(null)} />
 
       {view === 'benefits' ? (
         <BenefitsView clinicId={clinicId} tabs={tabs} />
@@ -265,7 +270,7 @@ export function EmployeesPage() {
                   ]}
                 />
               }
-              toolbarRight={<span className="hr-small hr-faint">⋯ = View · Edit · Mark as resigned. There is no delete.</span>}
+              toolbarRight={<span className="hr-small hr-faint">⋯ = View · Edit · Mark as resigned · Delete. Delete is only for a record that should never have existed; anyone who worked is marked as resigned.</span>}
               columns={[
                 {
                   title: 'Employee',
@@ -348,11 +353,15 @@ export function EmployeesPage() {
                               danger: true,
                               disabled: !mayManage || !row.hasProfile || GONE.has(row.employmentStatus ?? ''),
                             },
+                            // For a record that should never have existed. The
+                            // server refuses anybody paid or anybody who worked.
+                            { key: 'delete', label: 'Delete record', danger: true, disabled: !mayManage },
                           ],
                           onClick: ({ key }) => {
                             if (key === 'view') navigate(`/admin/hr/employees/${row.staffId}`);
                             if (key === 'edit') navigate(`/admin/hr/employees/${row.staffId}?tab=profile&edit=1`);
                             if (key === 'resign') setResigning({ staffId: row.staffId, fullName: row.fullName });
+                            if (key === 'delete') setDeleting({ staffId: row.staffId, fullName: row.fullName });
                           },
                         }}
                       >

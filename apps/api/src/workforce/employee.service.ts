@@ -1,5 +1,5 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { EmploymentStatus } from '@prisma/client';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { EmploymentStatus, Prisma } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
@@ -704,6 +704,153 @@ export class EmployeeService {
     // and belong to their own endpoints) and the same audit diff is recorded.
     await this.upsert(staffId, profile as UpsertEmployeeDto);
     return this.get(staffId);
+  }
+
+  /**
+   * DELETE A RECORD THAT SHOULD NEVER HAVE EXISTED.
+   *
+   * The directory said "there is no delete", and for anybody who was paid
+   * that is right: the EA form, the EPF return and the ledger name them, and
+   * mark-as-resigned is the exit. But a wrong entry, a duplicate and a hire
+   * who never turned up were left with no exit at all — sitting in the list
+   * for good and counting against payroll readiness every month.
+   *
+   * So the rule is the one thing that makes a record part of the books: a
+   * line on an APPROVED or PAID run. Anybody with one is refused, by name and
+   * with the months. Anybody who has WORKED here — attendance, leave, a
+   * claim, a locum session — is refused too, and told the exit is
+   * mark-as-resigned: those rows are their record of having been here, and
+   * a delete that took them silently would be a delete of the evidence.
+   *
+   * What goes: the staff row and everything the schema hangs off it
+   * (profile, salary and standing history, recurring items, leave balances,
+   * files, role assignments), the lines on any run that is still a draft,
+   * the month's hand-keyed inputs for them, and the login if one was made.
+   * The audit entry keeps who they were.
+   */
+  async remove(staffId: string, reason?: string) {
+    return withAdminTx(this.rawPrisma, 'hr.employee.manage', async (tx, actor) => {
+      const staff = await tx.staff.findUnique({
+        where: { id: staffId },
+        include: { employeeProfile: { select: { employeeNo: true, position: true, startDate: true, employmentStatus: true } } },
+      });
+      if (!staff) throw new NotFoundException('Employee not found');
+      if (staff.id === actor.id) throw new BadRequestException('You cannot delete your own record.');
+
+      const settled = await tx.payrollLine.findMany({
+        where: { staffId, payrollRun: { status: { in: ['APPROVED', 'PAID'] } } },
+        select: { payrollRun: { select: { period: true } } },
+        orderBy: { payrollRun: { period: 'asc' } },
+      });
+      if (settled.length > 0) {
+        const months = [...new Set(settled.map((row) => row.payrollRun.period.toISOString().slice(0, 7)))];
+        throw new ConflictException(
+          `${staff.fullName} appears on ${settled.length} approved payroll line(s) (${months.join(', ')}). ` +
+            'What they were paid is on the books, so the record stays. Mark them as resigned instead.',
+        );
+      }
+
+      /*
+       * EVIDENCE OF HAVING WORKED HERE. Each is a fact about a real person
+       * doing real work, and none of it is what a delete is for.
+       */
+      const [attendance, punches, leave, claims, locum, incentives] = await Promise.all([
+        tx.attendanceRecord.count({ where: { staffId } }),
+        tx.attendancePunch.count({ where: { staffId } }),
+        tx.leaveRequest.count({ where: { staffId } }),
+        tx.staffClaim.count({ where: { staffId } }),
+        tx.locumSession.count({ where: { staffId } }),
+        tx.incentiveResult.count({ where: { staffId } }),
+      ]);
+      const worked = [
+        attendance + punches > 0 ? `${attendance + punches} attendance record(s)` : null,
+        leave > 0 ? `${leave} leave request(s)` : null,
+        claims > 0 ? `${claims} claim(s)` : null,
+        locum > 0 ? `${locum} locum session(s)` : null,
+        incentives > 0 ? `${incentives} incentive result(s)` : null,
+      ].filter((line): line is string => line !== null);
+      if (worked.length > 0) {
+        throw new ConflictException(
+          `${staff.fullName} has ${worked.join(', ')} on record — they worked here. ` +
+            'Delete is for a record that should never have existed. Mark them as resigned instead.',
+        );
+      }
+
+      // What a draft holds for them is a working figure, not a payment.
+      const draftLines = await tx.payrollLine.findMany({
+        where: { staffId },
+        select: { id: true, payrollRunId: true },
+      });
+      const touchedRuns = [...new Set(draftLines.map((line) => line.payrollRunId))];
+      await tx.payrollLine.deleteMany({ where: { staffId } });
+      await tx.payrollException.deleteMany({ where: { staffId } });
+      await tx.payrollInputEntry.deleteMany({ where: { staffId } });
+      // A draft that had a line for them foots on what is left, so its header
+      // never claims a person its grid no longer shows.
+      for (const runId of touchedRuns) {
+        const sums = await tx.payrollLine.aggregate({
+          where: { payrollRunId: runId },
+          _sum: { grossPay: true, netPay: true, employerCost: true },
+          _count: true,
+        });
+        const gross = Number(sums._sum?.grossPay ?? 0);
+        const net = Number(sums._sum?.netPay ?? 0);
+        await tx.payrollRun.update({
+          where: { id: runId },
+          data: {
+            grossTotal: gross,
+            // The run's own identity — the engine accumulates deductions as
+            // gross less net per payslip — restated over the lines that remain,
+            // not a second formula.
+            deductionTotal: Number((gross - net).toFixed(2)),
+            netTotal: net,
+            employerCostTotal: Number(sums._sum?.employerCost ?? 0),
+            employeeCount: typeof sums._count === 'number' ? sums._count : 0,
+          },
+        });
+      }
+
+      try {
+        // Cascades: profile, salary, standing, basis, recurring items, leave
+        // balances, benefit accounts, files, role assignments, grants.
+        await tx.staff.delete({ where: { id: staffId } });
+        if (staff.userId) await tx.user.delete({ where: { id: staff.userId } });
+      } catch (error) {
+        // Something outside HR still names them — a visit they attended, a
+        // note they signed, an invoice they raised. That is a person who was
+        // here, and the answer is the same as for anybody who worked.
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+          throw new ConflictException(
+            `${staff.fullName} is named on other records in Kuwick (${String(error.meta?.field_name ?? 'another table')}), ` +
+              'so the record cannot be deleted. Mark them as resigned instead.',
+          );
+        }
+        throw error;
+      }
+
+      await recordAudit(tx, actor, {
+        action: 'employee.deleted',
+        entityType: 'Staff',
+        entityId: staffId,
+        before: {
+          fullName: staff.fullName,
+          role: staff.role,
+          clinicId: staff.clinicId,
+          employeeNo: staff.employeeProfile?.employeeNo ?? null,
+          position: staff.employeeProfile?.position ?? null,
+          startDate: staff.employeeProfile?.startDate?.toISOString().slice(0, 10) ?? null,
+          employmentStatus: staff.employeeProfile?.employmentStatus ?? null,
+          hadLogin: Boolean(staff.userId),
+          draftLinesRemoved: draftLines.length,
+          createdAt: staff.createdAt.toISOString(),
+        },
+        after: null,
+        reason: reason?.trim() || `Deleted ${staff.fullName}`,
+        source: 'hr.employees',
+      });
+
+      return { deleted: true, staffId, draftLinesRemoved: draftLines.length };
+    });
   }
 
   /**

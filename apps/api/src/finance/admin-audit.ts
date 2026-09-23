@@ -86,6 +86,9 @@ export type AuditAction =
   | 'selfieConsent.given'
   | 'claimPolicy.saved'
   | 'employee.created'
+  /// A record removed outright: a wrong entry, a duplicate, a hire who never
+  /// turned up. Refused for anybody an approved run ever paid.
+  | 'employee.deleted'
   | 'attendanceCorrection.requested'
   | 'attendanceCorrection.decided'
   | 'leaveRequest.submitted'
@@ -112,6 +115,9 @@ export type AuditAction =
   /// written from their join date by the Add employee form and carries only
   /// what that form asked for; the rest of it has to land on that same row.
   | 'employeeStatutoryClassification.corrected'
+  /// A version recorded in error removed; the one before it runs on to
+  /// where it ran to. Refused where an approved month was worked out from it.
+  | 'employeeStatutoryClassification.deleted'
   | 'legalEmployerStatutory.recorded'
   | 'payComponent.seeded'
   | 'payComponent.created'
@@ -137,6 +143,9 @@ export type AuditAction =
   | 'payrollApproval.recorded'
   | 'payrollApprovalPolicy.changed'
   | 'payroll.reopened'
+  /// An unapproved run thrown away. Nothing was paid or filed from it, so
+  /// the row goes; this entry is what remains of it.
+  | 'payroll.discarded'
   /** A payslip PDF left the system — who took whose slip, for which version. */
   | 'payrollPayslip.downloaded'
   /** The JSON payslip read — same figures as the PDF, so the same trail. */

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Dropdown, Tooltip } from 'antd';
 import dayjs from 'dayjs';
 import { useEmployeeRecord, usePayrollPolicies } from '../hooks/useAdmin';
@@ -17,6 +17,7 @@ import { EmployeeTaxPanel } from './EmployeeTaxPanel';
 import { DAY_NAMES, StatutoryStandingManager } from './StatutoryStandingManager';
 import { EmployeeEditDrawer, type EditSection } from './EmployeeEditDrawer';
 import { MarkResignedModal } from './MarkResignedModal';
+import { DeleteEmployeeModal } from './DeleteEmployeeModal';
 import type { EmployeeRecord } from '../types';
 
 /**
@@ -78,6 +79,8 @@ export function EmployeeWorkspacePage() {
   const [editing, setEditing] = useState<EditSection | null>(null);
   const [payslips, setPayslips] = useState(false);
   const [resigning, setResigning] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const navigate = useNavigate();
   const data = record.data;
 
   // ?edit=1 from the directory's Edit button opens the profile form at once.
@@ -162,6 +165,7 @@ export function EmployeeWorkspacePage() {
                   { key: 'claims', label: 'Open claims' },
                   { type: 'divider' },
                   { key: 'resign', label: 'Mark as resigned', danger: true, disabled: !mayManage || gone },
+                  { key: 'delete', label: 'Delete record', danger: true, disabled: !mayManage },
                 ],
                 onClick: ({ key }) => {
                   if (key === 'edit') setEditing('profile');
@@ -169,6 +173,7 @@ export function EmployeeWorkspacePage() {
                   if (key === 'leave') window.location.assign('/admin/hr/leave');
                   if (key === 'claims') window.location.assign(`/admin/hr/claims?staffId=${data.staffId}`);
                   if (key === 'resign') setResigning(true);
+                  if (key === 'delete') setDeleting(true);
                 },
               }}
             >
@@ -184,6 +189,13 @@ export function EmployeeWorkspacePage() {
         <>
           <EmployeeEditDrawer staffId={data.staffId} data={data} section={editing} onClose={() => setEditing(null)} />
           <MarkResignedModal staffId={data.staffId} fullName={name} open={resigning} onClose={() => setResigning(false)} />
+          <DeleteEmployeeModal
+            staffId={data.staffId}
+            fullName={name}
+            open={deleting}
+            onClose={() => setDeleting(false)}
+            onDeleted={() => navigate('/admin/hr/employees')}
+          />
           <PayslipsDrawer data={data} open={payslips} onClose={() => setPayslips(false)} />
 
           <Panel>

@@ -1,7 +1,16 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import {
   PayrollApprovalMode as PayrollApprovalModeEnum,
   PayrollRunStatus,
+  Prisma,
   PayrollRunType as PayrollRunTypeEnum,
   StatutoryStatus,
   StatutoryVerificationStatus,
@@ -85,6 +94,9 @@ import {
 } from './payroll-approval-rule';
 import { approvalGate, BuiltException, buildException, ExceptionSeverity } from './payroll-exception';
 import { resolveSalaryForPayroll, SalaryRow } from './salary-resolution';
+
+/** How long one calculation may hold its transaction. See `calculate`. */
+const CALCULATION_BUDGET_MS = 120_000;
 import {
   CLASSIFICATION_FIELDS,
   ContributionBasisRow,
@@ -605,7 +617,22 @@ export class PayrollService {
    * check.
    */
   async calculate(runId: string) {
-    return withAdminTx(this.rawPrisma, 'hr.payroll.run', async (tx, actor) => {
+    /*
+     * A MONTH IS NOT A FIVE-SECOND TRANSACTION.
+     *
+     * Prisma's default budget is five seconds. Working out a three-person
+     * branch on a cold API took 5,095 ms, the transaction expired under it,
+     * and the screen said "Internal server error" — after which the draft
+     * looked permanently dead, because every press of the button did the
+     * same thing. On a hosted database in another region it would not have
+     * needed a cold start. Two minutes is a budget nobody's clinic reaches;
+     * five seconds was a budget a small one did.
+     */
+    return this.withCalculationBudget(() =>
+      withAdminTx(
+        this.rawPrisma,
+        'hr.payroll.run',
+        async (tx, actor) => {
       const run = await tx.payrollRun.findUnique({ where: { id: runId } });
       if (!run) throw new NotFoundException('Payroll run not found');
       if (run.status === PayrollRunStatus.APPROVED || run.status === PayrollRunStatus.PAID) {
@@ -2377,7 +2404,29 @@ export class PayrollService {
       });
 
       return updated;
-    });
+        },
+        { timeout: CALCULATION_BUDGET_MS, maxWait: 10_000 },
+      ),
+    );
+  }
+
+  /**
+   * A calculation that ran out of its budget is reported as that, in words,
+   * rather than as a 500 — the difference between "try again in a moment" and
+   * "this month is broken", which is how the 500 read.
+   */
+  private async withCalculationBudget<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2028') {
+        throw new ServiceUnavailableException(
+          `Working this month out took longer than ${CALCULATION_BUDGET_MS / 1000} seconds and was stopped before anything was written. ` +
+            'Nothing has changed. Try again; if it keeps happening, the database is slow to answer and that is the thing to look at.',
+        );
+      }
+      throw error;
+    }
   }
 
   /**
@@ -3583,6 +3632,73 @@ export class PayrollService {
           ? `Snapshot v${latest.version} is preserved. Recalculate, review the difference, then approve again to write v${latest.version + 1}. This run needs approving from the start again — the previous sign-offs were of figures that have now changed.`
           : 'This run was approved before snapshots existed, so there is nothing to compare against.',
       };
+    });
+  }
+
+  /**
+   * THROW AN UNAPPROVED RUN AWAY.
+   *
+   * A month started too early — before the salaries, the standing or the
+   * rest days were in — was a draft nobody could get rid of and nobody could
+   * make live, so a clinic that pressed Start a week early was stuck with a
+   * dead January for good. Reported from UAT as exactly that.
+   *
+   * DRAFT and CALCULATED are working documents: nothing has been paid or
+   * filed from them, so the row goes, with its lines and exceptions, and the
+   * audit entry is what remains of it. APPROVED and PAID are refused here
+   * the way they are refused everywhere — money moved or a return was filed,
+   * and the path for that is reopen or an adjustment, both of which leave the
+   * figures. The month can then be started again: `create` already ignores
+   * nothing but a live regular run, and the sequence moves on.
+   */
+  async discard(runId: string, reason?: string) {
+    return withScopedAdminTx(this.rawPrisma, 'hr.payroll.run', async (tx, actor, scope) => {
+      const run = await tx.payrollRun.findUnique({
+        where: { id: runId },
+        include: { clinic: { select: { name: true } }, _count: { select: { lines: true } } },
+      });
+      if (!run) throw new NotFoundException('Payroll run not found');
+      // The branch the run is for has to be one this account manages — the
+      // same rule that governs starting one.
+      if (run.clinicId) {
+        scope.require(run.clinicId);
+      } else if (!scope.everyBranch) {
+        throw new ForbiddenException('This run covers every branch, and discarding it needs tenant-wide access.');
+      }
+      if (run.status === PayrollRunStatus.APPROVED || run.status === PayrollRunStatus.PAID) {
+        throw new ConflictException(
+          run.status === PayrollRunStatus.PAID
+            ? 'This run is marked paid. Money has left the clinic; it cannot be discarded, only corrected with an adjustment.'
+            : 'This run is approved and locked. Reopen it to change it; an approved month is never discarded.',
+        );
+      }
+
+      await tx.payrollRun.delete({ where: { id: runId } });
+
+      const periodLabel = run.period.toISOString().slice(0, 7);
+      await recordAudit(tx, actor, {
+        action: 'payroll.discarded',
+        entityType: 'PayrollRun',
+        entityId: runId,
+        before: {
+          period: periodLabel,
+          clinicId: run.clinicId,
+          clinicName: run.clinic?.name ?? null,
+          status: run.status,
+          runType: run.runType,
+          sequence: run.sequence,
+          employeeCount: run.employeeCount,
+          lines: run._count.lines,
+          netTotal: String(run.netTotal),
+          createdAt: run.createdAt.toISOString(),
+          calculatedAt: run.calculatedAt?.toISOString() ?? null,
+        },
+        after: null,
+        reason: reason?.trim() || `Discarded the ${run.status.toLowerCase()} ${periodLabel} run`,
+        source: 'hr.payroll',
+      });
+
+      return { discarded: true, period: periodLabel, clinicId: run.clinicId };
     });
   }
 

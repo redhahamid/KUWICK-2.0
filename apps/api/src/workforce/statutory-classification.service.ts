@@ -253,35 +253,55 @@ export class StatutoryClassificationService {
       const standing = await tx.employeeStatutoryClassification.findFirst({ where: { staffId, effectiveFrom: from } });
       if (standing) return this.correct(tx, actor, standing, dto, from);
 
-      const open = await tx.employeeStatutoryClassification.findFirst({
-        where: { staffId, effectiveTo: null },
+      /*
+       * ANY PAST DATE, BY SPLITTING THE ROW THAT COVERS IT.
+       *
+       * A change used to be accepted only after the row in force, so a clinic
+       * that recorded anything today could never enter a change that had
+       * genuinely taken effect earlier in the year — refused with "the current
+       * classification starts on 1 September, which is not before 1 June".
+       * Mid-year migration and back-entry are exactly that: SKBBK from June,
+       * recorded in September, is an ordinary month, not an edge case.
+       *
+       * So the version covering the date is split. The earlier part keeps
+       * what it said, and the new version runs from the date to wherever the
+       * old one ran to — the day before the next version, or open. Nothing
+       * after it moves. A date before the first version gets a version that
+       * ends the day before it, on the defaults, since nothing was in force
+       * to carry forward. What protects the settled months is the approved-run
+       * refusal above, which is the same for a change dated today.
+       */
+      const covering = await tx.employeeStatutoryClassification.findFirst({
+        where: { staffId, effectiveFrom: { lt: from }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: from } }] },
         orderBy: { effectiveFrom: 'desc' },
       });
-      if (open && open.effectiveFrom >= from) {
-        throw new BadRequestException(
-          `The current statutory classification starts on ${isoDate(open.effectiveFrom)}, which is not before ${dto.effectiveFrom}.`,
-        );
-      }
+      const following = covering
+        ? null
+        : await tx.employeeStatutoryClassification.findFirst({
+            where: { staffId, effectiveFrom: { gt: from } },
+            orderBy: { effectiveFrom: 'asc' },
+          });
 
-      // Carry the standing in force forward, then apply what was sent.
-      const base = open ? toClassificationRow(open) : null;
+      // Carry the standing in force on that date forward, then apply what was sent.
+      const base = covering ? toClassificationRow(covering) : null;
       const next = applyToBase(base, dto);
+      const runsTo = covering ? covering.effectiveTo : following ? new Date(following.effectiveFrom.getTime() - 86400000) : null;
 
       // A version that states nothing new is a row with no fact in it. It would
       // also be indistinguishable, in the history, from a change somebody
       // meant to make and got wrong.
       if (base) {
-        const changed = classificationDiff(base, { ...next, id: '', effectiveFrom: from, effectiveTo: null });
+        const changed = classificationDiff(base, { ...next, id: '', effectiveFrom: from, effectiveTo: runsTo });
         if (changed.length === 0) {
           throw new BadRequestException(
-            'Nothing in this classification differs from the one already in force, so there is no new fact to record.',
+            'Nothing in this classification differs from the one in force on that date, so there is no new fact to record.',
           );
         }
       }
 
-      if (open) {
+      if (covering) {
         await tx.employeeStatutoryClassification.update({
-          where: { id: open.id },
+          where: { id: covering.id },
           data: { effectiveTo: new Date(from.getTime() - 86400000) },
         });
       }
@@ -292,6 +312,7 @@ export class StatutoryClassificationService {
           staffId,
           ...next,
           effectiveFrom: from,
+          effectiveTo: runsTo,
           reason: dto.reason ?? null,
           note: dto.note ?? null,
           createdByStaffId: actor.id,
@@ -358,6 +379,77 @@ export class StatutoryClassificationService {
     });
 
     return saved;
+  }
+
+  /**
+   * DELETE A VERSION RECORDED IN ERROR.
+   *
+   * Two versions that only exist because a form once moved the date to the
+   * current month are not history, they are a mistake with a date on it. A
+   * version no approved month reads can go, and the version before it runs
+   * on to where the deleted one ran to, so the months in between keep an
+   * answer. The first version has nothing before it: deleting it leaves the
+   * months it covered unanswered, and the record says so rather than filling
+   * them in.
+   *
+   * A version an APPROVED or PAID month was worked out from stays. That month's
+   * contributions were computed from it, and a delete would leave the run
+   * and the record disagreeing with nothing left to show which was right.
+   */
+  async remove(staffId: string, id: string, reason?: string) {
+    return withAdminTx(this.rawPrisma, 'hr.employee.manage', async (tx, actor) => {
+      const row = await tx.employeeStatutoryClassification.findFirst({ where: { id, staffId } });
+      if (!row) throw new NotFoundException('That statutory classification is not on this employee’s record.');
+
+      const monthOf = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+      const approved = await tx.payrollRun.findMany({
+        where: {
+          status: { in: ['APPROVED', 'PAID'] },
+          lines: { some: { staffId } },
+          period: { gte: monthOf(row.effectiveFrom), ...(row.effectiveTo ? { lte: row.effectiveTo } : {}) },
+        },
+        select: { period: true },
+        orderBy: { period: 'asc' },
+      });
+      if (approved.length > 0) {
+        const months = approved.map((run) => isoDate(run.period).slice(0, 7)).join(', ');
+        throw new ConflictException(
+          `An approved payroll run (${months}) was worked out from this version, so it stays. ` +
+            'Reopen that run and correct it deliberately, or record a change from a later date.',
+        );
+      }
+
+      const previous = await tx.employeeStatutoryClassification.findFirst({
+        where: { staffId, effectiveFrom: { lt: row.effectiveFrom } },
+        orderBy: { effectiveFrom: 'desc' },
+      });
+      if (previous) {
+        await tx.employeeStatutoryClassification.update({ where: { id: previous.id }, data: { effectiveTo: row.effectiveTo } });
+      }
+      await tx.employeeStatutoryClassification.delete({ where: { id } });
+
+      await recordAudit(tx, actor, {
+        action: 'employeeStatutoryClassification.deleted',
+        entityType: 'EmployeeStatutoryClassification',
+        entityId: id,
+        reason: reason?.trim() || `Deleted the statutory classification starting ${isoDate(row.effectiveFrom)}`,
+        before: {
+          ...(toClassificationRow(row) as unknown as Record<string, unknown>),
+          effectiveFrom: isoDate(row.effectiveFrom),
+          effectiveTo: row.effectiveTo ? isoDate(row.effectiveTo) : null,
+          reason: row.reason,
+        },
+        after: previous
+          ? { previousVersion: previous.id, previousNowRunsTo: row.effectiveTo ? isoDate(row.effectiveTo) : null }
+          : { previousVersion: null, gapFrom: isoDate(row.effectiveFrom), gapTo: row.effectiveTo ? isoDate(row.effectiveTo) : null },
+        source: 'hr.employees',
+      });
+
+      return {
+        deleted: true,
+        extended: previous ? { id: previous.id, effectiveFrom: isoDate(previous.effectiveFrom), effectiveTo: row.effectiveTo ? isoDate(row.effectiveTo) : null } : null,
+      };
+    });
   }
 
   // -------------------------------------------------------------------------

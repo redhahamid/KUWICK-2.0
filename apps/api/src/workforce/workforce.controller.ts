@@ -424,6 +424,12 @@ export class WorkforceController {
     return this.classifications.resolveForPeriod(staffId, period);
   }
 
+  /** Remove a version recorded in error. Refused where an approved month reads it. */
+  @Delete('employees/:staffId/statutory-classification/:id')
+  deleteClassification(@Param('staffId') staffId: string, @Param('id') id: string, @Body('reason') reason?: string) {
+    return this.classifications.remove(staffId, id, reason);
+  }
+
   @Post('employees/:staffId/statutory-classification')
   recordClassification(@Param('staffId') staffId: string, @Body() dto: RecordStatutoryClassificationDto) {
     return this.classifications.record(staffId, dto);
@@ -557,6 +563,16 @@ export class WorkforceController {
   @Post('employees/:staffId')
   upsertEmployee(@Param('staffId') staffId: string, @Body() dto: UpsertEmployeeDto) {
     return this.employees.upsert(staffId, dto);
+  }
+
+  /**
+   * Remove a record that should never have existed. Refused for anybody an
+   * approved run has paid, and for anybody who has worked here — see
+   * `EmployeeService.remove`.
+   */
+  @Delete('employees/:staffId')
+  deleteEmployee(@Param('staffId') staffId: string, @Body('reason') reason?: string) {
+    return this.employees.remove(staffId, reason);
   }
 
   /** Add somebody: staff row, employment profile and optionally a login. */
@@ -846,6 +862,12 @@ export class WorkforceController {
   @Patch('payroll/runs/:id/calculate')
   calculatePayroll(@Param('id') id: string) {
     return this.payroll.calculate(id);
+  }
+
+  /** Throw an unapproved run away. Approved and paid months are refused. */
+  @Delete('payroll/runs/:id')
+  discardPayrollRun(@Param('id') id: string, @Body('reason') reason?: string) {
+    return this.payroll.discard(id, reason);
   }
 
   @Patch('payroll/runs/:id/approve')

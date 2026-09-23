@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { App, DatePicker, Input, InputNumber, Modal, Select } from 'antd';
 import dayjs from 'dayjs';
-import { useRecordStatutoryClassification, useStatutoryClassifications } from '../hooks/useAdmin';
+import { useDeleteStatutoryClassification, useRecordStatutoryClassification, useStatutoryClassifications } from '../hooks/useAdmin';
 import { useCan } from '../../core/hooks/useCan';
 import { FieldProblem, PanelHead, ProblemNotice, useProblemFocus } from './ui';
 import { Table } from './ui/Table';
@@ -111,6 +111,7 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
   const mayManage = useCan('hr.employee.manage');
   const history = useStatutoryClassifications(staffId);
   const record = useRecordStatutoryClassification();
+  const remove = useDeleteStatutoryClassification();
   const s = data.statutory;
   const versions = history.data ?? [];
   const current = versions.find((row) => row.current);
@@ -125,6 +126,9 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
    * the row's own and cannot be moved.
    */
   const [target, setTarget] = useState<StatutoryClassificationVersion | null>(null);
+  /** The version a delete has been asked for, awaiting confirmation. */
+  const [doomed, setDoomed] = useState<StatutoryClassificationVersion | null>(null);
+  const [deleteProblem, setDeleteProblem] = useState<string | null>(null);
   const [error, setError] = useState<FormProblem>(null);
   /*
    * THE REFUSAL HAS TO BE WHERE THE PERSON PRESSING RECORD IS LOOKING.
@@ -239,18 +243,61 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
             {
               title: '',
               key: 'correct',
-              width: 110,
+              width: 190,
               render: (_: unknown, row) =>
                 mayManage ? (
-                  <button type="button" className="hr-btn hr-btn--sm" onClick={() => openForm(row)}>
-                    <IconEdit />
-                    Correct
-                  </button>
+                  <span className="hr-menu">
+                    <button type="button" className="hr-btn hr-btn--sm" onClick={() => openForm(row)}>
+                      <IconEdit />
+                      Correct
+                    </button>
+                    {/*
+                      * A version recorded in error can go. The server refuses
+                      * one an approved month was worked out from, and says
+                      * which month.
+                      */}
+                    <button type="button" className="hr-btn hr-btn--sm hr-btn--danger" onClick={() => { setDeleteProblem(null); setDoomed(row); }}>
+                      Delete
+                    </button>
+                  </span>
                 ) : null,
             },
           ]}
         />
       ) : null}
+
+      <Modal
+        open={Boolean(doomed)}
+        title={doomed ? `Delete the version from ${dayjs(doomed.effectiveFrom).format('D MMM YYYY')}?` : ''}
+        okText="Delete version"
+        okButtonProps={{ danger: true }}
+        confirmLoading={remove.isPending}
+        onCancel={() => setDoomed(null)}
+        onOk={() => {
+          if (!doomed) return;
+          remove.mutate(
+            { staffId, id: doomed.id, reason: 'Recorded in error' },
+            {
+              onSuccess: () => {
+                setDoomed(null);
+                message.success('Version deleted. The one before it now runs on to cover those months.');
+              },
+              onError: (error: Error) => setDeleteProblem(error.message),
+            },
+          );
+        }}
+      >
+        {deleteProblem ? (
+          <div className="hr-notice hr-notice--attn" role="alert">
+            {deleteProblem}
+          </div>
+        ) : null}
+        <p>
+          For a version recorded in error. The version before it runs on to{' '}
+          {doomed?.effectiveTo ? dayjs(doomed.effectiveTo).format('D MMM YYYY') : 'now'}, so those months keep an
+          answer. A version an approved payroll month was worked out from cannot be deleted.
+        </p>
+      </Modal>
 
       <Modal
         open={open}
@@ -320,7 +367,7 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
             <div className="hr-form__help">
               {target
                 ? 'The date this version starts, which a correction does not move. To start a new version from a later date, close this and use Record a change.'
-                : "Date it from the first day of a month. A standing that changes part-way through a month blocks that month's payroll, because a contribution is worked out for a whole wage period."}
+                : "Date it from the first day of the month it took effect, even if that was earlier this year: the version covering that date is split, and the months before it keep what they had. A standing that changes part-way through a month blocks that month's payroll, because a contribution is worked out for a whole wage period. A month already approved refuses the change."}
             </div>
           </div>
 

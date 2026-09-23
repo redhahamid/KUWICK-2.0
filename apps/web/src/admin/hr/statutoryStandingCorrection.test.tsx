@@ -19,6 +19,7 @@ import type { EmployeeRecord, StatutoryClassificationVersion } from '../types';
  * clinic onboarding staff from 1 January could not run January at all.
  */
 const recordMutate = vi.fn().mockResolvedValue({});
+const deleteMutate = vi.fn();
 
 const JOINED = '2026-01-01';
 
@@ -56,6 +57,7 @@ let versions: StatutoryClassificationVersion[] = [version()];
 vi.mock('../hooks/useAdmin', () => ({
   useStatutoryClassifications: () => ({ data: versions, isLoading: false }),
   useRecordStatutoryClassification: () => ({ mutateAsync: recordMutate, isPending: false }),
+  useDeleteStatutoryClassification: () => ({ mutate: deleteMutate, isPending: false }),
 }));
 vi.mock('../../core/hooks/useCan', () => ({ useCan: () => true }));
 
@@ -122,6 +124,7 @@ async function choose(label: string, option: string) {
 beforeEach(() => {
   recordMutate.mockClear();
   recordMutate.mockResolvedValue({});
+  deleteMutate.mockReset();
   versions = [version()];
 });
 
@@ -236,5 +239,37 @@ describe('recording a change from a date the user picks', () => {
 
     await waitFor(() => expect(recordMutate).toHaveBeenCalled());
     expect(recordMutate.mock.calls[0][0].effectiveFrom).toBe('2026-03-01');
+  });
+});
+
+/*
+ * A VERSION RECORDED IN ERROR CAN GO. The September row on STAFF ADMIN only
+ * existed because the form once moved the date to the current month, and
+ * there was nothing on the screen to remove it. The server decides — an
+ * approved month keeps its version — and its refusal is shown in its words.
+ */
+describe('deleting a version', () => {
+  it('asks the server to delete that row, by its id', async () => {
+    versions = [version({ id: 'v-sep', effectiveFrom: '2026-09-01' }), version({ id: 'v-jan', effectiveFrom: JOINED, effectiveTo: '2026-08-31', current: false })];
+    render(<StatutoryStandingManager data={record()} />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete' })[0]);
+    await screen.findByText('Delete the version from 1 Sep 2026?');
+    fireEvent.click(ok('Delete version'));
+
+    await waitFor(() => expect(deleteMutate).toHaveBeenCalled());
+    expect(deleteMutate.mock.calls[0][0]).toMatchObject({ staffId: 'staff-1', id: 'v-sep' });
+  });
+
+  it('shows the refusal for a version an approved month reads, and keeps the row', async () => {
+    deleteMutate.mockImplementation((_vars: unknown, handlers: { onError: (e: Error) => void }) =>
+      handlers.onError(new Error('An approved payroll run (2026-09) was worked out from this version, so it stays.')),
+    );
+    render(<StatutoryStandingManager data={record()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await screen.findByText('Delete the version from 1 Jan 2026?');
+    fireEvent.click(ok('Delete version'));
+
+    await screen.findByText(/approved payroll run \(2026-09\)/);
+    expect(screen.getByRole('button', { name: /Correct/ })).toBeVisible();
   });
 });

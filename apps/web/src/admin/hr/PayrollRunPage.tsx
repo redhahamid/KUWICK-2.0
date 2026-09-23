@@ -7,6 +7,7 @@ import { humanise } from '../components/Chip';
 import {
   useApprovePayroll,
   useCalculatePayroll,
+  useDiscardPayrollRun,
   useDeletePayrollInput,
   usePayrollJourney,
   useUpsertPayrollInput,
@@ -126,6 +127,7 @@ export function PayrollWorkspace({ runId, monthNav }: { runId: string; monthNav?
             <IconDownload />
             Export
           </button>
+          {data && mayRun && !locked ? <DiscardRunButton runId={runId} period={data.run.period} /> : null}
         </>
       }
     >
@@ -404,10 +406,16 @@ function PrepareStep({
             type="button"
             className="hr-btn"
             disabled={saving || calculate.isPending}
-            onClick={() => (edit ? void save() : recalculate('Draft saved and worked out again'))}
+            onClick={() => (edit ? void save() : recalculate('Worked out again'))}
           >
             <IconDownload />
-            Save draft
+            {/*
+              * THE BUTTON SAYS WHAT IT DOES. With no row being edited it does
+              * not save anything — it works the month out again — and a draft
+              * that opened empty was being pressed with "Save draft" over and
+              * over by somebody waiting for it to save something.
+              */}
+            {edit ? 'Save draft' : 'Work the month out again'}
           </button>
         ) : null}
         <button
@@ -852,5 +860,60 @@ function PayStep({ data, runId }: { data: PayrollJourney; runId: string }) {
         </Link>
       </div>
     </div>
+  );
+}
+
+
+/**
+ * DISCARD AN UNAPPROVED RUN.
+ *
+ * A month started too early — before the salaries, the standing or the rest
+ * days were in — was a draft nobody could get rid of. It is rendered only on
+ * an unapproved run for somebody who may run payroll; the server refuses an
+ * approved or paid one regardless, and the confirm says so in the clinic's
+ * words before the button does anything.
+ */
+function DiscardRunButton({ runId, period }: { runId: string; period: string }) {
+  const { message } = App.useApp();
+  const navigate = useNavigate();
+  const discard = useDiscardPayrollRun();
+  const [open, setOpen] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const month = dayjs(period).format('MMMM YYYY');
+  return (
+    <>
+      <button type="button" className="hr-btn hr-btn--danger" onClick={() => { setProblem(null); setOpen(true); }}>
+        Discard draft
+      </button>
+      <Modal
+        open={open}
+        title={`Discard the ${month} run?`}
+        okText="Discard"
+        okButtonProps={{ danger: true }}
+        confirmLoading={discard.isPending}
+        onCancel={() => setOpen(false)}
+        onOk={() =>
+          discard.mutate(
+            { id: runId, reason: `Discarded the ${month} draft` },
+            {
+              onSuccess: () => {
+                setOpen(false);
+                message.success(`${month} discarded. Start it again when the records are ready.`);
+                navigate(`/admin/hr/payroll?period=${dayjs(period).format('YYYY-MM')}`);
+              },
+              onError: (error: Error) => setProblem(error.message),
+            },
+          )
+        }
+      >
+        {problem ? <div className="hr-notice hr-notice--attn" role="alert">{problem}</div> : null}
+        <p>
+          Nothing has been paid or filed from this run, so it goes: its figures, its exceptions and any
+          edits made in the grid. Hand-keyed inputs for the month are kept. You can start {month} again
+          afterwards.
+        </p>
+        <p className="hr-muted">An approved month is never discarded — reopen it instead.</p>
+      </Modal>
+    </>
   );
 }

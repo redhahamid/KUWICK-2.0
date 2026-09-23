@@ -691,6 +691,18 @@ export function useEmployees(params: { clinicId?: string; status?: string; searc
   });
 }
 
+/**
+ * Remove a record that should never have existed. The server refuses anybody
+ * an approved run paid, and anybody who worked here; the exit for them is
+ * mark-as-resigned.
+ */
+export function useDeleteEmployee() {
+  return useAdminMutation(
+    ({ staffId, reason }: { staffId: string; reason?: string }) => apiClient.delete(`/workforce/employees/${staffId}`, { reason }),
+    ['admin-hr'],
+  );
+}
+
 export function useUpsertEmployee() {
   return useAdminMutation(
     ({ staffId, ...body }: { staffId: string } & Record<string, unknown>) =>
@@ -807,6 +819,14 @@ export function useCreatePayrollRun() {
 
 export function useCalculatePayroll() {
   return useAdminMutation((id: string) => apiClient.patch(`/workforce/payroll/runs/${id}/calculate`, {}), ['admin-hr']);
+}
+
+/** Throw an unapproved run away. The server refuses an approved or paid one. */
+export function useDiscardPayrollRun() {
+  return useAdminMutation(
+    ({ id, reason }: { id: string; reason?: string }) => apiClient.delete(`/workforce/payroll/runs/${id}`, { reason }),
+    ['admin-hr'],
+  );
 }
 
 export function useApprovePayroll() {
@@ -1441,6 +1461,15 @@ export function useStatutoryClassifications(staffId: string | undefined) {
       apiClient.get<StatutoryClassificationVersion[]>(`/workforce/employees/${staffId}/statutory-classification`),
     enabled: Boolean(staffId),
   });
+}
+
+/** Remove a version recorded in error. The server refuses one an approved month reads. */
+export function useDeleteStatutoryClassification() {
+  return useAdminMutation(
+    ({ staffId, id, reason }: { staffId: string; id: string; reason?: string }) =>
+      apiClient.delete(`/workforce/employees/${staffId}/statutory-classification/${id}`, { reason }),
+    ['admin-hr'],
+  );
 }
 
 export function useRecordStatutoryClassification() {
