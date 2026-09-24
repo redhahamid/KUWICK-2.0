@@ -495,7 +495,7 @@ export function PayrollEmployeePage() {
               <div className="hr-adjust">
                 <button type="button" className="hr-btn" disabled={!mayRun || locked} onClick={() => setInputsOpen(true)}>
                   <IconPlus />
-                  Add one-off item
+                  This month’s items
                 </button>
                 <button
                   type="button"
@@ -532,6 +532,8 @@ export function PayrollEmployeePage() {
           staffId={staffId}
           staffName={row?.name}
           canEdit={mayRun && !locked}
+          runId={runId}
+          cell={row ? { otherIncome: row.otherIncome, otherDeductions: row.otherDeductions } : null}
         />
       ) : null}
 

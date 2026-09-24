@@ -1872,6 +1872,14 @@ export interface PayrollInputRow {
   staffName: string;
   componentCode: string;
   label: string | null;
+  /** The item's name from Payroll items, for a row whose label is empty. */
+  itemName: string;
+  /** Which cell of the register counts this row, by the run's own rule. */
+  bucket: 'OTHER_INCOME' | 'OWN_COLUMN' | 'DEDUCTION' | 'UNKNOWN';
+  column: string;
+  /** Where the row came from, as a sentence, and the screen that corrects it. */
+  origin: string;
+  sourceLink: string | null;
   amount: string;
   kind: 'RECURRING' | 'ADDITIONAL';
   source: string;

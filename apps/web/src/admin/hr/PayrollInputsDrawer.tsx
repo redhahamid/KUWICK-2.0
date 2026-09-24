@@ -1,24 +1,92 @@
 import { useMemo, useState } from 'react';
-import { App, Button, Drawer, Input, InputNumber, Modal, Select, Table, Tag } from 'antd';
+import { Link } from 'react-router-dom';
+import { App, Button, DatePicker, Drawer, Input, InputNumber, Modal, Select, Table, Tag } from 'antd';
+import dayjs, { type Dayjs } from 'dayjs';
 import { AdminNotice } from '../components/AdminShell';
-import { usePayComponents, usePayrollInputs, useUpsertPayrollInput, useDeletePayrollInput } from '../hooks/useAdmin';
+import { ringgit } from '../components/DataTable';
+import {
+  useCalculatePayroll,
+  useDeletePayrollInput,
+  usePayComponents,
+  usePayrollInputs,
+  useUpsertPayrollInput,
+} from '../hooks/useAdmin';
 import type { PayrollInputRow } from '../types';
 
 /**
- * THE PAYROLL INPUT DRAWER.
+ * THE MONTH'S ITEMS FOR ONE PERSON — the single place extra pay is entered.
  *
- * The single highest-value screen in this stage, because until it existed the
- * table behind it had no writer at all: PCB could not be keyed in, and no run
- * containing a PCB-applicable employee could ever be approved.
+ * The payroll grid's "Other income" cell used to be a text box. Whatever was
+ * typed became ONE hand-keyed Allowance line, so a month with overtime, a
+ * procedure incentive, an allowance, last month's locum and a director's fee
+ * went onto the payslip as one figure with one statutory treatment. This
+ * drawer is what the cell opens instead: every line the run pays this person
+ * beyond basic pay, grouped by the register cell that counts it, with add,
+ * edit and remove on the hand-keyed ones and the origin on everything else.
  *
- * Three things it shows that the audited competitor's equivalent does not:
- * WHO entered each figure, WHERE it came from, and WHY — a clinic asked "why
- * was this RM300 added" can answer without guessing.
+ * THE ITEMS ARE THE CLINIC'S. The picker offers whatever is active under
+ * Payroll items, each with its own EPF, SOCSO, EIS and PCB treatment — a
+ * clinic that pays a BOD fee adds a BOD fee item once and it is here after.
  *
- * A derived figure is read-only here on purpose. Correcting an overtime amount
- * by retyping it in payroll would leave the attendance record and the payslip
- * disagreeing, with nothing to say which is right.
+ * ONE HAND-KEYED LINE PER ITEM PER MONTH. The run keys its rows on the item,
+ * so a second amount of the same kind is an edit of the amount, not a second
+ * line. A derived line — overtime, unpaid leave, a claim, an incentive, a
+ * recurring item — is read-only here on purpose: retyping it in payroll
+ * would leave the record it came from and the payslip disagreeing, with
+ * nothing to say which is right.
+ *
+ * AFTER EVERY CHANGE THE MONTH IS WORKED OUT AGAIN, so the cell on the grid
+ * and the lines on the payslip are the engine's answer to what was entered,
+ * never a figure this screen added up.
  */
+
+type Bucket = PayrollInputRow['bucket'];
+
+const GROUPS: { bucket: Bucket; title: string; hint: string; subtotal: boolean }[] = [
+  {
+    bucket: 'OTHER_INCOME',
+    title: 'Counted in Other income',
+    hint: 'Allowances, incentives, bonuses, fees — everything that reaches gross other than basic pay, overtime and claims.',
+    subtotal: true,
+  },
+  {
+    bucket: 'OWN_COLUMN',
+    title: 'In their own columns',
+    hint: 'Overtime, unpaid leave, claims and PCB have their own columns on the register and are not part of Other income.',
+    subtotal: false,
+  },
+  {
+    bucket: 'DEDUCTION',
+    title: 'Deductions',
+    hint: 'What comes off net pay besides the statutory schemes — the register’s “Other” deductions cell.',
+    subtotal: true,
+  },
+  {
+    bucket: 'UNKNOWN',
+    title: 'Not a payroll item Kuwick knows',
+    hint: 'These rows name an item that is not in Payroll items. The run will not pay them until the item exists.',
+    subtotal: false,
+  },
+];
+
+const toCents = (value: string) => Math.round(Number(value) * 100);
+const fromCents = (cents: number) => (cents / 100).toFixed(2);
+
+type Form = {
+  componentCode?: string;
+  amount?: number;
+  kind: 'RECURRING' | 'ADDITIONAL';
+  reason: string;
+  earnedIn: Dayjs | null;
+};
+
+const BLANK: Form = { componentCode: undefined, amount: undefined, kind: 'ADDITIONAL', reason: '', earnedIn: null };
+
+const said = (error: unknown) =>
+  error && typeof error === 'object' && 'message' in error
+    ? String((error as { message?: unknown }).message)
+    : 'The server refused the change and did not say why.';
+
 export function PayrollInputsDrawer({
   open,
   onClose,
@@ -27,6 +95,8 @@ export function PayrollInputsDrawer({
   staffName,
   clinicId,
   canEdit,
+  runId,
+  cell,
 }: {
   open: boolean;
   onClose: () => void;
@@ -35,236 +105,358 @@ export function PayrollInputsDrawer({
   staffName?: string;
   clinicId?: string;
   canEdit: boolean;
+  /** The run to work out again after each change. Without one, nothing is recalculated here. */
+  runId?: string;
+  /** The register's own figures for this person, to say when they are behind the lines below. */
+  cell?: { otherIncome: string; otherDeductions: string } | null;
 }) {
   const { message } = App.useApp();
   const inputs = usePayrollInputs({ period, staffId, clinicId });
   const components = usePayComponents();
   const upsert = useUpsertPayrollInput();
   const remove = useDeletePayrollInput();
+  const calculate = useCalculatePayroll();
 
-  const [addOpen, setAddOpen] = useState(false);
-  const [componentCode, setComponentCode] = useState<string>();
-  const [amount, setAmount] = useState<number>();
-  const [kind, setKind] = useState<'RECURRING' | 'ADDITIONAL'>('ADDITIONAL');
-  const [reason, setReason] = useState('');
+  const [form, setForm] = useState<Form | null>(null);
+  const [editing, setEditing] = useState<PayrollInputRow | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [recalc, setRecalc] = useState<{ state: 'idle' | 'working' | 'done' | 'failed'; text?: string }>({ state: 'idle' });
 
-  const options = useMemo(
-    () =>
-      (components.data?.components ?? [])
-        .filter((c) => c.active)
-        .map((c) => ({ value: c.code, label: `${c.name} (${c.code})` })),
-    [components.data],
-  );
+  const month = dayjs(period).format('MMMM YYYY');
+  const rows = useMemo(() => (inputs.data ?? []).filter((row) => !staffId || row.staffId === staffId), [inputs.data, staffId]);
+  const nameOf = (row: PayrollInputRow) => row.label ?? row.itemName;
+
+  /*
+   * THE CLINIC'S OWN LIST, grouped the way the register reads it. Basic pay
+   * is the salary record, never a line keyed here.
+   */
+  const options = useMemo(() => {
+    const active = (components.data?.components ?? []).filter((item) => item.active && item.code !== 'BASIC');
+    const additions = active.filter((item) => item.type !== 'DEDUCTION');
+    const deductions = active.filter((item) => item.type === 'DEDUCTION');
+    const toOption = (item: { code: string; name: string }) => ({ value: item.code, label: `${item.name} (${item.code})` });
+    return [
+      { label: 'Additions', options: additions.map(toOption) },
+      { label: 'Deductions', options: deductions.map(toOption) },
+    ];
+  }, [components.data]);
+
+  const subtotal = (bucket: Bucket) => fromCents(rows.filter((row) => row.bucket === bucket).reduce((sum, row) => sum + toCents(row.amount), 0));
+
+  /** The register figure this group should equal, and whether it does. */
+  const behind = (bucket: Bucket): string | null => {
+    if (!cell || recalc.state === 'working') return null;
+    const shown = bucket === 'OTHER_INCOME' ? cell.otherIncome : bucket === 'DEDUCTION' ? cell.otherDeductions : null;
+    if (shown === null || toCents(shown) === toCents(subtotal(bucket))) return null;
+    return `The register shows ${ringgit(shown)} for this cell. The month has not been worked out since the lines changed.`;
+  };
+
+  async function workOutAgain() {
+    if (!runId) return;
+    setRecalc({ state: 'working' });
+    try {
+      await calculate.mutateAsync(runId);
+      setRecalc({ state: 'done' });
+    } catch (error) {
+      setRecalc({ state: 'failed', text: said(error) });
+    }
+  }
+
+  const startAdd = () => {
+    setEditing(null);
+    setForm({ ...BLANK });
+    setSaveError(null);
+  };
+  const startEdit = (row: PayrollInputRow) => {
+    setEditing(row);
+    setForm({
+      componentCode: row.componentCode,
+      amount: Number(row.amount),
+      kind: row.kind,
+      reason: row.reason ?? '',
+      earnedIn: row.earnedPeriod ? dayjs(row.earnedPeriod) : null,
+    });
+    setSaveError(null);
+  };
+  const closeForm = () => {
+    setForm(null);
+    setEditing(null);
+    setSaveError(null);
+  };
 
   async function save() {
-    // EVERY REJECTED SAVE PRODUCES A VISIBLE MESSAGE. The audited product
-    // returns a correct 400 with a good message and shows the user nothing at
-    // all — the Save button simply appears dead. This is the counter-measure,
-    // and there is a test asserting the consequence rather than the component.
+    // EVERY REJECTED SAVE PRODUCES A VISIBLE MESSAGE, in the form, above the
+    // button that was pressed.
+    if (!form || !staffId) return;
     setSaveError(null);
-    if (!staffId) return;
+    const componentCode = editing ? editing.componentCode : form.componentCode;
     if (!componentCode) {
-      setSaveError('Choose which kind of pay or deduction this is.');
+      setSaveError('Choose which item this is.');
       return;
     }
-    if (amount === undefined || amount === null || Number.isNaN(amount)) {
+    if (form.amount === undefined || form.amount === null || Number.isNaN(form.amount)) {
       setSaveError('Enter an amount.');
       return;
+    }
+    if (!editing) {
+      const twin = rows.find((row) => row.componentCode === componentCode);
+      if (twin) {
+        setSaveError(
+          twin.editable
+            ? `There is already a ${nameOf(twin)} line this month. Edit that line instead of adding a second one.`
+            : `${nameOf(twin)} already has a line this month from ${twin.origin.toLowerCase()}. Correct it there.`,
+        );
+        return;
+      }
     }
     try {
       await upsert.mutateAsync({
         staffId,
         period,
         componentCode,
-        amount: amount.toFixed(2),
-        kind,
-        ...(reason.trim() ? { reason: reason.trim() } : {}),
+        amount: form.amount.toFixed(2),
+        kind: form.kind,
+        ...(form.reason.trim() ? { reason: form.reason.trim() } : {}),
+        ...(form.earnedIn ? { earnedPeriod: form.earnedIn.startOf('month').format('YYYY-MM-DD') } : {}),
       });
-      message.success('Payroll input saved.');
-      setAddOpen(false);
-      setComponentCode(undefined);
-      setAmount(undefined);
-      setReason('');
+      message.success(editing ? 'Line updated.' : 'Line added.');
+      closeForm();
+      await workOutAgain();
     } catch (error) {
-      setSaveError(
-        error && typeof error === 'object' && 'message' in error
-          ? String((error as { message?: unknown }).message)
-          : 'The server refused the change and did not say why.',
-      );
+      setSaveError(said(error));
     }
   }
 
-  const rows = inputs.data ?? [];
+  async function removeRow(row: PayrollInputRow) {
+    try {
+      await remove.mutateAsync(row.id);
+      message.success(`${nameOf(row)} removed.`);
+      await workOutAgain();
+    } catch (error) {
+      message.error(said(error));
+    }
+  }
+
+  const columns = [
+    {
+      title: 'Item',
+      key: 'item',
+      render: (_: unknown, row: PayrollInputRow) => (
+        <span>
+          <span className="hr-strong">{nameOf(row)}</span>
+          <br />
+          <Tag>{row.componentCode}</Tag>
+          {row.kind === 'RECURRING' ? <Tag color="blue">Recurring</Tag> : null}
+          {row.earnedPeriod ? <span className="hr-small hr-muted">Earned {dayjs(row.earnedPeriod).format('MMM YYYY')}</span> : null}
+        </span>
+      ),
+    },
+    {
+      title: 'Amount',
+      dataIndex: 'amount',
+      align: 'right' as const,
+      width: 110,
+      render: (value: string) => <span className="kw-num">{ringgit(value)}</span>,
+    },
+    {
+      title: 'Where it comes from',
+      key: 'origin',
+      render: (_: unknown, row: PayrollInputRow) => (
+        <span className="hr-small">
+          <span>{row.origin}</span>
+          {row.sourceLink ? (
+            <>
+              {' · '}
+              <Link className="hr-link" to={row.sourceLink}>
+                Correct at source
+              </Link>
+            </>
+          ) : null}
+          <br />
+          <span className="hr-muted">
+            {row.enteredBy}, {new Date(row.enteredAt).toLocaleString()}
+            {row.reason ? ` · ${row.reason}` : ''}
+          </span>
+        </span>
+      ),
+    },
+    ...(canEdit
+      ? [
+          {
+            title: '',
+            key: 'actions',
+            width: 150,
+            render: (_: unknown, row: PayrollInputRow) =>
+              row.editable ? (
+                <span className="hr-actions">
+                  <Button size="small" onClick={() => startEdit(row)} disabled={recalc.state === 'working'}>
+                    Edit
+                  </Button>{' '}
+                  <Button size="small" danger onClick={() => void removeRow(row)} disabled={remove.isPending || recalc.state === 'working'}>
+                    Remove
+                  </Button>
+                </span>
+              ) : (
+                <span className="hr-small hr-muted">Read-only here</span>
+              ),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <Drawer
       open={open}
       onClose={onClose}
       // antd 6 deprecated `width`; `styles.wrapper` sets it without warning.
-      styles={{ wrapper: { width: 860 } }}
-      title={staffName ? `Payroll inputs — ${staffName}` : 'Payroll inputs'}
+      styles={{ wrapper: { width: 900 } }}
+      title={staffName ? `${staffName} — items for ${month}` : `Items for ${month}`}
       extra={
         canEdit && staffId ? (
-          <Button type="primary" size="small" onClick={() => setAddOpen(true)}>
-            Add input
+          <Button type="primary" size="small" onClick={startAdd} disabled={recalc.state === 'working'}>
+            Add a line
           </Button>
         ) : null
       }
     >
       <AdminNotice>
-        Anything a person supplies for this period: an allowance, a bonus, a reimbursed claim, a recovery — and{' '}
-        <strong>PCB</strong>, which this system does not calculate. Each row records who entered it and when.
+        Everything this person is paid or has deducted for {month} beyond basic pay, one line per item, and one line per item on
+        the payslip. Items that came from attendance, leave, claims, incentives or the employee record are corrected where they
+        were recorded. Need another kind of pay, with its own EPF, SOCSO, EIS and PCB treatment?{' '}
+        <Link className="hr-link" to="/admin/hr/settings/payroll-items">
+          Add it under Payroll items
+        </Link>
+        .
       </AdminNotice>
 
-      <Table<PayrollInputRow>
-        rowKey="id"
-        size="small"
-        style={{ marginTop: 12 }}
-        dataSource={rows}
-        loading={inputs.isLoading}
-        pagination={false}
-        locale={{ emptyText: 'Nothing has been entered for this period yet.' }}
-        columns={[
-          { title: 'Employee', dataIndex: 'staffName', width: 160 },
-          {
-            title: 'Component',
-            dataIndex: 'componentCode',
-            width: 180,
-            render: (code: string, row) => (
-              <span>
-                {row.label ?? code}
-                <br />
-                <Tag>{code}</Tag>
-              </span>
-            ),
-          },
-          { title: 'Amount', dataIndex: 'amount', align: 'right', width: 100 },
-          {
-            title: 'Kind',
-            dataIndex: 'kind',
-            width: 110,
-            // Labelled, not inferred: PCB treats the two differently.
-            render: (k: string) => <Tag color={k === 'RECURRING' ? 'blue' : 'default'}>{k}</Tag>,
-          },
-          {
-            title: 'Source',
-            dataIndex: 'source',
-            width: 120,
-            render: (source: string) => (
-              <Tag color={source === 'MANUAL' ? 'default' : 'green'}>{source}</Tag>
-            ),
-          },
-          {
-            title: 'Entered by',
-            key: 'by',
-            render: (_: unknown, row) => (
-              <span style={{ fontSize: 12 }}>
-                {row.enteredBy}
-                <br />
-                <span style={{ color: '#888' }}>{new Date(row.enteredAt).toLocaleString()}</span>
-                {row.reason ? (
-                  <>
-                    <br />
-                    <span style={{ color: '#888' }}>{row.reason}</span>
-                  </>
-                ) : null}
-              </span>
-            ),
-          },
-          ...(canEdit
-            ? [
-                {
-                  title: '',
-                  key: 'actions',
-                  width: 90,
-                  render: (_: unknown, row: PayrollInputRow) =>
-                    row.editable ? (
-                      <Button
-                        size="small"
-                        danger
-                        onClick={async () => {
-                          try {
-                            await remove.mutateAsync(row.id);
-                            message.success('Removed.');
-                          } catch (error) {
-                            message.error(
-                              error && typeof error === 'object' && 'message' in error
-                                ? String((error as { message?: unknown }).message)
-                                : 'The server refused the change.',
-                            );
-                          }
-                        }}
-                      >
-                        Remove
-                      </Button>
-                    ) : (
-                      <span style={{ fontSize: 11, color: '#888' }}>from {row.source.toLowerCase()}</span>
-                    ),
-                },
-              ]
-            : []),
-        ]}
-      />
+      {!canEdit ? (
+        <AdminNotice tone="warn">
+          Read-only: this month is approved or paid, or your account may not run payroll. An approved month is corrected with an
+          adjustment against the run.
+        </AdminNotice>
+      ) : null}
+
+      {recalc.state === 'working' ? (
+        <AdminNotice tone="info">Working the month out again…</AdminNotice>
+      ) : recalc.state === 'failed' ? (
+        <AdminNotice tone="warn">The lines were saved, but the month could not be worked out again: {recalc.text}</AdminNotice>
+      ) : recalc.state === 'done' ? (
+        <AdminNotice tone="info">Worked out again. The register and the payslip lines are up to date.</AdminNotice>
+      ) : null}
+
+      {GROUPS.map((group) => {
+        const members = rows.filter((row) => row.bucket === group.bucket);
+        if (members.length === 0 && group.bucket !== 'OTHER_INCOME') return null;
+        const lag = behind(group.bucket);
+        return (
+          <section key={group.bucket} className="hr-mt" aria-label={group.title}>
+            <div className="hr-kv">
+              <span className="hr-strong">{group.title}</span>
+              {group.subtotal ? (
+                <span className="kw-num hr-strong" data-testid={`subtotal-${group.bucket}`}>
+                  {ringgit(subtotal(group.bucket))}
+                </span>
+              ) : null}
+            </div>
+            <div className="hr-small hr-muted">{group.hint}</div>
+            {lag ? <div className="hr-small hr-warn">{lag}</div> : null}
+            <Table<PayrollInputRow>
+              rowKey="id"
+              size="small"
+              style={{ marginTop: 8 }}
+              dataSource={members}
+              loading={inputs.isLoading}
+              pagination={false}
+              locale={{ emptyText: 'Nothing here yet.' }}
+              columns={columns}
+            />
+          </section>
+        );
+      })}
 
       <Modal
-        open={addOpen}
-        onCancel={() => {
-          setAddOpen(false);
-          setSaveError(null);
-        }}
-        onOk={save}
-        okText="Save input"
+        open={form !== null}
+        onCancel={closeForm}
+        onOk={() => void save()}
+        okText={editing ? 'Save changes' : 'Add line'}
         confirmLoading={upsert.isPending}
-        title={`Add a payroll input — ${period}`}
+        title={editing ? `Edit ${nameOf(editing)} — ${month}` : `Add a line — ${month}`}
       >
         {saveError ? <AdminNotice tone="warn">{saveError}</AdminNotice> : null}
-        <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
-          <label>
-            <div>Component</div>
-            <Select
-              style={{ width: '100%' }}
-              placeholder="Allowance, bonus, PCB…"
-              options={options}
-              value={componentCode}
-              onChange={setComponentCode}
-              showSearch
-              optionFilterProp="label"
-            />
-          </label>
-          <label>
-            <div>Amount</div>
-            <InputNumber
-              style={{ width: '100%' }}
-              min={0}
-              precision={2}
-              value={amount}
-              onChange={(v) => setAmount(v ?? undefined)}
-            />
-            <div style={{ fontSize: 12, color: '#888' }}>
-              Always positive. Whether it adds to or subtracts from pay is decided by the component.
-            </div>
-          </label>
-          <label>
-            <div>Recurring or additional</div>
-            <Select
-              style={{ width: '100%' }}
-              value={kind}
-              onChange={setKind}
-              options={[
-                { value: 'ADDITIONAL', label: 'Additional — this period only' },
-                { value: 'RECURRING', label: 'Recurring — a standing item' },
-              ]}
-            />
-            <div style={{ fontSize: 12, color: '#888' }}>
-              Monthly tax deduction treats the two differently, so it is recorded rather than inferred.
-            </div>
-          </label>
-          <label>
-            <div>Reason (optional)</div>
-            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why this was added" />
-          </label>
-        </div>
+        {form ? (
+          <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+            <label>
+              <div>Item</div>
+              {editing ? (
+                <div>
+                  <span className="hr-strong">{nameOf(editing)}</span> <Tag>{editing.componentCode}</Tag>
+                  <div className="hr-small hr-muted">To pay a different kind of item, remove this line and add another.</div>
+                </div>
+              ) : (
+                <>
+                  <Select
+                    style={{ width: '100%' }}
+                    placeholder="Allowance, incentive, fee, PCB…"
+                    options={options}
+                    value={form.componentCode}
+                    onChange={(value) => setForm({ ...form, componentCode: value })}
+                    showSearch
+                    optionFilterProp="label"
+                    aria-label="Item"
+                  />
+                  <div className="hr-small hr-muted">
+                    The list is Payroll items settings.{' '}
+                    <Link className="hr-link" to="/admin/hr/settings/payroll-items">
+                      Add a kind that is missing
+                    </Link>
+                    .
+                  </div>
+                </>
+              )}
+            </label>
+            <label>
+              <div>Amount</div>
+              <InputNumber
+                style={{ width: '100%' }}
+                min={0}
+                precision={2}
+                value={form.amount}
+                onChange={(value) => setForm({ ...form, amount: value ?? undefined })}
+                aria-label="Amount"
+              />
+              <div className="hr-small hr-muted">Always positive. Whether it adds to or comes off pay is decided by the item.</div>
+            </label>
+            <label>
+              <div>Recurring or additional</div>
+              <Select
+                style={{ width: '100%' }}
+                value={form.kind}
+                onChange={(value) => setForm({ ...form, kind: value })}
+                options={[
+                  { value: 'ADDITIONAL', label: 'Additional — this month only' },
+                  { value: 'RECURRING', label: 'Recurring — a standing item' },
+                ]}
+                aria-label="Recurring or additional"
+              />
+              <div className="hr-small hr-muted">Monthly tax treats the two differently, so it is recorded rather than inferred.</div>
+            </label>
+            <label>
+              <div>Earned in (optional)</div>
+              <DatePicker
+                picker="month"
+                style={{ width: '100%' }}
+                value={form.earnedIn}
+                onChange={(value) => setForm({ ...form, earnedIn: value })}
+                aria-label="Earned in"
+              />
+              <div className="hr-small hr-muted">For work done in an earlier month and paid in this one, such as last month’s locum sessions.</div>
+            </label>
+            <label>
+              <div>Reason (optional)</div>
+              <Input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} placeholder="Why this was added" aria-label="Reason" />
+            </label>
+          </div>
+        ) : null}
       </Modal>
     </Drawer>
   );

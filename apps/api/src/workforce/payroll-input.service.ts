@@ -45,18 +45,29 @@ export class PayrollInputService {
     // no branch of their own still filter correctly.
     const { scope } = await requireScope(this.rawPrisma, 'hr.payroll.view');
     const period = periodStart(params.period);
-    const rows = await this.prisma.payrollInputEntry.findMany({
-      where: {
-        period,
-        ...(params.staffId ? { staffId: params.staffId } : {}),
-        staff: scope.where(params.clinicId),
-      },
-      orderBy: [{ staffId: 'asc' }, { componentCode: 'asc' }],
-      include: {
-        staff: { select: { id: true, fullName: true } },
-        createdBy: { select: { fullName: true } },
-      },
-    });
+    const [rows, components] = await Promise.all([
+      this.prisma.payrollInputEntry.findMany({
+        where: {
+          period,
+          ...(params.staffId ? { staffId: params.staffId } : {}),
+          staff: scope.where(params.clinicId),
+        },
+        orderBy: [{ staffId: 'asc' }, { componentCode: 'asc' }],
+        include: {
+          staff: { select: { id: true, fullName: true } },
+          createdBy: { select: { fullName: true } },
+        },
+      }),
+      // The latest version of every item, active or not: a row keyed against
+      // an item that was retired afterwards still has to say what it is.
+      this.prisma.payComponent.findMany({
+        orderBy: { effectiveFrom: 'desc' },
+        select: { code: true, name: true, type: true, includeIn: true },
+      }),
+    ]);
+    const itemByCode = new Map<string, (typeof components)[number]>();
+    for (const item of components) if (!itemByCode.has(item.code)) itemByCode.set(item.code, item);
+    const month = period.toISOString().slice(0, 7);
 
     return rows.map((row) => ({
       id: row.id,
@@ -64,6 +75,14 @@ export class PayrollInputService {
       staffName: row.staff.fullName,
       componentCode: row.componentCode,
       label: row.label,
+      itemName: itemByCode.get(row.componentCode)?.name ?? row.componentCode,
+      /**
+       * WHICH CELL OF THE REGISTER THIS ROW LANDS IN — decided here, by the
+       * same rule the run uses to fill the columns, so the drawer's subtotal
+       * and the grid's cell cannot disagree.
+       */
+      ...placeOnRegister(row, itemByCode.get(row.componentCode)),
+      ...originOf(row, month),
       // Always two decimals: Decimal.toString() renders 300.00 as "300".
       amount: formatCents(toCents(row.amount)),
       kind: row.kind,
@@ -274,5 +293,55 @@ export class PayrollInputService {
         periodEnd: periodEnd.toISOString().slice(0, 10),
       };
     });
+  }
+}
+
+
+type InputItem = { code: string; name: string; type: string; includeIn: string };
+type InputRowForPlacing = { componentCode: string; source: string; sourceRecordId: string | null; staffId: string; createdBy: { fullName: string } };
+
+/**
+ * WHERE ON THE REGISTER A ROW IS COUNTED.
+ *
+ * The grid's "Other income" cell is everything that reached gross except
+ * basic pay, overtime and reimbursed claims; its "Other" deductions cell is
+ * every withholding line; unpaid leave reduces gross and PCB is a supplied
+ * amount with a column of its own. This mirrors `kindOf` in
+ * `component-liability.ts` and the column sums in the run, so a line the
+ * drawer shows under "Counted in Other income" is a line the cell counts.
+ */
+export function placeOnRegister(
+  row: Pick<InputRowForPlacing, 'componentCode' | 'source'>,
+  item: InputItem | undefined,
+): { bucket: 'OTHER_INCOME' | 'OWN_COLUMN' | 'DEDUCTION' | 'UNKNOWN'; column: string } {
+  if (row.componentCode === 'PCB') return { bucket: 'OWN_COLUMN', column: 'PCB' };
+  if (!item) return { bucket: 'UNKNOWN', column: 'Not paid' };
+  if (item.type === 'OVERTIME' || row.componentCode === 'OVERTIME') return { bucket: 'OWN_COLUMN', column: 'OT h' };
+  if (row.source === 'CLAIM' || row.componentCode === 'CLAIM_REIMBURSEMENT') return { bucket: 'OWN_COLUMN', column: 'Claims' };
+  if (item.type === 'DEDUCTION') {
+    // `kindOf`: a deduction that reaches gross makes the wages smaller.
+    if (item.includeIn === 'NET_ONLY') return { bucket: 'DEDUCTION', column: 'Other' };
+    return { bucket: 'OWN_COLUMN', column: row.componentCode === 'UNPAID_LEAVE' ? 'Unpaid d' : 'Gross' };
+  }
+  return { bucket: 'OTHER_INCOME', column: 'Other income' };
+}
+
+/** The sentence for where a row came from, and the screen that corrects it. */
+export function originOf(row: InputRowForPlacing, month: string): { origin: string; sourceLink: string | null } {
+  switch (row.source) {
+    case 'ATTENDANCE':
+      return { origin: 'From attendance: overtime approved on the timesheet', sourceLink: `/admin/hr/attendance?staffId=${row.staffId}&month=${month}` };
+    case 'LEAVE':
+      return { origin: 'From leave: unpaid leave approved on the leave queue', sourceLink: `/admin/hr/leave?staffId=${row.staffId}` };
+    case 'CLAIM':
+      return { origin: 'From an approved claim routed to payroll', sourceLink: row.sourceRecordId ? `/admin/hr/claims?claimId=${row.sourceRecordId}` : '/admin/hr/claims' };
+    case 'INCENTIVE':
+      return { origin: 'From the incentive run for this month', sourceLink: '/admin/hr/incentives' };
+    case 'RECURRING':
+      return { origin: 'Recurring item on the employee record', sourceLink: `/admin/hr/employees/${row.staffId}?tab=employment` };
+    case 'IMPORT':
+      return { origin: 'Imported', sourceLink: null };
+    default:
+      return { origin: `Entered by ${row.createdBy.fullName}`, sourceLink: null };
   }
 }

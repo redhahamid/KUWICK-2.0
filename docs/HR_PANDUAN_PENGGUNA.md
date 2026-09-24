@@ -641,7 +641,7 @@ Selepas bermula, bulan itu berjalan melalui empat tahap:
 
 | Tahap | Apa yang berlaku |
 |---|---|
-| **Prepare** | Daftar gaji, seorang satu baris. **Petak kelabu** datang dari rekod atau dikira untuk anda; **petak putih** boleh anda taip. Hanya dua lajur boleh ditaip: **Other income** dan **Other**. Simpan setiap baris |
+| **Prepare** | Daftar gaji, seorang satu baris. **Petak kelabu** datang dari rekod atau dikira untuk anda; **petak putih** membuka senarai item bulan itu. Klik **Other income** atau **Other** untuk tambah, ubah atau buang item (elaun, insentif, fi BOD, locum bulan lepas); setiap item satu baris pada slip gaji, dan bulan dikira semula selepas setiap perubahan |
 | **Review** | Apa yang menghalang, apa yang patut dipandang, dan berapa jumlah bulan itu |
 | **Approve** | Meluluskan mengunci bulan. Ini saat wang terikat |
 | **Pay** | Slip gaji, senarai pembayaran bank, dan angka berkanun untuk difailkan |

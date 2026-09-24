@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { Grid } from 'antd';
 import { ringgit } from '../components/DataTable';
 import { StatusChip } from './ui';
-import { IconEdit } from './ui/icons';
 import { initialsOf } from './ui/who';
 import type { PayrollJourney } from '../types';
 
@@ -89,7 +88,6 @@ export interface GridColumn {
   strong?: boolean;
   net?: boolean;
   /** Where the figure is corrected when it is not editable here. */
-  fixTo?: (row: PayRow) => string;
 }
 
 export const GRID_COLUMNS: GridColumn[] = [
@@ -103,7 +101,6 @@ export const GRID_COLUMNS: GridColumn[] = [
     field: 'overtimeHours',
     total: 'overtimeHours',
     money: false,
-    fixTo: (row) => `/admin/hr/attendance?staffId=${row.staffId}`,
   },
   {
     key: 'unpaidDays',
@@ -113,7 +110,6 @@ export const GRID_COLUMNS: GridColumn[] = [
     field: 'unpaidDays',
     total: 'unpaidDays',
     money: false,
-    fixTo: (row) => `/admin/hr/leave?staffId=${row.staffId}`,
   },
   { key: 'claims', title: 'Claims', band: 'earnings', kind: 'auto', field: 'claims', total: 'claims', money: true },
   { key: 'gross', title: 'Gross', band: 'earnings', kind: 'auto', field: 'grossPay', total: 'gross', money: true, strong: true },
@@ -251,80 +247,15 @@ export const grouped = (value: string | null | undefined): string | null =>
 const hours = (value: number) => value.toFixed(1);
 const days = (value: number) => (Number.isInteger(value) ? String(value) : value.toFixed(1));
 
-/** What the white cells of one row hold while it is being edited. */
-export interface GridEdit {
-  staffId: string;
-  otherIncome: string;
-  otherDeduction: string;
-}
-
-export interface GridChange {
-  componentCode: 'ALLOWANCE' | 'OTHER_DEDUCTION';
-  /** Null means the hand-keyed input is removed. */
-  amount: string | null;
-  existingId: string | null;
-  label: string;
-}
-
-export const GRID_INCOME_LABEL = 'Other income (payroll grid)';
-export const GRID_DEDUCTION_LABEL = 'Other deduction (payroll grid)';
-
-const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
-const toCents = (value: string) => Math.round(Number(value) * 100);
-const fromCents = (cents: number) => (cents / 100).toFixed(2);
-const clean = (value: string) => value.trim().replace(/^RM\s*/i, '').replace(/,/g, '');
-
-/**
- * WHAT A TYPED FIGURE MEANS.
- *
- * "Other income" on the row is a SUM: recurring items, incentives, a bonus
- * somebody added on the person's page — and, if there is one, a figure typed
- * into this cell before. Only the typed part is this cell's to change. So the
- * fixed part is what the row shows less the hand-keyed input behind it, and
- * the new hand-keyed input is what was typed less that. Below the fixed part
- * there is nothing to write: those items are corrected where they were
- * recorded, and the cell says so instead of writing a negative allowance.
- *
- * The hand-keyed income is the ALLOWANCE component and the hand-keyed
- * deduction is OTHER_DEDUCTION — one each per person per month, which is the
- * server's own rule for typed inputs. Anything that needs its own treatment
- * (a bonus, a commission, zakat) is added as its own item on the person's page.
+/*
+ * THE TWO WHITE CELLS OPEN THE MONTH'S ITEMS. They used to be text boxes:
+ * whatever was typed became one hand-keyed Allowance line, and a month with
+ * overtime, an incentive, an allowance, a locum fee and a director's fee went
+ * onto the payslip as one figure with one statutory treatment. The cell now
+ * shows the server's total and opens the drawer where each item is its own
+ * line — see `PayrollInputsDrawer`.
  */
-export function planGridEdit(row: PayRow, edit: GridEdit): { changes: GridChange[]; problem: string | null } {
-  const changes: GridChange[] = [];
-  const one = (
-    typed: string,
-    shown: string,
-    componentCode: GridChange['componentCode'],
-    fallbackLabel: string,
-    what: string,
-  ): string | null => {
-    const value = clean(typed);
-    if (!MONEY.test(value)) return `Enter ${what} as a number with at most two decimal places.`;
-    const manual = row.items.find((item) => item.source === 'MANUAL' && item.componentCode === componentCode) ?? null;
-    const manualCents = manual ? toCents(manual.amount) : 0;
-    const fixedCents = toCents(shown) - manualCents;
-    const wantCents = toCents(value) - fixedCents;
-    if (wantCents < 0) {
-      return (
-        `${what[0].toUpperCase()}${what.slice(1)} cannot go below ${ringgit(fromCents(fixedCents))}: that part comes from ` +
-        'records and recurring items, and is changed where it was recorded.'
-      );
-    }
-    if (wantCents === manualCents) return null;
-    changes.push({
-      componentCode,
-      amount: wantCents === 0 ? null : fromCents(wantCents),
-      existingId: manual?.id ?? null,
-      label: manual?.label ?? fallbackLabel,
-    });
-    return null;
-  };
-  const problem =
-    one(edit.otherIncome, row.otherIncome, 'ALLOWANCE', GRID_INCOME_LABEL, 'other income') ??
-    one(edit.otherDeduction, row.otherDeductions, 'OTHER_DEDUCTION', GRID_DEDUCTION_LABEL, 'the other deduction');
-  return { changes: problem ? [] : changes, problem };
-}
+export type ItemsCell = 'income' | 'deductions';
 
 /** Somebody the run left out — no line, so no figures, but still a row with a reason and a Fix. */
 export interface LeftOutRow {
@@ -340,13 +271,7 @@ export function PayrollGrid({
   totals,
   counted,
   runId,
-  canEdit,
-  edit,
-  onStartEdit,
-  onEditChange,
-  onSave,
-  onCancel,
-  saving,
+  onOpenItems,
 }: {
   rows: PayRow[];
   leftOut?: LeftOutRow[];
@@ -355,13 +280,8 @@ export function PayrollGrid({
   /** How many people those sums cover, which is not always how many are shown. */
   counted: number;
   runId: string;
-  canEdit: boolean;
-  edit: GridEdit | null;
-  onStartEdit: (row: PayRow) => void;
-  onEditChange: (patch: Partial<GridEdit>) => void;
-  onSave: () => void;
-  onCancel: () => void;
-  saving: boolean;
+  /** A white cell was pressed: open this person's items for the month. */
+  onOpenItems: (row: PayRow, cell: ItemsCell) => void;
 }) {
   const screens = Grid.useBreakpoint();
   const employeeLink = (staffId: string) => `/admin/hr/payroll/${runId}/employees/${staffId}`;
@@ -371,7 +291,7 @@ export function PayrollGrid({
    * 390px can only be done by shrinking the type until nobody can read it.
    */
   if (!screens.md) {
-    return <PayrollCards rows={rows} leftOut={leftOut} totals={totals} counted={counted} link={employeeLink} />;
+    return <PayrollCards rows={rows} leftOut={leftOut} totals={totals} counted={counted} link={employeeLink} onOpenItems={onOpenItems} />;
   }
 
   const earnings = GRID_COLUMNS.filter((column) => column.band === 'earnings');
@@ -405,9 +325,8 @@ export function PayrollGrid({
         </thead>
         <tbody>
           {rows.map((row) => {
-            const editing = edit?.staffId === row.staffId;
             return (
-              <tr key={row.staffId} className={editing ? 'is-editing' : undefined}>
+              <tr key={row.staffId}>
                 <td className="hr-grid__freeze hr-grid__freeze--who">
                   <Link className="hr-who" to={employeeLink(row.staffId)} title={row.name}>
                     <span className="hr-who__avatar">{initialsOf(row.name)}</span>
@@ -417,35 +336,18 @@ export function PayrollGrid({
                     </span>
                   </Link>
                 </td>
-                <td className="hr-grid__freeze hr-grid__freeze--status">{editing ? <StatusChip tone="info">Editing</StatusChip> : <RowStatus row={row} />}</td>
+                <td className="hr-grid__freeze hr-grid__freeze--status">
+                  <RowStatus row={row} />
+                </td>
                 {GRID_COLUMNS.map((column) => (
-                  <Cell key={column.key} column={column} row={row} editing={editing} edit={edit} onEditChange={onEditChange} />
+                  <Cell key={column.key} column={column} row={row} onOpenItems={onOpenItems} />
                 ))}
                 <td>
-                  {editing ? (
-                    <>
-                      <button type="button" className="hr-btn hr-btn--sm hr-btn--primary" disabled={saving} onClick={onSave}>
-                        Save
-                      </button>{' '}
-                      <button type="button" className="hr-btn hr-btn--sm hr-btn--ghost" disabled={saving} onClick={onCancel}>
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      {canEdit ? (
-                        <button type="button" className="hr-btn hr-btn--sm" disabled={edit !== null} onClick={() => onStartEdit(row)}>
-                          <IconEdit />
-                          Edit
-                        </button>
-                      ) : null}
-                      {row.blockers > 0 && row.fixLink ? (
-                        <Link className="hr-fixLink" to={row.fixLink}>
-                          Fix
-                        </Link>
-                      ) : null}
-                    </>
-                  )}
+                  {row.blockers > 0 && row.fixLink ? (
+                    <Link className="hr-fixLink" to={row.fixLink}>
+                      Fix
+                    </Link>
+                  ) : null}
                 </td>
               </tr>
             );
@@ -539,47 +441,30 @@ function figure(column: GridColumn, raw: unknown): ReactNode {
   return text === null ? <span title="Not worked out">—</span> : text;
 }
 
-function Cell({
-  column,
-  row,
-  editing,
-  edit,
-  onEditChange,
-}: {
-  column: GridColumn;
-  row: PayRow;
-  editing: boolean;
-  edit: GridEdit | null;
-  onEditChange: (patch: Partial<GridEdit>) => void;
-}) {
+function Cell({ column, row, onOpenItems }: { column: GridColumn; row: PayRow; onOpenItems: (row: PayRow, cell: ItemsCell) => void }) {
   const kindClass = column.kind === 'editable' ? 'is-editable' : column.kind === 'record' ? 'is-record' : 'is-auto';
   const className = ['hr-num', kindClass, column.strong ? 'hr-strong' : '', column.net ? 'hr-net' : ''].filter(Boolean).join(' ');
 
-  if (editing && column.kind === 'editable' && edit) {
-    const isIncome = column.key === 'otherIncome';
+  if (column.kind === 'editable') {
+    // THE FIGURE IS THE BUTTON. It stays the server's total — the drawer it
+    // opens is where the lines behind it are added, edited and removed.
+    const cell: ItemsCell = column.key === 'otherIncome' ? 'income' : 'deductions';
     return (
       <td className={className}>
-        <input
-          className="hr-inp"
-          inputMode="decimal"
-          aria-label={`${column.title} for ${row.name}`}
-          value={isIncome ? edit.otherIncome : edit.otherDeduction}
-          onChange={(event) => onEditChange(isIncome ? { otherIncome: event.target.value } : { otherDeduction: event.target.value })}
-        />
+        <button
+          type="button"
+          className="hr-cellBtn"
+          title="Open this month's items for this person"
+          aria-label={`${column.title} for ${row.name}: open the month's items`}
+          onClick={() => onOpenItems(row, cell)}
+        >
+          {figure(column, row[column.field])}
+        </button>
       </td>
     );
   }
 
-  return (
-    <td className={className}>
-      {figure(column, row[column.field])}
-      {editing && column.fixTo ? (
-        <Link className="hr-fixLink" to={column.fixTo(row)} title="From the records. Correct it where it was recorded.">
-          Fix
-        </Link>
-      ) : null}
-    </td>
-  );
+  return <td className={className}>{figure(column, row[column.field])}</td>;
 }
 
 /**
@@ -623,12 +508,14 @@ function PayrollCards({
   totals,
   counted,
   link,
+  onOpenItems,
 }: {
   rows: PayRow[];
   leftOut: LeftOutRow[];
   totals: Totals;
   counted: number;
   link: (staffId: string) => string;
+  onOpenItems: (row: PayRow, cell: ItemsCell) => void;
 }) {
   return (
     <div className="kw-payCards">
@@ -648,6 +535,19 @@ function PayrollCards({
             <div>
               <dt>Gross</dt>
               <dd className="kw-num">{grouped(row.grossPay)}</dd>
+            </div>
+            <div>
+              <dt>Other income</dt>
+              <dd className="kw-num">
+                <button
+                  type="button"
+                  className="kw-payCard__items"
+                  aria-label={`Other income for ${row.name}: open the month's items`}
+                  onClick={() => onOpenItems(row, 'income')}
+                >
+                  {grouped(row.otherIncome)}
+                </button>
+              </dd>
             </div>
             <div>
               <dt>Deductions</dt>

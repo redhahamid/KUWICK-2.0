@@ -4,17 +4,10 @@ import { App, Grid, Modal } from 'antd';
 import dayjs from 'dayjs';
 import { ringgit } from '../components/DataTable';
 import { humanise } from '../components/Chip';
-import {
-  useApprovePayroll,
-  useCalculatePayroll,
-  useDiscardPayrollRun,
-  useDeletePayrollInput,
-  usePayrollJourney,
-  useUpsertPayrollInput,
-} from '../hooks/useAdmin';
+import { useApprovePayroll, useCalculatePayroll, useDiscardPayrollRun, usePayrollJourney } from '../hooks/useAdmin';
 import { ProvisionalBanner } from './ProvisionalBanner';
 import { PayrollStepper, STEPS, normaliseStep, stepsWithProblems, type StepKey } from './PayrollStepper';
-import { GRID_COLUMNS, PayrollGrid, planGridEdit, type GridEdit, type LeftOutRow } from './PayrollGrid';
+import { GRID_COLUMNS, PayrollGrid, type LeftOutRow } from './PayrollGrid';
 import { PayrollExceptionCentre } from './PayrollExceptionCentre';
 import { PayrollInputsDrawer } from './PayrollInputsDrawer';
 import { PayslipsPanel } from './PayslipsPanel';
@@ -35,9 +28,9 @@ type PayRow = PayrollJourney['pay']['rows'][number];
  * THE MONTH'S PAYROLL — payroll.html.
  *
  * One run per month, and the month is the screen: four figures, four stages,
- * and the grid. Grey cells come from records or are worked out; white cells
- * you can edit, one row at a time; the footer says what is blocked and will
- * not let the month move on to Review while anything is.
+ * and the grid. Grey cells come from records or are worked out; a white cell
+ * opens that person's items for the month; the footer says what is blocked
+ * and will not let the month move on to Review while anything is.
  *
  * MOUNTED BY TWO ROUTES, deliberately. `/admin/hr/payroll` resolves the
  * current month and mounts this directly, so opening payroll opens the month's
@@ -80,6 +73,9 @@ export function PayrollWorkspace({ runId, monthNav }: { runId: string; monthNav?
   };
 
   const rows = data?.pay.rows ?? [];
+  // The register's own figures for the person whose items are open, so the
+  // drawer can say when the cell is behind the lines.
+  const inputsRow = inputsStaff ? (rows.find((row) => row.staffId === inputsStaff.id) ?? null) : null;
   const blockedRows = rows.filter((row) => row.blockers > 0);
   const checkRows = rows.filter((row) => row.blockers === 0 && row.warnings > 0);
   // Somebody the run left out has no line, so no row in `pay.rows` — and a
@@ -191,7 +187,14 @@ export function PayrollWorkspace({ runId, monthNav }: { runId: string; monthNav?
         {data ? (
           <>
             {step === 'prepare' ? (
-              <PrepareStep data={data} runId={runId} leftOut={leftOut} canEdit={mayRun && !locked} onGoTo={goTo} />
+              <PrepareStep
+                data={data}
+                runId={runId}
+                leftOut={leftOut}
+                canEdit={mayRun && !locked}
+                onGoTo={goTo}
+                onOpenItems={(row) => onFixInputs(row.staffId, row.name)}
+              />
             ) : null}
             {step === 'review' ? (
               <ReviewStep data={data} runId={runId} mayApprove={mayApprove} onFixInputs={onFixInputs} onGoTo={goTo} />
@@ -210,6 +213,8 @@ export function PayrollWorkspace({ runId, monthNav }: { runId: string; monthNav?
           staffId={inputsStaff?.id}
           staffName={inputsStaff?.name ?? undefined}
           canEdit={mayRun && !locked}
+          runId={runId}
+          cell={inputsRow ? { otherIncome: inputsRow.otherIncome, otherDeductions: inputsRow.otherDeductions } : null}
         />
       ) : null}
     </HrPage>
@@ -241,21 +246,20 @@ function PrepareStep({
   leftOut,
   canEdit,
   onGoTo,
+  onOpenItems,
 }: {
   data: PayrollJourney;
   runId: string;
   leftOut: LeftOutRow[];
   canEdit: boolean;
   onGoTo: (key: StepKey) => void;
+  /** A white cell was pressed: open that person's items for the month. */
+  onOpenItems: (row: PayrollJourney['pay']['rows'][number]) => void;
 }) {
   const { message } = App.useApp();
   const calculate = useCalculatePayroll();
-  const upsert = useUpsertPayrollInput();
-  const remove = useDeletePayrollInput();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
-  const [edit, setEdit] = useState<GridEdit | null>(null);
-  const [saving, setSaving] = useState(false);
 
   const rows = data.pay.rows;
   const blocked = rows.filter((row) => row.blockers > 0);
@@ -274,46 +278,6 @@ function PrepareStep({
       onError: (error: Error) => message.error(error.message),
     });
 
-  /*
-   * SAVE ONE ROW. The typed figures become hand-keyed inputs (see
-   * `planGridEdit`), and then the month is worked out again so the row's
-   * gross, statutory and net are the engine's answer to what was typed —
-   * never a figure the grid guessed at.
-   */
-  const save = async () => {
-    if (!edit) return;
-    const row = rows.find((candidate) => candidate.staffId === edit.staffId);
-    if (!row) return;
-    const plan = planGridEdit(row, edit);
-    if (plan.problem) {
-      message.error(plan.problem);
-      return;
-    }
-    setSaving(true);
-    try {
-      for (const change of plan.changes) {
-        if (change.amount === null) {
-          if (change.existingId) await remove.mutateAsync(change.existingId);
-        } else {
-          await upsert.mutateAsync({
-            staffId: row.staffId,
-            period: `${data.run.period}-01`,
-            componentCode: change.componentCode,
-            amount: change.amount,
-            label: change.label,
-            reason: 'Edited in the payroll grid',
-          });
-        }
-      }
-      await calculate.mutateAsync(runId);
-      message.success(plan.changes.length > 0 ? 'Saved and worked out again' : 'Nothing changed');
-      setEdit(null);
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : 'The server refused the change and did not say why.');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   return (
     <>
@@ -326,11 +290,7 @@ function PrepareStep({
             </span>
             <span>
               <i className="is-editable" />
-              Editable
-            </span>
-            <span>
-              <i className="is-editing" />
-              Editing now
+              Opens the month’s items
             </span>
           </div>
         }
@@ -351,7 +311,7 @@ function PrepareStep({
       {rows.length === 0 && leftOut.length === 0 ? (
         <div className="hr-empty">
           <div className="hr-strong">Nothing has been worked out yet.</div>
-          <div className="hr-muted">Save draft works the month out from attendance, leave, claims and the employee records.</div>
+          <div className="hr-muted">Work the month out again builds it from attendance, leave, claims and the employee records.</div>
         </div>
       ) : (
         <PayrollGrid
@@ -360,13 +320,7 @@ function PrepareStep({
           totals={data.pay.totals}
           counted={rows.length}
           runId={runId}
-          canEdit={canEdit}
-          edit={edit}
-          onStartEdit={(row) => setEdit({ staffId: row.staffId, otherIncome: row.otherIncome, otherDeduction: row.otherDeductions })}
-          onEditChange={(patch) => setEdit((current) => (current ? { ...current, ...patch } : current))}
-          onSave={() => void save()}
-          onCancel={() => setEdit(null)}
-          saving={saving}
+          onOpenItems={onOpenItems}
         />
       )}
 
@@ -402,20 +356,10 @@ function PrepareStep({
         </span>
         <span className="hr-spacer" />
         {canEdit ? (
-          <button
-            type="button"
-            className="hr-btn"
-            disabled={saving || calculate.isPending}
-            onClick={() => (edit ? void save() : recalculate('Worked out again'))}
-          >
+          <button type="button" className="hr-btn" disabled={calculate.isPending} onClick={() => recalculate('Worked out again')}>
             <IconDownload />
-            {/*
-              * THE BUTTON SAYS WHAT IT DOES. With no row being edited it does
-              * not save anything — it works the month out again — and a draft
-              * that opened empty was being pressed with "Save draft" over and
-              * over by somebody waiting for it to save something.
-              */}
-            {edit ? 'Save draft' : 'Work the month out again'}
+            {/* THE BUTTON SAYS WHAT IT DOES: nothing is saved here any more, the month is worked out again. */}
+            Work the month out again
           </button>
         ) : null}
         <button

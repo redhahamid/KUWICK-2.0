@@ -6,7 +6,7 @@ import type { PayrollJourney } from '../types';
 
 vi.mock('../hooks/useAdmin', () => ({}));
 
-const { covers, GRID_COLUMNS, PayrollGrid, planGridEdit } = await import('./PayrollGrid');
+const { covers, GRID_COLUMNS, PayrollGrid } = await import('./PayrollGrid');
 
 type PayRow = PayrollJourney['pay']['rows'][number];
 
@@ -159,13 +159,7 @@ function grid(props: Partial<Parameters<typeof PayrollGrid>[0]> = {}) {
         totals={totals()}
         counted={1}
         runId="run-1"
-        canEdit
-        edit={null}
-        onStartEdit={noop}
-        onEditChange={noop}
-        onSave={noop}
-        onCancel={noop}
-        saving={false}
+        onOpenItems={noop}
         {...props}
       />
     </MemoryRouter>,
@@ -521,39 +515,28 @@ describe('the payroll grid', () => {
     expect(screen.getByRole('link', { name: /Nurul Hidayah/ })).toHaveAttribute('href', '/admin/hr/payroll/run-1/employees/staff-1');
   });
 
-  it('turns the two white cells into inputs while a row is edited, and links the grey ones to where they are corrected', () => {
+  /*
+   * THE TWO WHITE CELLS OPEN THE MONTH'S ITEMS. A text box here made one
+   * hand-keyed Allowance line out of everything typed; the drawer the cell
+   * opens keeps each item its own line. The figure stays the server's total.
+   */
+  it('makes the two white cells buttons that open the person’s items, and types nothing into the grid', () => {
     viewport(1440);
-    const started: string[] = [];
-    const { rerender } = grid({ onStartEdit: (chosen) => started.push(chosen.name) });
-    fireEvent.click(screen.getByRole('button', { name: /Edit/ }));
-    expect(started).toEqual(['Nurul Hidayah']);
-
-    rerender(
-      <MemoryRouter>
-        <PayrollGrid
-          rows={[row()]}
-          totals={totals()}
-          counted={1}
-          runId="run-1"
-          canEdit
-          edit={{ staffId: 'staff-1', otherIncome: '250.00', otherDeduction: '0.00' }}
-          onStartEdit={noop}
-          onEditChange={noop}
-          onSave={noop}
-          onCancel={noop}
-          saving={false}
-        />
-      </MemoryRouter>,
-    );
-    expect(screen.getByRole('textbox', { name: 'Other income for Nurul Hidayah' })).toHaveValue('250.00');
-    expect(screen.getByRole('textbox', { name: 'Other for Nurul Hidayah' })).toHaveValue('0.00');
-    expect(screen.getByText('Editing')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Save' })).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeVisible();
-    // Statutory cells stay untouchable: no input for EPF, SOCSO, EIS or PCB.
-    expect(screen.getAllByRole('textbox')).toHaveLength(2);
-    const fixes = screen.getAllByRole('link', { name: 'Fix' }).map((link) => link.getAttribute('href'));
-    expect(fixes).toEqual(['/admin/hr/attendance?staffId=staff-1', '/admin/hr/leave?staffId=staff-1']);
+    const opened: [string, string][] = [];
+    grid({ onOpenItems: (chosen, cell) => opened.push([chosen.name, cell]) });
+    const income = screen.getByRole('button', { name: "Other income for Nurul Hidayah: open the month's items" });
+    expect(income).toHaveTextContent('250.00');
+    fireEvent.click(income);
+    fireEvent.click(screen.getByRole('button', { name: "Other for Nurul Hidayah: open the month's items" }));
+    expect(opened).toEqual([
+      ['Nurul Hidayah', 'income'],
+      ['Nurul Hidayah', 'deductions'],
+    ]);
+    // Nothing on the grid takes typing: statutory cells, hours and days included.
+    expect(screen.queryAllByRole('textbox')).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: /Edit/ })).toBeNull();
+    // A person with nothing extra still has the cell to open.
+    expect(screen.getAllByRole('button', { name: /open the month's items/ })).toHaveLength(2);
   });
 
   it('becomes one card per person on a phone, with the month as the last card', () => {
@@ -567,53 +550,12 @@ describe('the payroll grid', () => {
     expect(within(total).getByText('All 2 employees')).toBeVisible();
     expect(within(total).getByText('3,548.48')).toBeVisible();
     expect(within(total).getByText('3,108.98')).toBeVisible();
+    // The same way in: a card's Other income opens the person's items.
+    const opened: string[] = [];
+    grid({ rows: [row()], onOpenItems: (chosen) => opened.push(chosen.name) });
+    // The last such button on the page belongs to the render above, not to the first one in this test.
+    fireEvent.click(screen.getAllByRole('button', { name: "Other income for Nurul Hidayah: open the month's items" }).at(-1)!);
+    expect(opened).toEqual(['Nurul Hidayah']);
   });
 });
 
-/*
- * WHAT A TYPED FIGURE MEANS. "Other income" is a sum, and only the hand-keyed
- * part of it is the cell's to change. The plan is the one piece of arithmetic
- * the grid does, so it is pinned here to the sen.
- */
-describe('planning a grid edit', () => {
-  it('turns a higher figure into a larger hand-keyed allowance, keeping the recorded part', () => {
-    // 250.00 shown = 250.00 typed by hand earlier; nothing recorded. 300 → 300.
-    const plan = planGridEdit(row(), { staffId: 'staff-1', otherIncome: '300', otherDeduction: '0.00' });
-    expect(plan.problem).toBeNull();
-    expect(plan.changes).toEqual([{ componentCode: 'ALLOWANCE', amount: '300.00', existingId: 'in-1', label: 'Fixed monthly allowance' }]);
-  });
-
-  it('keeps the recorded part fixed: a recurring item is corrected on the record, not overwritten here', () => {
-    // 1,050.00 shown = 800 recurring + 250 typed. Typing 900 leaves 100 by hand;
-    // typing 700 would need a negative allowance, so it is refused with the floor named.
-    const withRecurring = row({
-      otherIncome: '1050.00',
-      items: [
-        ...row().items,
-        { id: 'in-2', componentCode: 'ALLOWANCE', label: 'Housing', amount: '800.00', source: 'RECURRING', sourceRecordId: 'ri-1', provenance: 'Recurring allowance', earnedPeriod: null, editable: false },
-      ],
-    });
-    const ok = planGridEdit(withRecurring, { staffId: 'staff-1', otherIncome: '900', otherDeduction: '0.00' });
-    expect(ok.changes[0]).toMatchObject({ componentCode: 'ALLOWANCE', amount: '100.00' });
-    const refused = planGridEdit(withRecurring, { staffId: 'staff-1', otherIncome: '700', otherDeduction: '0.00' });
-    expect(refused.problem).toMatch(/cannot go below RM800\.00/);
-    expect(refused.changes).toEqual([]);
-  });
-
-  it('removes the hand-keyed input when the cell is cleared to what the records give, and changes nothing when nothing moved', () => {
-    const cleared = planGridEdit(row(), { staffId: 'staff-1', otherIncome: '0', otherDeduction: '0.00' });
-    expect(cleared.changes).toEqual([{ componentCode: 'ALLOWANCE', amount: null, existingId: 'in-1', label: 'Fixed monthly allowance' }]);
-    const same = planGridEdit(row(), { staffId: 'staff-1', otherIncome: 'RM 250.00', otherDeduction: '0.00' });
-    expect(same.changes).toEqual([]);
-    expect(same.problem).toBeNull();
-  });
-
-  it('writes a deduction typed into "Other" as a hand-keyed other deduction', () => {
-    const plan = planGridEdit(row(), { staffId: 'staff-1', otherIncome: '250.00', otherDeduction: '120.50' });
-    expect(plan.changes).toEqual([{ componentCode: 'OTHER_DEDUCTION', amount: '120.50', existingId: null, label: 'Other deduction (payroll grid)' }]);
-  });
-
-  it('refuses a figure that is not money', () => {
-    expect(planGridEdit(row(), { staffId: 'staff-1', otherIncome: 'abc', otherDeduction: '0' }).problem).toMatch(/at most two decimal places/);
-  });
-});

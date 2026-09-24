@@ -73,7 +73,7 @@ export function PayrollMonthPage() {
   return (
     <HrPage
       title="Payroll"
-      sub="One run per month. Grey cells come from records or are worked out for you; white cells you can edit. Save each row."
+      sub="One run per month. Grey cells come from records or are worked out for you; a white cell opens that person’s items for the month."
       error={errorText(home)}
       actions={
         <>

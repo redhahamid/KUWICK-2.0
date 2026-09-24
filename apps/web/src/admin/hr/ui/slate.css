@@ -1445,6 +1445,35 @@ a.hr-who:hover .hr-who__name {
 .hr-grid td.is-editable {
   background: var(--hr-surface);
 }
+/* The figure in a white cell is a button: it opens the month's items. */
+.hr-grid .hr-cellBtn {
+  width: 100%;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+  text-align: right;
+  cursor: pointer;
+  text-decoration: underline dotted var(--hr-teal);
+  text-underline-offset: 3px;
+}
+.hr-grid .hr-cellBtn:hover,
+.hr-grid .hr-cellBtn:focus-visible {
+  color: var(--hr-teal);
+  outline: none;
+}
+.kw-payCard__items {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--hr-teal);
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
 .hr-grid td.is-auto {
   background: #f5f6f7;
   color: var(--hr-ink);
