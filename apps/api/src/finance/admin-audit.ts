@@ -136,6 +136,7 @@ export type AuditAction =
   | 'payrollInput.updated'
   | 'payrollInput.deleted'
   | 'payrollInput.materialised'
+  | 'payrollInput.carried'
   | 'payrollException.overridden'
   | 'payrollSnapshot.created'
   /** Opening year-to-date typed in for a clinic migrating mid-year. */

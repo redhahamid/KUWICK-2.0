@@ -6,6 +6,7 @@ import { requirePermission, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { SEED_PAY_COMPONENTS } from './pay-component-catalogue';
 import { UpsertPayComponentDto } from './dto/upsert-pay-component.dto';
+import { DERIVED_CODES } from './payroll-register-columns';
 
 const EPOCH = new Date('1970-01-01T00:00:00.000Z');
 
@@ -14,6 +15,8 @@ const EPOCH = new Date('1970-01-01T00:00:00.000Z');
  * calculation reads. A change to one of these is a change to the money and
  * gets a dated version; a change to the name or the active flag does not.
  */
+/** Items the run works out or supplies itself: never a grid column, never carried forward. */
+
 const TREATMENT_FIELDS = [
   'type',
   'category',
@@ -97,6 +100,10 @@ export class PayComponentService {
         eaField: row.eaField,
         prorated: row.prorated,
         employerSide: row.employerSide,
+        gridColumn: row.gridColumn,
+        carryForward: row.carryForward,
+        /** A person keys this item's amount, so it may have its own column and carry forward. */
+        handKeyed: row.type === 'ADDITION' && !DERIVED_CODES.has(row.code),
         systemControlled: row.systemControlled,
         active: row.active,
         verificationStatus: row.verificationStatus,
@@ -303,6 +310,29 @@ export class PayComponentService {
         );
       }
 
+      /*
+       * OWN COLUMN AND CARRY FORWARD ARE FOR HAND-KEYED ITEMS ONLY.
+       *
+       * Basic pay is the salary record, overtime and unpaid leave come from
+       * the records, a reimbursement from an approved claim, a leave payout
+       * from the leaver's balance and PCB is supplied against its own column.
+       * A column of those would be either a duplicate or a lie, and carrying
+       * one forward would pay last month's overtime again.
+       */
+      if (dto.gridColumn || dto.carryForward) {
+        if (DERIVED_CODES.has(dto.code) || dto.type === 'OVERTIME') {
+          throw new BadRequestException(
+            `${dto.name} is worked out from the records or supplied against its own column, so it cannot have its own ` +
+              'grid column or carry forward. Those are for items a person keys by hand.',
+          );
+        }
+        if (dto.gridColumn && dto.type === 'DEDUCTION') {
+          throw new BadRequestException(
+            'Only an addition can have its own column on the grid for now. A deduction stays in the Other deductions cell and the drawer.',
+          );
+        }
+      }
+
       const data = {
         code: dto.code,
         name: dto.name,
@@ -321,6 +351,8 @@ export class PayComponentService {
         eaField: dto.eaField ?? null,
         prorated: dto.prorated ?? false,
         employerSide: dto.employerSide ?? false,
+        gridColumn: dto.gridColumn ?? false,
+        carryForward: dto.carryForward ?? false,
         active: dto.active ?? true,
         // A clinic-defined component is UNVERIFIED by construction.
         verificationStatus: 'DRAFT' as const,

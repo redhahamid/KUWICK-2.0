@@ -112,6 +112,8 @@ describe('payroll exceptions', () => {
       // proves the route exists rather than being waved through by a literal.
       '/admin/hr/employees/:staffId',
       '/admin/hr/payroll/:id',
+      // One person's payroll page on a run — where a carried line is edited or cleared.
+      '/admin/hr/payroll/:id/employees/:staffId',
     ];
     /** `/admin/hr/employees/s1` matches `/admin/hr/employees/:staffId`. */
     const mounted = (path: string) =>

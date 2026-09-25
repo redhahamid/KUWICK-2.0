@@ -2,10 +2,32 @@ import { BadRequestException, ConflictException, Inject, Injectable, NotFoundExc
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { requirePermission, requireScope, withAdminTx } from '../finance/admin-actor';
+import { AdminTx, requirePermission, requireScope, withAdminTx } from '../finance/admin-actor';
+import type { ActingStaff } from '../clinical/clinical-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { toCents, formatCents } from '../finance/money';
 import { UpsertPayrollInputDto } from './dto/upsert-payroll-input.dto';
+import {
+  carriedReason,
+  columnItems,
+  itemsByCode,
+  monthBefore,
+  monthLabel,
+  monthStartOf,
+  originOf,
+  placeOnRegister,
+} from './payroll-register-columns';
+
+export type CarriedForward = {
+  /** "January 2026" — the month the lines came from. */
+  from: string;
+  carried: number;
+  /** One-off late payments left behind: earned in a month other than the one before. */
+  skipped: number;
+  people: number;
+  /** True when this month and branch had already been started once: nothing copied. */
+  repeated: boolean;
+};
 
 function periodStart(period: string): Date {
   const d = new Date(`${period}T00:00:00.000Z`);
@@ -58,16 +80,19 @@ export class PayrollInputService {
           createdBy: { select: { fullName: true } },
         },
       }),
-      // The latest version of every item, active or not: a row keyed against
+      // The open version of every item, active or not: a row keyed against
       // an item that was retired afterwards still has to say what it is.
+      // Ordered the way Payroll items lists them, which is the order the
+      // grid gives their columns.
       this.prisma.payComponent.findMany({
-        orderBy: { effectiveFrom: 'desc' },
-        select: { code: true, name: true, type: true, includeIn: true },
+        where: { effectiveTo: null },
+        orderBy: [{ category: 'asc' }, { code: 'asc' }],
+        select: { code: true, name: true, type: true, includeIn: true, gridColumn: true, carryForward: true, active: true },
       }),
     ]);
-    const itemByCode = new Map<string, (typeof components)[number]>();
-    for (const item of components) if (!itemByCode.has(item.code)) itemByCode.set(item.code, item);
+    const itemByCode = itemsByCode(components);
     const month = period.toISOString().slice(0, 7);
+    const carriedFromMonth = monthBefore(period).toISOString().slice(0, 7);
 
     return rows.map((row) => ({
       id: row.id,
@@ -83,6 +108,8 @@ export class PayrollInputService {
        */
       ...placeOnRegister(row, itemByCode.get(row.componentCode)),
       ...originOf(row, month),
+      /** Set while the row is still last month's copy; cleared by the first edit. */
+      carriedFromMonth: row.carriedFromId ? carriedFromMonth : null,
       // Always two decimals: Decimal.toString() renders 300.00 as "300".
       amount: formatCents(toCents(row.amount)),
       kind: row.kind,
@@ -147,15 +174,25 @@ export class PayrollInputService {
         );
       }
 
+      // PATCH, NOT REPLACE. The grid's cells send an amount and nothing else;
+      // a field the request leaves out keeps what the drawer keyed, and an
+      // explicit null clears it. Saving a line that was carried from last
+      // month makes it this person's own figure, whatever they changed.
       const data = {
-        label: dto.label ?? null,
         amount: dto.amount,
-        kind: dto.kind ?? 'ADDITIONAL',
+        kind: dto.kind ?? existing?.kind ?? 'ADDITIONAL',
         source: 'MANUAL' as const,
         sourceRecordId: null,
-        earnedPeriod: dto.earnedPeriod ? new Date(`${dto.earnedPeriod}T00:00:00.000Z`) : null,
-        reason: dto.reason ?? null,
-        note: dto.note ?? null,
+        label: dto.label === undefined ? (existing?.label ?? null) : dto.label,
+        earnedPeriod:
+          dto.earnedPeriod === undefined
+            ? (existing?.earnedPeriod ?? null)
+            : dto.earnedPeriod === null
+              ? null
+              : new Date(`${dto.earnedPeriod}T00:00:00.000Z`),
+        reason: dto.reason === undefined ? (existing?.reason ?? null) : dto.reason,
+        note: dto.note === undefined ? (existing?.note ?? null) : dto.note,
+        carriedFromId: null,
       };
 
       const saved = existing
@@ -214,6 +251,140 @@ export class PayrollInputService {
       });
       return { removed: true };
     });
+  }
+
+  /**
+   * START THE MONTH WITH LAST MONTH'S AMOUNTS.
+   *
+   * Called once, inside the transaction that creates the regular run for a
+   * month. For every item marked "carry forward" under Payroll items, each
+   * employee's hand-keyed line from the month before is copied in and marked
+   * with the row it came from, so the person preparing the month edits or
+   * clears a figure instead of re-keying it. Nothing derived is copied — a
+   * recurring item, approved overtime and a claim reach the month by their
+   * own routes — and a line already keyed for the month is left alone.
+   *
+   * EARNED-IN MONTHS MOVE WITH THE LINE. A clinic paying a director's fee,
+   * locum sessions and overtime one month in arrears keys each line with an
+   * "earned in" month, so those lines would otherwise never carry. A line
+   * earned in exactly the month before its pay month is the ordinary arrears
+   * case and is copied with the earned-in month moved forward by one:
+   * January's line earned in December becomes February's line earned in
+   * January. A line earned in any other month is a one-off late payment and
+   * is left behind, and the count says so.
+   *
+   * ONCE PER MONTH AND BRANCH. The copy is recorded as an audit row against
+   * the month, and a second start of the same month — the run discarded and
+   * begun again — copies nothing, so a line somebody cleared on purpose does
+   * not come back. Nothing here recalculates anything: the run reads the
+   * rows like any other input when it is worked out.
+   */
+  async carryForward(tx: AdminTx, actor: ActingStaff, params: { period: Date; clinicId: string | null }): Promise<CarriedForward> {
+    const previous = monthBefore(params.period);
+    const from = monthLabel(previous);
+    const into = monthLabel(params.period);
+    const summary = (carried: number, skipped: number, people: number, repeated: boolean): CarriedForward => ({
+      from,
+      carried,
+      skipped,
+      people,
+      repeated,
+    });
+
+    const items = await tx.payComponent.findMany({
+      where: { effectiveTo: null, active: true, carryForward: true },
+      orderBy: [{ category: 'asc' }, { code: 'asc' }],
+      select: { code: true, name: true, type: true, includeIn: true, gridColumn: true, carryForward: true, active: true },
+    });
+    // The same guard as the switch: only an addition keyed by hand carries.
+    const codes = items.filter((item) => item.type === 'ADDITION' && columnItems([{ ...item, gridColumn: true }]).length > 0).map((item) => item.code);
+    if (codes.length === 0) return summary(0, 0, 0, false);
+
+    const markerId = `${params.period.toISOString().slice(0, 7)}:${params.clinicId ?? 'ALL'}`;
+    const done = await tx.auditLog.findFirst({
+      where: { tenantId: currentTenantId(), action: 'payrollInput.carried', entityType: 'PayrollPeriod', entityId: markerId },
+      select: { id: true },
+    });
+    if (done) return summary(0, 0, 0, true);
+
+    // The people the run will pay, by the run's own rule.
+    const employees = await tx.employeeProfile.findMany({
+      where: {
+        engagement: 'EMPLOYEE',
+        employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
+        ...(params.clinicId ? { staff: { clinicId: params.clinicId } } : {}),
+      },
+      select: { staffId: true, staff: { select: { clinicId: true } } },
+    });
+    const staffIds = employees.map((row) => row.staffId);
+    const clinicOf = new Map(employees.map((row) => [row.staffId, row.staff.clinicId]));
+
+    const previousRows = await tx.payrollInputEntry.findMany({
+      where: {
+        period: previous,
+        staffId: { in: staffIds },
+        componentCode: { in: codes },
+        source: { in: ['MANUAL', 'IMPORT'] },
+      },
+      orderBy: [{ staffId: 'asc' }, { componentCode: 'asc' }],
+    });
+    const already = new Set(
+      (
+        await tx.payrollInputEntry.findMany({
+          where: { period: params.period, staffId: { in: staffIds }, componentCode: { in: codes } },
+          select: { staffId: true, componentCode: true },
+        })
+      ).map((row) => `${row.staffId}:${row.componentCode}`),
+    );
+
+    const monthBeforePrevious = monthBefore(previous).getTime();
+    let carried = 0;
+    let skipped = 0;
+    const people = new Set<string>();
+    for (const row of previousRows) {
+      if (already.has(`${row.staffId}:${row.componentCode}`)) continue;
+      let earnedPeriod: Date | null = null;
+      if (row.earnedPeriod) {
+        if (monthStartOf(row.earnedPeriod).getTime() !== monthBeforePrevious) {
+          skipped += 1;
+          continue;
+        }
+        earnedPeriod = previous;
+      }
+      await tx.payrollInputEntry.create({
+        data: {
+          tenantId: currentTenantId(),
+          clinicId: clinicOf.get(row.staffId) ?? row.clinicId,
+          staffId: row.staffId,
+          period: params.period,
+          componentCode: row.componentCode,
+          label: row.label,
+          amount: row.amount,
+          kind: row.kind,
+          source: 'MANUAL',
+          sourceRecordId: null,
+          earnedPeriod,
+          reason: carriedReason(from, row.reason),
+          note: row.note,
+          carriedFromId: row.id,
+          createdByStaffId: actor.id,
+        },
+      });
+      carried += 1;
+      people.add(row.staffId);
+    }
+
+    await recordAudit(tx, actor, {
+      action: 'payrollInput.carried',
+      entityType: 'PayrollPeriod',
+      entityId: markerId,
+      after: { from, into, carried, skipped, people: people.size, items: codes },
+      reason:
+        `Carried ${carried} ${carried === 1 ? 'line' : 'lines'} from ${from} into ${into}` +
+        (skipped > 0 ? `; ${skipped} one-off late ${skipped === 1 ? 'payment' : 'payments'} left behind` : ''),
+      source: 'hr.payroll',
+    });
+    return summary(carried, skipped, people.size, false);
   }
 
   /**
@@ -296,52 +467,4 @@ export class PayrollInputService {
   }
 }
 
-
-type InputItem = { code: string; name: string; type: string; includeIn: string };
-type InputRowForPlacing = { componentCode: string; source: string; sourceRecordId: string | null; staffId: string; createdBy: { fullName: string } };
-
-/**
- * WHERE ON THE REGISTER A ROW IS COUNTED.
- *
- * The grid's "Other income" cell is everything that reached gross except
- * basic pay, overtime and reimbursed claims; its "Other" deductions cell is
- * every withholding line; unpaid leave reduces gross and PCB is a supplied
- * amount with a column of its own. This mirrors `kindOf` in
- * `component-liability.ts` and the column sums in the run, so a line the
- * drawer shows under "Counted in Other income" is a line the cell counts.
- */
-export function placeOnRegister(
-  row: Pick<InputRowForPlacing, 'componentCode' | 'source'>,
-  item: InputItem | undefined,
-): { bucket: 'OTHER_INCOME' | 'OWN_COLUMN' | 'DEDUCTION' | 'UNKNOWN'; column: string } {
-  if (row.componentCode === 'PCB') return { bucket: 'OWN_COLUMN', column: 'PCB' };
-  if (!item) return { bucket: 'UNKNOWN', column: 'Not paid' };
-  if (item.type === 'OVERTIME' || row.componentCode === 'OVERTIME') return { bucket: 'OWN_COLUMN', column: 'OT h' };
-  if (row.source === 'CLAIM' || row.componentCode === 'CLAIM_REIMBURSEMENT') return { bucket: 'OWN_COLUMN', column: 'Claims' };
-  if (item.type === 'DEDUCTION') {
-    // `kindOf`: a deduction that reaches gross makes the wages smaller.
-    if (item.includeIn === 'NET_ONLY') return { bucket: 'DEDUCTION', column: 'Other' };
-    return { bucket: 'OWN_COLUMN', column: row.componentCode === 'UNPAID_LEAVE' ? 'Unpaid d' : 'Gross' };
-  }
-  return { bucket: 'OTHER_INCOME', column: 'Other income' };
-}
-
-/** The sentence for where a row came from, and the screen that corrects it. */
-export function originOf(row: InputRowForPlacing, month: string): { origin: string; sourceLink: string | null } {
-  switch (row.source) {
-    case 'ATTENDANCE':
-      return { origin: 'From attendance: overtime approved on the timesheet', sourceLink: `/admin/hr/attendance?staffId=${row.staffId}&month=${month}` };
-    case 'LEAVE':
-      return { origin: 'From leave: unpaid leave approved on the leave queue', sourceLink: `/admin/hr/leave?staffId=${row.staffId}` };
-    case 'CLAIM':
-      return { origin: 'From an approved claim routed to payroll', sourceLink: row.sourceRecordId ? `/admin/hr/claims?claimId=${row.sourceRecordId}` : '/admin/hr/claims' };
-    case 'INCENTIVE':
-      return { origin: 'From the incentive run for this month', sourceLink: '/admin/hr/incentives' };
-    case 'RECURRING':
-      return { origin: 'Recurring item on the employee record', sourceLink: `/admin/hr/employees/${row.staffId}?tab=employment` };
-    case 'IMPORT':
-      return { origin: 'Imported', sourceLink: null };
-    default:
-      return { origin: `Entered by ${row.createdBy.fullName}`, sourceLink: null };
-  }
-}
+export { originOf, placeOnRegister } from './payroll-register-columns';

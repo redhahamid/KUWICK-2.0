@@ -24,6 +24,10 @@ export class UpsertPayComponentDto {
   @IsOptional() @IsString() @Length(1, 20) eaField?: string;
   @IsOptional() @IsBoolean() prorated?: boolean;
   @IsOptional() @IsBoolean() employerSide?: boolean;
+  /** Layout, not treatment: the item gets its own editable column on the payroll grid. */
+  @IsOptional() @IsBoolean() gridColumn?: boolean;
+  /** Layout, not treatment: a new month starts with last month's hand-keyed amount. */
+  @IsOptional() @IsBoolean() carryForward?: boolean;
   @IsOptional() @IsBoolean() active?: boolean;
 
   /**

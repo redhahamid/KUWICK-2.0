@@ -15,6 +15,7 @@ import { resolveSalaryForPayroll, SalaryRow } from './salary-resolution';
 import { resolveClassificationForPayroll } from './statutory-classification';
 import { statutoryStatusOf } from './statutory';
 import { toClassificationRow } from './statutory-classification.service';
+import { columnItems } from './payroll-register-columns';
 
 function monthStart(value: string | Date): Date {
   const date = typeof value === 'string' ? new Date(`${value.slice(0, 7)}-01T00:00:00.000Z`) : value;
@@ -450,6 +451,19 @@ export class PayrollJourneyService {
     // STEPS 3 AND 4 — earnings and deductions, from the materialised rows.
     // Every derived figure carries the sentence that says where it came from.
     // ---------------------------------------------------------------------
+    // THE ITEMS WITH A COLUMN OF THEIR OWN, in the order Payroll items lists
+    // them. Their money is read off each line's own components below, never
+    // summed in the browser, and taken out of Other income so a director's
+    // fee is counted once.
+    const items = await this.prisma.payComponent.findMany({
+      where: { effectiveTo: null },
+      orderBy: [{ category: 'asc' }, { code: 'asc' }],
+      select: { code: true, name: true, type: true, includeIn: true, gridColumn: true, carryForward: true, active: true },
+    });
+    const columns = columnItems(items);
+    // A line keyed without a label of its own is named after its item, not its code.
+    const itemName = new Map(items.map((item) => [item.code, item.name]));
+
     const inputsByStaff = new Map<string, typeof inputs>();
     for (const row of inputs) {
       const list = inputsByStaff.get(row.staffId) ?? [];
@@ -518,6 +532,8 @@ export class PayrollJourneyService {
       // edit. Hours and days ride along so the grid can show OT h and Unpaid
       // d from the records without the browser reading the timesheet twice.
       claims: 0, otherIncome: 0, overtimeHours: 0, unpaidDays: 0,
+      /** One total per own column, keyed by item code. */
+      columns: Object.fromEntries(columns.map((column) => [column.code, 0])) as Record<string, number>,
     };
     /*
      * WHO THIS PERSON IS, AND WHETHER THEY ARE READY — carried on the pay row.
@@ -568,10 +584,34 @@ export class PayrollJourneyService {
       // line — the one earning the grid keeps out of "other income", because
       // it is not pay and the person editing the row must not be able to
       // change it here.
-      const claimsCents = (((line.breakdown ?? {}) as { components?: { code: string; kind: string; amount: unknown }[] }).components ?? [])
+      const lineComponents = ((line.breakdown ?? {}) as { components?: { code: string; kind: string; amount: unknown }[] }).components ?? [];
+      const claimsCents = lineComponents
         .filter((component) => component.code === 'CLAIM_REIMBURSEMENT' && component.kind === 'EARNING')
         .reduce((sum, component) => sum + toCents(component.amount as never), 0);
-      const otherIncomeCents = grossCents - salaryEarnedCents - overtimeCents - claimsCents;
+      /*
+       * THE OWN COLUMNS, off the line's own components — the engine's answer
+       * for each item — beside what was keyed for it, so a cell can say when
+       * the two are not yet the same. A cell is editable when nothing derived
+       * (a recurring item, say) already holds that person's line for the item.
+       */
+      const columnCells: Record<string, { amount: string; entered: string | null; editable: boolean; carried: boolean; inputId: string | null }> = {};
+      let ownColumnsCents = 0;
+      for (const column of columns) {
+        const cents = lineComponents
+          .filter((component) => component.code === column.code && component.kind === 'EARNING')
+          .reduce((sum, component) => sum + toCents(component.amount as never), 0);
+        const entered = own.find((row) => row.componentCode === column.code);
+        ownColumnsCents += cents;
+        sums.columns[column.code] += cents;
+        columnCells[column.code] = {
+          amount: formatCents(cents),
+          entered: entered ? formatCents(toCents(entered.amount)) : null,
+          editable: !entered || entered.source === 'MANUAL' || entered.source === 'IMPORT',
+          carried: entered?.carriedFromId != null,
+          inputId: entered?.id ?? null,
+        };
+      }
+      const otherIncomeCents = grossCents - salaryEarnedCents - overtimeCents - claimsCents - ownColumnsCents;
       const overtimeHoursOnLine = line.overtimeHours === null ? 0 : Number(line.overtimeHours);
       const unpaidDaysOnLine = line.unpaidDays === null ? 0 : Number(line.unpaidDays);
       // ANY unknown makes the subtotal unknown — null in, null out. This was
@@ -751,12 +791,14 @@ export class PayrollJourneyService {
         /** THE GRID'S COLUMNS — see the note on `sums`. */
         claims: formatCents(claimsCents),
         otherIncome: formatCents(otherIncomeCents),
+        /** The own columns, keyed by item code; see `pay.columns` for the order and names. */
+        columns: columnCells,
         overtimeHours: overtimeHoursOnLine,
         unpaidDays: unpaidDaysOnLine,
         items: own.map((row) => ({
           id: row.id,
           componentCode: row.componentCode,
-          label: row.label ?? row.componentCode,
+          label: row.label ?? itemName.get(row.componentCode) ?? row.componentCode,
           amount: formatCents(toCents(row.amount)),
           source: row.source,
           sourceRecordId: row.sourceRecordId,
@@ -765,6 +807,8 @@ export class PayrollJourneyService {
           earnedPeriod: row.earnedPeriod?.toISOString().slice(0, 10) ?? null,
           /** Derived figures are corrected upstream, never re-keyed here. */
           editable: row.source === 'MANUAL',
+          /** Still last month's copy, untouched. */
+          carried: row.carriedFromId !== null,
         })),
       };
     });
@@ -822,6 +866,7 @@ export class PayrollJourneyService {
       hrdLevyNotDetermined: sums.hrdLevyNotDetermined,
       claims: formatCents(sums.claims),
       otherIncome: formatCents(sums.otherIncome),
+      columns: Object.fromEntries(columns.map((column) => [column.code, formatCents(sums.columns[column.code] ?? 0)])) as Record<string, string>,
       overtimeHours: Math.round(sums.overtimeHours * 100) / 100,
       unpaidDays: Math.round(sums.unpaidDays * 100) / 100,
       addsUp: paysAddUp,
@@ -920,7 +965,7 @@ export class PayrollJourneyService {
         totalUnpaidLeaveDays: Math.round(step2.reduce((s, r) => s + r.unpaidLeaveDays, 0) * 10) / 10,
         totalMissingPunchDays: step2.reduce((s, r) => s + r.missingPunchDays, 0),
       },
-      pay: { rows: paidRows, totals: payTotals },
+      pay: { rows: paidRows, totals: payTotals, columns },
       review: {
         gate,
         attention,

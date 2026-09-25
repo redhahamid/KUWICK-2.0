@@ -35,6 +35,9 @@ const component = (over: Partial<PayComponentRow> = {}): PayComponentRow => ({
   eaField: null,
   prorated: false,
   employerSide: false,
+  gridColumn: false,
+  carryForward: false,
+  handKeyed: true,
   systemControlled: true,
   active: true,
   verificationStatus: 'DRAFT',
@@ -369,5 +372,37 @@ describe('a version that has not started', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.getByText(/Say why/i)).toBeTruthy());
     expect(upsertMutate).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * HOW AN ITEM SITS ON THE PAYROLL GRID is layout, not treatment: the two
+ * switches save in place, with no date and no reason, and are offered only
+ * on an item a person keys.
+ */
+describe('how an item sits on the payroll grid', () => {
+  it('switches own column and carry forward in place, with no date and no reason', () => {
+    upsertMutate.mockReset();
+    mount();
+    fireEvent.click(screen.getByLabelText('Own column for Allowance'));
+    expect(upsertMutate).toHaveBeenCalledTimes(1);
+    const body = upsertMutate.mock.calls[0][0] as Record<string, unknown>;
+    expect(body).toMatchObject({ code: 'ALLOWANCE', gridColumn: true, carryForward: false, active: true });
+    expect(body.effectiveFrom).toBeUndefined();
+    expect(body.reason).toBeUndefined();
+    expect(screen.queryByRole('dialog', { name: /take effect/i })).toBeNull();
+
+    fireEvent.click(screen.getByLabelText('Carry forward for Allowance'));
+    expect(upsertMutate.mock.calls[1][0]).toMatchObject({ code: 'ALLOWANCE', carryForward: true });
+  });
+
+  it('offers neither switch on an item the run derives', () => {
+    mount({
+      ...list,
+      components: [...list.components, component({ id: 'c-ot', code: 'OVERTIME', name: 'Overtime', type: 'OVERTIME', category: 'REMUNERATION', handKeyed: false })],
+    });
+    expect(screen.queryByLabelText('Own column for Overtime')).toBeNull();
+    expect(screen.queryByLabelText('Carry forward for Overtime')).toBeNull();
+    expect(screen.getByLabelText('Own column for Allowance')).toBeTruthy();
   });
 });

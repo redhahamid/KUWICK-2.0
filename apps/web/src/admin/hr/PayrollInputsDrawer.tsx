@@ -210,14 +210,16 @@ export function PayrollInputsDrawer({
       }
     }
     try {
+      // The server patches a line: a field left out keeps its value, so a
+      // cleared reason or earned-in month is sent as null, not left out.
       await upsert.mutateAsync({
         staffId,
         period,
         componentCode,
         amount: form.amount.toFixed(2),
         kind: form.kind,
-        ...(form.reason.trim() ? { reason: form.reason.trim() } : {}),
-        ...(form.earnedIn ? { earnedPeriod: form.earnedIn.startOf('month').format('YYYY-MM-DD') } : {}),
+        reason: form.reason.trim() || null,
+        earnedPeriod: form.earnedIn ? form.earnedIn.startOf('month').format('YYYY-MM-DD') : null,
       });
       message.success(editing ? 'Line updated.' : 'Line added.');
       closeForm();
@@ -247,6 +249,11 @@ export function PayrollInputsDrawer({
           <br />
           <Tag>{row.componentCode}</Tag>
           {row.kind === 'RECURRING' ? <Tag color="blue">Recurring</Tag> : null}
+          {row.carriedFromMonth ? (
+            <Tag color="gold" title="Copied from last month when this month was started. Edit or remove it if it should not repeat.">
+              Carried from {dayjs(`${row.carriedFromMonth}-01`).format('MMM YYYY')}
+            </Tag>
+          ) : null}
           {row.earnedPeriod ? <span className="hr-small hr-muted">Earned {dayjs(row.earnedPeriod).format('MMM YYYY')}</span> : null}
         </span>
       ),

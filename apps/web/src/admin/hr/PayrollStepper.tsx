@@ -26,7 +26,7 @@ export const STEPS: { key: StepKey; label: string; heading: string; blurb: strin
     key: 'prepare',
     label: 'Prepare',
     heading: 'The month, employee by employee',
-    blurb: 'Grey cells come from records or are worked out for you; a white cell opens that person’s items for the month.',
+    blurb: 'Grey cells come from records or are worked out for you; a white cell opens that person’s items for the month, and an item with a column of its own is typed straight in.',
   },
   {
     key: 'review',

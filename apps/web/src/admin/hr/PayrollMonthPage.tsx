@@ -73,7 +73,7 @@ export function PayrollMonthPage() {
   return (
     <HrPage
       title="Payroll"
-      sub="One run per month. Grey cells come from records or are worked out for you; a white cell opens that person’s items for the month."
+      sub="One run per month. Grey cells come from records or are worked out for you; a white cell opens that person’s items for the month, and an item with a column of its own is typed straight in."
       error={errorText(home)}
       actions={
         <>
@@ -129,7 +129,22 @@ export function PayrollMonthPage() {
                          * empty than a toast on a screen you never left.
                          */
                         try {
-                          const created = (await createRun.mutateAsync({ period: `${period}-01`, clinicId })) as { id: string };
+                          const created = (await createRun.mutateAsync({ period: `${period}-01`, clinicId })) as {
+                            id: string;
+                            carried: { from: string; carried: number; skipped: number; people: number; repeated: boolean } | null;
+                          };
+                          // WHAT THE MONTH STARTED WITH. Lines copied from
+                          // last month for the items the clinic marked to
+                          // carry are said out loud, with the one-off late
+                          // payments that were left behind.
+                          if (created.carried && created.carried.carried > 0) {
+                            const { carried, from, people, skipped } = created.carried;
+                            message.info(
+                              `${carried} ${carried === 1 ? 'line' : 'lines'} carried from ${from} for ${people} ${people === 1 ? 'person' : 'people'}: edit or clear any that should not repeat.` +
+                                (skipped > 0 ? ` ${skipped} one-off late ${skipped === 1 ? 'payment was' : 'payments were'} not carried.` : ''),
+                              8,
+                            );
+                          }
                           try {
                             await calculate.mutateAsync(created.id);
                           } catch (error) {

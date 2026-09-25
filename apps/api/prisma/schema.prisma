@@ -7537,6 +7537,10 @@ model PayrollInputEntry {
 
   earnedPeriod DateTime? @map("earned_period") @db.Date
 
+  /// The previous month's row this one was copied from when the month was
+  /// started, until somebody edits or clears it. Null means entered by hand.
+  carriedFromId String? @map("carried_from_id")
+
   note             String?
   createdByStaffId String   @map("created_by_staff_id")
   createdAt        DateTime @default(now()) @map("created_at")
@@ -8168,6 +8172,10 @@ model PayComponent {
   prorated     Boolean @default(false)
   /// Employer cost, not employee pay.
   employerSide Boolean @default(false) @map("employer_side")
+  /// Layout, not treatment: the item has its own editable column on the payroll grid.
+  gridColumn   Boolean @default(false) @map("grid_column")
+  /// Layout, not treatment: a new month starts with last month's hand-keyed amount for this item.
+  carryForward Boolean @default(false) @map("carry_forward")
 
   /// System presets may be enabled or disabled, never redefined.
   systemControlled Boolean @default(false) @map("system_controlled")

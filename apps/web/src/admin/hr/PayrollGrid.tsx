@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Grid } from 'antd';
 import { ringgit } from '../components/DataTable';
@@ -7,6 +7,7 @@ import { initialsOf } from './ui/who';
 import type { PayrollJourney } from '../types';
 
 type PayRow = PayrollJourney['pay']['rows'][number];
+type OwnColumn = PayrollJourney['pay']['columns'][number];
 
 /**
  * THE PAYROLL GRID — payroll.html.
@@ -87,7 +88,12 @@ export interface GridColumn {
   money: boolean;
   strong?: boolean;
   net?: boolean;
-  /** Where the figure is corrected when it is not editable here. */
+  /**
+   * AN ITEM'S OWN COLUMN. Set for the columns a clinic switched on under
+   * Payroll items; the figure is read from the row's `columns` by this code
+   * and the cell is typed into, then saved in one batch.
+   */
+  itemCode?: string;
 }
 
 export const GRID_COLUMNS: GridColumn[] = [
@@ -240,9 +246,75 @@ export const GRID_COLUMNS: GridColumn[] = [
   },
 ];
 
+/**
+ * THE COLUMNS FOR THIS RUN: the fixed list with the clinic's own-column items
+ * between Basic and Other income, in Payroll items order. A director's fee
+ * with a column of its own is not in Other income — the server takes it out
+ * of that cell — so the row still reads left to right without double counting.
+ */
+export function gridColumnsFor(columns: OwnColumn[]): GridColumn[] {
+  const own: GridColumn[] = columns.map((column) => ({
+    key: `item:${column.code}`,
+    title: column.name,
+    band: 'earnings',
+    kind: 'editable',
+    field: 'columns',
+    total: 'columns',
+    money: true,
+    itemCode: column.code,
+    exportTitle: column.name,
+  }));
+  return [GRID_COLUMNS[0], ...own, ...GRID_COLUMNS.slice(1)];
+}
+
+/** One row's figure for a column — the server's string, for the cell and the export alike. */
+export function cellValue(column: GridColumn, row: PayRow): string | number | null {
+  if (column.itemCode) return row.columns?.[column.itemCode]?.amount ?? '0.00';
+  return row[column.field] as string | number | null;
+}
+
+/** The month's total for a column, from the server's sums. */
+function footValue(column: GridColumn, totals: Totals): unknown {
+  if (column.itemCode) return totals.columns?.[column.itemCode] ?? '0.00';
+  return totals[column.total];
+}
+
 /** "4,200.00" — the server's figure, grouped, without the currency the column header implies. */
 export const grouped = (value: string | null | undefined): string | null =>
   value === null || value === undefined ? null : ringgit(value).replace('RM', '');
+
+/*
+ * TYPING INTO THE GRID. An own column's cell is a box: the amount is typed,
+ * the row goes amber until "Save changes" sends every changed cell through
+ * the same inputs endpoint the drawer uses — one line per person and item,
+ * the same server rules — and then works the month out ONCE. A blank or a
+ * nought clears the line. Nothing is summed here; after the save the figures
+ * are the engine's again.
+ */
+const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
+const validAmount = (text: string) => MONEY.test(text.trim());
+const cents = (text: string) => Math.round(Number(text) * 100);
+const editKey = (staffId: string, code: string) => `${staffId}:${code}`;
+
+export interface GridEdit {
+  key: string;
+  staffId: string;
+  name: string;
+  code: string;
+  title: string;
+  /** The row the cell holds today, if any — what a clear removes. */
+  inputId: string | null;
+  /** The amount to save, two decimals, or null to clear the line. */
+  amount: string | null;
+}
+
+/** What the save could not do, per cell, so the grid keeps those drafts and says why. */
+export type SaveOutcome = { failed: { key: string; message: string }[] } | void;
+
+const said = (error: unknown) =>
+  error && typeof error === 'object' && 'message' in error
+    ? String((error as { message?: unknown }).message)
+    : 'The server refused the change and did not say why.';
 
 const hours = (value: number) => value.toFixed(1);
 const days = (value: number) => (Number.isInteger(value) ? String(value) : value.toFixed(1));
@@ -272,6 +344,10 @@ export function PayrollGrid({
   counted,
   runId,
   onOpenItems,
+  columns = [],
+  canEdit = false,
+  previousMonth = 'last month',
+  onSaveCells,
 }: {
   rows: PayRow[];
   leftOut?: LeftOutRow[];
@@ -282,23 +358,154 @@ export function PayrollGrid({
   runId: string;
   /** A white cell was pressed: open this person's items for the month. */
   onOpenItems: (row: PayRow, cell: ItemsCell) => void;
+  /** The items with a column of their own, in the order they are drawn. */
+  columns?: OwnColumn[];
+  /** Whether own-column cells may be typed into: the run is open and the person may run payroll. */
+  canEdit?: boolean;
+  /** "January 2026" — for the marker on a cell still carrying last month's amount. */
+  previousMonth?: string;
+  /** Save every changed cell, then work the month out once. */
+  onSaveCells?: (edits: GridEdit[]) => Promise<SaveOutcome>;
 }) {
   const screens = Grid.useBreakpoint();
   const employeeLink = (staffId: string) => `/admin/hr/payroll/${runId}/employees/${staffId}`;
+
+  /** The drafts, keyed by person and item; a key is present only while the cell differs from what is saved. */
+  const [edits, setEdits] = useState<Map<string, string>>(new Map());
+  const [showAll, setShowAll] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
 
   /*
    * PHONES GET CARDS, NOT A SQUEEZED SPREADSHEET. Fourteen columns inside
    * 390px can only be done by shrinking the type until nobody can read it.
    */
   if (!screens.md) {
-    return <PayrollCards rows={rows} leftOut={leftOut} totals={totals} counted={counted} link={employeeLink} onOpenItems={onOpenItems} />;
+    return <PayrollCards rows={rows} leftOut={leftOut} totals={totals} counted={counted} link={employeeLink} onOpenItems={onOpenItems} columns={columns} />;
   }
 
-  const earnings = GRID_COLUMNS.filter((column) => column.band === 'earnings');
-  const deductions = GRID_COLUMNS.filter((column) => column.band === 'deductions');
-  const employer = GRID_COLUMNS.filter((column) => column.band === 'employer');
+  /*
+   * A COLUMN NOBODY IN THIS LIST HAS AN AMOUNT IN IS FOLDED AWAY, so three or
+   * four own columns do not turn every month into a wide empty sheet. "Show
+   * all columns" brings them back for the first amount; a column being typed
+   * into never folds.
+   */
+  const all = gridColumnsFor(columns);
+  const empty = (column: GridColumn) =>
+    column.itemCode !== undefined &&
+    rows.every((row) => {
+      const cell = row.columns?.[column.itemCode as string];
+      return !cell || (cents(cell.amount) === 0 && (cell.entered === null || cents(cell.entered) === 0));
+    }) &&
+    !rows.some((row) => edits.has(editKey(row.staffId, column.itemCode as string)));
+  const hidden = showAll ? [] : all.filter(empty);
+  const visible = all.filter((column) => !hidden.includes(column));
+  const earnings = visible.filter((column) => column.band === 'earnings');
+  const deductions = visible.filter((column) => column.band === 'deductions');
+  const employer = visible.filter((column) => column.band === 'employer');
+
+  const onDraft = (row: PayRow, code: string, text: string) => {
+    const key = editKey(row.staffId, code);
+    const saved = row.columns?.[code]?.entered ?? '';
+    setEdits((previous) => {
+      const next = new Map(previous);
+      // Back to what is saved is not a change.
+      if (text === saved || (validAmount(text) && saved !== '' && cents(text) === cents(saved))) next.delete(key);
+      else next.set(key, text);
+      return next;
+    });
+    setProblem(null);
+  };
+
+  const discard = () => {
+    setEdits(new Map());
+    setProblem(null);
+  };
+
+  const save = async () => {
+    if (!onSaveCells) return;
+    const list: GridEdit[] = [];
+    for (const [key, draft] of edits) {
+      const [staffId, code] = key.split(':');
+      const row = rows.find((candidate) => candidate.staffId === staffId);
+      const column = columns.find((candidate) => candidate.code === code);
+      const cell = row?.columns?.[code];
+      if (!row || !column || !cell) continue;
+      const text = draft.trim();
+      if (text !== '' && !validAmount(text)) {
+        setProblem(`${column.name} for ${row.name}: enter a number with at most two decimals, or leave the cell empty to clear it.`);
+        return;
+      }
+      const clears = text === '' || cents(text) === 0;
+      // Clearing a cell that holds no line is nothing to send.
+      if (clears && !cell.inputId) continue;
+      list.push({
+        key,
+        staffId,
+        name: row.name,
+        code,
+        title: column.name,
+        inputId: cell.inputId,
+        amount: clears ? null : (cents(text) / 100).toFixed(2),
+      });
+    }
+    setSaving(true);
+    setProblem(null);
+    try {
+      const outcome = await onSaveCells(list);
+      const failed = outcome?.failed ?? [];
+      setEdits((previous) => {
+        const next = new Map<string, string>();
+        for (const failure of failed) {
+          const draft = previous.get(failure.key);
+          if (draft !== undefined) next.set(failure.key, draft);
+        }
+        return next;
+      });
+      if (failed.length > 0) setProblem(failed.map((failure) => failure.message).join(' '));
+    } catch (error) {
+      setProblem(said(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const changes = edits.size;
+  const hiddenNames = hidden.map((column) => column.title);
 
   return (
+    <>
+      {columns.length > 0 && (hidden.length > 0 || showAll) ? (
+        <div className="hr-gridBar" role="status">
+          <span className="hr-small hr-muted">
+            {showAll
+              ? 'Showing every column, including the ones nobody in this list has an amount in.'
+              : `${hidden.length} ${hidden.length === 1 ? 'column' : 'columns'} hidden (${hiddenNames.join(', ')}): nobody in this list has an amount ${hidden.length === 1 ? 'in it' : 'in them'}.`}
+          </span>
+          <span className="hr-spacer" />
+          <button type="button" className="hr-btn hr-btn--sm" aria-pressed={showAll} onClick={() => setShowAll((value) => !value)}>
+            {showAll ? 'Hide empty columns' : 'Show all columns'}
+          </button>
+        </div>
+      ) : null}
+      {changes > 0 ? (
+        <div className="hr-gridBar hr-gridBar--dirty" role="status">
+          <span className="hr-small">
+            <strong>
+              {changes} {changes === 1 ? 'change' : 'changes'} not saved.
+            </strong>{' '}
+            Save sends each cell as its own line and works the month out once.
+          </span>
+          {problem ? <span className="hr-small hr-gridBar__problem">{problem}</span> : null}
+          <span className="hr-spacer" />
+          <button type="button" className="hr-btn hr-btn--sm" onClick={discard} disabled={saving}>
+            Discard
+          </button>
+          <button type="button" className="hr-btn hr-btn--sm hr-btn--primary" onClick={() => void save()} disabled={saving || !onSaveCells}>
+            {saving ? 'Saving' : 'Save changes'}
+          </button>
+        </div>
+      ) : null}
     <div className="kw-payrollGrid hr-scrollX">
       <table className="hr-grid">
         <thead>
@@ -315,7 +522,7 @@ export function PayrollGrid({
           <tr>
             <th className="hr-grid__freeze hr-grid__freeze--who">Employee</th>
             <th className="hr-grid__freeze hr-grid__freeze--status">Status</th>
-            {GRID_COLUMNS.map((column) => (
+            {visible.map((column) => (
               <th key={column.key} className={`hr-num${column.kind === 'record' && column.key === 'basic' ? ' is-record' : ''}`}>
                 {column.title}
               </th>
@@ -326,7 +533,7 @@ export function PayrollGrid({
         <tbody>
           {rows.map((row) => {
             return (
-              <tr key={row.staffId}>
+              <tr key={row.staffId} className={columns.some((column) => edits.has(editKey(row.staffId, column.code))) ? 'is-editing' : undefined}>
                 <td className="hr-grid__freeze hr-grid__freeze--who">
                   <Link className="hr-who" to={employeeLink(row.staffId)} title={row.name}>
                     <span className="hr-who__avatar">{initialsOf(row.name)}</span>
@@ -339,8 +546,17 @@ export function PayrollGrid({
                 <td className="hr-grid__freeze hr-grid__freeze--status">
                   <RowStatus row={row} />
                 </td>
-                {GRID_COLUMNS.map((column) => (
-                  <Cell key={column.key} column={column} row={row} onOpenItems={onOpenItems} />
+                {visible.map((column) => (
+                  <Cell
+                    key={column.key}
+                    column={column}
+                    row={row}
+                    onOpenItems={onOpenItems}
+                    canEdit={canEdit && Boolean(onSaveCells)}
+                    draft={column.itemCode ? edits.get(editKey(row.staffId, column.itemCode)) : undefined}
+                    onDraft={onDraft}
+                    previousMonth={previousMonth}
+                  />
                 ))}
                 <td>
                   {row.blockers > 0 && row.fixLink ? (
@@ -366,7 +582,7 @@ export function PayrollGrid({
               <td className="hr-grid__freeze hr-grid__freeze--status">
                 <Standing tone="block" label="Blocked" reason={row.reason} />
               </td>
-              {GRID_COLUMNS.map((column) => (
+              {visible.map((column) => (
                 <td key={column.key} className={`hr-num ${column.kind === 'editable' ? 'is-editable' : column.kind === 'record' ? 'is-record' : 'is-auto'}`}>
                   —
                 </td>
@@ -386,7 +602,7 @@ export function PayrollGrid({
               <span className="hr-grid__footWho">{covers(rows.length, counted, leftOut.length)}</span>
             </th>
             <td className="hr-grid__freeze hr-grid__freeze--status" />
-            {GRID_COLUMNS.map((column) => (
+            {visible.map((column) => (
               <Foot key={column.key} column={column} totals={totals} />
             ))}
             <td />
@@ -394,6 +610,7 @@ export function PayrollGrid({
         </tfoot>
       </table>
     </div>
+    </>
   );
 }
 
@@ -416,7 +633,7 @@ function Foot({ column, totals }: { column: GridColumn; totals: Totals }) {
   const className = ['hr-num', column.strong ? 'hr-strong' : '', column.net ? 'hr-net' : ''].filter(Boolean).join(' ');
   return (
     <td className={className}>
-      {figure(column, totals[column.total])}
+      {figure(column, footValue(column, totals))}
       {short > 0 ? (
         <span
           className="hr-grid__short"
@@ -441,9 +658,83 @@ function figure(column: GridColumn, raw: unknown): ReactNode {
   return text === null ? <span title="Not worked out">—</span> : text;
 }
 
-function Cell({ column, row, onOpenItems }: { column: GridColumn; row: PayRow; onOpenItems: (row: PayRow, cell: ItemsCell) => void }) {
+function Cell({
+  column,
+  row,
+  onOpenItems,
+  canEdit,
+  draft,
+  onDraft,
+  previousMonth,
+}: {
+  column: GridColumn;
+  row: PayRow;
+  onOpenItems: (row: PayRow, cell: ItemsCell) => void;
+  canEdit: boolean;
+  /** The unsaved text in this cell, if the person has typed. */
+  draft?: string;
+  onDraft: (row: PayRow, code: string, text: string) => void;
+  previousMonth: string;
+}) {
   const kindClass = column.kind === 'editable' ? 'is-editable' : column.kind === 'record' ? 'is-record' : 'is-auto';
   const className = ['hr-num', kindClass, column.strong ? 'hr-strong' : '', column.net ? 'hr-net' : ''].filter(Boolean).join(' ');
+
+  if (column.itemCode) {
+    const cell = row.columns?.[column.itemCode];
+    if (!cell) return <td className={className}>—</td>;
+    if (canEdit && cell.editable) {
+      // THE CELL IS A BOX. What it shows is what was keyed for the item —
+      // blank when nothing was — and the amber marker says when the line is
+      // still last month's copy. The engine's figure is the same number once
+      // the month has been worked out, and the foot below is always the
+      // engine's.
+      const saved = cell.entered ?? '';
+      const text = draft ?? saved;
+      const dirty = draft !== undefined;
+      const invalid = dirty && text.trim() !== '' && !validAmount(text);
+      const behind = !dirty && cell.entered !== null && cents(cell.entered) !== cents(cell.amount);
+      return (
+        <td className={`${className} is-input${cell.carried ? ' is-carried' : ''}`}>
+          <input
+            className={`hr-cellInput${dirty ? ' is-dirty' : ''}${invalid ? ' is-invalid' : ''}`}
+            inputMode="decimal"
+            value={text}
+            placeholder="0.00"
+            aria-label={`${column.title} for ${row.name}`}
+            aria-invalid={invalid || undefined}
+            title={cell.carried ? `Carried from ${previousMonth}. Edit or clear it if it should not repeat.` : undefined}
+            onChange={(event) => onDraft(row, column.itemCode as string, event.target.value)}
+          />
+          {cell.carried && !dirty ? (
+            <span className="hr-grid__carried" title={`Carried from ${previousMonth}. Edit or clear it if it should not repeat.`}>
+              Carried
+            </span>
+          ) : null}
+          {behind ? (
+            <span className="hr-grid__short" title={`The month has not been worked out since this was entered; it pays ${grouped(cell.amount)} today.`}>
+              Not worked out
+            </span>
+          ) : null}
+        </td>
+      );
+    }
+    // A derived line holds this item for this person — a recurring item,
+    // say — or the run is locked: the figure opens the drawer, which says
+    // where the line came from and, on an open run, where it is corrected.
+    return (
+      <td className={className}>
+        <button
+          type="button"
+          className="hr-cellBtn"
+          title={cell.editable ? "Open this month's items for this person" : 'This line comes from a record; open the items to see where.'}
+          aria-label={`${column.title} for ${row.name}: open the month's items`}
+          onClick={() => onOpenItems(row, 'income')}
+        >
+          {figure(column, cell.amount)}
+        </button>
+      </td>
+    );
+  }
 
   if (column.kind === 'editable') {
     // THE FIGURE IS THE BUTTON. It stays the server's total — the drawer it
@@ -509,6 +800,7 @@ function PayrollCards({
   counted,
   link,
   onOpenItems,
+  columns,
 }: {
   rows: PayRow[];
   leftOut: LeftOutRow[];
@@ -516,6 +808,7 @@ function PayrollCards({
   counted: number;
   link: (staffId: string) => string;
   onOpenItems: (row: PayRow, cell: ItemsCell) => void;
+  columns: OwnColumn[];
 }) {
   return (
     <div className="kw-payCards">
@@ -549,6 +842,15 @@ function PayrollCards({
                 </button>
               </dd>
             </div>
+            {/* THE OWN COLUMNS, read-only on a phone: typed on a wider screen or through the items. */}
+            {columns
+              .filter((column) => cents(row.columns?.[column.code]?.amount ?? '0') !== 0)
+              .map((column) => (
+                <div key={column.code}>
+                  <dt>{column.name}</dt>
+                  <dd className="kw-num">{grouped(row.columns[column.code].amount)}</dd>
+                </div>
+              ))}
             <div>
               <dt>Deductions</dt>
               <dd className="kw-num">{grouped(row.deductionTotal)}</dd>

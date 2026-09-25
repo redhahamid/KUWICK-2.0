@@ -1815,6 +1815,12 @@ export interface PayComponentRow {
   eaField: string | null;
   prorated: boolean;
   employerSide: boolean;
+  /** Layout, not treatment: the item has its own editable column on the payroll grid. */
+  gridColumn: boolean;
+  /** Layout, not treatment: a new month starts with last month's hand-keyed amount. */
+  carryForward: boolean;
+  /** A person keys this item's amount, so the two switches above are offered for it. */
+  handKeyed: boolean;
   systemControlled: boolean;
   active: boolean;
   verificationStatus: string;
@@ -1890,6 +1896,8 @@ export interface PayrollInputRow {
   enteredBy: string;
   enteredAt: string;
   editable: boolean;
+  /** "2026-01" while the row is still last month's copy, untouched; null once edited or when keyed by hand. */
+  carriedFromMonth: string | null;
 }
 
 export interface PayrollExceptionRow {
@@ -2238,6 +2246,29 @@ export interface PayrollHome {
   }[];
 }
 
+/** An item with a column of its own on the grid, in Payroll items order. */
+export interface PayrollJourneyColumn {
+  code: string;
+  name: string;
+  carryForward: boolean;
+}
+
+/**
+ * ONE PERSON'S CELL IN AN OWN COLUMN. `amount` is what the line pays — the
+ * engine's answer; `entered` is what was keyed for the item, or null when
+ * nothing was. The two differ only until the month is worked out again.
+ * `editable` is false while a derived row (a recurring item, say) holds the
+ * person's line for this item; `carried` while the row is still last month's
+ * untouched copy.
+ */
+export interface PayrollJourneyColumnCell {
+  amount: string;
+  entered: string | null;
+  editable: boolean;
+  carried: boolean;
+  inputId: string | null;
+}
+
 export interface PayrollJourneyPayItem {
   id: string;
   componentCode: string;
@@ -2248,6 +2279,8 @@ export interface PayrollJourneyPayItem {
   provenance: string | null;
   earnedPeriod: string | null;
   editable: boolean;
+  /** Still last month's copy, untouched. */
+  carried: boolean;
 }
 
 export interface PayrollJourney {
@@ -2385,6 +2418,8 @@ export interface PayrollJourney {
       otherIncome: string;
       overtimeHours: number;
       unpaidDays: number;
+      /** The own columns, keyed by item code; `pay.columns` gives their order and names. */
+      columns: Record<string, PayrollJourneyColumnCell>;
       items: PayrollJourneyPayItem[];
     }[];
     /**
@@ -2459,11 +2494,15 @@ export interface PayrollJourney {
       /** The grid's columns — see the row. */
       claims: string;
       otherIncome: string;
+      /** One total per own column, keyed by item code. */
+      columns: Record<string, string>;
       overtimeHours: number;
       unpaidDays: number;
       addsUp: boolean;
       discrepancy: string | null;
     };
+    /** The items with a column of their own, in the order the grid draws them. */
+    columns: PayrollJourneyColumn[];
   };
   review: {
     gate: PayrollExceptionGate;

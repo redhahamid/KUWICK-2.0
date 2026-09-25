@@ -123,6 +123,20 @@ Setiap baris ada lapan suis:
 kerenah — bulan yang sudah dikira kekal dengan layanan lama, jadi mengubah
 suis hari ini tidak menulis semula gaji Ogos.
 
+**Dua suis susun atur** di hujung baris tidak minta tarikh atau sebab, kerana
+ia tidak mengubah layanan berkanun — hanya cara item itu duduk pada grid gaji:
+
+| Suis | Apa jadi | Contoh |
+|---|---|---|
+| **Own column** | Item itu dapat lajur sendiri pada grid gaji, antara *Basic* dan *Other income*, dan ditaip terus dalam petak | Fi pengarah, locum, insentif — item yang hampir semua orang ada setiap bulan |
+| **Carry forward** | Bulan baharu bermula dengan jumlah bulan lepas bagi setiap pekerja, bertanda *Carried* sehingga diubah atau dikosongkan. Baris yang *earned in* bulan sebelumnya dibawa dengan bulan *earned in* dianjak satu (baris Januari *earned in* Disember menjadi baris Februari *earned in* Januari); bayaran lewat sekali sahaja (bulan *earned in* lain) tidak dibawa | Fi BOD, locum dan OT yang dibayar sebulan tertunggak |
+
+Kedua-duanya hanya untuk item yang ditaip tangan — bukan gaji pokok, lebih
+masa, cuti tanpa gaji, tuntutan atau PCB, yang sudah ada lajur sendiri — dan
+*Own column* bukan untuk potongan. Salinan dibuat sekali sahaja apabila bulan
+dimulakan, bukan pada kiraan semula; bulan yang dibuang dan dimulakan semula
+tidak menyalin lagi, jadi baris yang anda kosongkan tidak kembali.
+
 Item bertanda **kunci** ialah item sistem (gaji pokok, lebih masa, potongan
 berkanun). Anda boleh matikan lajur **In use**, tapi layanan berkanunnya tidak
 boleh diubah di sini.
@@ -641,7 +655,7 @@ Selepas bermula, bulan itu berjalan melalui empat tahap:
 
 | Tahap | Apa yang berlaku |
 |---|---|
-| **Prepare** | Daftar gaji, seorang satu baris. **Petak kelabu** datang dari rekod atau dikira untuk anda; **petak putih** membuka senarai item bulan itu. Klik **Other income** atau **Other** untuk tambah, ubah atau buang item (elaun, insentif, fi BOD, locum bulan lepas); setiap item satu baris pada slip gaji, dan bulan dikira semula selepas setiap perubahan |
+| **Prepare** | Daftar gaji, seorang satu baris. **Petak kelabu** datang dari rekod atau dikira untuk anda; **petak putih** membuka senarai item bulan itu. Klik **Other income** atau **Other** untuk tambah, ubah atau buang item (elaun, insentif, fi BOD, locum bulan lepas); setiap item satu baris pada slip gaji, dan bulan dikira semula selepas setiap perubahan. Item dengan **Own column** (Settings › Payroll items) ditaip terus dalam petaknya: taip beberapa petak, tekan **Save changes** sekali — setiap petak dihantar sebagai baris sendiri melalui peraturan pelayan yang sama, dan bulan dikira semula sekali. Lajur yang tiada jumlah bagi sesiapa dalam senarai dilipat; **Show all columns** membukanya untuk jumlah pertama. Petak bertanda *Carried* (garis putus) masih jumlah bulan lepas — ubah atau kosongkan jika tidak berulang; *Review* mengira baris begitu tanpa menyekat |
 | **Review** | Apa yang menghalang, apa yang patut dipandang, dan berapa jumlah bulan itu |
 | **Approve** | Meluluskan mengunci bulan. Ini saat wang terikat |
 | **Pay** | Slip gaji, senarai pembayaran bank, dan angka berkanun untuk difailkan |

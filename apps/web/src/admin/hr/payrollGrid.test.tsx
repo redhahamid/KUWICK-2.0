@@ -1,14 +1,15 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PayrollJourney } from '../types';
 
 vi.mock('../hooks/useAdmin', () => ({}));
 
-const { covers, GRID_COLUMNS, PayrollGrid } = await import('./PayrollGrid');
+const { cellValue, covers, GRID_COLUMNS, gridColumnsFor, PayrollGrid } = await import('./PayrollGrid');
 
 type PayRow = PayrollJourney['pay']['rows'][number];
+type ColumnCell = PayRow['columns'][string];
 
 /**
  * THE VIEWPORT, UNDER TEST'S CONTROL.
@@ -83,6 +84,7 @@ function row(over: Partial<PayRow> = {}): PayRow {
     otherIncome: '250.00',
     overtimeHours: 4,
     unpaidDays: 0,
+    columns: {},
     items: [
       {
         id: 'in-1',
@@ -560,3 +562,150 @@ describe('the payroll grid', () => {
   });
 });
 
+/*
+ * THE CLINIC'S OWN COLUMNS. Switched on under Payroll items, an item gets a
+ * column between Basic and Other income that is typed into like a
+ * spreadsheet: the drafts go amber, one Save changes sends every changed
+ * cell, and a column nobody in the list has an amount in is folded away.
+ */
+describe('the clinic’s own columns', () => {
+  const OWN = [
+    { code: 'DIRECTOR_FEE', name: "Director's fee", carryForward: true },
+    { code: 'LOCUM_FEE', name: 'Locum fee', carryForward: true },
+  ];
+  const cell = (amount: string, over: Partial<ColumnCell> = {}): ColumnCell => ({
+    amount,
+    entered: amount === '0.00' ? null : amount,
+    editable: true,
+    carried: false,
+    inputId: amount === '0.00' ? null : `in-${amount}`,
+    ...over,
+  });
+  const withColumns = (over: Partial<PayRow> = {}) =>
+    row({
+      columns: { DIRECTOR_FEE: cell('2000.00', { inputId: 'in-df' }), LOCUM_FEE: cell('900.00', { inputId: 'in-lf' }) },
+      ...over,
+    });
+  const ownTotals = () => totals({ columns: { DIRECTOR_FEE: '2500.00', LOCUM_FEE: '1350.00' } });
+  const box = (name: string) => screen.getByRole('textbox', { name }) as HTMLInputElement;
+
+  it('sit between Basic and Other income, in the order given, and foot on the server’s own total', () => {
+    viewport(1280);
+    grid({ columns: OWN, rows: [withColumns()], totals: ownTotals() });
+    expect(headers().slice(2, 6)).toEqual(['Basic', "Director's fee", 'Locum fee', 'Other income']);
+    // Earnings grew by the two columns: basic sits under "Record" as before.
+    expect(groups()).toContainEqual(['Earnings', 7]);
+    const foot = [...document.querySelectorAll('tfoot td')].map((cell) => cell.textContent?.trim() ?? '');
+    expect(foot[2]).toBe('2,500.00');
+    expect(foot[3]).toBe('1,350.00');
+    // Read-only without a save path: the figure opens the items, like the other white cells.
+    expect(screen.getByRole('button', { name: "Director's fee for Nurul Hidayah: open the month's items" })).toHaveTextContent('2,000.00');
+  });
+
+  it('fold a column nobody in this list has an amount in, and Show all columns brings it back', () => {
+    viewport(1280);
+    grid({ columns: OWN, rows: [withColumns({ columns: { DIRECTOR_FEE: cell('2000.00'), LOCUM_FEE: cell('0.00') } })], totals: ownTotals() });
+    expect(headers()).not.toContain('Locum fee');
+    expect(screen.getByRole('status')).toHaveTextContent('1 column hidden (Locum fee): nobody in this list has an amount in it.');
+    fireEvent.click(screen.getByRole('button', { name: 'Show all columns' }));
+    expect(headers()).toContain('Locum fee');
+    expect(screen.getByRole('button', { name: 'Hide empty columns' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('are typed into on an open run, and one Save changes sends every changed cell together', async () => {
+    viewport(1280);
+    const onSaveCells = vi.fn().mockResolvedValue({ failed: [] });
+    grid({ columns: OWN, rows: [withColumns()], totals: ownTotals(), canEdit: true, onSaveCells });
+    const fee = box("Director's fee for Nurul Hidayah");
+    expect(fee.value).toBe('2000.00');
+    fireEvent.change(fee, { target: { value: '2100' } });
+    expect(screen.getByText('1 change not saved.')).toBeInTheDocument();
+    // A blank clears the line.
+    fireEvent.change(box('Locum fee for Nurul Hidayah'), { target: { value: '' } });
+    expect(screen.getByText('2 changes not saved.')).toBeInTheDocument();
+    // Back to what is saved is not a change.
+    fireEvent.change(box('Locum fee for Nurul Hidayah'), { target: { value: '900' } });
+    expect(screen.getByText('1 change not saved.')).toBeInTheDocument();
+    fireEvent.change(box('Locum fee for Nurul Hidayah'), { target: { value: '' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onSaveCells).toHaveBeenCalledTimes(1));
+    expect(onSaveCells.mock.calls[0][0]).toEqual([
+      { key: 'staff-1:DIRECTOR_FEE', staffId: 'staff-1', name: 'Nurul Hidayah', code: 'DIRECTOR_FEE', title: "Director's fee", inputId: 'in-df', amount: '2100.00' },
+      { key: 'staff-1:LOCUM_FEE', staffId: 'staff-1', name: 'Nurul Hidayah', code: 'LOCUM_FEE', title: 'Locum fee', inputId: 'in-lf', amount: null },
+    ]);
+    await waitFor(() => expect(screen.queryByText(/not saved/)).toBeNull());
+  });
+
+  it('refuse to send a cell that is not a number, and say which', () => {
+    viewport(1280);
+    const onSaveCells = vi.fn().mockResolvedValue({ failed: [] });
+    grid({ columns: OWN, rows: [withColumns()], totals: ownTotals(), canEdit: true, onSaveCells });
+    fireEvent.change(box("Director's fee for Nurul Hidayah"), { target: { value: 'two thousand' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(screen.getByText(/Director's fee for Nurul Hidayah: enter a number with at most two decimals/)).toBeInTheDocument();
+    expect(onSaveCells).not.toHaveBeenCalled();
+  });
+
+  it('keep a cell the server refused, with its reason, and let the rest go', async () => {
+    viewport(1280);
+    const onSaveCells = vi.fn().mockResolvedValue({ failed: [{ key: 'staff-1:DIRECTOR_FEE', message: "Director's fee for Nurul Hidayah: The payroll for 2026-01 is already approved." }] });
+    grid({ columns: OWN, rows: [withColumns()], totals: ownTotals(), canEdit: true, onSaveCells });
+    fireEvent.change(box("Director's fee for Nurul Hidayah"), { target: { value: '2100' } });
+    fireEvent.change(box('Locum fee for Nurul Hidayah'), { target: { value: '950' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(screen.getByText('1 change not saved.')).toBeInTheDocument());
+    expect(screen.getByText(/already approved/)).toBeInTheDocument();
+    expect(box("Director's fee for Nurul Hidayah").value).toBe('2100');
+    expect(box('Locum fee for Nurul Hidayah').value).toBe('900.00');
+  });
+
+  it('mark a cell still carrying last month’s amount until it is typed into', () => {
+    viewport(1280);
+    grid({
+      columns: OWN,
+      rows: [withColumns({ columns: { DIRECTOR_FEE: cell('2000.00', { carried: true, inputId: 'in-df' }), LOCUM_FEE: cell('900.00') } })],
+      totals: ownTotals(),
+      canEdit: true,
+      previousMonth: 'January 2026',
+      onSaveCells: vi.fn(),
+    });
+    const marker = screen.getByText('Carried');
+    expect(marker).toHaveAttribute('title', 'Carried from January 2026. Edit or clear it if it should not repeat.');
+    expect(screen.queryByText('Carried', { selector: '.hr-grid__carried' })).not.toBeNull();
+    fireEvent.change(box("Director's fee for Nurul Hidayah"), { target: { value: '2100' } });
+    expect(screen.queryByText('Carried')).toBeNull();
+  });
+
+  it('keep a line a record holds as a figure that opens the items, never a box', () => {
+    viewport(1280);
+    const onOpenItems = vi.fn();
+    grid({
+      columns: OWN,
+      rows: [withColumns({ columns: { DIRECTOR_FEE: cell('250.00', { editable: false, inputId: 'in-rec' }), LOCUM_FEE: cell('900.00') } })],
+      totals: ownTotals(),
+      canEdit: true,
+      onSaveCells: vi.fn(),
+      onOpenItems,
+    });
+    expect(screen.queryByRole('textbox', { name: "Director's fee for Nurul Hidayah" })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: "Director's fee for Nurul Hidayah: open the month's items" }));
+    expect(onOpenItems).toHaveBeenCalledWith(expect.objectContaining({ staffId: 'staff-1' }), 'income');
+  });
+
+  it('show on a phone card as figures, not boxes', () => {
+    viewport(390);
+    grid({ columns: OWN, rows: [withColumns()], totals: ownTotals(), canEdit: true, onSaveCells: vi.fn() });
+    expect(screen.getByText("Director's fee")).toBeInTheDocument();
+    expect(screen.getByText('2,000.00')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).toBeNull();
+  });
+
+  it('are in the export whether folded or not, with the row’s own figure', () => {
+    const columns = gridColumnsFor(OWN);
+    expect(columns.map((column) => column.key).slice(0, 4)).toEqual(['basic', 'item:DIRECTOR_FEE', 'item:LOCUM_FEE', 'otherIncome']);
+    expect(cellValue(columns[1], withColumns())).toBe('2000.00');
+    expect(cellValue(columns[1], row())).toBe('0.00');
+    expect(cellValue(columns[0], row())).toBe('3200.00');
+  });
+});

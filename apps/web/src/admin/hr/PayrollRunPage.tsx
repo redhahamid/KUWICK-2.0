@@ -4,10 +4,17 @@ import { App, Grid, Modal } from 'antd';
 import dayjs from 'dayjs';
 import { ringgit } from '../components/DataTable';
 import { humanise } from '../components/Chip';
-import { useApprovePayroll, useCalculatePayroll, useDiscardPayrollRun, usePayrollJourney } from '../hooks/useAdmin';
+import {
+  useApprovePayroll,
+  useCalculatePayroll,
+  useDeletePayrollInput,
+  useDiscardPayrollRun,
+  usePayrollJourney,
+  useUpsertPayrollInput,
+} from '../hooks/useAdmin';
 import { ProvisionalBanner } from './ProvisionalBanner';
 import { PayrollStepper, STEPS, normaliseStep, stepsWithProblems, type StepKey } from './PayrollStepper';
-import { GRID_COLUMNS, PayrollGrid, type LeftOutRow } from './PayrollGrid';
+import { cellValue, gridColumnsFor, PayrollGrid, type GridEdit, type LeftOutRow, type SaveOutcome } from './PayrollGrid';
 import { PayrollExceptionCentre } from './PayrollExceptionCentre';
 import { PayrollInputsDrawer } from './PayrollInputsDrawer';
 import { PayslipsPanel } from './PayslipsPanel';
@@ -88,16 +95,19 @@ export function PayrollWorkspace({ runId, monthNav }: { runId: string; monthNav?
 
   const exportCsv = () => {
     if (!data) return;
+    // Every column, the clinic's own ones included — a folded column is a
+    // screen decision, not a change to what the month contains.
+    const exportColumns = gridColumnsFor(data.pay.columns);
     downloadCsv(
       `payroll-${data.run.period}`,
       // The export carries the column's fuller name where the grid leans on
       // the group header above it to say whose money the column is.
-      ['Employee', 'Position', 'Status', ...GRID_COLUMNS.map((column) => column.exportTitle ?? column.title)],
+      ['Employee', 'Position', 'Status', ...exportColumns.map((column) => column.exportTitle ?? column.title)],
       rows.map((row) => [
         row.name,
         row.position,
         row.blockers > 0 ? 'Blocked' : row.warnings > 0 ? 'Needs attention' : 'Ready',
-        ...GRID_COLUMNS.map((column) => row[column.field] as string | number | null),
+        ...exportColumns.map((column) => cellValue(column, row)),
       ]),
     );
   };
@@ -258,6 +268,8 @@ function PrepareStep({
 }) {
   const { message } = App.useApp();
   const calculate = useCalculatePayroll();
+  const upsertInput = useUpsertPayrollInput();
+  const removeInput = useDeletePayrollInput();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
 
@@ -278,6 +290,43 @@ function PrepareStep({
       onError: (error: Error) => message.error(error.message),
     });
 
+  /*
+   * ONE SAVE FOR A BATCH OF CELLS. Each changed cell goes through the same
+   * inputs endpoint the drawer uses — a line per person and item, the same
+   * server rules, the same audit row — and the month is worked out ONCE at
+   * the end rather than after every cell. A cell the server refuses keeps
+   * its draft and its reason; the rest are saved.
+   */
+  const saveCells = async (edits: GridEdit[]): Promise<SaveOutcome> => {
+    const failed: { key: string; message: string }[] = [];
+    for (const edit of edits) {
+      try {
+        if (edit.amount === null) {
+          if (edit.inputId) await removeInput.mutateAsync(edit.inputId);
+        } else {
+          await upsertInput.mutateAsync({
+            staffId: edit.staffId,
+            period: `${data.run.period}-01`,
+            componentCode: edit.code,
+            amount: edit.amount,
+          });
+        }
+      } catch (error) {
+        failed.push({ key: edit.key, message: `${edit.title} for ${edit.name}: ${(error as Error).message}` });
+      }
+    }
+    const saved = edits.length - failed.length;
+    if (saved > 0) {
+      try {
+        await calculate.mutateAsync(runId);
+        message.success(`${saved} ${saved === 1 ? 'change' : 'changes'} saved and the month worked out again.`);
+      } catch (error) {
+        message.error(`Saved, but the month could not be worked out again: ${(error as Error).message}`);
+      }
+    }
+    return { failed };
+  };
+
 
   return (
     <>
@@ -292,6 +341,12 @@ function PrepareStep({
               <i className="is-editable" />
               Opens the month’s items
             </span>
+            {data.pay.columns.length > 0 ? (
+              <span>
+                <i className="is-input" />
+                Type an amount, then Save changes
+              </span>
+            ) : null}
           </div>
         }
       >
@@ -321,6 +376,10 @@ function PrepareStep({
           counted={rows.length}
           runId={runId}
           onOpenItems={onOpenItems}
+          columns={data.pay.columns}
+          canEdit={canEdit}
+          previousMonth={dayjs(data.run.period).subtract(1, 'month').format('MMMM YYYY')}
+          onSaveCells={saveCells}
         />
       )}
 
@@ -413,6 +472,16 @@ function ReviewStep({
   const blocked = data.pay.rows.filter((row) => row.blockers > 0).length;
   const ready = data.pay.rows.length - blocked;
   const leftOut = data.employees.needsSetup;
+  /*
+   * LINES STILL CARRYING LAST MONTH'S AMOUNT, counted here because the
+   * reviewer is the person who has to know. They are paid as they stand —
+   * right when the figure repeats, wrong when it does not — and nothing
+   * asks for a click per line; editing or clearing one takes it off this list.
+   */
+  const previousMonth = dayjs(data.run.period).subtract(1, 'month').format('MMMM YYYY');
+  const carried = data.pay.rows.flatMap((row) =>
+    row.items.filter((item) => item.carried).map((item) => ({ name: row.name, label: item.label, amount: item.amount })),
+  );
 
   return (
     <>
@@ -424,6 +493,20 @@ function ReviewStep({
           <StatCard label="Not in this run" value={leftOut} tone={leftOut > 0 ? 'gold' : 'plain'} sub={leftOut > 0 ? 'No salary on record' : undefined} />
         </StatRow>
       </div>
+
+      {carried.length > 0 ? (
+        <div className="hr-pad hr-pad--top0">
+          <div className="hr-notice hr-notice--info" data-testid="carried-unchecked">
+            <strong>
+              {carried.length} {carried.length === 1 ? 'line' : 'lines'} carried from {previousMonth} {carried.length === 1 ? 'has' : 'have'} not
+              been edited or cleared.
+            </strong>{' '}
+            {carried.length === 1 ? 'It' : 'They'} will be paid at last month’s amount:{' '}
+            {carried.map((line) => `${line.name}, ${line.label} ${ringgit(line.amount)}`).join('; ')}. Change or clear any that should
+            not repeat on the grid, or leave them as they are.
+          </div>
+        </div>
+      ) : null}
 
       <div className="hr-pad hr-pad--top0">
         <PayrollExceptionCentre runId={runId} canOverride={mayApprove} onFixInputs={onFixInputs} />

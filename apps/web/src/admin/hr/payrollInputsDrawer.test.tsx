@@ -42,6 +42,7 @@ function line(over: Partial<PayrollInputRow>): PayrollInputRow {
     column: 'Other income',
     origin: 'Entered by Dr Aisyah',
     sourceLink: null,
+    carriedFromMonth: null,
     ...over,
   };
 }
@@ -238,5 +239,41 @@ describe('the month’s items for one person', () => {
   it('points at Payroll items for a kind of pay that does not exist yet', () => {
     show();
     expect(screen.getByRole('link', { name: 'Add it under Payroll items' })).toHaveAttribute('href', '/admin/hr/settings/payroll-items');
+  });
+});
+
+/*
+ * CARRIED LINES. A month started with last month's amounts shows each copied
+ * line as such until it is edited or removed; and because the server patches
+ * a line, a cleared reason or earned-in month is sent as null rather than
+ * left out, or it would keep what the copy carried.
+ */
+describe('lines carried from last month', () => {
+  it('are marked as such, with the month they came from', () => {
+    inputRows = [
+      line({
+        id: 'in-carried',
+        componentCode: 'DIRECTOR_FEE',
+        itemName: "Director's fee",
+        amount: '2000.00',
+        carriedFromMonth: '2025-12',
+        reason: 'Carried from December 2025',
+        origin: 'Carried from December 2025 when the month was started',
+      }),
+    ];
+    show();
+    expect(screen.getByText('Carried from Dec 2025')).toBeInTheDocument();
+    expect(screen.getByText('Carried from December 2025 when the month was started')).toBeInTheDocument();
+  });
+
+  it('send an explicit null for a cleared reason and earned-in month when edited', async () => {
+    show();
+    const income = group('Counted in Other income');
+    // The director's fee line has neither a reason nor an earned-in month.
+    fireEvent.click(within(income).getAllByRole('button', { name: 'Edit' })[1]);
+    expect(await screen.findByText("Edit Director's fee — January 2026")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(upsertMutate).toHaveBeenCalled());
+    expect(upsertMutate.mock.calls[0][0]).toMatchObject({ componentCode: 'DIRECTOR_FEE', amount: '2000.00', reason: null, earnedPeriod: null });
   });
 });

@@ -285,6 +285,26 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    * real one eventually gets clicked past too. It is recorded so the run can
    * account for everybody the clinic pays, not only everybody it payrolls.
    */
+  /*
+   * LAST MONTH'S AMOUNT, NOT YET LOOKED AT. When a month is started, items
+   * switched to carry forward copy their hand-keyed lines from the month
+   * before. That is the spreadsheet habit and it is right when the amount
+   * repeats; it is wrong when it does not, and nothing but a person can tell
+   * the two apart. So the run says how many such lines nobody has touched,
+   * as information: it never blocks, and editing or clearing a line clears it.
+   */
+  CARRIED_FORWARD_UNCHECKED: {
+    code: 'CARRIED_FORWARD_UNCHECKED',
+    severity: 'INFO',
+    overridable: false,
+    cause: (c) =>
+      `${c.count} ${Number(c.count) === 1 ? 'line was' : 'lines were'} carried from ${c.from} and ` +
+      `${Number(c.count) === 1 ? 'has' : 'have'} not been edited or cleared: ${c.items}.`,
+    consequence:
+      'They will be paid at last month’s amount. That is right when the amount really repeats, and wrong when it does not.',
+    remediation: 'Open the person’s items and edit or clear any line that should not repeat. Leave the rest as they are.',
+    deepLink: (c) => `/admin/hr/payroll/${c.runId}/employees/${c.staffId}`,
+  },
   CONTRACTOR_EXCLUDED: {
     code: 'CONTRACTOR_EXCLUDED',
     severity: 'INFO',

@@ -119,6 +119,8 @@ import {
   verifySnapshot,
 } from './payroll-snapshot';
 import { computeVariance, VarianceLine } from './payroll-variance';
+import { PayrollInputService } from './payroll-input.service';
+import { monthBefore, monthLabel } from './payroll-register-columns';
 import {
   EmployeeFigures,
   checkMembership,
@@ -161,6 +163,7 @@ export class PayrollService {
   constructor(
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
     private readonly rawPrisma: PrismaService,
+    private readonly inputs: PayrollInputService,
   ) {}
 
   // --- Year to date ---------------------------------------------------------
@@ -588,7 +591,15 @@ export class PayrollService {
       // rather than because none was ever asked for.
       const chosen = [...divisorsByPolicy.values()][0] ?? null;
 
-      return tx.payrollRun.create({
+      /*
+       * THE MONTH STARTS WITH LAST MONTH'S HAND-KEYED AMOUNTS for the items the
+       * clinic marked to carry — once, here, when the regular run is begun,
+       * and never on a recalculation. In the same transaction, so a refused
+       * run copies nothing. See `PayrollInputService.carryForward`.
+       */
+      const carried = runType === 'REGULAR' ? await this.inputs.carryForward(tx, actor, { period, clinicId: dto.clinicId ?? null }) : null;
+
+      const run = await tx.payrollRun.create({
         data: {
           tenantId: currentTenantId(),
           clinicId: dto.clinicId ?? null,
@@ -606,6 +617,7 @@ export class PayrollService {
             : {}),
         },
       });
+      return { ...run, carried };
     });
   }
 
@@ -1033,6 +1045,7 @@ export class PayrollService {
         year: 'numeric',
         timeZone: 'UTC',
       });
+      const previousPeriodLabel = monthLabel(monthBefore(period));
       // Every payslip's figures, kept so the run's own totals can be checked
       // against the rows that produced them rather than trusted.
       const paidEmployees: EmployeeFigures[] = [];
@@ -1697,6 +1710,22 @@ export class PayrollService {
         const materialised = await tx.payrollInputEntry.findMany({
           where: { staffId: employee.staffId, period },
         });
+
+        // LINES COPIED FROM LAST MONTH THAT NOBODY HAS TOUCHED are paid at
+        // last month's amount: right when the figure repeats, wrong when it
+        // does not, and the run cannot tell which. So it says so, per person,
+        // as an INFO row the reviewer reads before approving. Editing or
+        // clearing the line takes it off this list.
+        const carriedRows = materialised.filter((row) => row.carriedFromId !== null);
+        if (carriedRows.length > 0 && !isBonusRun) {
+          raise('CARRIED_FORWARD_UNCHECKED', employee, {
+            count: carriedRows.length,
+            from: previousPeriodLabel,
+            items: carriedRows
+              .map((row) => `${catalogue.get(row.componentCode)?.label ?? row.label ?? row.componentCode} RM${formatCents(toCents(row.amount))}`)
+              .join(', '),
+          });
+        }
 
         const overtimeCents = materialised
           .filter((row) => row.componentCode === 'OVERTIME')

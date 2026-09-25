@@ -69,8 +69,35 @@ const whole = (row: PayComponentRow) => ({
   additionalRemuneration: row.additionalRemuneration,
   prorated: row.prorated,
   employerSide: row.employerSide,
+  gridColumn: row.gridColumn,
+  carryForward: row.carryForward,
   active: row.active,
 });
+
+/**
+ * HOW THE ITEM SITS ON THE PAYROLL GRID — layout, not treatment, so no date
+ * and no reason: a column of its own between Basic and Other income, and
+ * whether a new month starts with last month's amount for each person.
+ * Offered only for an item a person keys; the derived ones have columns of
+ * their own already and the server refuses them.
+ */
+type Layout = 'gridColumn' | 'carryForward';
+const LAYOUT: { key: Layout; title: string; width: number; on: (name: string) => string; off: (name: string) => string }[] = [
+  {
+    key: 'gridColumn',
+    title: 'Own column',
+    width: 96,
+    on: (name) => `${name} now has its own column on the payroll grid.`,
+    off: (name) => `${name} is back in Other income on the payroll grid.`,
+  },
+  {
+    key: 'carryForward',
+    title: 'Carry forward',
+    width: 110,
+    on: (name) => `${name} will start each month with last month’s amount for each person.`,
+    off: (name) => `${name} will start each month empty.`,
+  },
+];
 
 /**
  * A NEW COMPONENT STARTS LIABLE TO NOTHING IT HAS NOT BEEN TOLD ABOUT.
@@ -95,6 +122,8 @@ const BLANK = {
   additionalRemuneration: false,
   prorated: false,
   employerSide: false,
+  gridColumn: false,
+  carryForward: false,
   active: true,
 };
 
@@ -222,6 +251,19 @@ export function PayrollItemsPage() {
       { ...whole(row), active },
       {
         onSuccess: () => message.success(`${row.name} ${active ? 'in use' : 'switched off'}.`),
+        onError: (error: Error) => message.error(error.message),
+      },
+    );
+
+  /** Where the item sits on the grid is layout, saved in place like on/off. */
+  const toggleLayout = (row: PayComponentRow, key: Layout, next: boolean) =>
+    upsert.mutate(
+      { ...whole(row), [key]: next },
+      {
+        onSuccess: () => {
+          const layout = LAYOUT.find((candidate) => candidate.key === key);
+          message.success(next ? layout?.on(row.name) : layout?.off(row.name));
+        },
         onError: (error: Error) => message.error(error.message),
       },
     );
@@ -494,6 +536,26 @@ export function PayrollItemsPage() {
                   },
                 ]
               : []),
+            ...LAYOUT.map((layout) => ({
+              title: layout.title,
+              dataIndex: layout.key,
+              width: layout.width,
+              align: 'center' as const,
+              render: (value: boolean, row: PayComponentRow) =>
+                row.handKeyed ? (
+                  <Switch
+                    size="small"
+                    checked={value}
+                    disabled={!mayManage || upsert.isPending || !row.active}
+                    aria-label={`${layout.title} for ${row.name}`}
+                    onChange={(next) => toggleLayout(row, layout.key, next)}
+                  />
+                ) : (
+                  <span className="hr-faint" title="This item's amount comes from records, so it has a column of its own already.">
+                    —
+                  </span>
+                ),
+            })),
             {
               title: 'In use',
               dataIndex: 'active',
@@ -511,6 +573,12 @@ export function PayrollItemsPage() {
             },
           ]}
         />
+        <div className="hr-panelNote">
+          <strong>Own column</strong> gives the item a column of its own on the payroll grid, between Basic and Other income, typed
+          straight in. <strong>Carry forward</strong> starts each new month with last month’s amount for each person, marked as
+          carried until it is edited or cleared; a line earned in the month before is carried with its earned-in month moved on
+          by one, and a one-off late payment is not carried. Both are layout, not treatment: they need no date or reason.
+        </div>
         {components.data ? <div className="hr-panelNote">{components.data.verificationNotice.statement}</div> : null}
       </Panel>
 
@@ -658,6 +726,29 @@ export function PayrollItemsPage() {
               KWSP, PERKESO, LHDN or HRD Corp.
             </span>
           </div>
+
+          {draft.type === 'ADDITION' ? (
+            <div className="hr-fld">
+              <label>On the payroll grid</label>
+              <div className="hr-newFlags">
+                {LAYOUT.map((layout) => (
+                  <label key={layout.key} className="hr-newFlags__one">
+                    <Switch
+                      size="small"
+                      checked={draft[layout.key]}
+                      onChange={(next) => setDraft({ ...draft, [layout.key]: next })}
+                      aria-label={layout.title}
+                    />
+                    <span>{layout.title}</span>
+                  </label>
+                ))}
+              </div>
+              <span className="hr-faint hr-small">
+                Own column: typed straight into the grid, between Basic and Other income. Carry forward: each new month starts
+                with last month’s amount for each person, marked as carried until edited or cleared.
+              </span>
+            </div>
+          ) : null}
           {addProblem ? <div className="hr-small" style={{ color: 'var(--hr-red)' }}>{addProblem}</div> : null}
         </Drawer>
       ) : null}
