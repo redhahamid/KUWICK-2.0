@@ -554,7 +554,8 @@ describe('the payroll grid', () => {
     const opened: string[] = [];
     grid({ rows: [row()], onOpenItems: (chosen) => opened.push(chosen.name) });
     // The last such button on the page belongs to the render above, not to the first one in this test.
-    fireEvent.click(screen.getAllByRole('button', { name: "Other income for Nurul Hidayah: open the month's items" }).at(-1)!);
+    const buttons = screen.getAllByRole('button', { name: "Other income for Nurul Hidayah: open the month's items" });
+    fireEvent.click(buttons[buttons.length - 1]);
     expect(opened).toEqual(['Nurul Hidayah']);
   });
 });
