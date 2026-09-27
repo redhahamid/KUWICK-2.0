@@ -1,0 +1,239 @@
+# MIGRATE ONLY — MANUAL. Applies this repository's outstanding Prisma
+# migrations to the database SUPABASE_DATABASE_URL points at, and nothing
+# else. It never runs scripts/provision-app-role.mjs, so it cannot create,
+# alter or re-password the application role: the only secret it reads is the
+# owner connection string, and SUPABASE_APP_ROLE_PASSWORD is not even in its
+# environment. Run it from the branch that carries the migration, BEFORE that
+# branch is merged, because the API built from the branch selects the columns
+# the migration adds.
+#
+# TWO PRESSES OF THE SAME BUTTON:
+#   1. "Apply" UNTICKED (the default): a dry run. Lists what is pending and
+#      changes nothing at all.
+#   2. "Apply" TICKED: applies the pending migrations, then proves the schema
+#      is fully up to date.
+#
+# WHEN THIS IS ENOUGH, AND WHEN IT IS NOT. A migration that only ADDS COLUMNS
+# to existing tables (or changes them) needs nothing more: the application
+# role's grants are table-level, so a new column is readable the moment it
+# exists. A migration that creates a NEW TABLE also needs the grants
+# re-provisioned afterwards — the second provision pass of "HR UAT Seed
+# (manual)" — or the API answers "permission denied for table …" on its
+# first read. For such a migration run that workflow instead.
+#
+# TRIGGER: workflow_dispatch only. Deliberately NOT on push — this touches a
+# real database and must never run because somebody pushed.
+#
+# SECRETS (Settings -> Secrets and variables -> Actions -> Repository secrets):
+#   SUPABASE_DATABASE_URL   the OWNER (postgres.<project-ref>) session-pooler
+#                           URL, with sslmode=require. The same secret the two
+#                           existing database workflows use. Nothing else.
+#
+# No secret value is ever echoed: GitHub masks registered secrets in logs, and
+# Prisma prints only the database host, never the credentials. The job's token
+# is read-only, so this run cannot commit or push anything.
+
+name: Migrate only (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Apply the pending migrations. Leave unticked to only list what is pending (a dry run that changes nothing).'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migrate-only
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: ${{ inputs.apply && 'list pending + apply + verify' || 'list pending (dry run)' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Prisma's CLI reads this verbatim (apps/api/prisma.config.ts). Under
+      # sslmode=require Prisma's engine speaks TLS without CA verification,
+      # which suits the shared pooler endpoint.
+      DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+      # PREFER IPv4 inside Node's own resolver as well; the pin step below is
+      # what actually guarantees it for Prisma's engine.
+      NODE_OPTIONS: '--dns-result-order=ipv4first'
+    steps:
+      - name: Refuse to run without the one secret
+        env:
+          HAS_DB_URL: ${{ secrets.SUPABASE_DATABASE_URL != '' }}
+        run: |
+          [ "$HAS_DB_URL" = "true" ] || { echo "::error::Repository secret SUPABASE_DATABASE_URL is not set."; exit 1; }
+          echo "Mode: ${{ inputs.apply && 'APPLY the pending migrations' || 'DRY RUN, list only' }}"
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Pin the Supabase pooler hostname to IPv4
+        # WHY. GitHub-hosted runners have no routable IPv6. The pooler hostname
+        # is an AWS ELB; from a runner it can hand out an AAAA (IPv6) address,
+        # and a connection to it dies with `connect ENETUNREACH`. Two earlier
+        # fixes were insufficient: NODE_OPTIONS=--dns-result-order=ipv4first
+        # only reorders inside Node's own resolver (and not at all for Prisma's
+        # Rust engine), and a getent-based pin aborted the step with a bare
+        # "exit code 2" — `getent ahostsv4` returns exit 2 when the A lookup
+        # comes back empty (a transient/partial DNS answer for the dual-stack
+        # ELB), and under errexit+pipefail the command-substitution assignment
+        # took the whole step down before the "no IPv4" guard could report it.
+        #
+        # This step is the robust replacement. It resolves the pooler's IPv4 A
+        # records with Node itself — dns.resolve4 (a direct A query) with an
+        # IPv4-only getaddrinfo fallback, retried to ride out transient DNS —
+        # then pins EVERY resolved IPv4 into /etc/hosts. glibc consults
+        # /etc/hosts before DNS for BOTH Node/pg and Prisma's Rust engine, so
+        # once pinned no later step performs a DNS lookup for this host at all:
+        # the unreachable AAAA is out of the picture and every connection goes
+        # over IPv4. It runs AFTER checkout/setup-node (Node guaranteed, and a
+        # git tree exists for cleanup) and BEFORE the first DB connection.
+        #
+        # Errexit is deliberately OFF here so a resolution miss yields a clear
+        # ::error:: and exit 1, never an opaque exit code. No secret is printed:
+        # the URL is parsed inside Node (never echoed); only the non-secret
+        # hostname and its public IPv4 addresses are shown. Credentials and the
+        # connection URL are untouched — only name resolution changes.
+        env:
+          SUPABASE_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+        run: |
+          set +e
+          set -u
+
+          host="$(node -e 'process.stdout.write(new URL(process.env.SUPABASE_DATABASE_URL).hostname)')"
+          if [ -z "${host:-}" ]; then
+            echo "::error::Could not parse a hostname from SUPABASE_DATABASE_URL."
+            exit 1
+          fi
+
+          cat > /tmp/resolve-ipv4.cjs <<'RESOLVE_EOF'
+          const dnsp = require("dns").promises;
+          const host = new URL(process.env.SUPABASE_DATABASE_URL).hostname;
+          (async () => {
+            const once = async () => {
+              try { const a = await dnsp.resolve4(host); if (a && a.length) return a; } catch (e) {}
+              try {
+                const r = await dnsp.lookup(host, { family: 4, all: true });
+                const a = r.map((x) => x.address).filter(Boolean);
+                if (a.length) return a;
+              } catch (e) {}
+              return [];
+            };
+            for (let i = 0; i < 6; i++) {
+              const a = await once();
+              if (a.length) { process.stdout.write(Array.from(new Set(a)).join(" ")); return; }
+              await new Promise((res) => setTimeout(res, 2000));
+            }
+            process.exit(3);
+          })().catch(() => process.exit(3));
+          RESOLVE_EOF
+
+          ipv4s="$(node /tmp/resolve-ipv4.cjs)"
+          rm -f /tmp/resolve-ipv4.cjs
+          if [ -z "${ipv4s:-}" ]; then
+            echo "::error::The Supabase pooler hostname '$host' did not resolve to any IPv4 (A) record from this runner (tried dns.resolve4 and IPv4 getaddrinfo, with retries)."
+            echo "::error::GitHub-hosted runners have no routable IPv6, so an IPv4 A record is required. If this endpoint is IPv6-only here, use an IPv4-capable connection or an IPv6-capable runner."
+            exit 1
+          fi
+
+          # Pin every resolved IPv4 (the ELB publishes several) so resolution
+          # never falls back to the AAAA for this host.
+          for ip in $ipv4s; do
+            printf '%s %s\n' "$ip" "$host" | sudo tee -a /etc/hosts >/dev/null
+          done
+
+          echo "Supabase pooler hostname : $host"
+          echo "Pinned IPv4 address(es)  : $ipv4s"
+          echo "getent hosts after pin   :"
+          getent hosts "$host" || true
+          # 'NR==1' without 'exit' consumes all input, so getent never takes a
+          # SIGPIPE; assert the first resolved address is IPv4 (no colon).
+          first="$(getent hosts "$host" | awk 'NR==1{print $1}')"
+          case "${first:-}" in
+            ""|*:*)
+              echo "::error::'$host' still does not resolve to IPv4 after pinning (got '${first:-none}')."
+              exit 1
+              ;;
+          esac
+          echo "IPv4 pin verified: $first"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: What is pending (read-only)
+        # `prisma migrate status` exits non-zero while anything is pending —
+        # which in a dry run is the answer we came for, not a failure. So the
+        # exit code is read here rather than left to stop the job, and the
+        # output is kept for the summary. Anything that is neither "up to
+        # date" nor "not yet been applied" (a connection refused, a failed
+        # migration on record) fails the step with Prisma's own words.
+        id: before
+        working-directory: apps/api
+        run: |
+          set +e
+          npx prisma migrate status > "$RUNNER_TEMP/status-before.txt" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/status-before.txt"
+          if grep -q "Database schema is up to date" "$RUNNER_TEMP/status-before.txt"; then
+            echo "pending=no" >> "$GITHUB_OUTPUT"
+            echo "Nothing is pending. There is nothing for Apply to do."
+          elif grep -q "not yet been applied" "$RUNNER_TEMP/status-before.txt"; then
+            echo "pending=yes" >> "$GITHUB_OUTPUT"
+            echo "Pending migrations found (listed above)."
+          else
+            echo "::error::prisma migrate status did not report a clean or a pending schema (exit $code). Read its output above; nothing has been changed."
+            exit 1
+          fi
+
+      - name: Apply the pending migrations
+        if: ${{ inputs.apply == true && steps.before.outputs.pending == 'yes' }}
+        working-directory: apps/api
+        run: npx prisma migrate deploy
+
+      - name: Migration status after applying — must report fully applied
+        if: ${{ inputs.apply == true }}
+        working-directory: apps/api
+        run: npx prisma migrate status | tee "$RUNNER_TEMP/status-after.txt"
+
+      - name: Write the run summary
+        if: always()
+        env:
+          APPLY: ${{ inputs.apply }}
+          PENDING: ${{ steps.before.outputs.pending }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          {
+            echo "## Migrate only (manual)"
+            echo ""
+            echo "- Branch: \`${GITHUB_REF_NAME}\` at \`${GITHUB_SHA}\`"
+            echo "- Mode: $([ "$APPLY" = "true" ] && echo "APPLY" || echo "DRY RUN, nothing changed")"
+            echo "- Pending before this run: ${PENDING:-unknown}"
+            echo "- Job status: ${JOB_STATUS}"
+            echo ""
+            echo "### Status before"
+            echo '```'
+            cat "$RUNNER_TEMP/status-before.txt" 2>/dev/null || echo "(no status captured)"
+            echo '```'
+            if [ -f "$RUNNER_TEMP/status-after.txt" ]; then
+              echo ""
+              echo "### Status after applying"
+              echo '```'
+              cat "$RUNNER_TEMP/status-after.txt"
+              echo '```'
+            fi
+            echo ""
+            echo "The application role was not touched: this workflow never runs the provisioning script."
+          } >> "$GITHUB_STEP_SUMMARY"
