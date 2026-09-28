@@ -205,7 +205,9 @@ describe('the payroll grid', () => {
       'Basic',
       'Other income',
       'OT h',
+      'OT RM',
       'Unpaid d',
+      'Unpaid RM',
       'Claims',
       'Gross',
       'EPF',
@@ -225,7 +227,7 @@ describe('the payroll grid', () => {
     ]);
     // Keyed, not titled: EPF, SOCSO and EIS each name two columns now.
     const at = (key: string) => GRID_COLUMNS.findIndex((column) => column.key === key);
-    for (const key of ['basic', 'otherIncome', 'overtimeHours', 'unpaidDays', 'claims']) {
+    for (const key of ['basic', 'otherIncome', 'overtimeHours', 'overtimePay', 'unpaidDays', 'unpaidLeaveDeduction', 'claims']) {
       expect(at(key), `${key} must come before gross`).toBeLessThan(at('gross'));
     }
     expect(at('epf')).toBeGreaterThan(at('gross'));
@@ -242,12 +244,29 @@ describe('the payroll grid', () => {
    * group header over the deductions says whose they are, and what the clinic
    * pays on top gets its own group at the end — one column, not three.
    */
+  /*
+   * THE MONEY BESIDE THE HOURS AND THE DAYS. "OT h 4.0" told a reader how
+   * long, not how much; the overtime pay and the unpaid-leave deduction were
+   * on the payslip and nowhere on the register. Both come from the line
+   * itself — never re-multiplied here — and foot on the server's own totals.
+   */
+  it('puts the overtime pay beside the hours and the unpaid-leave money beside the days, from the line itself', () => {
+    viewport(1440);
+    grid({ rows: [row({ overtimePay: '98.48', unpaidLeaveDeduction: '120.00' })] });
+    expect(headers().slice(4, 8)).toEqual(['OT h', 'OT RM', 'Unpaid d', 'Unpaid RM']);
+    const first = document.querySelector('tbody tr') as HTMLElement;
+    expect(within(first).getByText('98.48')).toBeInTheDocument();
+    expect(within(first).getByText('120.00')).toBeInTheDocument();
+    // Read from the record like the hours: grey, not typed here.
+    for (const key of ['overtimePay', 'unpaidLeaveDeduction']) expect(GRID_COLUMNS.find((column) => column.key === key)!.kind).toBe('record');
+  });
+
   it('says in the group headers whether a deduction is the employee’s or the employer’s', () => {
     viewport(1440);
     grid();
     expect(groups()).toEqual([
       ['Record', 1],
-      ['Earnings', 5],
+      ['Earnings', 7],
       ['Deductions — employee', 6],
       ['Employer pays', 4],
     ]);
@@ -414,7 +433,9 @@ describe('the payroll grid', () => {
       '3,200.00',
       '250.00',
       '4.0',
+      '98.48',
       '0',
+      '0.00',
       '0.00',
       '3,548.48',
       '390.00',
@@ -479,7 +500,8 @@ describe('the payroll grid', () => {
     expect(rows).toHaveLength(2);
     const last = rows[1] as HTMLElement;
     expect(within(last).getByText('Blocked')).toBeVisible();
-    expect(within(last).getByRole('link', { name: 'Fix' })).toHaveAttribute('href', '/admin/hr/employees/staff-7');
+    // Straight to the employment tab, where the salary is recorded — not the top of the record.
+    expect(within(last).getByRole('link', { name: 'Fix' })).toHaveAttribute('href', '/admin/hr/employees/staff-7?tab=employment');
     expect(within(last).getAllByText('—').length).toBe(GRID_COLUMNS.length);
   });
 
@@ -594,7 +616,7 @@ describe('the clinic’s own columns', () => {
     grid({ columns: OWN, rows: [withColumns()], totals: ownTotals() });
     expect(headers().slice(2, 6)).toEqual(['Basic', "Director's fee", 'Locum fee', 'Other income']);
     // Earnings grew by the two columns: basic sits under "Record" as before.
-    expect(groups()).toContainEqual(['Earnings', 7]);
+    expect(groups()).toContainEqual(['Earnings', 9]);
     const foot = [...document.querySelectorAll('tfoot td')].map((cell) => cell.textContent?.trim() ?? '');
     expect(foot[2]).toBe('2,500.00');
     expect(foot[3]).toBe('1,350.00');

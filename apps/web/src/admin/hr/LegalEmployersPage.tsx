@@ -5,6 +5,8 @@ import { Link } from 'react-router-dom';
 import { useLegalEmployers, useRecordEmployerHrd, useUpsertLegalEmployer } from '../hooks/useAdmin';
 import { useCan } from '../../core/hooks/useCan';
 import { Drawer, HrPage, Panel, ProblemNotice, StatusChip, useProblemFocus } from './ui';
+import { useClinicFilter } from '../../core/hooks/useClinicFilter';
+import { useClinics } from '../../core/hooks/useClinics';
 import { Table } from './ui/Table';
 import type { LegalEmployerRow } from '../types';
 
@@ -42,7 +44,12 @@ const FIELDS: [string, string][] = [
  */
 export function LegalEmployersPage() {
   const { message } = App.useApp();
-  const employers = useLegalEmployers();
+  // The companies are tenant-wide; the employee count beside each follows
+  // the shell's branch picker, and the column says which branch it counts.
+  const { clinicId } = useClinicFilter();
+  const { data: clinics } = useClinics();
+  const branchName = clinicId ? (clinics ?? []).find((clinic) => clinic.id === clinicId)?.name : undefined;
+  const employers = useLegalEmployers(clinicId);
   const upsert = useUpsertLegalEmployer();
   const recordHrd = useRecordEmployerHrd();
   const mayManage = useCan('hr.statutory.manage');
@@ -193,7 +200,7 @@ export function LegalEmployersPage() {
                   <StatusChip tone="attn">Not recorded</StatusChip>
                 ),
             },
-            { title: 'Employees', dataIndex: 'employeeCount', num: true, width: 100 },
+            { title: clinicId ? `Employees at ${branchName ?? 'this branch'}` : 'Employees', dataIndex: 'employeeCount', num: true, width: clinicId ? 200 : 100 },
             {
               title: 'Could it file?',
               key: 'readiness',

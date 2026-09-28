@@ -50,7 +50,11 @@ type Journey = {
     rows: { staffId: string; otherIncome: string; grossPay: string; columns: Record<string, Cell>; items: { componentCode: string; carried: boolean }[] }[];
     totals: { otherIncome: string; columns: Record<string, string> };
   };
-  review: { attention: { code: string; severity: string; staffId: string | null; what: string }[] };
+  review: {
+    attention: { code: string; severity: string; staffId: string | null; what: string }[];
+    /** The month before, when a run of it exists: what Review compares against. */
+    previousRun: { runId: string; period: string; periodLabel: string; status: string } | null;
+  };
 };
 
 describe('own columns and carry forward (e2e)', () => {
@@ -189,6 +193,8 @@ describe('own columns and carry forward (e2e)', () => {
     await calculate(january);
 
     const data = await journey(january);
+    // January is the first month on record: nothing to compare with, and the screen says so rather than inventing a zero month.
+    expect(data.review.previousRun).toBeNull();
     const settingsOrder = (await components()).filter((row) => row.gridColumn).map((row) => row.code);
     expect(data.pay.columns.map((column) => column.code)).toEqual(settingsOrder);
     expect(data.pay.columns.map((column) => column.code).sort()).toEqual(['DIRECTOR_FEE', 'LOCUM_FEE']);
@@ -256,6 +262,8 @@ describe('own columns and carry forward (e2e)', () => {
 
     await calculate(february);
     const data = await journey(february);
+    // Review compares with January by name, because a run of it exists.
+    expect(data.review.previousRun).toMatchObject({ runId: january, period: '2026-01', periodLabel: 'January 2026' });
     const row = data.pay.rows.find((candidate) => candidate.staffId === doctor)!;
     expect(row.columns.DIRECTOR_FEE).toMatchObject({ amount: '2000.00', entered: '2000.00', carried: true, editable: true });
     expect(row.items.filter((item) => item.carried).map((item) => item.componentCode).sort()).toEqual(['ALLOWANCE', 'DIRECTOR_FEE', 'LOCUM_FEE']);

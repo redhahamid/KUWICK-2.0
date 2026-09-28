@@ -188,7 +188,8 @@ export function PayrollWorkspace({ runId, monthNav }: { runId: string; monthNav?
                   ? 'Every row ready'
                   : 'Not worked out yet'
               : undefined,
-            review: data ? `Compare with ${dayjs(data.run.period).subtract(1, 'month').format('MMMM')}` : undefined,
+            // Named only when that month exists for this branch; a first month has nothing to compare with.
+            review: data ? (data.review.previousRun ? `Compare with ${dayjs(data.review.previousRun.period).format('MMMM')}` : 'First month on record') : undefined,
             approve: 'Locks the month',
             complete: 'Bank listing + payslips',
           }}
@@ -517,7 +518,15 @@ function ReviewStep({
         * comparison lives in Reports, which is where somebody goes to ask
         * that question.
         */}
-      <PanelHead rule title="What this month comes to" sub={`Compared with ${dayjs(data.run.period).subtract(1, 'month').format('MMMM')} in Reports.`} />
+      <PanelHead
+        rule
+        title="What this month comes to"
+        sub={
+          data.review.previousRun
+            ? `Compared with ${dayjs(data.review.previousRun.period).format('MMMM')} in Reports.`
+            : 'The first month on record for this branch, so there is no earlier month to compare with yet.'
+        }
+      />
       <div className="hr-pad">
         <div className="kw-summaryRows">
           <SummaryRow label="Gross pay" value={ringgit(totals.gross)} />

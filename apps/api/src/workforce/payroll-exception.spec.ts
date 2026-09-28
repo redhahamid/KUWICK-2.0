@@ -234,7 +234,8 @@ describe('payroll exceptions', () => {
     });
     expect(built.cause).toBe('Their EPF membership has not been recorded.');
     expect(built.consequence).toMatch(/unknown — not nil/);
-    // And it points at the employee, because that is where the missing fact is.
-    expect(built.deepLink).toBe('/admin/hr/employees/staff-1');
+    // And it points at the employee's statutory standing — the panel where the
+    // missing fact is recorded — rather than at the top of the record.
+    expect(built.deepLink).toBe('/admin/hr/employees/staff-1?tab=statutory&focus=standing');
   });
 });

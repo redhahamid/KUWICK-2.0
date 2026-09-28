@@ -2721,3 +2721,75 @@ textarea.hr-f {
 .hr-historyLink:hover {
   color: var(--hr-ink);
 }
+
+/*
+ * A PHONE IS 390px WIDE, and three things on the payroll month refused to
+ * wrap there: the page head's actions row (status chip, month nav, History,
+ * Export, Discard draft), the four-step strip, and the panel heads with a
+ * Start button. Discard draft was not "missing until Save" — it was the last
+ * item in a row that ran off the screen. Measured with a 390px probe, not
+ * guessed.
+ */
+@media (max-width: 720px) {
+  .hr-pageHead {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .hr-pageHead__actions {
+    margin-left: 0;
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .hr-panelHead {
+    flex-wrap: wrap;
+  }
+  .hr-panelHead__actions {
+    margin-left: 0;
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .hr-steps {
+    grid-auto-flow: row;
+    grid-template-columns: 1fr 1fr;
+  }
+  .hr-step {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--hr-line);
+  }
+  .hr-step:nth-child(2n) {
+    border-right: 0;
+  }
+  .hr-stat__value {
+    font-size: 20px;
+    overflow-wrap: anywhere;
+  }
+  .hr-legend,
+  .hr-toolbar__right,
+  .hr-gridBar {
+    flex-wrap: wrap;
+  }
+  .hr-legend {
+    gap: 8px 14px;
+  }
+}
+@media (max-width: 480px) {
+  .hr-stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* A chip that is a link keeps the chip's look; the ring is the panel a Fix link landed on. */
+.hr-chipLink {
+  text-decoration: none;
+}
+.hr-chipLink:hover .hr-chip,
+.hr-chipLink:focus-visible .hr-chip {
+  outline: 2px solid var(--hr-teal);
+  outline-offset: 1px;
+}
+[data-focus].is-focused {
+  outline: 2px solid var(--hr-teal);
+  outline-offset: 6px;
+  border-radius: 10px;
+  transition: outline-color 1.2s ease;
+}

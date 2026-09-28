@@ -108,6 +108,13 @@ export const GRID_COLUMNS: GridColumn[] = [
     total: 'overtimeHours',
     money: false,
   },
+  /*
+   * THE MONEY BESIDE THE HOURS. Hours alone left a hand-keyed overtime line
+   * visible only inside Gross, so the ringgit the engine priced the hours at
+   * sits next to them, from the line's own overtimePay — never re-multiplied
+   * here.
+   */
+  { key: 'overtimePay', title: 'OT RM', band: 'earnings', kind: 'record', field: 'overtimePay', total: 'overtime', money: true, exportTitle: 'Overtime pay' },
   {
     key: 'unpaidDays',
     title: 'Unpaid d',
@@ -116,6 +123,17 @@ export const GRID_COLUMNS: GridColumn[] = [
     field: 'unpaidDays',
     total: 'unpaidDays',
     money: false,
+  },
+  /** And the ringgit those days took off basic, from the line's own deduction. */
+  {
+    key: 'unpaidLeaveDeduction',
+    title: 'Unpaid RM',
+    band: 'earnings',
+    kind: 'record',
+    field: 'unpaidLeaveDeduction',
+    total: 'unpaidLeave',
+    money: true,
+    exportTitle: 'Unpaid leave deduction',
   },
   { key: 'claims', title: 'Claims', band: 'earnings', kind: 'auto', field: 'claims', total: 'claims', money: true },
   { key: 'gross', title: 'Gross', band: 'earnings', kind: 'auto', field: 'grossPay', total: 'gross', money: true, strong: true },
@@ -588,7 +606,8 @@ export function PayrollGrid({
                 </td>
               ))}
               <td>
-                <Link className="hr-fixLink" to={`/admin/hr/employees/${row.staffId}`}>
+                {/* Left out means no salary or no employer: the Employment tab, where both are set. */}
+                <Link className="hr-fixLink" to={`/admin/hr/employees/${row.staffId}?tab=employment`}>
                   Fix
                 </Link>
               </td>

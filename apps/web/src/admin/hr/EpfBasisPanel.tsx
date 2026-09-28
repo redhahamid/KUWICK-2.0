@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { App, Checkbox, DatePicker, Input, Modal, Select, Tooltip } from 'antd';
+import { App, Checkbox, DatePicker, Modal, Select, Tooltip } from 'antd';
 import dayjs from 'dayjs';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../core/api-client';
 import { useCan } from '../../core/hooks/useCan';
 import { PanelHead, StatusChip } from './ui';
+import { ReasonPicker } from './ui/ReasonPicker';
+import { BASIS_REASONS } from './ui/reasons';
 import { Table } from './ui/Table';
 import { IconEdit } from './ui/icons';
 import { BasisComponentOption, BasisMode, MODE_WORDS, basisPreview } from './epf-basis';
@@ -254,7 +256,7 @@ export function EpfBasisPanel({ staffId, canSeePay }: { staffId: string; canSeeP
 
           <div>
             <label htmlFor="basis-reason">Reason</label>
-            <Input id="basis-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Contract states EPF on basic and procedure incentive" />
+            <ReasonPicker id="basis-reason" value={reason} onChange={setReason} options={BASIS_REASONS} placeholder="e.g. Contract states EPF on basic and procedure incentive" />
           </div>
         </div>
       </Modal>

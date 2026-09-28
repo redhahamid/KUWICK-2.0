@@ -43,6 +43,12 @@ export interface ReadinessItem {
   done: boolean;
   /** A full sentence in the same language as the exception catalogue. */
   detail: string;
+  /**
+   * Where on the person's record this is put right: a query string the
+   * screen appends to `/admin/hr/employees/<staffId>`, naming the tab and the
+   * panel, so a chip is a link to the field and not to the top of the page.
+   */
+  link: string;
 }
 
 export interface ReadinessResult {
@@ -110,6 +116,7 @@ export function buildPayrollReadiness(facts: ReadinessFacts): ReadinessResult {
   const items: ReadinessItem[] = [
     {
       key: 'employer',
+      link: '?tab=employment&focus=employer',
       label: 'Legal employer',
       severity: 'BLOCKING',
       done: facts.legalEmployerName !== null,
@@ -120,6 +127,7 @@ export function buildPayrollReadiness(facts: ReadinessFacts): ReadinessResult {
     },
     {
       key: 'salary',
+      link: '?tab=employment&focus=salary',
       label: 'Salary',
       severity: 'BLOCKING',
       done: salary.kind === 'RESOLVED',
@@ -132,6 +140,7 @@ export function buildPayrollReadiness(facts: ReadinessFacts): ReadinessResult {
     },
     {
       key: 'restDay',
+      link: '?tab=statutory&focus=standing',
       label: 'Rest day',
       severity: 'BLOCKING',
       done: standing.restDayOfWeek !== null && standing.restDayOfWeek !== undefined,
@@ -142,6 +151,7 @@ export function buildPayrollReadiness(facts: ReadinessFacts): ReadinessResult {
     },
     {
       key: 'bank',
+      link: '?tab=bank',
       label: 'Bank account',
       severity: 'ADVISORY',
       done: Boolean(facts.bankName && facts.bankAccountNo),
@@ -151,6 +161,7 @@ export function buildPayrollReadiness(facts: ReadinessFacts): ReadinessResult {
     },
     {
       key: 'pcb',
+      link: '?tab=statutory&focus=standing',
       label: 'Monthly tax (PCB) information',
       severity: 'BLOCKING',
       done: !standing.pcbApplicable || facts.pcbInputAmountCents !== null || Boolean(standing.taxResidence && standing.pcbCategory),
@@ -206,6 +217,7 @@ export function buildPayrollReadiness(facts: ReadinessFacts): ReadinessResult {
       const calculationBlocked = partUnknown || taxProfileUnknown || lindungUnknown;
       return {
         key: 'statutory',
+        link: '?tab=statutory&focus=standing',
         label: 'EPF, SOCSO and EIS',
         severity: (calculationBlocked ? 'BLOCKING' : 'ADVISORY') as ReadinessSeverity,
         done: missing.length === 0 && !calculationBlocked,
@@ -224,6 +236,7 @@ export function buildPayrollReadiness(facts: ReadinessFacts): ReadinessResult {
     })(),
     {
       key: 'dob',
+      link: '?tab=profile&edit=1',
       label: 'Date of birth',
       severity: 'BLOCKING',
       done: Boolean(facts.dateOfBirth),
@@ -242,6 +255,7 @@ export function buildPayrollReadiness(facts: ReadinessFacts): ReadinessResult {
   if (facts.ytd && facts.ytd.periodMonth > 1 && facts.ytd.employedBeforePeriod && !facts.ytd.hasPriorMonths) {
     items.push({
       key: 'ytdOpening',
+      link: '?tab=statutory&focus=tax',
       label: 'Pay history for the year',
       severity: 'ADVISORY',
       done: false,

@@ -2146,6 +2146,8 @@ export interface PayrollReadinessItem {
   severity: 'BLOCKING' | 'ADVISORY';
   done: boolean;
   detail: string;
+  /** The query string that opens the tab and panel where this is put right, e.g. `?tab=statutory&focus=standing`. */
+  link: string;
 }
 
 export interface PayrollReadiness {
@@ -2506,6 +2508,8 @@ export interface PayrollJourney {
   };
   review: {
     gate: PayrollExceptionGate;
+    /** This branch's run for the month before, or null on its first month on record. */
+    previousRun: { runId: string; period: string; periodLabel: string; status: string } | null;
     attention: {
       id: string;
       code: string;

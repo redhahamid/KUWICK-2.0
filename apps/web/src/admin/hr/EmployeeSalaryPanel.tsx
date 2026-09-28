@@ -5,6 +5,8 @@ import { money } from '../components/DataTable';
 import { useRecordSalary, useSalaryHistory } from '../hooks/useAdmin';
 import { useCan } from '../../core/hooks/useCan';
 import { PanelHead, StatusChip } from './ui';
+import { ReasonPicker } from './ui/ReasonPicker';
+import { SALARY_REASONS } from './ui/reasons';
 import { Table } from './ui/Table';
 import { IconEdit, IconHistory } from './ui/icons';
 import type { SalaryHistoryRow } from '../types';
@@ -188,7 +190,7 @@ export function EmployeeSalaryPanel({ staffId, canSeePay }: { staffId: string; c
           </div>
           <div>
             <label htmlFor="salary-reason">Reason</label>
-            <Input.TextArea id="salary-reason" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Annual increment, promotion, correction…" />
+            <ReasonPicker id="salary-reason" value={reason} onChange={setReason} options={SALARY_REASONS} placeholder="Annual increment, promotion, correction…" />
             <div className="hr-form__help">The row currently in force is closed the day before this date. Nothing already approved is changed.</div>
           </div>
         </div>

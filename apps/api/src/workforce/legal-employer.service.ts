@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Inject, Injectable, NotFoundExc
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { requirePermission, withAdminTx } from '../finance/admin-actor';
+import { requirePermission, requireScope, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { UpsertLegalEmployerDto } from './dto/upsert-legal-employer.dto';
 import { hrdLevyRatePercent } from '../statutory/hrd-levy';
@@ -29,11 +29,18 @@ export class LegalEmployerService {
     private readonly rawPrisma: PrismaService,
   ) {}
 
-  async list() {
-    await requirePermission(this.rawPrisma, 'hr.view');
+  /**
+   * The companies are tenant-wide; only the EMPLOYEE COUNT beside each one
+   * answers for a branch. The HR shell's branch picker is on this page like
+   * every other, and a picker that filtered nothing read as broken — so the
+   * count follows it, validated against the account's scope like every other
+   * branch read, and the page says which branch the count is for.
+   */
+  async list(clinicId?: string) {
+    const { scope } = await requireScope(this.rawPrisma, 'hr.view');
     const rows = await this.prisma.legalEmployer.findMany({
       orderBy: { name: 'asc' },
-      include: { _count: { select: { employees: true, runs: true } } },
+      include: { _count: { select: { employees: { where: { staff: scope.where(clinicId) } }, runs: true } } },
     });
     // The OPEN statutory version per employer — the class in force today.
     // Read in one query rather than per row.
@@ -237,17 +244,19 @@ export class LegalEmployerService {
    * run, and changing the profile afterwards would make the submission and the
    * record disagree with nobody able to tell which is right.
    */
-  async assignEmployee(staffId: string, legalEmployerId: string | null) {
+  async assignEmployee(staffId: string, legalEmployerId: string | null, reason?: string | null) {
     return withAdminTx(this.rawPrisma, 'hr.employee.manage', async (tx, actor) => {
       const profile = await tx.employeeProfile.findFirst({ where: { staffId } });
       if (!profile) throw new NotFoundException('Employee not found');
 
+      let employerName: string | null = null;
       if (legalEmployerId) {
         const employer = await tx.legalEmployer.findFirst({ where: { id: legalEmployerId } });
         if (!employer) throw new NotFoundException('Legal employer not found');
         if (!employer.active) {
           throw new BadRequestException('That legal employer is archived. Reactivate it, or choose another.');
         }
+        employerName = employer.name;
       }
 
       if (profile.legalEmployerId && profile.legalEmployerId !== legalEmployerId) {
@@ -272,9 +281,10 @@ export class LegalEmployerService {
         action: 'employee.employerAssigned',
         entityType: 'EmployeeProfile',
         entityId: profile.id,
-        reason: legalEmployerId
-          ? `Assigned employee to legal employer ${legalEmployerId}`
-          : 'Removed the employee from their legal employer',
+        // The person's own reason where one was given; the act itself otherwise.
+        reason:
+          reason?.trim() ||
+          (legalEmployerId ? `Assigned employee to ${employerName ?? legalEmployerId}` : 'Removed the employee from their legal employer'),
         before: { legalEmployerId: profile.legalEmployerId },
         after: { legalEmployerId: saved.legalEmployerId },
       });

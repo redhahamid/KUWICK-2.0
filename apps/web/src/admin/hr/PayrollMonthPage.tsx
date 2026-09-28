@@ -1,4 +1,4 @@
-import { App } from 'antd';
+import { App, DatePicker } from 'antd';
 import dayjs from 'dayjs';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -51,17 +51,31 @@ export function PayrollMonthPage() {
   const calculate = useCalculatePayroll();
   const data = home.data;
 
+  // ONE STEP EITHER WAY, OR ANY MONTH AT ALL. The three segments walk the
+  // calendar; the picker beside them jumps straight to a month, which is the
+  // only way to reach January from September without eight taps.
   const monthNav = (
-    <SegControl<string>
-      label="Payroll month"
-      value={period}
-      onChange={setPeriod}
-      options={[
-        { value: dayjs(period).subtract(1, 'month').format('YYYY-MM'), label: dayjs(period).subtract(1, 'month').format('MMM') },
-        { value: period, label: dayjs(period).format('MMM YYYY') },
-        { value: dayjs(period).add(1, 'month').format('YYYY-MM'), label: dayjs(period).add(1, 'month').format('MMM') },
-      ]}
-    />
+    <>
+      <SegControl<string>
+        label="Payroll month"
+        value={period}
+        onChange={setPeriod}
+        options={[
+          { value: dayjs(period).subtract(1, 'month').format('YYYY-MM'), label: dayjs(period).subtract(1, 'month').format('MMM') },
+          { value: period, label: dayjs(period).format('MMM YYYY') },
+          { value: dayjs(period).add(1, 'month').format('YYYY-MM'), label: dayjs(period).add(1, 'month').format('MMM') },
+        ]}
+      />
+      <DatePicker
+        picker="month"
+        value={dayjs(period)}
+        onChange={(value) => value && setPeriod(value.format('YYYY-MM'))}
+        allowClear={false}
+        format="MMM YYYY"
+        aria-label="Choose a month"
+        style={{ width: 124 }}
+      />
+    </>
   );
 
   // The month has a run: this IS the workspace. Nothing wraps it.
@@ -86,7 +100,7 @@ export function PayrollMonthPage() {
       }
     >
       <StatRow>
-        <StatCard icon={<IconPayroll />} label="Gross pay" value="—" sub={data ? `${data.employeesExpected} ${data.employeesExpected === 1 ? 'employee' : 'employees'} expected` : undefined} />
+        <StatCard icon={<IconPayroll />} label="Gross pay" value="—" sub={data ? `${data.employeesExpected} with a salary on record` : undefined} />
         <StatCard icon={<IconPayroll />} label="Employee deductions" value="—" sub="EPF, SOCSO, EIS, PCB" />
         <StatCard icon={<IconPayroll />} label="Employer contributions" value="—" sub="Paid on top of gross" />
         <StatCard icon={<IconPayroll />} label="Net pay" value="—" sub="Not started" />

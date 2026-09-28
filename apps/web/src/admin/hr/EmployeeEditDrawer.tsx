@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { App, DatePicker, Input, Select } from 'antd';
+import { App, AutoComplete, DatePicker, Input, Select } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
   useAssignEmployer,
@@ -10,6 +10,9 @@ import {
   useUpsertEmployee,
 } from '../hooks/useAdmin';
 import { Drawer, ProblemNotice, useProblemFocus } from './ui';
+import { PhoneField } from './ui/PhoneField';
+import { ReasonPicker } from './ui/ReasonPicker';
+import { EMPLOYER_REASONS, RELATIONSHIPS } from './ui/reasons';
 import { DAY_NAMES } from './StatutoryStandingManager';
 import type { EmployeeRecord } from '../types';
 
@@ -98,6 +101,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
   const [managerStaffId, setManagerStaffId] = useState<string | undefined>();
   const [startDate, setStartDate] = useState<Dayjs | null>(null);
   const [confirmedDate, setConfirmedDate] = useState<Dayjs | null>(null);
+  const [employerReason, setEmployerReason] = useState('');
   const [notes, setNotes] = useState('');
   const [legalEmployerId, setLegalEmployerId] = useState<string | undefined>();
   const [restDay, setRestDay] = useState<number | undefined>();
@@ -255,7 +259,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
        * record as it was rather than half-written.
        */
       if (section === 'employment' && (legalEmployerId ?? null) !== (data.employment.legalEmployerId ?? null)) {
-        await assignEmployer.mutateAsync({ staffId, legalEmployerId: legalEmployerId ?? null });
+        await assignEmployer.mutateAsync({ staffId, legalEmployerId: legalEmployerId ?? null, reason: employerReason.trim() || undefined });
       }
       await upsert.mutateAsync({ staffId, ...body });
       if (section === 'employment') {
@@ -364,7 +368,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
               </div>
               <div>
                 <label htmlFor="ed-nat">Nationality</label>
-                <Input id="ed-nat" value={nationality} onChange={(e) => setNationality(e.target.value)} placeholder="Malaysian" />
+                <Input id="ed-nat" value={nationality} onChange={(e) => setNationality(e.target.value)} placeholder="e.g. Malaysian" />
               </div>
               <div>
                 <label htmlFor="ed-marital">Marital status</label>
@@ -385,7 +389,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
               </div>
               <div>
                 <label htmlFor="ed-phone">Phone</label>
-                <Input id="ed-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                <PhoneField id="ed-phone" value={phone} onChange={setPhone} />
               </div>
               <div>
                 <label htmlFor="ed-email">Email</label>
@@ -404,11 +408,11 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
               </div>
               <div>
                 <label htmlFor="ed-ecp">Phone</label>
-                <Input id="ed-ecp" value={ecPhone} onChange={(e) => setEcPhone(e.target.value)} />
+                <PhoneField id="ed-ecp" value={ecPhone} onChange={setEcPhone} />
               </div>
               <div>
                 <label htmlFor="ed-ecr">Relationship</label>
-                <Input id="ed-ecr" value={ecRelation} onChange={(e) => setEcRelation(e.target.value)} placeholder="Spouse, parent, sibling…" />
+                <AutoComplete id="ed-ecr" value={ecRelation} onChange={(next) => setEcRelation(String(next ?? ''))} options={RELATIONSHIPS.map((value) => ({ value }))} placeholder="Choose or type" style={{ width: '100%' }} />
               </div>
             </div>
           </>
@@ -468,6 +472,12 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
                 options={employerOptions}
                 notFoundContent="No company on file. Add one in Settings, Company and statutory."
               />
+              {(legalEmployerId ?? null) !== (data.employment.legalEmployerId ?? null) ? (
+                <div style={{ marginTop: 8 }}>
+                  <label htmlFor="ed-employer-reason">Why the company is changing</label>
+                  <ReasonPicker id="ed-employer-reason" value={employerReason} onChange={setEmployerReason} options={EMPLOYER_REASONS} />
+                </div>
+              ) : null}
               <div className="hr-form__help">
                 The company that pays them and files their EPF, SOCSO and tax. Payroll refuses to work out a month for
                 anybody without one, and that refusal cannot be passed. A branch is where they work; it files nothing.

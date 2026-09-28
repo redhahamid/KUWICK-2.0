@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { App, Button, DatePicker, Form, Input, Select, Switch } from 'antd';
+import { App, AutoComplete, Button, DatePicker, Form, Input, Select, Switch } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { AdminShell } from '../components/AdminShell';
@@ -10,6 +10,9 @@ import { StatusChip } from '../components/Chip';
 import { ApiError, apiClient } from '../../core/api-client';
 import { useClinics } from '../../core/hooks/useClinics';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
+import { parseNric } from '../../core/nric';
+import { PhoneField } from './ui/PhoneField';
+import { RELATIONSHIPS } from './ui/reasons';
 
 /**
  * ADD EMPLOYEE — four stages, on a page of its own.
@@ -74,6 +77,8 @@ export function AddEmployeePage() {
   const navigate = useNavigate();
   const [form] = Form.useForm();
   const [stage, setStage] = useState(0);
+  /** The furthest stage reached: every stage up to it is a tap away, not only the ones behind. */
+  const [furthest, setFurthest] = useState(0);
   const [saving, setSaving] = useState(false);
   const { data: clinics } = useClinics();
   const { clinicId } = useClinicFilter();
@@ -82,18 +87,41 @@ export function AddEmployeePage() {
   const fullName = Form.useWatch('fullName', form) ?? '';
   const role = Form.useWatch('role', form);
   const wantsLogin = Form.useWatch('wantsLogin', form);
+  const epfMembership = Form.useWatch('epfMembership', form);
+  const identifierType = Form.useWatch('identifierType', form);
   const isDoctorRole = role === 'DOCTOR_RESIDENT' || role === 'DOCTOR_LOCUM';
 
-  const next = async () => {
+  /** What each stage insists on before the one after it opens. */
+  const validateStage = async (index: number) => {
     // Validated stage by stage, so a missing name is reported on the stage
     // that has the name box rather than three stages later.
-    if (stage === 0) await form.validateFields(['fullName', 'role']);
-    if (stage === 1 && wantsLogin) await form.validateFields(['loginEmail', 'loginPassword']);
-    setStage((current) => Math.min(current + 1, STAGES.length - 1));
+    if (index === 0) await form.validateFields(['fullName', 'role', 'identifierValue']);
+    if (index === 1 && wantsLogin) await form.validateFields(['loginEmail', 'loginPassword']);
+    if (index === 2) await form.validateFields(['nationality']);
+  };
+
+  const next = async () => {
+    // A stage that fails its check shows the messages and stays put; the
+    // rejection itself is nothing to report.
+    try {
+      await validateStage(stage);
+    } catch {
+      return;
+    }
+    const target = Math.min(stage + 1, STAGES.length - 1);
+    setStage(target);
+    setFurthest((reached) => Math.max(reached, target));
+  };
+
+  /** Any stage already visited is a tap away; going forward still runs the stages between. */
+  const jumpTo = async (index: number) => {
+    for (let at = stage; at < index; at += 1) await validateStage(at);
+    setStage(index);
   };
 
   const submit = async () => {
-    const values = await form.validateFields();
+    const values = await form.validateFields().catch(() => null);
+    if (!values) return;
     setSaving(true);
     const notes: string[] = [];
     try {
@@ -106,11 +134,12 @@ export function AddEmployeePage() {
         department: values.department || undefined,
         employmentType: values.employmentType || undefined,
         startDate: values.startDate ? values.startDate.format('YYYY-MM-DD') : undefined,
-        identifierType: values.identifierValue ? 'NRIC' : undefined,
+        identifierType: values.identifierValue ? (values.identifierType ?? 'NRIC') : undefined,
         identifierValue: values.identifierValue || undefined,
         dateOfBirth: values.dateOfBirth ? values.dateOfBirth.format('YYYY-MM-DD') : undefined,
         gender: values.gender || undefined,
-        nationality: values.nationality || undefined,
+        // A Malaysian citizen is Malaysian; the form asks nobody to say so twice.
+        nationality: values.epfMembership === 'MALAYSIAN_CITIZEN' ? 'Malaysian' : values.nationality || undefined,
         phone: values.phone || undefined,
         email: values.email || undefined,
         address: values.address || undefined,
@@ -205,7 +234,7 @@ export function AddEmployeePage() {
   return (
     <AdminShell
       title="Add employee"
-      subtitle="Only a name and a job are required. Everything else can be finished on their page."
+      subtitle="A name and a job create the record. Before payroll can pay anybody it also needs an employing company, a rest day, the statutory standing and a salary; the person’s page lists what is still missing."
       actions={
         <Button onClick={() => navigate('/admin/hr/employees')} disabled={saving}>
           Cancel
@@ -218,16 +247,16 @@ export function AddEmployeePage() {
           key: item.key,
           label: item.label,
           done: index < stage,
-          // Backwards freely, forwards only through Continue so each stage's
-          // own validation runs.
-          onSelect: index < stage ? () => setStage(index) : undefined,
+          // Any stage already reached is a tap away in either direction; a
+          // forward tap still runs the validation of every stage it crosses.
+          onSelect: index !== stage && index <= furthest ? () => void jumpTo(index).catch(() => undefined) : undefined,
         }))}
       />
 
       <Form
         form={form}
         layout="vertical"
-        initialValues={{ employmentType: 'PERMANENT', wantsLogin: false, clinicId, salaryBasis: 'MONTHLY' }}
+        initialValues={{ employmentType: 'PERMANENT', wantsLogin: false, clinicId, salaryBasis: 'MONTHLY', identifierType: 'NRIC' }}
       >
         <div className="kw-formPage">
           <div style={{ display: stage === 0 ? 'block' : 'none' }}>
@@ -255,8 +284,27 @@ export function AddEmployeePage() {
                     <Form.Item name="role" label="Job" rules={[{ required: true, message: 'Which job?' }]}>
                       <Select options={ROLES} placeholder="Choose" />
                     </Form.Item>
-                    <Form.Item name="identifierValue" label="IC or passport number">
-                      <Input placeholder="900101-14-5567" />
+                    <Form.Item
+                      name="identifierValue"
+                      label={identifierType === 'PASSPORT' ? 'Passport number' : 'IC number'}
+                      rules={[
+                        {
+                          validator: (_rule, value: string | undefined) =>
+                            !value || identifierType === 'PASSPORT' || parseNric(value)
+                              ? Promise.resolve()
+                              : Promise.reject(new Error('A Malaysian IC is 12 digits, YYMMDD-PB-####, e.g. 900101-14-5567.')),
+                        },
+                      ]}
+                    >
+                      <Input placeholder={identifierType === 'PASSPORT' ? 'e.g. A12345678' : 'e.g. 900101-14-5567'} />
+                    </Form.Item>
+                    <Form.Item name="identifierType" label="Document">
+                      <Select
+                        options={[
+                          { value: 'NRIC', label: 'Malaysian IC' },
+                          { value: 'PASSPORT', label: 'Passport' },
+                        ]}
+                      />
                     </Form.Item>
                   </div>
                   <div className="kw-formRow">
@@ -272,9 +320,6 @@ export function AddEmployeePage() {
                         ]}
                       />
                     </Form.Item>
-                    <Form.Item name="nationality" label="Nationality">
-                      <Input placeholder="Malaysian" />
-                    </Form.Item>
                   </div>
                 </div>
               </div>
@@ -283,7 +328,7 @@ export function AddEmployeePage() {
             <Panel title="How to reach them">
               <div className="kw-formRow">
                 <Form.Item name="phone" label="Phone">
-                  <Input placeholder="013-2000000" />
+                  <PhoneField />
                 </Form.Item>
                 <Form.Item name="email" label="Email">
                   <Input placeholder="nurul@example.com" />
@@ -297,10 +342,10 @@ export function AddEmployeePage() {
                   <Input />
                 </Form.Item>
                 <Form.Item name="emergencyContactPhone" label="Their phone">
-                  <Input />
+                  <PhoneField />
                 </Form.Item>
                 <Form.Item name="emergencyContactRelation" label="Relationship">
-                  <Input placeholder="Spouse" />
+                  <AutoComplete options={RELATIONSHIPS.map((value) => ({ value }))} placeholder="Choose or type" />
                 </Form.Item>
               </div>
             </Panel>
@@ -447,6 +492,16 @@ export function AddEmployeePage() {
                   />
                 </Form.Item>
               </div>
+              {epfMembership && epfMembership !== 'MALAYSIAN_CITIZEN' ? (
+                <Form.Item
+                  name="nationality"
+                  label="Nationality"
+                  rules={[{ required: true, message: 'Which country are they a citizen of?' }]}
+                  extra="A Malaysian citizen is recorded as Malaysian without being asked; anybody else is recorded by what is typed here."
+                >
+                  <Input placeholder="e.g. Indonesian" />
+                </Form.Item>
+              ) : null}
               <div className="kw-formRow">
                 <Form.Item name="epfNumber" label="EPF number">
                   <Input placeholder="12345678" />

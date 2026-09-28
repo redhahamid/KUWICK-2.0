@@ -106,8 +106,8 @@ export class WorkforceController {
   // --- Legal employer -------------------------------------------------------
 
   @Get('legal-employers')
-  listLegalEmployers() {
-    return this.legalEmployers.list();
+  listLegalEmployers(@Query('clinicId') clinicId?: string) {
+    return this.legalEmployers.list(clinicId || undefined);
   }
 
   @Get('legal-employers/:id')
@@ -121,8 +121,8 @@ export class WorkforceController {
   }
 
   @Patch('employees/:staffId/legal-employer')
-  assignEmployer(@Param('staffId') staffId: string, @Body() body: { legalEmployerId: string | null }) {
-    return this.legalEmployers.assignEmployee(staffId, body.legalEmployerId ?? null);
+  assignEmployer(@Param('staffId') staffId: string, @Body() body: { legalEmployerId: string | null; reason?: string | null }) {
+    return this.legalEmployers.assignEmployee(staffId, body.legalEmployerId ?? null, body.reason ?? null);
   }
 
   // =========================================================================

@@ -106,12 +106,13 @@ function BlockedList({ rows }: { rows: ReadinessRow[] }) {
           key: 'missing',
           render: (_: unknown, row) => (
             <span className="hr-dots">
+              {/* Each chip is the way to the field it names, not a label. */}
               {row.readiness.items
                 .filter((item) => !item.done)
                 .map((item) => (
-                  <StatusChip key={item.key} tone={item.severity === 'BLOCKING' ? 'block' : 'attn'}>
-                    {item.label}
-                  </StatusChip>
+                  <Link key={item.key} className="hr-chipLink" to={`/admin/hr/employees/${row.staffId}${item.link}`} title={item.detail}>
+                    <StatusChip tone={item.severity === 'BLOCKING' ? 'block' : 'attn'}>{item.label}</StatusChip>
+                  </Link>
                 ))}
             </span>
           ),
@@ -121,7 +122,10 @@ function BlockedList({ rows }: { rows: ReadinessRow[] }) {
           key: 'go',
           width: 150,
           render: (_: unknown, row) => (
-            <Link className="hr-btn hr-btn--sm" to={`/admin/hr/employees/${row.staffId}`}>
+            <Link
+              className="hr-btn hr-btn--sm"
+              to={`/admin/hr/employees/${row.staffId}${(row.readiness.items.find((item) => !item.done && item.severity === 'BLOCKING') ?? row.readiness.items.find((item) => !item.done))?.link ?? '?tab=employment'}`}
+            >
               Complete setup
             </Link>
           ),

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { App as AntApp } from 'antd';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PayrollInputRow } from '../types';
@@ -79,24 +80,35 @@ vi.mock('../hooks/useAdmin', () => ({
 
 const { PayrollInputsDrawer } = await import('./PayrollInputsDrawer');
 
-function show(over: Partial<Parameters<typeof PayrollInputsDrawer>[0]> = {}) {
-  return render(
-    <AntApp>
-      <MemoryRouter>
-        <PayrollInputsDrawer
-          open
-          onClose={() => {}}
-          period="2026-01-01"
-          staffId="staff-1"
-          staffName="Dr Meera Kaur"
-          canEdit
-          runId="run-1"
-          cell={{ otherIncome: '4450.00', otherDeductions: '150.00' }}
-          {...over}
-        />
-      </MemoryRouter>
-    </AntApp>,
+/** The register's cache: "worked out again" is said only once these reads have caught up. */
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+/** What the drawer asked the cache to re-read. The spy is re-made per test: the setup restores every spy after each one. */
+const refetch = vi.fn();
+
+function tree(over: Partial<Parameters<typeof PayrollInputsDrawer>[0]> = {}) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AntApp>
+        <MemoryRouter>
+          <PayrollInputsDrawer
+            open
+            onClose={() => {}}
+            period="2026-01-01"
+            staffId="staff-1"
+            staffName="Dr Meera Kaur"
+            canEdit
+            runId="run-1"
+            cell={{ otherIncome: '4450.00', otherDeductions: '150.00' }}
+            {...over}
+          />
+        </MemoryRouter>
+      </AntApp>
+    </QueryClientProvider>
   );
+}
+
+function show(over: Partial<Parameters<typeof PayrollInputsDrawer>[0]> = {}) {
+  return render(tree(over));
 }
 
 const group = (title: string) => screen.getByRole('region', { name: title });
@@ -105,6 +117,11 @@ beforeEach(() => {
   upsertMutate.mockReset().mockResolvedValue({});
   removeMutate.mockReset().mockResolvedValue({});
   calculateMutate.mockReset().mockResolvedValue({});
+  refetch.mockReset();
+  vi.spyOn(queryClient, 'refetchQueries').mockImplementation((filters) => {
+    refetch(filters);
+    return Promise.resolve();
+  });
   inputRows = january();
 });
 
@@ -163,7 +180,25 @@ describe('the month’s items for one person', () => {
       reason: 'Board meeting, January',
     });
     await waitFor(() => expect(calculateMutate).toHaveBeenCalledWith('run-1'));
+    // "Worked out again" waits for the register to catch up, not only for the server to answer:
+    // until the journey and the lines are re-read, the old cell sits beside the new subtotal.
+    await waitFor(() => expect(refetch).toHaveBeenCalledWith({ queryKey: ['admin-hr', 'payroll-journey', 'run-1'] }));
+    expect(refetch).toHaveBeenCalledWith({ queryKey: ['admin-hr', 'payroll-inputs'] });
     expect(await screen.findByText(/Worked out again/)).toBeInTheDocument();
+  });
+
+  it('forgets “worked out again” when the drawer moves on to the next person', async () => {
+    const view = show();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a line' }));
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Item' }));
+    fireEvent.click(await screen.findByTitle('BOD fee (BOD_FEE)'));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Amount' }), { target: { value: '1500' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Reason' }), { target: { value: 'Board meeting, January' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add line' }));
+    expect(await screen.findByText(/Worked out again/)).toBeInTheDocument();
+    // The same drawer, opened for somebody else: their month has not been worked out again by this.
+    view.rerender(tree({ staffId: 'staff-2', staffName: 'Siti Zaleha', cell: { otherIncome: '0.00', otherDeductions: '0.00' } }));
+    expect(screen.queryByText(/Worked out again/)).toBeNull();
   });
 
   /*

@@ -74,6 +74,7 @@ export function EmployeeWorkspacePage() {
   const mayManage = useCan('hr.employee.manage');
   const [search, setSearch] = useSearchParams();
   const requested = search.get('tab') ?? '';
+  const focus = search.get('focus');
   const initial = (TABS.find((entry) => entry.key === requested)?.key ?? TAB_ALIASES[requested] ?? 'profile') as TabKey;
   const [tab, setTab] = useState<TabKey>(initial);
   const [editing, setEditing] = useState<EditSection | null>(null);
@@ -93,6 +94,26 @@ export function EmployeeWorkspacePage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
+
+  /*
+   * ?focus=<panel> FROM A FIX LINK. The payroll screens link to the thing
+   * that is wrong — a salary, the standing, the bank account — not to the
+   * top of the record. The tab is already chosen from ?tab=; this scrolls
+   * the named panel into view once it has rendered and rings it for a
+   * moment, then leaves the address alone so a refresh does it again.
+   */
+  useEffect(() => {
+    if (!data || !focus) return;
+    const target = focus === 'employment' ? 'employer' : focus;
+    const timer = window.setTimeout(() => {
+      const element = document.querySelector<HTMLElement>(`[data-focus="${target}"]`);
+      if (!element) return;
+      element.scrollIntoView({ block: 'start' });
+      element.classList.add('is-focused');
+      window.setTimeout(() => element.classList.remove('is-focused'), 2500);
+    }, 60);
+    return () => window.clearTimeout(timer);
+  }, [data, focus, tab]);
 
   const select = (value: TabKey) => {
     setTab(value);
@@ -321,9 +342,12 @@ function EmploymentTab({ data, onEdit, onResign }: { data: EmployeeRecord; onEdi
 
   return (
     <>
-      <EmployeeSalaryPanel staffId={data.staffId} canSeePay={canSeePay} />
+      <div data-focus="salary">
+        <EmployeeSalaryPanel staffId={data.staffId} canSeePay={canSeePay} />
+      </div>
       <RecurringItemsPanel staffId={data.staffId} canSeePay={canSeePay} />
 
+      <div data-focus="employer">
       <PanelHead rule title="Employment" actions={<EditButton onClick={onEdit} />} />
       <Kv
         pairs={[
@@ -360,6 +384,7 @@ function EmploymentTab({ data, onEdit, onResign }: { data: EmployeeRecord; onEdi
           ['Notes', employment.notes],
         ]}
       />
+      </div>
 
       <PanelHead
         rule
@@ -416,9 +441,17 @@ function StatutoryTab({ data, onEdit }: { data: EmployeeRecord; onEdit?: () => v
           ['Tax category on file', s.taxCategory],
         ]}
       />
-      <StatutoryStandingManager data={data} />
-      {canSeePay ? <EpfBasisPanel staffId={data.staffId} canSeePay={canSeePay} /> : null}
-      <EmployeeTaxPanel staffId={data.staffId} />
+      <div data-focus="standing">
+        <StatutoryStandingManager data={data} />
+      </div>
+      {canSeePay ? (
+        <div data-focus="epfBasis">
+          <EpfBasisPanel staffId={data.staffId} canSeePay={canSeePay} />
+        </div>
+      ) : null}
+      <div data-focus="tax">
+        <EmployeeTaxPanel staffId={data.staffId} />
+      </div>
     </>
   );
 }

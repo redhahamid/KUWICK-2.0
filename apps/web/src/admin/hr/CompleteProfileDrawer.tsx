@@ -2,6 +2,7 @@ import { App, Button, DatePicker, Drawer, Form, Input, Select } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { ApiError, apiClient } from '../../core/api-client';
+import { parseNric } from '../../core/nric';
 
 const EMPLOYMENT_TYPES = [
   { value: 'PERMANENT', label: 'Permanent' },
@@ -47,7 +48,7 @@ export function CompleteProfileDrawer({
         department: values.department || undefined,
         employmentType: values.employmentType || undefined,
         startDate: values.startDate ? values.startDate.format('YYYY-MM-DD') : undefined,
-        identifierType: values.identifierValue ? 'NRIC' : undefined,
+        identifierType: values.identifierValue ? (values.identifierType ?? 'NRIC') : undefined,
         identifierValue: values.identifierValue || undefined,
         dateOfBirth: values.dateOfBirth ? values.dateOfBirth.format('YYYY-MM-DD') : undefined,
         phone: values.phone || undefined,
@@ -98,8 +99,29 @@ export function CompleteProfileDrawer({
         <Form.Item name="startDate" label="Started on">
           <DatePicker style={{ width: '100%' }} size="large" format="D MMM YYYY" />
         </Form.Item>
-        <Form.Item name="identifierValue" label="IC or passport number">
-          <Input size="large" placeholder="900101-14-5567" />
+        <Form.Item name="identifierType" label="Document" initialValue="NRIC">
+          <Select
+            size="large"
+            options={[
+              { value: 'NRIC', label: 'Malaysian IC' },
+              { value: 'PASSPORT', label: 'Passport' },
+            ]}
+          />
+        </Form.Item>
+        <Form.Item
+          name="identifierValue"
+          label="IC or passport number"
+          dependencies={['identifierType']}
+          rules={[
+            ({ getFieldValue }) => ({
+              validator: (_rule, value: string | undefined) =>
+                !value || getFieldValue('identifierType') === 'PASSPORT' || parseNric(value)
+                  ? Promise.resolve()
+                  : Promise.reject(new Error('A Malaysian IC is 12 digits, YYMMDD-PB-####, e.g. 900101-14-5567.')),
+            }),
+          ]}
+        >
+          <Input size="large" placeholder="e.g. 900101-14-5567" />
         </Form.Item>
         <Form.Item name="dateOfBirth" label="Date of birth">
           <DatePicker style={{ width: '100%' }} size="large" format="D MMM YYYY" />

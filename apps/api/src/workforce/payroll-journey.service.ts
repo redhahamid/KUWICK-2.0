@@ -15,7 +15,7 @@ import { resolveSalaryForPayroll, SalaryRow } from './salary-resolution';
 import { resolveClassificationForPayroll } from './statutory-classification';
 import { statutoryStatusOf } from './statutory';
 import { toClassificationRow } from './statutory-classification.service';
-import { columnItems } from './payroll-register-columns';
+import { columnItems, monthBefore, monthLabel } from './payroll-register-columns';
 
 function monthStart(value: string | Date): Date {
   const date = typeof value === 'string' ? new Date(`${value.slice(0, 7)}-01T00:00:00.000Z`) : value;
@@ -930,6 +930,15 @@ export class PayrollJourneyService {
       completesTheRun: decision.outcome === 'APPROVE',
     };
 
+    // THE MONTH BEFORE, for this branch — so "compare with December" is said
+    // only when there is a December to compare with. A branch's first month
+    // on record has nothing to compare against, and the screen says so.
+    const previousRun = await this.prisma.payrollRun.findFirst({
+      where: { period: monthBefore(period), runType: 'REGULAR', clinicId: run.clinicId, status: { not: 'CANCELLED' } },
+      orderBy: { sequence: 'desc' },
+      select: { id: true, period: true, status: true },
+    });
+
     return {
       run: {
         id: run.id,
@@ -969,6 +978,10 @@ export class PayrollJourneyService {
       review: {
         gate,
         attention,
+        /** Null when this branch has no run for the month before. */
+        previousRun: previousRun
+          ? { runId: previousRun.id, period: previousRun.period.toISOString().slice(0, 7), periodLabel: monthLabel(previousRun.period), status: previousRun.status }
+          : null,
         mustFix: attention.filter((a) => a.blocksApproval).length,
         worthALook: attention.filter((a) => !a.blocksApproval && a.severity !== 'INFO').length,
       },

@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { App, Button, DatePicker, Drawer, Input, InputNumber, Modal, Select, Table, Tag } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -116,11 +117,16 @@ export function PayrollInputsDrawer({
   const upsert = useUpsertPayrollInput();
   const remove = useDeletePayrollInput();
   const calculate = useCalculatePayroll();
+  const queryClient = useQueryClient();
 
   const [form, setForm] = useState<Form | null>(null);
   const [editing, setEditing] = useState<PayrollInputRow | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [recalc, setRecalc] = useState<{ state: 'idle' | 'working' | 'done' | 'failed'; text?: string }>({ state: 'idle' });
+  // A "worked out again" said for one person must not be read for the next.
+  useEffect(() => {
+    setRecalc({ state: 'idle' });
+  }, [staffId, open]);
 
   const month = dayjs(period).format('MMMM YYYY');
   const rows = useMemo(() => (inputs.data ?? []).filter((row) => !staffId || row.staffId === staffId), [inputs.data, staffId]);
@@ -156,6 +162,15 @@ export function PayrollInputsDrawer({
     setRecalc({ state: 'working' });
     try {
       await calculate.mutateAsync(runId);
+      // "Done" only once the register has caught up: the mutation invalidates
+      // the queries but does not wait for them, and until the journey
+      // refetch lands the old cell sits beside the new subtotal, so "worked
+      // out again" and "not worked out since the lines changed" showed at the
+      // same time. Wait for both reads, then say so.
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['admin-hr', 'payroll-journey', runId] }),
+        queryClient.refetchQueries({ queryKey: ['admin-hr', 'payroll-inputs'] }),
+      ]);
       setRecalc({ state: 'done' });
     } catch (error) {
       setRecalc({ state: 'failed', text: said(error) });
@@ -316,7 +331,7 @@ export function PayrollInputsDrawer({
       open={open}
       onClose={onClose}
       // antd 6 deprecated `width`; `styles.wrapper` sets it without warning.
-      styles={{ wrapper: { width: 900 } }}
+      styles={{ wrapper: { width: 'min(900px, 100vw)' } }}
       title={staffName ? `${staffName} — items for ${month}` : `Items for ${month}`}
       extra={
         canEdit && staffId ? (

@@ -50,6 +50,7 @@ describe('the branch on the attendance board and the HR reads beside it (e2e)', 
   let managerA: string;
   /** The same, with `hr.payroll.view` granted directly — so a refusal on the locum payable is about the BRANCH, not the permission. */
   let payrollManagerA: string;
+  let inA: string;
   let inB: string;
   let employerId: string;
   const today = clinicToday();
@@ -176,8 +177,16 @@ describe('the branch on the attendance board and the HR reads beside it (e2e)', 
     payrollManagerA = bearerFor(tenantId, payrollManager.id, Role.CLINIC_MANAGER);
     employerId = (await row((tx) => tx.legalEmployer.create({ data: { tenantId, name: 'Klinik Scope Sdn Bhd' } }))).id;
 
-    await person('Person A', clinicA);
+    inA = await person('Person A', clinicA);
     inB = await person('Person B', clinicB);
+    // Both on the group's one company, so its employee count is a question of branch.
+    for (const staffId of [inA, inB]) {
+      await request(server())
+        .patch(`/workforce/employees/${staffId}/legal-employer`)
+        .set('Authorization', owner)
+        .send({ legalEmployerId: employerId })
+        .expect(200);
+    }
   });
 
   afterAll(async () => {
@@ -302,6 +311,24 @@ describe('the branch on the attendance board and the HR reads beside it (e2e)', 
     it('still list every branch the account holds when none is named', async () => {
       expect(names((await get(`/workforce/payroll/reports/claims?${week}`).expect(200)).body.rows)).toEqual(['Person A', 'Person B']);
       expect(names((await get('/workforce/payroll/reports/ytd?year=2026').expect(200)).body.rows)).toEqual(['Person A', 'Person B']);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // The employing companies, in Settings: the count on each card is of the
+  // branch being looked at, because a manager of one branch reading "12
+  // employees" on a company with 4 at their branch is reading the group.
+  describe('the employing companies', () => {
+    const count = (body: { name: string; employeeCount: number }[]) => body.find((row) => row.name === 'Klinik Scope Sdn Bhd')!.employeeCount;
+
+    it('count the employees of the named branch, not of the whole group', async () => {
+      expect(count((await get(`/workforce/legal-employers?clinicId=${clinicA}`).expect(200)).body)).toBe(1);
+      expect(count((await get('/workforce/legal-employers').expect(200)).body)).toBe(2);
+    });
+
+    it('count only the branch the account holds when none is named, and REFUSE one it does not', async () => {
+      expect(count((await get('/workforce/legal-employers', managerA).expect(200)).body)).toBe(1);
+      await get(`/workforce/legal-employers?clinicId=${clinicB}`, managerA).expect(403);
     });
   });
 });

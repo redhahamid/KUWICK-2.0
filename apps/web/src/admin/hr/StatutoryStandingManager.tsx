@@ -4,6 +4,8 @@ import dayjs from 'dayjs';
 import { useDeleteStatutoryClassification, useRecordStatutoryClassification, useStatutoryClassifications } from '../hooks/useAdmin';
 import { useCan } from '../../core/hooks/useCan';
 import { FieldProblem, PanelHead, ProblemNotice, useProblemFocus } from './ui';
+import { ReasonPicker } from './ui/ReasonPicker';
+import { STANDING_REASONS } from './ui/reasons';
 import { Table } from './ui/Table';
 import { IconEdit } from './ui/icons';
 import type { FormProblem } from './ui';
@@ -521,7 +523,7 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
 
           <div>
             <label htmlFor="st-reason">Reason</label>
-            <Input.TextArea id="st-reason" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Recorded at hire, corrected after the LHDN category confirmation…" />
+            <ReasonPicker id="st-reason" value={reason} onChange={setReason} options={STANDING_REASONS} placeholder="Recorded at hire, corrected after the LHDN category confirmation…" />
             <FieldProblem problem={error} field="st-reason" />
           </div>
         </div>

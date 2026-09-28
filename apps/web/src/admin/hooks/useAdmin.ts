@@ -1019,10 +1019,10 @@ export function useMarkDispatchOpened() {
 // MALAYSIA PAYROLL — STAGE 1 + STAGE 2
 // ===========================================================================
 
-export function useLegalEmployers() {
+export function useLegalEmployers(clinicId?: string) {
   return useQuery({
-    queryKey: ['admin-hr', 'legal-employers'],
-    queryFn: () => apiClient.get<LegalEmployerRow[]>('/workforce/legal-employers'),
+    queryKey: ['admin-hr', 'legal-employers', clinicId ?? ''],
+    queryFn: () => apiClient.get<LegalEmployerRow[]>(`/workforce/legal-employers${qs({ clinicId })}`),
   });
 }
 
@@ -1035,8 +1035,8 @@ export function useUpsertLegalEmployer() {
 
 export function useAssignEmployer() {
   return useAdminMutation(
-    ({ staffId, legalEmployerId }: { staffId: string; legalEmployerId: string | null }) =>
-      apiClient.patch(`/workforce/employees/${staffId}/legal-employer`, { legalEmployerId }),
+    ({ staffId, legalEmployerId, reason }: { staffId: string; legalEmployerId: string | null; reason?: string }) =>
+      apiClient.patch(`/workforce/employees/${staffId}/legal-employer`, { legalEmployerId, ...(reason ? { reason } : {}) }),
     ['admin-hr'],
   );
 }

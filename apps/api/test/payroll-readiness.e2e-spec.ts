@@ -155,7 +155,7 @@ describe('Payroll readiness (e2e)', () => {
       readiness: {
         ready: boolean;
         blockersOutstanding: number;
-        items: { key: string; severity: string; done: boolean; detail: string }[];
+        items: { key: string; severity: string; done: boolean; detail: string; link: string }[];
       };
     }[];
 
@@ -177,6 +177,10 @@ describe('Payroll readiness (e2e)', () => {
     const employerItem = noEmployer.readiness.items.find((item) => item.key === 'employer')!;
     expect(employerItem.done).toBe(false);
     expect(employerItem.severity).toBe('BLOCKING');
+    // Each item says where on the record it is put right, so a chip is a link to the field, not to the top of the page.
+    expect(employerItem.link).toBe('?tab=employment&focus=employer');
+    expect(ready.readiness.items.find((item) => item.key === 'salary')!.link).toBe('?tab=employment&focus=salary');
+    expect(opening.link).toBe('?tab=statutory&focus=tax');
 
     const noStanding = rows.find((row) => row.staffId === noStandingId)!;
     expect(noStanding.readiness.ready).toBe(false);
@@ -184,6 +188,8 @@ describe('Payroll readiness (e2e)', () => {
     // all unknown — the same refusals the run itself makes.
     expect(noStanding.readiness.items.find((item) => item.key === 'statutory')!.done).toBe(false);
     expect(noStanding.readiness.items.find((item) => item.key === 'restDay')!.done).toBe(false);
+    expect(noStanding.readiness.items.find((item) => item.key === 'statutory')!.link).toBe('?tab=statutory&focus=standing');
+    expect(noStanding.readiness.items.find((item) => item.key === 'restDay')!.link).toBe('?tab=statutory&focus=standing');
   });
 
   it('reports the employing companies beside the employees, with what each is missing', async () => {

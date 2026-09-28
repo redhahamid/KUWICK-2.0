@@ -29,6 +29,12 @@ export interface ExceptionTemplate {
    */
   consequence: string | ((ctx: Record<string, string | number>) => string);
   remediation: string;
+  /**
+   * Where the fix is made. A link to a person's record carries the tab and,
+   * where the page has one, the panel (`?tab=statutory&focus=standing`), so
+   * "Fix" lands on the thing that is wrong rather than on the top of the
+   * record. `EmployeeWorkspacePage` reads both.
+   */
   deepLink?: (ctx: Record<string, string | number>) => string;
 }
 
@@ -56,7 +62,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     cause: () => 'Salary setup is incomplete.',
     consequence: 'They have no salary on file for this month, so they are left out of the totals entirely rather than paid a figure nobody chose.',
     remediation: 'Set their monthly salary from the date it starts.',
-    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
+    deepLink: (c) => `/admin/hr/employees/${c.staffId}?tab=employment&focus=salary`,
   },
   NO_DOB: {
     code: 'NO_DOB',
@@ -66,7 +72,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     consequence:
       'EPF, SOCSO and EIS all change at 60, so without a date of birth every statutory figure for this person would be a guess.',
     remediation: 'Add their date of birth to their employee record.',
-    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
+    deepLink: (c) => `/admin/hr/employees/${c.staffId}?tab=profile&edit=1`,
   },
   NO_LEGAL_EMPLOYER: {
     code: 'NO_LEGAL_EMPLOYER',
@@ -76,7 +82,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     consequence:
       'Nothing could be filed for them: EPF, SOCSO, EIS and monthly tax are all submitted by a company, and this person is not attached to one.',
     remediation: 'Set the company that employs them on their employee record.',
-    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
+    deepLink: (c) => `/admin/hr/employees/${c.staffId}?tab=employment&focus=employer`,
   },
   PCB_MISSING: {
     code: 'PCB_MISSING',
@@ -126,7 +132,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'whether it pays untaken leave out when somebody leaves — is missing, so nobody can tell from this run whether ' +
       'section 60E(3) is being met. Their last month is already cut to the days they served; this is the separate debt.',
     remediation: 'Assign them a leave policy, which is also where the payout choice is set, then recalculate.',
-    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
+    deepLink: (c) => `/admin/hr/employees/${c.staffId}?tab=employment`,
   },
   /*
    * THE PAYOUT, COMPUTED. Section 60E(3), settled by the account holder against
@@ -154,7 +160,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     remediation:
       'Add it to this run as an "Untaken annual leave paid out" input for the amount above. What that component ' +
       'attracts for EPF, SOCSO, EIS and PCB is set on Payroll items and is your clinic\u2019s to decide.',
-    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
+    deepLink: (c) => `/admin/hr/employees/${c.staffId}?tab=employment`,
   },
   /*
    * THE PAYOUT THE CLINIC CHOSE NOT TO MAKE.
@@ -214,7 +220,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     cause: () => 'No bank account is recorded for this employee.',
     consequence: 'They cannot be included in a bank payment file and will have to be paid by another means.',
     remediation: 'Record the bank name, account number and account name.',
-    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
+    deepLink: (c) => `/admin/hr/employees/${c.staffId}?tab=bank`,
   },
   NEGATIVE_NET: {
     code: 'NEGATIVE_NET',
@@ -247,7 +253,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     remediation:
       'Decide the treatment for this employee: date the change from the start of a period, or split the run. ' +
       'Kuwick does not prorate a mid-period salary change.',
-    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
+    deepLink: (c) => `/admin/hr/employees/${c.staffId}?tab=employment&focus=salary`,
   },
   /*
    * The calculation models a MONTHLY salary. A daily or hourly rate needs a day
@@ -263,7 +269,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     consequence: 'They are left out of the run rather than paid a monthly figure derived from a daily or hourly rate.',
     remediation:
       'Record a monthly salary for this employee, or leave them out of payroll until daily and hourly pay is implemented.',
-    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
+    deepLink: (c) => `/admin/hr/employees/${c.staffId}?tab=employment&focus=salary`,
   },
   STATUTORY_UNVERIFIED: {
     code: 'STATUTORY_UNVERIFIED',
@@ -367,7 +373,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'statutorily. Whether they are paid anything is what the employer undertook, and nothing is recorded.',
     remediation:
       'Say on their employee record whether overtime is paid as a company benefit or not paid at all. Either answer settles it; leaving it blank does not.',
-    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=statutory&focus=standing`,
   },
   /*
    * A RULE SET PAYING BELOW THE ACT, for somebody the Act reaches.
@@ -446,7 +452,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     remediation:
       'Set their home branch on the staff record so their branch’s run picks them up, or run payroll for every ' +
       'branch at once (a run with no branch selected), which pays everybody regardless.',
-    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=employment&focus=employment`,
   },
   HRD_REGISTRATION_UNRECORDED: {
     code: 'HRD_REGISTRATION_UNRECORDED',
@@ -498,7 +504,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'component genuinely sits outside EPF wages, that is a fact about the COMPONENT rather than about this ' +
       'employee: correct its statutory treatment in the pay-component catalogue, with the authority reference, and ' +
       'Kuwick’s assessment follows.',
-    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=statutory&focus=epfBasis`,
   },
   /** Mirrors a mid-month salary change: either figure looks correct. */
   EPF_BASIS_CHANGED_MID_PERIOD: {
@@ -512,7 +518,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     remediation:
       'Set the change to take effect from the first day of a month — the recorded date can be corrected on the ' +
       'employee’s EPF basis history — then recalculate.',
-    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=statutory&focus=epfBasis`,
   },
   /** Mirrors a mid-month classification change: either figure looks correct. */
   HRD_REGISTRATION_CHANGED_MID_PERIOD: {
@@ -539,7 +545,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'the contribution is borne by the employee. Without knowing which they are, the deduction cannot be worked out.',
     remediation:
       'Record their LINDUNG 24 JAM participation on the employee record — foreign worker, opted in, or not participating.',
-    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=statutory&focus=standing`,
   },
   /**
    * NOTHING SAYS WHAT THIS PERSON'S STATUTORY STANDING WAS THAT MONTH.
@@ -567,7 +573,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     remediation:
       'Nothing, if that is right. If they moved company, change the employing company on their employee record ' +
       'before this month is calculated.',
-    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=employment&focus=employer`,
   },
   /**
    * An off-cycle run pays what was keyed for the period and nothing else. Most
@@ -595,7 +601,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'force for this month there is nothing to compute from, and a payslip would be contributing on assumptions.',
     remediation:
       'Record their statutory classification from a date on or before the start of this period, on the employee record.',
-    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=statutory&focus=standing`,
   },
   /**
    * The classification analogue of SALARY_CHANGED_MID_PERIOD, and refused for
@@ -614,7 +620,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     remediation:
       'Date the change from the start of a period, or split the run. Kuwick does not apportion a mid-period ' +
       'classification change across two rates.',
-    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=statutory&focus=standing`,
   },
   NO_REST_DAY: {
     code: 'NO_REST_DAY',
@@ -626,7 +632,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'without knowing which day it is their extra hours cannot be priced correctly.',
     remediation:
       'Set the rest day on their employee record. The Employment Act requires one a week, chosen by the employer and told to the employee.',
-    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=statutory&focus=standing`,
   },
   PART_MONTH: {
     code: 'PART_MONTH',
@@ -637,7 +643,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'Their basic pay is worked out under s.18A of the Employment Act — the monthly wage divided by the days ' +
       'in this month, times the days they served. Overtime is still priced on their full monthly wage.',
     remediation: 'Nothing to do, unless the start or end date on their record is wrong.',
-    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=employment&focus=employment`,
   },
   /*
    * Somebody the run would otherwise have paid a whole month, who was not
@@ -654,7 +660,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     consequence: 'They are left off this payroll entirely rather than paid a part-month of nought.',
     remediation:
       'If that is right, nothing to do. If they did work this month, correct their start or end date and recalculate.',
-    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=employment&focus=employment`,
   },
   STATUTORY_UNKNOWN: {
     code: 'STATUTORY_UNKNOWN',
@@ -665,7 +671,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'A statutory figure for this employee could not be worked out, so their payslip is incomplete and the ' +
       'contribution that would be filed for them is unknown — not nil.',
     remediation: 'Record what is missing on the employee, then recalculate the run.',
-    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=statutory&focus=standing`,
   },
   VARIANCE_OUTSIDE_THRESHOLD: {
     code: 'VARIANCE_OUTSIDE_THRESHOLD',
