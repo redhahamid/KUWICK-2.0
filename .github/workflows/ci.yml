@@ -4,8 +4,19 @@
 
 name: CI
 
+# WHAT RUNS WHERE, AND WHY. The repository is private, so every minute here
+# is paid for. Until September 2026 this ran both jobs on EVERY push of EVERY
+# branch — about 190 runs of ~14 minutes wall (two jobs in parallel) in one
+# month, which is what emptied the Actions budget and left every later run
+# failing in three seconds with no job started. The four gates already run
+# on the developer side before any push (docs/HR_UAT_CHECKLIST.md names them),
+# so a branch push repeated here proved nothing that was not already proved.
+#
+# Now: master pushes and pull requests run the fast job; the browser job runs
+# on master only. A branch that wants the full guardrail opens a pull request.
 on:
   push:
+    branches: [master]
   pull_request:
 
 concurrency:
@@ -135,6 +146,9 @@ jobs:
   # flow was broken end to end.
   e2e:
     name: golden path (E2E)
+    # Master only: the browser job is the expensive half, and a pull request
+    # already gets the types, unit and integration suites above.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     services:
       postgres:

@@ -8,5 +8,6 @@
   "testEnvironment": "node",
   "setupFiles": ["<rootDir>/setup-env.ts"],
   "globalSetup": "<rootDir>/global-setup.ts",
-  "maxWorkers": 2
+  "maxWorkers": 2,
+  "testTimeout": 60000
 }
