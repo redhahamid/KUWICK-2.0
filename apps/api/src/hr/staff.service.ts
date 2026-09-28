@@ -79,8 +79,34 @@ export class StaffService {
     return nextProviderColor(existing.map((row) => row.calendarColor));
   }
 
-  findAll() {
+  /**
+   * THE DIRECTORY. Tenant-wide by design — every module's pickers name people
+   * across branches, and a stock clerk holds neither HR's nor the diary's
+   * permission — but never anonymous: it ran on the JWT alone, and a token
+   * whose staff member has been deactivated could still read every name,
+   * registration number and login link in the tenant.
+   */
+  async findAll() {
+    await this.requireActiveActor();
     return this.prisma.staff.findMany({ orderBy: { fullName: 'asc' } });
+  }
+
+  /** One person, for the route; `findById` stays the bare read the writes use. */
+  async read(id: string) {
+    await this.requireActiveActor();
+    return this.findById(id);
+  }
+
+  /** An authenticated, still-active staff member — nothing more. */
+  private async requireActiveActor(): Promise<void> {
+    const actorId = currentStaffId();
+    if (!actorId) {
+      throw new ForbiddenException('No authenticated staff member on this session');
+    }
+    const actor = await this.prisma.staff.findUnique({ where: { id: actorId } });
+    if (!actor || !actor.active) {
+      throw new ForbiddenException('Your staff account is inactive');
+    }
   }
 
   async findById(id: string) {
@@ -242,7 +268,8 @@ export class StaffService {
     });
   }
 
-  listProfessionalAudit(staffId: string) {
+  async listProfessionalAudit(staffId: string) {
+    await this.requireActiveActor();
     return this.prisma.staffProfessionalAudit.findMany({
       where: { staffId },
       orderBy: { changedAt: 'desc' },

@@ -116,6 +116,26 @@ export async function requireScope(
 }
 
 /**
+ * A READ THAT TWO MODULES SHARE. The roster is the Appointments module's
+ * board and HR's Attendance ▸ Roster tab: a doctor reads it with
+ * `appointment.view`, a clinic manager with `hr.view`, and neither holds the
+ * other's permission. Any one of the permissions admits; the first names the
+ * refusal. The branch scope is resolved exactly as `requireScope` does.
+ */
+export async function requireScopeAny(
+  prisma: PrismaService,
+  permissions: Permission[],
+): Promise<{ actor: ActingStaff; scope: BranchScope }> {
+  return withTenantTx(prisma, async (tx) => {
+    const actor = await requireActor(tx);
+    if (!permissions.some((permission) => actorCan(actor, permission))) {
+      assertCan(actor, permissions[0], actor.assignedRoles, actor.directGrants);
+    }
+    return { actor, scope: await branchScopeOf(tx, actor) };
+  });
+}
+
+/**
  * The branch a single-branch operation is about.
  *
  * Was: "what the request asked for, else the actor's home branch", with a

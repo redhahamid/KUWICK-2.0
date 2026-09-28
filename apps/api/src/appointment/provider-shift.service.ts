@@ -7,6 +7,7 @@ import {
 import { currentStaffId, currentTenantId } from '../core/tenant-context';
 import { PrismaService } from '../core/prisma.service';
 import { requireActor, withTenantTx } from '../clinical/clinical-actor';
+import { requireScopeAny } from '../finance/admin-actor';
 import { assertCanPerformAppointmentAction } from './appointment-authorization';
 import {
   CopyRosterDto,
@@ -132,7 +133,14 @@ export class ProviderShiftService {
     if (!/^\d{4}-\d{2}$/.test(month)) {
       throw new BadRequestException('Month must be written as YYYY-MM.');
     }
-    const timeZone = await this.timeZoneOf(clinicId);
+    // WHO MAY READ THIS BOARD, AND FOR WHICH BRANCH. The board ran on the
+    // JWT alone: any account in the tenant could name any branch and read its
+    // whole workforce, shifts and leave. Now the branch is one the account
+    // holds — resolved the way every HR read resolves it — under either the
+    // Appointments module's permission or HR's.
+    const { scope } = await requireScopeAny(this.rawPrisma, ['appointment.view', 'hr.view']);
+    const branch = scope.require(clinicId);
+    const timeZone = await this.timeZoneOf(branch);
     const dates = datesInMonth(month);
     const first = parseDateOnly(dates[0]);
     const last = parseDateOnly(dates[dates.length - 1]);
@@ -154,7 +162,7 @@ export class ProviderShiftService {
       // same rows, more of the people who are in it.
       this.prisma.staff.findMany({
         where: {
-          clinicId,
+          clinicId: branch,
           active: true,
           role: { not: Role.PATIENT_PORTAL },
         },
@@ -169,7 +177,7 @@ export class ProviderShiftService {
         orderBy: { fullName: 'asc' },
       }),
       this.prisma.providerShift.findMany({
-        where: { clinicId, shiftDate: { gte: first, lte: last } },
+        where: { clinicId: branch, shiftDate: { gte: first, lte: last } },
         orderBy: { startsAt: 'asc' },
       }),
       this.prisma.leaveRequest.findMany({
@@ -181,7 +189,7 @@ export class ProviderShiftService {
         select: { staffId: true, startDate: true, endDate: true, leaveType: true },
       }),
       this.prisma.clinicClosedDate.findMany({
-        where: { clinicId, date: { gte: first, lte: last } },
+        where: { clinicId: branch, date: { gte: first, lte: last } },
         select: { date: true, reason: true },
       }),
     ]);
@@ -286,10 +294,12 @@ export class ProviderShiftService {
 
   /** The shifts overlapping a date range, for the calendar's working-hours shading. */
   async range(clinicId: string, from: string, to: string) {
-    const timeZone = await this.timeZoneOf(clinicId);
+    const { scope } = await requireScopeAny(this.rawPrisma, ['appointment.view', 'hr.view']);
+    const branch = scope.require(clinicId);
+    const timeZone = await this.timeZoneOf(branch);
     const rows = await this.prisma.providerShift.findMany({
       where: {
-        clinicId,
+        clinicId: branch,
         shiftDate: { gte: parseDateOnly(from), lte: parseDateOnly(to) },
       },
       orderBy: { startsAt: 'asc' },

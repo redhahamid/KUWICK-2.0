@@ -52,6 +52,8 @@ describe('the branch on the attendance board and the HR reads beside it (e2e)', 
   let payrollManagerA: string;
   let inA: string;
   let inB: string;
+  /** A stock clerk at branch A: no HR and no diary permission, but a person the directory must still name. */
+  let stockA: string;
   let employerId: string;
   const today = clinicToday();
   const week = `from=${shift(today, -1)}&to=${shift(today, 1)}`;
@@ -175,6 +177,8 @@ describe('the branch on the attendance board and the HR reads beside it (e2e)', 
     );
     managerA = bearerFor(tenantId, manager.id, Role.CLINIC_MANAGER);
     payrollManagerA = bearerFor(tenantId, payrollManager.id, Role.CLINIC_MANAGER);
+    const clerk = await row((tx) => tx.staff.create({ data: { tenantId, role: Role.STOCK_STAFF, fullName: 'Stock Clerk', clinicId: clinicA } }));
+    stockA = bearerFor(tenantId, clerk.id, Role.STOCK_STAFF);
     employerId = (await row((tx) => tx.legalEmployer.create({ data: { tenantId, name: 'Klinik Scope Sdn Bhd' } }))).id;
 
     inA = await person('Person A', clinicA);
@@ -342,6 +346,53 @@ describe('the branch on the attendance board and the HR reads beside it (e2e)', 
     it('count only the branch the account holds when none is named, and REFUSE one it does not', async () => {
       expect(count((await get('/workforce/legal-employers', managerA).expect(200)).body)).toBe(1);
       await get(`/workforce/legal-employers?clinicId=${clinicB}`, managerA).expect(403);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // The roster, the doctor's week, the directory and the holiday calendar.
+  // These ran on the JWT alone: any account in the tenant could read any
+  // branch's board and rewrite any doctor's week or the holiday calendar.
+  describe('the roster and the doctor’s week', () => {
+    const MONDAY = { dayOfWeek: 1, startTime: '09:00', endTime: '17:00' };
+
+    it('open for a branch the account holds, under HR’s permission as well as the diary’s', async () => {
+      await get(`/provider-shifts/month?clinicId=${clinicA}&month=2026-09`, managerA).expect(200);
+      await get(`/provider-shifts/range?clinicId=${clinicA}&from=2026-09-01&to=2026-09-07`, managerA).expect(200);
+      await get(`/doctor-schedules/weekly?staffId=${inA}&clinicId=${clinicA}`, managerA).expect(200);
+    });
+
+    it('REFUSE a branch the account does not hold', async () => {
+      await get(`/provider-shifts/month?clinicId=${clinicB}&month=2026-09`, managerA).expect(403);
+      await get(`/provider-shifts/range?clinicId=${clinicB}&from=2026-09-01&to=2026-09-07`, managerA).expect(403);
+      await get(`/doctor-schedules/weekly?staffId=${inB}&clinicId=${clinicB}`, managerA).expect(403);
+      await get(`/doctor-schedules?clinicId=${clinicB}`, managerA).expect(403);
+    });
+
+    it('REFUSE an account with neither permission, which still reads the directory', async () => {
+      await get(`/provider-shifts/month?clinicId=${clinicA}&month=2026-09`, stockA).expect(403);
+      await get('/staff', stockA).expect(200);
+    });
+
+    it('take the roster permission to rewrite a doctor’s week, and the branch on the request', async () => {
+      const body = { staffId: inA, clinicId: clinicA, days: [MONDAY] };
+      await request(server()).put('/doctor-schedules/weekly').set('Authorization', managerA).send(body).expect(403);
+      await request(server()).put('/doctor-schedules/weekly').set('Authorization', owner).send(body).expect(200);
+      await get(`/doctor-schedules/weekly?staffId=${inA}&clinicId=${clinicA}`).expect(200);
+    });
+  });
+
+  describe('the holiday calendar', () => {
+    it('is read under HR’s permission and written by the owner only, with an audit row', async () => {
+      await get('/public-holidays', managerA).expect(200);
+      await request(server()).post('/public-holidays').set('Authorization', managerA).send({ date: '2026-12-25', name: 'Christmas' }).expect(403);
+      const created = await request(server()).post('/public-holidays').set('Authorization', owner).send({ date: '2026-12-25', name: 'Christmas' }).expect(201);
+      // The same date twice is a conflict, not a 500.
+      await request(server()).post('/public-holidays').set('Authorization', owner).send({ date: '2026-12-25', name: 'Christmas again' }).expect(409);
+      await request(server()).delete(`/public-holidays/${created.body.id}`).set('Authorization', managerA).expect(403);
+      await request(server()).delete(`/public-holidays/${created.body.id}`).set('Authorization', owner).expect(204);
+      const audit = await row((tx) => tx.auditLog.findMany({ where: { action: { in: ['publicHoliday.created', 'publicHoliday.deleted'] } } }));
+      expect(audit.map((entry) => entry.action).sort()).toEqual(['publicHoliday.created', 'publicHoliday.deleted']);
     });
   });
 

@@ -4,6 +4,8 @@ import {
   TenantScopedPrismaClient,
 } from '../core/tenant-scoped-prisma.provider';
 import { currentTenantId } from '../core/tenant-context';
+import { PrismaService } from '../core/prisma.service';
+import { requireScope, requireScopeAny } from '../finance/admin-actor';
 import { CreateDoctorScheduleDto } from './dto/create-doctor-schedule.dto';
 import { UpdateDoctorScheduleDto } from './dto/update-doctor-schedule.dto';
 import { parseDateOnly, parseTimeToDate, timeToMinutesOfDay } from './time.util';
@@ -13,13 +15,23 @@ const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+/**
+ * WHO MAY READ AND WRITE A DOCTOR'S WEEK. These routes ran on the JWT alone.
+ * Reads take either the Appointments module's permission or HR's, for a
+ * branch the account holds; writes take `appointment.manage_roster`, the
+ * permission the shift writes and the web's Edit button already use, and
+ * the branch named on the row.
+ */
 @Injectable()
 export class DoctorScheduleService {
   constructor(
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
+    private readonly rawPrisma: PrismaService,
   ) {}
 
-  create(dto: CreateDoctorScheduleDto) {
+  async create(dto: CreateDoctorScheduleDto) {
+    const { scope } = await requireScope(this.rawPrisma, 'appointment.manage_roster');
+    scope.require(dto.clinicId);
     return this.prisma.doctorSchedule.create({
       data: {
         tenantId: currentTenantId(),
@@ -34,15 +46,18 @@ export class DoctorScheduleService {
     });
   }
 
-  findAll(filter: { staffId?: string; clinicId?: string }) {
+  async findAll(filter: { staffId?: string; clinicId?: string }) {
+    const { scope } = await requireScopeAny(this.rawPrisma, ['appointment.view', 'hr.view']);
     return this.prisma.doctorSchedule.findMany({
-      where: { staffId: filter.staffId, clinicId: filter.clinicId },
+      where: { staffId: filter.staffId, ...scope.where(filter.clinicId) },
       orderBy: [{ staffId: 'asc' }, { dayOfWeek: 'asc' }],
     });
   }
 
   async update(id: string, dto: UpdateDoctorScheduleDto) {
-    await this.assertExists(id);
+    const { scope } = await requireScope(this.rawPrisma, 'appointment.manage_roster');
+    const row = await this.assertExists(id);
+    scope.assert(row.clinicId);
     return this.prisma.doctorSchedule.update({
       where: { id },
       data: { effectiveTo: parseDateOnly(dto.effectiveTo) },
@@ -50,7 +65,9 @@ export class DoctorScheduleService {
   }
 
   async remove(id: string) {
-    await this.assertExists(id);
+    const { scope } = await requireScope(this.rawPrisma, 'appointment.manage_roster');
+    const row = await this.assertExists(id);
+    scope.assert(row.clinicId);
     await this.prisma.doctorSchedule.delete({ where: { id } });
   }
 
@@ -59,6 +76,13 @@ export class DoctorScheduleService {
    * they work, in day order, with days off simply absent.
    */
   async weekly(staffId: string, clinicId: string) {
+    if (!staffId) throw new BadRequestException('Which doctor? staffId is required.');
+    const { scope } = await requireScopeAny(this.rawPrisma, ['appointment.view', 'hr.view']);
+    return this.weeklyRows(staffId, scope.require(clinicId));
+  }
+
+  /** The week itself, for callers that have already been let in. */
+  private async weeklyRows(staffId: string, clinicId: string) {
     const rows = await this.prisma.doctorSchedule.findMany({
       where: {
         staffId,
@@ -120,6 +144,9 @@ export class DoctorScheduleService {
       seen.add(day.dayOfWeek);
     }
 
+    const { scope } = await requireScope(this.rawPrisma, 'appointment.manage_roster');
+    scope.require(dto.clinicId);
+
     const tenantId = currentTenantId();
     const from = today();
     const until = new Date(from.getTime() - DAY_MS);
@@ -156,7 +183,7 @@ export class DoctorScheduleService {
       ),
     ]);
 
-    return this.weekly(dto.staffId, dto.clinicId);
+    return this.weeklyRows(dto.staffId, dto.clinicId);
   }
 
   private async assertExists(id: string) {

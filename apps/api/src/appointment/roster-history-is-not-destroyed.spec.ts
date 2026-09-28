@@ -1,4 +1,5 @@
 import { DoctorScheduleService } from './doctor-schedule.service';
+import { PrismaService } from '../core/prisma.service';
 import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { tenantContextStorage } from '../core/tenant-context';
 
@@ -37,7 +38,17 @@ function build() {
     $transaction: jest.fn(async (ops: unknown[]) => ops),
   } as unknown as TenantScopedPrismaClient;
 
-  const service = new DoctorScheduleService(prisma);
+  // The actor gate runs on the raw client: an active owner, in a one-branch tenant.
+  const gateTx = {
+    $executeRaw: jest.fn(async () => 1),
+    staff: { findUnique: jest.fn(async () => ({ id: 'staff-7', tenantId: 't1', active: true, role: 'OWNER_ADMIN', clinicId: null, userId: 'u1' })) },
+    staffRoleAssignment: { findMany: jest.fn(async () => [{ role: 'OWNER' }]) },
+    staffPermissionGrant: { findMany: jest.fn(async () => []) },
+    clinic: { findMany: jest.fn(async () => [{ id: 'clinic-1' }]), count: jest.fn(async () => 1) },
+    userClinicAccess: { findMany: jest.fn(async () => []) },
+  };
+  const rawPrisma = { $transaction: jest.fn(async (fn: (tx: typeof gateTx) => Promise<unknown>) => fn(gateTx)) } as unknown as PrismaService;
+  const service = new DoctorScheduleService(prisma, rawPrisma);
   const run = <T>(fn: () => Promise<T>) =>
     tenantContextStorage.run({ tenantId: 't1', staffId: 'staff-7', userId: 'u1' }, fn);
 

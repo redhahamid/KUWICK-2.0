@@ -12,6 +12,7 @@ import {
 } from '../../hr/hooks/usePublicHolidays';
 import type { CreatePublicHolidayDto, PublicHoliday } from '../../hr/types';
 import { ApiError } from '../../core/api-client';
+import { useCan } from '../../core/hooks/useCan';
 
 interface HolidayFormValues {
   date: Dayjs;
@@ -33,6 +34,8 @@ export function PublicHolidaysPage() {
   const { data: holidays, isLoading } = usePublicHolidays();
   const createHoliday = useCreatePublicHoliday();
   const deleteHoliday = useDeletePublicHoliday();
+  // One calendar for every branch, so writing it is the owner's: the server refuses anybody else.
+  const mayWrite = useCan('settings.manage');
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm<HolidayFormValues>();
 
@@ -61,9 +64,11 @@ export function PublicHolidaysPage() {
       title="Public holidays"
       sub="The days the clinic is closed, which attendance and leave both read."
       actions={
-        <button type="button" className="hr-btn hr-btn--primary" onClick={() => setOpen(true)}>
-          + Add holiday
-        </button>
+        mayWrite ? (
+          <button type="button" className="hr-btn hr-btn--primary" onClick={() => setOpen(true)}>
+            + Add holiday
+          </button>
+        ) : undefined
       }
     >
 
@@ -95,15 +100,16 @@ export function PublicHolidaysPage() {
             {
               title: '',
               width: 60,
-              render: (_: unknown, row: PublicHoliday) => (
-                <Popconfirm title="Remove this holiday?" onConfirm={() => deleteHoliday.mutate(row.id)}>
-                  <span>
-                    <IconButton label={`Remove ${row.name}`}>
-                      <IconClose />
-                    </IconButton>
-                  </span>
-                </Popconfirm>
-              ),
+              render: (_: unknown, row: PublicHoliday) =>
+                mayWrite ? (
+                  <Popconfirm title="Remove this holiday?" onConfirm={() => deleteHoliday.mutate(row.id)}>
+                    <span>
+                      <IconButton label={`Remove ${row.name}`}>
+                        <IconClose />
+                      </IconButton>
+                    </span>
+                  </Popconfirm>
+                ) : null,
             },
           ]}
         />

@@ -19,7 +19,7 @@ export class StaffController {
 
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.staffService.findById(id);
+    return this.staffService.read(id);
   }
 
   @Patch(':id')

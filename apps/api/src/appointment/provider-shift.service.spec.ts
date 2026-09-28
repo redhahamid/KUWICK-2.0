@@ -66,7 +66,10 @@ function build(world: World = {}) {
     clinic: {
       findUnique: jest.fn(async () => ({ timezone: 'Asia/Kuala_Lumpur' })),
       count: jest.fn(async () => 1),
+      // The branch scope reads the tenant's branches; one branch, and the actor holds it.
+      findMany: jest.fn(async () => [{ id: CLINIC }]),
     },
+    userClinicAccess: { findMany: jest.fn(async () => []) },
     staff: {
       findMany: jest.fn(
         async () =>
@@ -362,7 +365,7 @@ describe('the monthly matrix reads HR rather than copying it', () => {
       ],
     });
 
-    const matrix = await ctx.service.month(CLINIC, '2026-08');
+    const matrix = await ctx.run(() => ctx.service.month(CLINIC, '2026-08'));
     const row = matrix.providers[0];
 
     expect(row.cells['2026-08-20'].leave).toEqual({ leaveType: 'ANNUAL' });
@@ -374,7 +377,7 @@ describe('the monthly matrix reads HR rather than copying it', () => {
   it('11. a closed date is a property of the MONTH, not of any provider', async () => {
     const ctx = build({ closed: [{ date: iso('2026-08-31'), reason: 'Merdeka' }] });
 
-    const matrix = await ctx.service.month(CLINIC, '2026-08');
+    const matrix = await ctx.run(() => ctx.service.month(CLINIC, '2026-08'));
 
     expect(matrix.closedDates['2026-08-31']).toBe('Merdeka');
   });
@@ -396,7 +399,7 @@ describe('the monthly matrix reads HR rather than copying it', () => {
       ],
     });
 
-    const cell = (await ctx.service.month(CLINIC, '2026-08')).providers[0].cells['2026-08-19'];
+    const cell = (await ctx.run(() => ctx.service.month(CLINIC, '2026-08'))).providers[0].cells['2026-08-19'];
 
     expect(cell.shifts[0]).toMatchObject({
       startTime: '23:00',
@@ -408,7 +411,7 @@ describe('the monthly matrix reads HR rather than copying it', () => {
   it('13. the whole month is four queries, not one per provider per day', async () => {
     const ctx = build();
 
-    await ctx.service.month(CLINIC, '2026-08');
+    await ctx.run(() => ctx.service.month(CLINIC, '2026-08'));
 
     expect(ctx.tables.providerShift.findMany).toHaveBeenCalledTimes(1);
     expect(ctx.tables.leaveRequest.findMany).toHaveBeenCalledTimes(1);
@@ -417,7 +420,7 @@ describe('the monthly matrix reads HR rather than copying it', () => {
   it('14. a malformed month is refused rather than producing an empty grid', async () => {
     const ctx = build();
 
-    await expect(ctx.service.month(CLINIC, 'August')).rejects.toThrow(/YYYY-MM/);
+    await expect(ctx.run(() => ctx.service.month(CLINIC, 'August'))).rejects.toThrow(/YYYY-MM/);
   });
 });
 
@@ -607,7 +610,7 @@ describe('the roster is not open to everybody who can log in', () => {
       ],
     });
 
-    const row = (await ctx.service.month(CLINIC, '2026-08')).providers[0];
+    const row = (await ctx.run(() => ctx.service.month(CLINIC, '2026-08'))).providers[0];
 
     expect(row.scheduleMode).toBe('ROSTER_LINKED');
     expect(row.modeChange).toEqual({ mode: 'FIXED_WEEKLY', effectiveFrom: '2099-09-01' });

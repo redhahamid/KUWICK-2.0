@@ -85,6 +85,8 @@ export type AuditAction =
   | 'staffFile.uploaded'
   | 'selfieConsent.given'
   | 'claimPolicy.saved'
+  | 'publicHoliday.created'
+  | 'publicHoliday.deleted'
   | 'employee.created'
   /// A record removed outright: a wrong entry, a duplicate, a hire who never
   /// turned up. Refused for anybody an approved run ever paid.
