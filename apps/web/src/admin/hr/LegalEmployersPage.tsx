@@ -192,10 +192,14 @@ export function LegalEmployersPage() {
                */
               title: 'HRD Corp',
               key: 'hrd',
-              width: 210,
+              width: 250,
               render: (_: unknown, row: LegalEmployerRow) =>
                 row.hrdRegistration ? (
-                  HRD_LABELS[row.hrdRegistration] ?? row.hrdRegistration
+                  <span>
+                    {HRD_LABELS[row.hrdRegistration] ?? row.hrdRegistration}
+                    {/* A class is a fact with a date: a payroll month before it gets no levy. */}
+                    {row.hrdEffectiveFrom ? <span className="hr-faint hr-small"> · from {dayjs(row.hrdEffectiveFrom).format('D MMM YYYY')}</span> : null}
+                  </span>
                 ) : (
                   <StatusChip tone="attn">Not recorded</StatusChip>
                 ),
@@ -325,6 +329,10 @@ export function LegalEmployersPage() {
           <label>
             <div className="hr-small hr-muted" style={{ marginBottom: 4 }}>In force from</div>
             <DatePicker value={hrdFrom} onChange={(v) => v && setHrdFrom(v)} style={{ width: '100%' }} allowClear={false} format="D MMM YYYY" />
+            <div className="hr-small hr-muted" style={{ marginTop: 4 }}>
+              Applies from the {hrdFrom.format('MMMM YYYY')} payroll onwards. A month already approved keeps what it was approved with;
+              reopen and recalculate it if the registration was in force then.
+            </div>
           </label>
           <label>
             <div className="hr-small hr-muted" style={{ marginBottom: 4 }}>Registration class</div>

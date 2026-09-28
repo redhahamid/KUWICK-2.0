@@ -39,6 +39,7 @@ const PAYROLL_STATE: Record<PayrollHomeState, { label: string; tone: 'ok' | 'att
   READY_TO_REVIEW: { label: 'Ready to review', tone: 'info' },
   APPROVED: { label: 'Approved', tone: 'ok' },
   PAID: { label: 'Paid', tone: 'ok' },
+  BY_BRANCH: { label: 'By branch', tone: 'info' },
 };
 
 export function HrOverviewPage() {

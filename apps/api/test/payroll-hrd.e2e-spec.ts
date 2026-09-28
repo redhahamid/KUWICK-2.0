@@ -133,6 +133,12 @@ describe('HRD levy in the payroll run (e2e)', () => {
     const line = detail.body.lines[0];
     expect(line.hrdLevy).toBeNull();
 
+    // The register says why, on the row and once for the run — not only "not worked out".
+    const journey = await request(app.getHttpServer()).get(`/workforce/payroll/runs/${runId}/journey`).set('Authorization', bearer).expect(200);
+    expect(journey.body.pay.rows[0].hrdNote).toMatch(/not recorded/);
+    expect(journey.body.pay.hrdAdvice).toMatch(/is not recorded/);
+    expect(journey.body.pay.hrdAdvice).toContain('Settings, Company and statutory');
+
     const gate = await request(app.getHttpServer())
       .get(`/workforce/payroll/runs/${runId}/exceptions`)
       .set('Authorization', bearer)
@@ -179,6 +185,14 @@ describe('HRD levy in the payroll run (e2e)', () => {
     expect(
       (gate.body.exceptions as { code: string }[]).some((row) => row.code === 'HRD_REGISTRATION_UNRECORDED'),
     ).toBe(false);
+
+    // The company page says from when the class applies, and stops listing it as missing.
+    const employers = await request(app.getHttpServer()).get('/workforce/legal-employers').set('Authorization', bearer).expect(200);
+    const employer = (employers.body as { id: string; hrdEffectiveFrom: string | null; statutoryReadiness: { missing: string[] } }[]).find(
+      (row) => row.id === legalEmployerId,
+    )!;
+    expect(employer.hrdEffectiveFrom).toBe('2024-01-01');
+    expect(employer.statutoryReadiness.missing).not.toContain('HRD Corp registration class');
   });
 
   it('freezes the levy into the approved snapshot and the payslip’s employer contributions', async () => {

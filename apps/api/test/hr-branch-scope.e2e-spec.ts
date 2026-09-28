@@ -344,4 +344,38 @@ describe('the branch on the attendance board and the HR reads beside it (e2e)', 
       await get(`/workforce/legal-employers?clinicId=${clinicB}`, managerA).expect(403);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // The payroll month under "All branches". A run is a branch's; a scope that
+  // spans branches sees every branch's run, and never one of them passed off
+  // as the month.
+  describe('the payroll month under All branches', () => {
+    const PERIOD = '2026-09';
+    let runA: string;
+    let runB: string;
+
+    beforeAll(async () => {
+      runA = (await request(server()).post('/workforce/payroll/runs').set('Authorization', owner).send({ period: PERIOD, clinicId: clinicA }).expect(201)).body.id;
+      runB = (await request(server()).post('/workforce/payroll/runs').set('Authorization', owner).send({ period: PERIOD, clinicId: clinicB }).expect(201)).body.id;
+    });
+
+    it('lists every branch’s run rather than passing one branch off as the month', async () => {
+      const home = (await get(`/workforce/payroll/home?period=${PERIOD}`).expect(200)).body;
+      expect(home.run).toBeNull();
+      expect(home.state).toBe('BY_BRANCH');
+      expect((home.runs as { clinicName: string }[]).map((row) => row.clinicName).sort()).toEqual(['Branch A', 'Branch B']);
+      expect((home.runs as { id: string }[]).map((row) => row.id).sort()).toEqual([runA, runB].sort());
+    });
+
+    it('is one branch’s run when that branch is named, or when the account holds one branch', async () => {
+      const named = (await get(`/workforce/payroll/home?period=${PERIOD}&clinicId=${clinicA}`).expect(200)).body;
+      expect(named.run.id).toBe(runA);
+      expect(named.run.clinicName).toBe('Branch A');
+      expect(named.state).toBe('STARTED');
+      const scoped = (await get(`/workforce/payroll/home?period=${PERIOD}`, payrollManagerA).expect(200)).body;
+      expect(scoped.run.id).toBe(runA);
+      expect(scoped.runs).toHaveLength(1);
+      await get(`/workforce/payroll/home?period=${PERIOD}&clinicId=${clinicB}`, payrollManagerA).expect(403);
+    });
+  });
 });

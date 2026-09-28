@@ -774,6 +774,15 @@ function Cell({
     );
   }
 
+  // A DASH THAT SAYS WHY. The HRD levy the engine could not work out carries
+  // its reason on the line; the cell shows it on hover rather than a bare "—".
+  if (column.key === 'hrdLevy' && row.hrdLevy === null && row.hrdNote) {
+    return (
+      <td className={className}>
+        <span title={row.hrdNote}>—</span>
+      </td>
+    );
+  }
   return <td className={className}>{figure(column, row[column.field])}</td>;
 }
 

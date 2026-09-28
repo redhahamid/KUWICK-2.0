@@ -57,10 +57,13 @@ export class LegalEmployerService {
     // Read in one query rather than per row.
     const open = await this.prisma.legalEmployerStatutoryProfile.findMany({
       where: { legalEmployerId: { in: rows.map((row) => row.id) }, effectiveTo: null },
-      select: { legalEmployerId: true, hrdRegistration: true },
+      select: { legalEmployerId: true, hrdRegistration: true, effectiveFrom: true },
     });
     const hrdByEmployer = new Map(open.map((row) => [row.legalEmployerId, row.hrdRegistration]));
     const currentHrdOf = (id: string) => hrdByEmployer.get(id) ?? null;
+    // WITH ITS DATE. A class is in force from a day, and a payroll month before
+    // that day gets no levy — so the list says from when, not only what.
+    const hrdFromByEmployer = new Map(open.map((row) => [row.legalEmployerId, row.effectiveFrom.toISOString().slice(0, 10)]));
 
     return rows.map((row) => ({
       id: row.id,
@@ -94,6 +97,7 @@ export class LegalEmployerService {
         const current = currentHrdOf(row.id);
         return current ? hrdLevyRatePercent(current) : null;
       })(),
+      hrdEffectiveFrom: hrdFromByEmployer.get(row.id) ?? null,
       addressLine1: row.addressLine1,
       addressLine2: row.addressLine2,
       postcode: row.postcode,
@@ -118,7 +122,7 @@ export class LegalEmployerService {
        * rather than assumed, and NOT a blocker at this stage: no statutory
        * output exists yet to be blocked.
        */
-      statutoryReadiness: this.readiness(row),
+      statutoryReadiness: this.readiness({ ...row, hrdRegistration: currentHrdOf(row.id) }),
     }));
   }
 
@@ -128,6 +132,7 @@ export class LegalEmployerService {
     socsoEmployerNo: string | null;
     lhdnEmployerNo: string | null;
     bankAccountNo: string | null;
+    hrdRegistration: string | null;
   }) {
     const missing: string[] = [];
     if (!row.registrationNo) missing.push('Company registration number');
@@ -135,6 +140,8 @@ export class LegalEmployerService {
     if (!row.socsoEmployerNo) missing.push('SOCSO employer code');
     if (!row.lhdnEmployerNo) missing.push('LHDN employer number (E)');
     if (!row.bankAccountNo) missing.push('Bank account for payment');
+    // Not a number but a class: without it no HRD levy is worked out on any payslip.
+    if (!row.hrdRegistration) missing.push('HRD Corp registration class');
     return {
       complete: missing.length === 0,
       missing,

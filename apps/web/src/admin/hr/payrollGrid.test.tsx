@@ -72,6 +72,7 @@ function row(over: Partial<PayRow> = {}): PayRow {
     eisEmployee: '7.10',
     eisEmployer: '7.10',
     hrdLevy: '32.00',
+    hrdNote: null,
     employerContributions: '530.25',
     additionalEarnings: '250.00',
     socsoEis: '24.85',
@@ -259,6 +260,13 @@ describe('the payroll grid', () => {
     expect(within(first).getByText('120.00')).toBeInTheDocument();
     // Read from the record like the hours: grey, not typed here.
     for (const key of ['overtimePay', 'unpaidLeaveDeduction']) expect(GRID_COLUMNS.find((column) => column.key === key)!.kind).toBe('record');
+  });
+
+  it('says why the HRD levy is a dash, from the line itself', () => {
+    viewport(1440);
+    const why = 'Whether this employer is registered with HRD Corp is not recorded, so the levy is not included in employer cost.';
+    grid({ rows: [row({ hrdLevy: null, hrdNote: why })] });
+    expect(screen.getByTitle(why)).toHaveTextContent('—');
   });
 
   it('says in the group headers whether a deduction is the employee’s or the employer’s', () => {

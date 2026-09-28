@@ -384,6 +384,18 @@ function PrepareStep({
         />
       )}
 
+      {/* "3 not worked out" on the HRD levy is not an explanation; this is the employer-level one. */}
+      {data.pay.hrdAdvice ? (
+        <div className="hr-pad hr-pad--top0">
+          <div className="hr-notice hr-notice--info" data-testid="hrd-advice">
+            <strong>
+              HRD levy not worked out for {data.pay.totals.hrdLevyNotDetermined} {data.pay.totals.hrdLevyNotDetermined === 1 ? 'person' : 'people'}.
+            </strong>{' '}
+            {data.pay.hrdAdvice}
+          </div>
+        </div>
+      ) : null}
+
       <div className="hr-panelNote">
         Overtime hours and unpaid days come from the records: overtime is paid once it is approved in Attendance, and unpaid
         leave once it is approved in Leave. Correct them there and save the draft again.{' '}

@@ -16,6 +16,7 @@ import { resolveClassificationForPayroll } from './statutory-classification';
 import { statutoryStatusOf } from './statutory';
 import { toClassificationRow } from './statutory-classification.service';
 import { columnItems, monthBefore, monthLabel } from './payroll-register-columns';
+import { hrdAdviceFor } from './hrd-advice';
 
 function monthStart(value: string | Date): Date {
   const date = typeof value === 'string' ? new Date(`${value.slice(0, 7)}-01T00:00:00.000Z`) : value;
@@ -67,14 +68,24 @@ export class PayrollJourneyService {
     const clinicFilter = scope.where(params.clinicId);
     const staffScope = { staff: scope.where(params.clinicId) };
 
-    const [run, recent, employees, contractors] = await Promise.all([
-      this.prisma.payrollRun.findFirst({
-        where: { period, runType: 'REGULAR', ...clinicFilter },
+    const [runsInScope, recent, employees, contractors] = await Promise.all([
+      /*
+       * EVERY BRANCH'S RUN FOR THE MONTH, not the first row Postgres hands
+       * back. One `findFirst` ordered by sequence alone, over a scope that
+       * spans branches, picked an arbitrary branch's run and the page then
+       * showed that branch as if it were the month. A cancelled run is not
+       * the month either.
+       */
+      this.prisma.payrollRun.findMany({
+        where: { period, runType: 'REGULAR', status: { not: 'CANCELLED' }, ...clinicFilter },
         orderBy: { sequence: 'desc' },
-        include: { exceptionRows: { select: { severity: true, overridable: true, overriddenByStaffId: true } } },
+        include: {
+          exceptionRows: { select: { severity: true, overridable: true, overriddenByStaffId: true } },
+          clinic: { select: { name: true } },
+        },
       }),
       this.prisma.payrollRun.findMany({
-        where: { period: { lt: period }, runType: 'REGULAR', ...clinicFilter },
+        where: { period: { lt: period }, runType: 'REGULAR', status: { not: 'CANCELLED' }, ...clinicFilter },
         orderBy: { period: 'desc' },
         take: 3,
       }),
@@ -94,6 +105,33 @@ export class PayrollJourneyService {
         },
       }),
     ]);
+
+    // The latest run per branch; a tenant-wide run (no branch) is its own key.
+    const latestByBranch = new Map<string | null, (typeof runsInScope)[number]>();
+    for (const row of runsInScope) if (!latestByBranch.has(row.clinicId)) latestByBranch.set(row.clinicId, row);
+    const branchRuns = [...latestByBranch.values()];
+    /*
+     * THE MONTH IS ONE RUN only when that is unambiguous: a branch was
+     * named, or the account holds one branch, or the one run there is covers
+     * every branch. Two branches' runs under "All branches" are listed, and
+     * the page says so, rather than one of them being passed off as the month.
+     */
+    const run =
+      params.clinicId || branchRuns.length !== 1
+        ? branchRuns.length === 1 && params.clinicId
+          ? branchRuns[0]
+          : null
+        : scope.clinicIds.length <= 1 || branchRuns[0].clinicId === null
+          ? branchRuns[0]
+          : null;
+    const stateOf = (status: string) =>
+      status === 'DRAFT'
+        ? ('STARTED' as const)
+        : status === 'CALCULATED'
+          ? ('READY_TO_REVIEW' as const)
+          : status === 'APPROVED'
+            ? ('APPROVED' as const)
+            : ('PAID' as const);
 
     const active = employees.filter((e) => e.staff.active);
     const staffIds = active.map((e) => e.staffId);
@@ -219,6 +257,8 @@ export class PayrollJourneyService {
       run: run
         ? {
             id: run.id,
+            clinicId: run.clinicId,
+            clinicName: run.clinic?.name ?? 'All branches',
             status: run.status,
             statutoryStatus: run.statutoryStatus,
             netTotal: formatCents(toCents(run.netTotal)),
@@ -229,16 +269,25 @@ export class PayrollJourneyService {
             paymentDate: run.paymentDate?.toISOString().slice(0, 10) ?? null,
           }
         : null,
+      /**
+       * THE MONTH PER BRANCH, for a scope that spans branches: every branch's
+       * latest run, with the branch named. `run` above is set only when one
+       * of these is unambiguously the month; otherwise the state is BY_BRANCH
+       * and the page lists them.
+       */
+      runs: branchRuns.map((row) => ({
+        id: row.id,
+        clinicId: row.clinicId,
+        clinicName: row.clinic?.name ?? 'All branches',
+        status: row.status,
+        state: stateOf(row.status),
+        employeeCount: row.employeeCount,
+        netTotal: formatCents(toCents(row.netTotal)),
+        employerCostTotal: formatCents(toCents(row.employerCostTotal)),
+        gate: approvalGate(row.exceptionRows),
+      })),
       // The one word the hero needs. NOT_STARTED is a real state, not a null run.
-      state: !run
-        ? ('NOT_STARTED' as const)
-        : run.status === 'DRAFT'
-          ? ('STARTED' as const)
-          : run.status === 'CALCULATED'
-            ? ('READY_TO_REVIEW' as const)
-            : run.status === 'APPROVED'
-              ? ('APPROVED' as const)
-              : ('PAID' as const),
+      state: run ? stateOf(run.status) : branchRuns.length > 0 ? ('BY_BRANCH' as const) : ('NOT_STARTED' as const),
       gate,
       employeesExpected: withSalary.length,
       setup: {
@@ -281,6 +330,20 @@ export class PayrollJourneyService {
    * MEMBERSHIP IS COMPUTED ONCE and reused by every step, so step 1 and step 5
    * cannot disagree about who is in the month.
    */
+  /** The employing companies behind a run, each with its latest HRD Corp class row. */
+  private async hrdEmployersFor(runEmployerId: string | null, employeeEmployerIds: (string | null)[]) {
+    const ids = [...new Set([runEmployerId, ...employeeEmployerIds].filter((id): id is string => Boolean(id)))];
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.legalEmployer.findMany({
+      where: { id: { in: ids } },
+      select: {
+        name: true,
+        statutoryProfiles: { orderBy: { effectiveFrom: 'desc' }, take: 1, select: { effectiveFrom: true, hrdRegistration: true, createdAt: true } },
+      },
+    });
+    return rows.map((row) => ({ name: row.name, latest: row.statutoryProfiles[0] ?? null }));
+  }
+
   async journey(runId: string) {
     const actor = await requirePermission(this.rawPrisma, 'hr.payroll.view');
     const run = await this.prisma.payrollRun.findUnique({
@@ -732,6 +795,8 @@ export class PayrollJourneyService {
         eisEmployer: line.eisEmployer === null ? null : formatCents(toCents(line.eisEmployer)),
         /** HRD Corp levy — an employer cost, never a deduction. */
         hrdLevy: line.hrdLevy === null ? null : formatCents(toCents(line.hrdLevy)),
+        /** The engine's own reason when the levy is null — written on the line at calculate, read here, never re-derived. */
+        hrdNote: ((line.breakdown ?? {}) as { statutoryNotes?: { hrd?: string | null } }).statutoryNotes?.hrd ?? null,
         /** What the employer pays on top of this person's wage. */
         employerContributions: formatCents(employerContributionCents),
         /*
@@ -939,6 +1004,24 @@ export class PayrollJourneyService {
       select: { id: true, period: true, status: true },
     });
 
+    /*
+     * WHY THE LEVY IS A DASH, said once for the run. Each dashed row carries
+     * the engine's note; this is the employer-level answer beside them —
+     * whether the company's HRD Corp class is unrecorded, dated after this
+     * month, or recorded after the month was worked out.
+     */
+    const hrdAdvice =
+      sums.hrdLevyNotDetermined > 0
+        ? hrdAdviceFor({
+            employers: await this.hrdEmployersFor(run.legalEmployerId, active.map((e) => e.legalEmployerId)),
+            lastDay,
+            runStatus: run.status,
+            calculatedAt: run.calculatedAt,
+            monthName: monthLabel(period),
+            notWorkedOut: sums.hrdLevyNotDetermined,
+          })
+        : null;
+
     return {
       run: {
         id: run.id,
@@ -974,7 +1057,7 @@ export class PayrollJourneyService {
         totalUnpaidLeaveDays: Math.round(step2.reduce((s, r) => s + r.unpaidLeaveDays, 0) * 10) / 10,
         totalMissingPunchDays: step2.reduce((s, r) => s + r.missingPunchDays, 0),
       },
-      pay: { rows: paidRows, totals: payTotals, columns },
+      pay: { rows: paidRows, totals: payTotals, columns, hrdAdvice },
       review: {
         gate,
         attention,

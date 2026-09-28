@@ -7,8 +7,11 @@ import { useCan } from '../../core/hooks/useCan';
 import { PayrollStartGate } from './PayrollStartGate';
 import { PayrollWorkspace } from './PayrollRunPage';
 import { ProvisionalBanner } from './ProvisionalBanner';
-import { HrPage, Panel, PanelHead, SegControl, StatCard, StatRow } from './ui';
+import { ringgit } from '../components/DataTable';
+import { HrPage, Panel, PanelHead, SegControl, StatCard, StatRow, StatusChip, type ChipTone } from './ui';
+import { Table } from './ui/Table';
 import { IconHistory, IconPayroll } from './ui/icons';
+import type { PayrollHome, PayrollHomeState } from '../types';
 
 /** The query's own error, as a sentence, or nothing. */
 const errorText = (query: { error: unknown }) => (query.error instanceof Error ? query.error.message : null);
@@ -31,7 +34,7 @@ const errorText = (query: { error: unknown }) => (query.error instanceof Error ?
 export function PayrollMonthPage() {
   const { message } = App.useApp();
   const navigate = useNavigate();
-  const { clinicId } = useClinicFilter();
+  const { clinicId, setClinicId, clinics } = useClinicFilter();
   const [search, setSearch] = useSearchParams();
   const mayRun = useCan('hr.payroll.run');
 
@@ -84,6 +87,10 @@ export function PayrollMonthPage() {
   }
 
   const label = data?.periodLabel ?? dayjs(period).format('MMMM YYYY');
+  // A RUN IS A BRANCH'S. Under "All branches" with more than one branch, the
+  // month is one run per branch: listed, each with its own way in, rather
+  // than one branch's run passed off as the month.
+  const byBranch = !clinicId && (clinics?.length ?? 0) > 1;
   return (
     <HrPage
       title="Payroll"
@@ -107,7 +114,9 @@ export function PayrollMonthPage() {
       </StatRow>
       <ProvisionalBanner statutoryStatus={data?.periodStatutoryStatus} />
 
-      {data ? (
+      {data && byBranch ? (
+        <BranchMonthPanel label={label} clinics={clinics ?? []} runs={data.runs} mayRun={mayRun} onPick={(id) => setClinicId(id)} />
+      ) : data ? (
         <PayrollStartGate period={period} clinicId={clinicId} salaryOnRecord={data.setup.salaryOnRecord}>
           {({ canStart, reason }) => (
             <Panel>
@@ -182,5 +191,86 @@ export function PayrollMonthPage() {
         </PayrollStartGate>
       ) : null}
     </HrPage>
+  );
+}
+
+const STATE_LABEL: Record<PayrollHomeState, string> = {
+  NOT_STARTED: 'Not started',
+  STARTED: 'In progress',
+  READY_TO_REVIEW: 'Ready to review',
+  APPROVED: 'Approved',
+  PAID: 'Paid',
+  BY_BRANCH: 'By branch',
+};
+const STATE_TONE: Record<PayrollHomeState, ChipTone> = {
+  NOT_STARTED: 'muted',
+  STARTED: 'info',
+  READY_TO_REVIEW: 'info',
+  APPROVED: 'done',
+  PAID: 'done',
+  BY_BRANCH: 'info',
+};
+
+type BranchRow = { key: string; branch: string; clinicId: string | null; run: PayrollHome['runs'][number] | null };
+
+/**
+ * THE MONTH, ONE ROW PER BRANCH. Every branch the account holds, with its run
+ * where one exists and a way to start one where none does. Starting picks the
+ * branch in the shell, because the start gate and the run that follows are
+ * that branch's.
+ */
+function BranchMonthPanel({
+  label,
+  clinics,
+  runs,
+  mayRun,
+  onPick,
+}: {
+  label: string;
+  clinics: { id: string; name: string }[];
+  runs: PayrollHome['runs'];
+  mayRun: boolean;
+  onPick: (clinicId: string) => void;
+}) {
+  const rows: BranchRow[] = [
+    ...clinics.map((clinic) => ({ key: clinic.id, branch: clinic.name, clinicId: clinic.id, run: runs.find((run) => run.clinicId === clinic.id) ?? null })),
+    // A run that covers every branch, or a branch no longer in the list, is still the month's.
+    ...runs.filter((run) => !clinics.some((clinic) => clinic.id === run.clinicId)).map((run) => ({ key: run.id, branch: run.clinicName, clinicId: run.clinicId, run })),
+  ];
+  return (
+    <Panel>
+      <PanelHead title={`${label} by branch`} sub="Each branch runs its own month. Open a branch’s run, or pick a branch to start its month." />
+      <Table<BranchRow>
+        rowKey="key"
+        rows={rows}
+        emptyText="No branches."
+        columns={[
+          { title: 'Branch', dataIndex: 'branch', render: (value: string) => <span className="hr-strong">{value}</span> },
+          {
+            title: 'Status',
+            key: 'status',
+            render: (_: unknown, row) =>
+              row.run ? <StatusChip tone={STATE_TONE[row.run.state]}>{STATE_LABEL[row.run.state]}</StatusChip> : <StatusChip tone="muted">Not started</StatusChip>,
+          },
+          { title: 'Employees', key: 'employees', num: true, width: 110, render: (_: unknown, row) => (row.run ? row.run.employeeCount : '—') },
+          { title: 'Net pay', key: 'net', num: true, width: 150, render: (_: unknown, row) => (row.run ? ringgit(row.run.netTotal) : '—') },
+          {
+            title: '',
+            key: 'go',
+            width: 110,
+            render: (_: unknown, row) =>
+              row.run ? (
+                <Link className="hr-btn hr-btn--sm" to={`/admin/hr/payroll/${row.run.id}`}>
+                  Open
+                </Link>
+              ) : mayRun && row.clinicId ? (
+                <button type="button" className="hr-btn hr-btn--sm" onClick={() => onPick(row.clinicId as string)}>
+                  Start
+                </button>
+              ) : null,
+          },
+        ]}
+      />
+    </Panel>
   );
 }

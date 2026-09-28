@@ -1763,6 +1763,8 @@ export interface LegalEmployerRow {
   /** The HRD Corp class in force today, and the Act's rate for it. */
   hrdRegistration: 'MANDATORY_SECTION_14' | 'OPTIONAL_SECTION_15' | 'NOT_REGISTERED' | null;
   hrdLevyRatePercent: number | null;
+  /** From when the class in force today applies (ISO date); a payroll month before it gets no levy. */
+  hrdEffectiveFrom: string | null;
   addressLine1: string | null;
   city: string | null;
   state: string | null;
@@ -2131,7 +2133,8 @@ export interface SalaryParityReport {
   summary: string;
 }
 
-export type PayrollHomeState = 'NOT_STARTED' | 'STARTED' | 'READY_TO_REVIEW' | 'APPROVED' | 'PAID';
+/** BY_BRANCH: the scope spans branches and each has its own run — the page lists them. */
+export type PayrollHomeState = 'NOT_STARTED' | 'STARTED' | 'READY_TO_REVIEW' | 'APPROVED' | 'PAID' | 'BY_BRANCH';
 
 // ---------------------------------------------------------------------------
 // PAYROLL READINESS — who can be paid, before a run exists. Built by the same
@@ -2200,6 +2203,8 @@ export interface PayrollHome {
   periodStatutoryStatus: 'CONFIGURED' | 'PROVISIONAL' | 'NOT_CONFIGURED';
   run: {
     id: string;
+    clinicId: string | null;
+    clinicName: string;
     status: string;
     statutoryStatus: string;
     netTotal: string;
@@ -2209,6 +2214,21 @@ export interface PayrollHome {
     approvedAt: string | null;
     paymentDate: string | null;
   } | null;
+  /**
+   * THE MONTH PER BRANCH: every branch's latest run in the scope, named.
+   * `run` is set only when one of these is unambiguously the month.
+   */
+  runs: {
+    id: string;
+    clinicId: string | null;
+    clinicName: string;
+    status: string;
+    state: PayrollHomeState;
+    employeeCount: number;
+    netTotal: string;
+    employerCostTotal: string;
+    gate: PayrollExceptionGate;
+  }[];
   state: PayrollHomeState;
   gate: PayrollExceptionGate | null;
   employeesExpected: number;
@@ -2379,6 +2399,8 @@ export interface PayrollJourney {
       eisEmployer: string | null;
       /** HRD Corp levy — an employer cost, never a deduction. */
       hrdLevy: string | null;
+      /** The engine's reason when the levy is null, from the line itself. */
+      hrdNote: string | null;
       /** What the employer pays on top of this person's wage. */
       employerContributions: string;
       /**
@@ -2505,6 +2527,8 @@ export interface PayrollJourney {
     };
     /** The items with a column of their own, in the order the grid draws them. */
     columns: PayrollJourneyColumn[];
+    /** Why the HRD levy is a dash on some rows, said once for the run; null when it is not. */
+    hrdAdvice: string | null;
   };
   review: {
     gate: PayrollExceptionGate;
