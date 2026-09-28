@@ -2043,6 +2043,9 @@ export interface StaffClaimRow {
   description: string;
   status: StaffClaimStatus;
   submittedBy: string;
+  submittedByStaffId: string;
+  /** Somebody other than the claimant keyed it: HR, from a paper receipt. */
+  enteredOnBehalf: boolean;
   submittedAt: string | null;
   decidedBy: string | null;
   decidedAt: string | null;

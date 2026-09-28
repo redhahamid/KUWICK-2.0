@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '../../core/api-client';
+import { apiClient, uploadFile } from '../../core/api-client';
 import type {
   CreditNoteRow,
   DayEndView,
@@ -1231,8 +1231,30 @@ export function useStaffClaimHistory(id: string | undefined) {
   });
 }
 
+/** A claim HR records for an employee — the same body the portal sends for oneself, plus who it is for. */
+export interface CreateStaffClaimBody {
+  staffId: string;
+  category: string;
+  amountClaimed: string;
+  claimDate: string;
+  description: string;
+  clinicId?: string;
+  distanceKm?: number;
+  receiptFileId?: string;
+}
+
 export function useCreateStaffClaim() {
-  return useAdminMutation((body: Record<string, unknown>) => apiClient.post('/workforce/claims', body), ['admin-hr']);
+  return useAdminMutation(
+    (body: CreateStaffClaimBody) => apiClient.post<{ id: string; amountClaimed: string }>('/workforce/claims', body),
+    ['admin-hr'],
+  );
+}
+
+/** A receipt HR hands in for an employee, stored as that employee's own file. Returns its id and path. */
+export async function uploadStaffFileFor(staffId: string, file: Blob, fileName: string): Promise<{ id: string; path: string }> {
+  const form = new FormData();
+  form.append('file', file, fileName);
+  return uploadFile<{ id: string; path: string }>(`/workforce/staff-files?kind=RECEIPT&staffId=${encodeURIComponent(staffId)}`, form);
 }
 
 export function useDecideStaffClaim() {

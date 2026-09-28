@@ -5,6 +5,9 @@ import { clinicDayjs } from '../../clinical/clinicTime';
 import { useCan, permissionHint } from '../../core/hooks/useCan';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import {
+  uploadStaffFileFor,
+  useClaimPolicy,
+  useCreateStaffClaim,
   useDecideStaffClaim,
   useEmployees,
   useSettleStaffClaim,
@@ -12,6 +15,8 @@ import {
   useStaffClaimHistory,
   useStaffClaims,
 } from '../hooks/useAdmin';
+import { ApiError } from '../../core/api-client';
+import { CLAIM_TYPES, DEFAULT_MILEAGE_RATE_RM, mileageAmount, type ClaimTypeValue } from '../../me/claim-form';
 import { AuthImage, Drawer, HrPage, Panel, SegControl, StatCard, StatRow, StatusChip } from './ui';
 import { Table } from './ui/Table';
 import { IconDoc } from './ui/icons';
@@ -29,6 +34,28 @@ const CATEGORY: Record<string, string> = {
 };
 
 type Filter = 'ALL' | 'WAITING' | 'APPROVED' | 'PAID';
+
+/** What HR keys for a paper receipt: the portal form's fields, plus who it is for. */
+interface RecordForm {
+  staffId: string;
+  type: ClaimTypeValue;
+  claimDate: string;
+  fromPlace: string;
+  toPlace: string;
+  distance: string;
+  amount: string;
+  purpose: string;
+}
+const emptyRecord = (): RecordForm => ({
+  staffId: '',
+  type: 'MEAL',
+  claimDate: dayjs().format('YYYY-MM-DD'),
+  fromPlace: '',
+  toPlace: '',
+  distance: '',
+  amount: '',
+  purpose: '',
+});
 
 const rm = (value: string | number | null | undefined) =>
   value === null || value === undefined
@@ -87,6 +114,20 @@ export function ClaimsPage() {
    */
   const canDecide = useCan('hr.claim.approve');
   const settle = useSettleStaffClaim();
+  /*
+   * A CLAIM RECORDED FROM A PAPER RECEIPT, for somebody without a portal
+   * login or with the receipt in their hand. The same claim the portal
+   * sends — priced, receipted and queued the same way — with who keyed it
+   * on the row. The server refuses it for anybody outside the branches this
+   * account manages.
+   */
+  const mayRecord = useCan('hr.employee.manage');
+  const policy = useClaimPolicy();
+  const createClaim = useCreateStaffClaim();
+  const [recording, setRecording] = useState(false);
+  const [recordForm, setRecordForm] = useState<RecordForm>(emptyRecord);
+  const [receipt, setReceipt] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const [filter, setFilter] = useState<Filter>('ALL');
   const [month, setMonth] = useState<string>('ALL');
@@ -193,6 +234,53 @@ export function ClaimsPage() {
     }
   };
 
+  const recordMileage = recordForm.type === 'MILEAGE';
+  const recordKm = Number(recordForm.distance);
+  const ratePerKm = policy.data ? Number(policy.data.mileageRatePerKm) : DEFAULT_MILEAGE_RATE_RM;
+  const receiptRequired = policy.data?.receiptRequired ?? true;
+  const recordComputed = recordMileage && Number.isFinite(recordKm) && recordKm > 0 ? mileageAmount(recordKm, ratePerKm) : null;
+  const recordAmount = recordComputed ?? Number(recordForm.amount);
+  const canRecord =
+    Boolean(recordForm.staffId) &&
+    (Boolean(receipt) || !receiptRequired) &&
+    recordForm.purpose.trim().length >= 3 &&
+    Number.isFinite(recordAmount) &&
+    recordAmount > 0 &&
+    (!recordMileage || (recordForm.fromPlace.trim() !== '' && recordForm.toPlace.trim() !== ''));
+  const claimants = (employees.data ?? []).filter((row) => row.hasProfile && row.active);
+  const setRecord = (patch: Partial<RecordForm>) => setRecordForm((current) => ({ ...current, ...patch }));
+
+  const recordClaim = async () => {
+    if (!canRecord) return;
+    const category = CLAIM_TYPES.find((row) => row.value === recordForm.type)?.category ?? 'OTHER';
+    const description = recordMileage
+      ? `Mileage ${recordKm} km, ${recordForm.fromPlace.trim()} to ${recordForm.toPlace.trim()}: ${recordForm.purpose.trim()}`
+      : recordForm.purpose.trim();
+    const claimant = claimants.find((row) => row.staffId === recordForm.staffId)?.fullName ?? 'them';
+    setSaving(true);
+    try {
+      // The receipt goes up first, as the employee's own file; a failed upload leaves no claim behind.
+      const uploaded = receipt ? await uploadStaffFileFor(recordForm.staffId, receipt, receipt.name) : null;
+      const claim = await createClaim.mutateAsync({
+        staffId: recordForm.staffId,
+        category,
+        amountClaimed: recordAmount.toFixed(2),
+        claimDate: recordForm.claimDate,
+        description,
+        distanceKm: recordMileage ? recordKm : undefined,
+        receiptFileId: uploaded?.id,
+      });
+      message.success(`Recorded ${rm(claim.amountClaimed)} for ${claimant}. It joins the queue like any other claim.`);
+      setRecording(false);
+      setRecordForm(emptyRecord());
+      setReceipt(null);
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : 'Could not record that claim.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   /** The journey, when the portal priced one. */
   const journey = (row: StaffClaimRow) =>
     row.distanceKm && row.mileageRate
@@ -202,8 +290,15 @@ export function ClaimsPage() {
   return (
     <HrPage
       title="Claims"
-      sub="Staff submit claims with receipts from the portal. Approved claims pay out with the next payroll."
+      sub="Staff submit claims with receipts from the portal; HR can record one from a paper receipt. Approved claims pay out with the next payroll."
       error={claims.isError ? 'Claims could not be loaded.' : null}
+      actions={
+        mayRecord ? (
+          <button type="button" className="hr-btn hr-btn--primary" onClick={() => setRecording(true)}>
+            + Record claim
+          </button>
+        ) : undefined
+      }
     >
       <StatRow>
         <StatCard
@@ -243,7 +338,7 @@ export function ClaimsPage() {
           searchPlaceholder="Search employee or claim"
           searchLabel="Search employee or claim"
           emptyText="No claims to show"
-          emptyHint="Staff send claims with their receipts from the portal."
+          emptyHint="Staff send claims with their receipts from the portal, or HR records one from a paper receipt."
           toolbar={
             <SegControl<Filter>
               label="Status"
@@ -411,6 +506,7 @@ export function ClaimsPage() {
               <span className="hr-kv2__k">Claim submitted</span>
               <span className="hr-kv2__v">
                 {dayjs(reviewing.submittedAt ?? reviewing.claimDate).format('D MMM YYYY, HH:mm')} · {reviewing.submittedBy}
+                {reviewing.enteredOnBehalf ? ` (entered on ${reviewing.staffName}’s behalf)` : ''}
               </span>
               <span className="hr-kv2__k">Expense date</span>
               <span className="hr-kv2__v">{dayjs(reviewing.claimDate).format('D MMM YYYY')}</span>
@@ -523,6 +619,141 @@ export function ClaimsPage() {
             ) : null}
           </>
         ) : null}
+      </Drawer>
+
+      {/* A CLAIM FROM A PAPER RECEIPT — keyed by HR for the person it belongs to. */}
+      <Drawer
+        open={recording}
+        title="Record a claim"
+        sub="For a paper receipt, or somebody without a portal login. It joins the queue like any other claim."
+        onClose={() => setRecording(false)}
+        footer={
+          <>
+            <button type="button" className="hr-btn" onClick={() => setRecording(false)}>
+              Cancel
+            </button>
+            <button type="button" className="hr-btn hr-btn--primary" onClick={recordClaim} disabled={!canRecord || saving || createClaim.isPending}>
+              Record it
+            </button>
+          </>
+        }
+      >
+        <div className="hr-pform">
+          <div className="hr-pform__full">
+            <label htmlFor="rec-claim-staff">Employee</label>
+            <select id="rec-claim-staff" className="hr-f" value={recordForm.staffId} onChange={(event) => setRecord({ staffId: event.target.value })}>
+              <option value="">Choose…</option>
+              {claimants.map((person) => (
+                <option key={person.staffId} value={person.staffId}>
+                  {person.fullName}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="rec-claim-type">Type</label>
+            <select id="rec-claim-type" className="hr-f" value={recordForm.type} onChange={(event) => setRecord({ type: event.target.value as ClaimTypeValue })}>
+              {CLAIM_TYPES.map((row) => (
+                <option key={row.value} value={row.value}>
+                  {row.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="rec-claim-date">Expense / travel date</label>
+            <input
+              id="rec-claim-date"
+              type="date"
+              className="hr-f"
+              value={recordForm.claimDate}
+              max={dayjs().format('YYYY-MM-DD')}
+              onChange={(event) => setRecord({ claimDate: event.target.value })}
+            />
+          </div>
+          {recordMileage ? (
+            <>
+              <div>
+                <label htmlFor="rec-claim-from">From</label>
+                <input id="rec-claim-from" className="hr-f" value={recordForm.fromPlace} onChange={(event) => setRecord({ fromPlace: event.target.value })} />
+              </div>
+              <div>
+                <label htmlFor="rec-claim-to">To</label>
+                <input id="rec-claim-to" className="hr-f" value={recordForm.toPlace} onChange={(event) => setRecord({ toPlace: event.target.value })} />
+              </div>
+              <div>
+                <label htmlFor="rec-claim-km">Distance</label>
+                <input
+                  id="rec-claim-km"
+                  className="hr-f"
+                  inputMode="decimal"
+                  placeholder="km"
+                  value={recordForm.distance}
+                  onChange={(event) => setRecord({ distance: event.target.value.replace(/[^\d.]/g, '') })}
+                />
+              </div>
+              <div>
+                <label htmlFor="rec-claim-amount">Amount</label>
+                <div id="rec-claim-amount" className="hr-f hr-f--auto" aria-live="polite">
+                  {recordComputed !== null ? (
+                    <>
+                      {rm(recordComputed)} <small>· {recordKm} × RM {ratePerKm.toFixed(2)}</small>
+                    </>
+                  ) : (
+                    <small>Worked out from the distance</small>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div>
+              <label htmlFor="rec-claim-amount">Amount (RM)</label>
+              <input
+                id="rec-claim-amount"
+                className="hr-f"
+                inputMode="decimal"
+                placeholder="45.50"
+                value={recordForm.amount}
+                onChange={(event) => setRecord({ amount: event.target.value.replace(/[^\d.]/g, '') })}
+              />
+            </div>
+          )}
+          <div className="hr-pform__full">
+            <label htmlFor="rec-claim-purpose">Purpose</label>
+            <input
+              id="rec-claim-purpose"
+              className="hr-f"
+              placeholder={recordMileage ? 'Deliver vaccine stock' : 'What it was for'}
+              value={recordForm.purpose}
+              onChange={(event) => setRecord({ purpose: event.target.value })}
+            />
+          </div>
+          <div className="hr-pform__full">
+            <label htmlFor="rec-claim-receipt">Receipt / photo</label>
+            <label className={receiptRequired ? 'hr-drop is-required' : 'hr-drop'} htmlFor="rec-claim-receipt">
+              <IconDoc />
+              {receiptRequired ? 'Photograph or scan of the paper receipt — required' : 'Photograph or scan of the paper receipt'}
+              <input
+                id="rec-claim-receipt"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,application/pdf"
+                onChange={(event) => setReceipt(event.target.files?.[0] ?? null)}
+              />
+            </label>
+            {receipt ? (
+              <div className="hr-rcpt">
+                <span className="hr-rcpt__th" aria-hidden="true" />
+                <div>
+                  <span className="hr-rcpt__name">{receipt.name}</span>
+                  <span className="hr-rcpt__meta">{(receipt.size / (1024 * 1024)).toFixed(1)} MB</span>
+                </div>
+                <button type="button" className="hr-btn hr-btn--sm hr-btn--ghost" style={{ marginLeft: 'auto' }} onClick={() => setReceipt(null)}>
+                  Remove
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
       </Drawer>
     </HrPage>
   );

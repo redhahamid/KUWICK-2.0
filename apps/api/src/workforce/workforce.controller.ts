@@ -1,4 +1,6 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { Response } from 'express';
 import { EmploymentStatus, LeaveType, AttendanceCorrectionStatus } from '@prisma/client';
 import { EmployeeService } from './employee.service';
@@ -63,7 +65,7 @@ import { UpsertPayrollPolicyDto } from './dto/upsert-payroll-policy.dto';
 import { UpsertPayrollInputDto } from './dto/upsert-payroll-input.dto';
 import { SetApprovalPolicyDto } from './dto/set-approval-policy.dto';
 import { SaveClaimPolicyDto } from './dto/save-claim-policy.dto';
-import { StaffFileService } from './staff-file.service';
+import { StaffFileService, MAX_STAFF_FILE_BYTES } from './staff-file.service';
 import { ClaimPolicyService } from './claim-policy.service';
 
 @Controller('workforce')
@@ -611,6 +613,13 @@ export class WorkforceController {
    * Readable by anybody who may open HR, because every screen showing a late
    * arrival has to be able to say what late means here.
    */
+  /** A file HR hands in for an employee — the paper receipt behind a claim entered on their behalf. `hr.employee.manage`. */
+  @Post('staff-files')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: MAX_STAFF_FILE_BYTES } }))
+  uploadStaffFile(@Query('staffId') staffId?: string, @Query('kind') kind?: string, @UploadedFile() file?: Express.Multer.File) {
+    return this.staffFiles.uploadFor(staffId ?? '', kind ?? '', file);
+  }
+
   /** A file an employee handed in — the timesheet's selfie, the claims drawer's receipt, the MC. `hr.view`. */
   @Get('staff-files/:id')
   async staffFile(@Param('id') id: string, @Res() res: Response) {

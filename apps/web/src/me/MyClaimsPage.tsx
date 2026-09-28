@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { CLAIM_TYPES, DEFAULT_MILEAGE_RATE_RM, mileageAmount } from './claim-form';
 import { App } from 'antd';
 import dayjs from 'dayjs';
 import { ApiError } from '../core/api-client';
@@ -14,25 +15,10 @@ import { IconCheckCircle, PortalEmpty, monthShort, rm } from './portal';
  * so the journey and the kilometres are written into the description where
  * the manager reads them.
  */
-const TYPES = [
-  { value: 'MILEAGE', label: 'Mileage', category: 'TRAVEL' },
-  { value: 'MEDICAL', label: 'Medical', category: 'MEDICAL' },
-  { value: 'MEAL', label: 'Meals', category: 'MEAL' },
-  { value: 'TRAVEL', label: 'Travel (fares, parking, tolls)', category: 'TRAVEL' },
-  { value: 'TRAINING', label: 'Training', category: 'TRAINING' },
-  { value: 'EQUIPMENT', label: 'Equipment', category: 'EQUIPMENT' },
-  { value: 'PROFESSIONAL_FEE', label: 'Professional fee', category: 'PROFESSIONAL_FEE' },
-  { value: 'OTHER', label: 'Other', category: 'OTHER' },
-] as const;
-
-/**
- * [D] RM per kilometre comes from the clinic's claim policy (Settings ›
- * Claims, `ClaimPolicy.mileageRatePerKm`); the server prices the claim with
- * the same rate and freezes it on the row. This default only stands in
- * while the policy is still loading, and matches the policy's own default
- * (the mockup's 42 km at RM 25.20).
- */
-export const DEFAULT_MILEAGE_RATE_RM = 0.6;
+// The types, the rate and the arithmetic are shared with HR's record-a-claim
+// drawer (claim-form.ts): the same claim, whoever keys it.
+const TYPES = CLAIM_TYPES;
+export { DEFAULT_MILEAGE_RATE_RM, mileageAmount };
 
 /** A stored file's id from the path the API keeps on the attachment (`/me/files/<id>`). */
 function fileIdOf(filePath: string): string | null {
@@ -62,10 +48,6 @@ export function claimChip(claim: Pick<MyClaim, 'status' | 'whereTheMoneyIs' | 'p
     return { tone: 'muted', label: claim.payrollPeriod ? `Paid ${monthShort(claim.payrollPeriod)}` : 'Paid' };
   }
   return { tone: 'done', label: 'Approved' };
-}
-
-export function mileageAmount(km: number, ratePerKm: number = DEFAULT_MILEAGE_RATE_RM): number {
-  return Math.round(km * ratePerKm * 100) / 100;
 }
 
 export function MyClaimsPage() {

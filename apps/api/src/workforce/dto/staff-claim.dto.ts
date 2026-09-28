@@ -1,4 +1,4 @@
-import { IsIn, IsISO8601, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsIn, IsISO8601, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min } from 'class-validator';
 
 const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
 
@@ -6,14 +6,24 @@ export const CLAIM_CATEGORIES = [
   'MEDICAL', 'TRAVEL', 'MEAL', 'TRAINING', 'EQUIPMENT', 'PROFESSIONAL_FEE', 'OTHER',
 ] as const;
 
+/**
+ * A claim HR enters for an employee — the same shape the portal sends for
+ * oneself, plus who it is for. Mileage is priced from the kilometres at the
+ * clinic's rate; the receipt is the employee's own file, uploaded first
+ * through POST workforce/staff-files on their behalf.
+ */
 export class CreateStaffClaimDto {
-  @IsString() staffId!: string;
-  @IsOptional() @IsString() clinicId?: string;
+  @IsUUID() staffId!: string;
+  @IsOptional() @IsUUID() clinicId?: string;
   @IsIn(CLAIM_CATEGORIES) category!: (typeof CLAIM_CATEGORIES)[number];
   @Matches(MONEY, { message: 'amountClaimed must be a positive number with at most two decimal places' })
   amountClaimed!: string;
   @IsISO8601() claimDate!: string;
-  @IsString() @MaxLength(500) description!: string;
+  @IsString() @Length(3, 500) description!: string;
+  /** Mileage: the kilometres. The server prices them at the clinic's rate and ignores the amount sent. */
+  @IsOptional() @IsNumber() @Min(0.1) @Max(5000) distanceKm?: number;
+  /** The receipt, already stored as the employee's own file of kind RECEIPT. Required when the policy says so. */
+  @IsOptional() @IsUUID() receiptFileId?: string;
 }
 
 export class DecideStaffClaimDto {

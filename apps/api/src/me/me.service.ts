@@ -11,6 +11,7 @@ import { LeaveService } from '../workforce/leave.service';
 import { PayrollPayslipService } from '../workforce/payroll-payslip.service';
 import { StaffFileService } from '../workforce/staff-file.service';
 import { ClaimPolicyService } from '../workforce/claim-policy.service';
+import { assertReceiptRule, priceClaim } from '../workforce/claim-pricing';
 import { leaveDays, leaveDaysInYear } from '../workforce/leave-balance';
 import { workforceCategoryOf } from '../workforce/workforce-category';
 import {
@@ -758,15 +759,12 @@ export class MeService {
       // on the claim: the kilometres are the fact and the rate on the day is
       // the price, whatever the phone showed.
       const policy = await this.claimPolicies.current();
-      const mileage = dto.distanceKm !== undefined && dto.distanceKm !== null;
+      // The same price and the same receipt rule HR's route applies (claim-pricing.ts).
+      const priced = priceClaim({ amountClaimed: dto.amountClaimed, distanceKm: dto.distanceKm }, policy);
+      assertReceiptRule(policy, dto.receiptFileId);
+      const mileage = priced.distanceKm !== null;
       const rate = Number(policy.mileageRatePerKm);
-      const amountClaimed = mileage
-        ? (Math.round((dto.distanceKm as number) * rate * 100) / 100).toFixed(2)
-        : dto.amountClaimed;
-      if (Number(amountClaimed) <= 0) throw new BadRequestException('A claim must be for more than nothing.');
-      if (policy.receiptRequired && !dto.receiptFileId) {
-        throw new BadRequestException('A receipt is needed before a claim can be sent. Attach it and send again.');
-      }
+      const amountClaimed = priced.amountClaimed;
       const receipt = dto.receiptFileId ? await this.files.claimOwn(tx, actor.id, dto.receiptFileId, 'RECEIPT') : null;
 
       const saved = await tx.staffClaim.create({

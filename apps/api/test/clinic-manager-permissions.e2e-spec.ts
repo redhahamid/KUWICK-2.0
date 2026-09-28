@@ -78,6 +78,8 @@ describe('the clinic manager (e2e)', () => {
     tenantId = randomId();
     await withTenantContext(prisma, tenantId, (tx) => tx.tenant.create({ data: { id: tenantId, name: 'Manager Tenant' } }));
     owner = (await createOwnerAndBearer(prisma, tenantId)).bearer;
+    // The claims this world posts carry no receipt; the policy insists on one by default.
+    await request(server()).put('/workforce/claim-policy').set('Authorization', owner).send({ receiptRequired: false, reason: 'Test world: paper receipts' }).expect(200);
 
     const clinic = await request(server()).post('/clinics').set('Authorization', owner).send({ name: 'Floor' }).expect(201);
     clinicId = clinic.body.id;

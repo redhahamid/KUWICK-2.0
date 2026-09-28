@@ -63,6 +63,8 @@ describe('Synthetic payroll month (e2e)', () => {
       tx.tenant.create({ data: { id: tenantId, name: 'Synthetic Month Tenant' } }),
     );
     bearer = (await createOwnerAndBearer(prisma, tenantId)).bearer;
+    // The claims this world posts carry no receipt; the policy insists on one by default.
+    await request(server()).put('/workforce/claim-policy').set('Authorization', bearer).send({ receiptRequired: false, reason: 'Test world: paper receipts' }).expect(200);
 
     const clinic = await request(server())
       .post('/clinics')

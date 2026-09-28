@@ -3,8 +3,8 @@ import { Prisma, StaffFileKind } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { requireActor, withTenantTx } from '../clinical/clinical-actor';
-import { requirePermission } from '../finance/admin-actor';
+import { ActingStaff, requireActor, withTenantTx } from '../clinical/clinical-actor';
+import { AdminTx, requirePermission, withScopedAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 
 /**
@@ -37,6 +37,36 @@ export function staffFilePath(id: string): string {
   return `/me/files/${id}`;
 }
 
+interface CheckedUpload {
+  kind: StaffFileKind;
+  buffer: Buffer;
+  contentType: string;
+  fileName: string;
+}
+
+/** The rules a handed-in file has to meet, whoever hands it in. */
+function validateUpload(kindInput: string, file: UploadedStaffFile | undefined): CheckedUpload {
+  if (!(STAFF_FILE_KINDS as readonly string[]).includes(kindInput)) {
+    throw new BadRequestException('kind must be RECEIPT, MEDICAL_CERTIFICATE or SELFIE.');
+  }
+  const kind = kindInput as StaffFileKind;
+  const buffer = file?.buffer;
+  if (!file || !buffer || buffer.length === 0) {
+    throw new BadRequestException('No file arrived. Attach it as the "file" field.');
+  }
+  if (buffer.length > MAX_STAFF_FILE_BYTES) {
+    throw new BadRequestException('That file is over 8 MB. Please use a smaller one.');
+  }
+  const contentType = (file.mimetype ?? '').toLowerCase();
+  if (!(STAFF_FILE_TYPES as readonly string[]).includes(contentType)) {
+    throw new BadRequestException('Only JPG, PNG, WebP or PDF files can be handed in.');
+  }
+  if (kind === 'SELFIE' && contentType === 'application/pdf') {
+    throw new BadRequestException('A clock-in selfie is a photograph.');
+  }
+  return { kind, buffer, contentType, fileName: (file.originalname ?? `${kind.toLowerCase()}.bin`).slice(0, 200) };
+}
+
 @Injectable()
 export class StaffFileService {
   constructor(
@@ -46,48 +76,61 @@ export class StaffFileService {
 
   /** Store a file for the signed-in person. Returns its id and path, never the bytes. */
   async upload(kindInput: string, file: UploadedStaffFile | undefined) {
-    if (!(STAFF_FILE_KINDS as readonly string[]).includes(kindInput)) {
-      throw new BadRequestException('kind must be RECEIPT, MEDICAL_CERTIFICATE or SELFIE.');
-    }
-    const kind = kindInput as StaffFileKind;
-    const buffer = file?.buffer;
-    if (!file || !buffer || buffer.length === 0) {
-      throw new BadRequestException('No file arrived. Attach it as the "file" field.');
-    }
-    if (buffer.length > MAX_STAFF_FILE_BYTES) {
-      throw new BadRequestException('That file is over 8 MB. Please use a smaller one.');
-    }
-    const contentType = (file.mimetype ?? '').toLowerCase();
-    if (!(STAFF_FILE_TYPES as readonly string[]).includes(contentType)) {
-      throw new BadRequestException('Only JPG, PNG, WebP or PDF files can be handed in.');
-    }
-    if (kind === 'SELFIE' && contentType === 'application/pdf') {
-      throw new BadRequestException('A clock-in selfie is a photograph.');
-    }
-
+    const checked = validateUpload(kindInput, file);
     return withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
-      const row = await tx.staffFile.create({
-        data: {
-          tenantId: currentTenantId(),
-          staffId: actor.id,
-          kind,
-          fileName: (file.originalname ?? `${kind.toLowerCase()}.bin`).slice(0, 200),
-          contentType,
-          byteSize: buffer.length,
-          data: new Uint8Array(buffer),
-        },
-        select: { id: true, kind: true, fileName: true, contentType: true, byteSize: true, createdAt: true },
-      });
-      await recordAudit(tx, actor, {
-        action: 'staffFile.uploaded',
-        entityType: 'StaffFile',
-        entityId: row.id,
-        after: { kind, fileName: row.fileName, contentType, byteSize: buffer.length },
-        source: 'me.files',
-      });
-      return { ...row, path: staffFilePath(row.id) };
+      return this.store(tx, actor, actor.id, checked, 'me.files');
     });
+  }
+
+  /**
+   * A FILE HR HANDS IN FOR SOMEBODY — the paper receipt behind a claim entered
+   * on their behalf. Stored as the employee's own file, so the claim names it
+   * exactly as a portal claim does and the employee can read it back; the
+   * audit row says who uploaded it and for whom. The person has to be in a
+   * branch this account manages. Never a selfie: a clock-in photograph is the
+   * person's own act.
+   */
+  async uploadFor(staffId: string, kindInput: string, file: UploadedStaffFile | undefined) {
+    const checked = validateUpload(kindInput, file);
+    if (checked.kind === 'SELFIE') {
+      throw new BadRequestException('A clock-in selfie can only be handed in by the person themselves.');
+    }
+    return withScopedAdminTx(this.rawPrisma, 'hr.employee.manage', async (tx, actor, scope) => {
+      const person = await tx.staff.findFirst({ where: { id: staffId, ...scope.where(null) }, select: { id: true } });
+      if (!person) throw new NotFoundException('No such employee in the branches you manage.');
+      return this.store(tx, actor, staffId, checked, 'hr.files');
+    });
+  }
+
+  private async store(tx: AdminTx, actor: ActingStaff, staffId: string, checked: CheckedUpload, source: string) {
+    const { kind, buffer, contentType, fileName } = checked;
+    const row = await tx.staffFile.create({
+      data: {
+        tenantId: currentTenantId(),
+        staffId,
+        kind,
+        fileName,
+        contentType,
+        byteSize: buffer.length,
+        data: new Uint8Array(buffer),
+      },
+      select: { id: true, kind: true, fileName: true, contentType: true, byteSize: true, createdAt: true },
+    });
+    await recordAudit(tx, actor, {
+      action: 'staffFile.uploaded',
+      entityType: 'StaffFile',
+      entityId: row.id,
+      after: {
+        kind,
+        fileName: row.fileName,
+        contentType,
+        byteSize: buffer.length,
+        ...(staffId !== actor.id ? { onBehalfOf: staffId } : {}),
+      },
+      source,
+    });
+    return { ...row, path: staffFilePath(row.id) };
   }
 
   /** The file, for its owner. Anybody else's file is not found — not forbidden, not found. */

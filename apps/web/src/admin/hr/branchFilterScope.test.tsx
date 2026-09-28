@@ -47,6 +47,9 @@ vi.mock('../hooks/useAdmin', () => ({
   useDecideStaffClaim: () => idle,
   useSettleStaffClaim: () => idle,
   useStaffClaimHistory: () => ({ data: [] }),
+  useCreateStaffClaim: () => idle,
+  useClaimPolicy: () => ({ data: undefined }),
+  uploadStaffFileFor: vi.fn(),
 }));
 
 vi.mock('../../hr/hooks/useLeaveRequests', () => ({

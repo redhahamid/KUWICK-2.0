@@ -3,10 +3,13 @@ import { StaffClaimStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { AdminTx, requirePermission, requireScope, withAdminTx } from '../finance/admin-actor';
+import { AdminTx, requireScope, withScopedAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { formatCents, toCents } from '../finance/money';
 import { CreateStaffClaimDto, DecideStaffClaimDto, SettleStaffClaimDto } from './dto/staff-claim.dto';
+import { ClaimPolicyService } from './claim-policy.service';
+import { StaffFileService } from './staff-file.service';
+import { assertReceiptRule, priceClaim } from './claim-pricing';
 
 function monthStart(value: Date): Date {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
@@ -33,6 +36,8 @@ export class StaffClaimService {
   constructor(
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
     private readonly rawPrisma: PrismaService,
+    private readonly claimPolicies: ClaimPolicyService,
+    private readonly files: StaffFileService,
   ) {}
 
   /**
@@ -84,6 +89,9 @@ export class StaffClaimService {
       description: row.description,
       status: row.status,
       submittedBy: row.submittedBy.fullName,
+      submittedByStaffId: row.submittedByStaffId,
+      /** Somebody other than the claimant keyed it: HR, from a paper receipt. */
+      enteredOnBehalf: row.submittedByStaffId !== row.staffId,
       submittedAt: row.submittedAt?.toISOString() ?? null,
       decidedBy: row.decidedBy?.fullName ?? null,
       decidedAt: row.decidedAt?.toISOString() ?? null,
@@ -129,32 +137,57 @@ export class StaffClaimService {
     return 'Approved, but no payment route has been recorded.';
   }
 
+  /**
+   * A CLAIM HR ENTERS FOR SOMEBODY — a paper receipt, a person with no portal
+   * login. It is the same claim the portal makes: the person is somebody this
+   * account may act for, mileage is priced from the kilometres at the
+   * clinic's rate, a receipt is required when the policy says so, and the
+   * receipt is the employee's own file (uploaded through workforce/staff-files
+   * on their behalf). Who keyed it is on the row: the submitter differs from
+   * the claimant, which is what "entered on behalf" means.
+   */
   async create(dto: CreateStaffClaimDto) {
-    return withAdminTx(this.rawPrisma, 'hr.employee.manage', async (tx, actor) => {
-      const profile = await tx.employeeProfile.findFirst({ where: { staffId: dto.staffId } });
+    return withScopedAdminTx(this.rawPrisma, 'hr.employee.manage', async (tx, actor, scope) => {
+      const profile = await tx.employeeProfile.findFirst({
+        where: { staffId: dto.staffId, staff: scope.where(null) },
+        include: { staff: { select: { clinicId: true } } },
+      });
       if (!profile) throw new NotFoundException('No employment record for this person.');
 
-      const claimed = toCents(dto.amountClaimed);
-      if (claimed <= 0) throw new BadRequestException('A claim must be for more than nothing.');
+      const policy = await this.claimPolicies.current();
+      const priced = priceClaim({ amountClaimed: dto.amountClaimed, distanceKm: dto.distanceKm }, policy);
+      assertReceiptRule(policy, dto.receiptFileId);
+      const receipt = dto.receiptFileId ? await this.files.claimOwn(tx, dto.staffId, dto.receiptFileId, 'RECEIPT') : null;
+      const claimDate = dto.claimDate.slice(0, 10);
+      const claimed = toCents(priced.amountClaimed);
 
       const saved = await tx.staffClaim.create({
         data: {
           tenantId: currentTenantId(),
-          clinicId: dto.clinicId ?? null,
+          clinicId: scope.assert(dto.clinicId) ?? profile.staff.clinicId ?? null,
           staffId: dto.staffId,
           category: dto.category,
-          amountClaimed: dto.amountClaimed,
-          claimDate: new Date(`${dto.claimDate}T00:00:00.000Z`),
+          amountClaimed: priced.amountClaimed,
+          distanceKm: priced.distanceKm,
+          mileageRate: priced.mileageRate,
+          claimDate: new Date(`${claimDate}T00:00:00.000Z`),
           description: dto.description,
           status: 'SUBMITTED',
           submittedByStaffId: actor.id,
           submittedAt: new Date(),
         },
       });
+      if (receipt) {
+        await tx.staffClaimAttachment.create({
+          data: { tenantId: currentTenantId(), staffClaimId: saved.id, ...receipt, uploadedByStaffId: actor.id },
+        });
+      }
 
       await this.event(tx, saved.id, actor.id, {
         event: 'submitted',
-        detail: `${dto.category} claim for ${formatCents(claimed)} on ${dto.claimDate}`,
+        detail:
+          `${dto.category} claim for ${formatCents(claimed)} on ${claimDate}` +
+          `${priced.distanceKm !== null ? ` (${priced.distanceKm} km at ${priced.mileageRate})` : ''}, entered by HR`,
         toStatus: 'SUBMITTED',
       });
 
@@ -163,7 +196,14 @@ export class StaffClaimService {
         entityType: 'StaffClaim',
         entityId: saved.id,
         reason: dto.description,
-        after: { staffId: dto.staffId, category: dto.category, amountClaimed: formatCents(claimed) },
+        after: {
+          staffId: dto.staffId,
+          category: dto.category,
+          amountClaimed: formatCents(claimed),
+          distanceKm: priced.distanceKm,
+          submittedBy: 'hr',
+          onBehalfOf: dto.staffId,
+        },
         source: 'hr.claims',
       });
 
@@ -187,8 +227,8 @@ export class StaffClaimService {
      * it. `settle` below stays on payroll: that one is money leaving through
      * Finance, which is a different act from saying yes to a receipt.
      */
-    return withAdminTx(this.rawPrisma, 'hr.claim.approve', async (tx, actor) => {
-      const claim = await tx.staffClaim.findFirst({ where: { id } });
+    return withScopedAdminTx(this.rawPrisma, 'hr.claim.approve', async (tx, actor, scope) => {
+      const claim = await tx.staffClaim.findFirst({ where: { id, staff: scope.where(null) } });
       if (!claim) throw new NotFoundException('Claim not found');
       if (claim.status !== 'SUBMITTED') {
         throw new ConflictException(
@@ -293,8 +333,8 @@ export class StaffClaimService {
    * which is the other half of the no-double-payment invariant.
    */
   async settle(id: string, dto: SettleStaffClaimDto) {
-    return withAdminTx(this.rawPrisma, 'hr.payroll.approve', async (tx, actor) => {
-      const claim = await tx.staffClaim.findFirst({ where: { id } });
+    return withScopedAdminTx(this.rawPrisma, 'hr.payroll.approve', async (tx, actor, scope) => {
+      const claim = await tx.staffClaim.findFirst({ where: { id, staff: scope.where(null) } });
       if (!claim) throw new NotFoundException('Claim not found');
       if (claim.status !== 'APPROVED') throw new ConflictException('Only an approved claim can be settled.');
       if (claim.paymentRoute !== 'FINANCE') {
@@ -336,8 +376,8 @@ export class StaffClaimService {
   }
 
   async cancel(id: string, reason: string) {
-    return withAdminTx(this.rawPrisma, 'hr.employee.manage', async (tx, actor) => {
-      const claim = await tx.staffClaim.findFirst({ where: { id } });
+    return withScopedAdminTx(this.rawPrisma, 'hr.employee.manage', async (tx, actor, scope) => {
+      const claim = await tx.staffClaim.findFirst({ where: { id, staff: scope.where(null) } });
       if (!claim) throw new NotFoundException('Claim not found');
       if (claim.status === 'APPROVED' && claim.payoutStatus !== 'PENDING') {
         throw new ConflictException(
@@ -371,9 +411,9 @@ export class StaffClaimService {
 
   /** The claim's own history, so a disputed claim does not need an audit-table search. */
   async history(id: string) {
-    await requirePermission(this.rawPrisma, 'hr.view');
+    const { scope } = await requireScope(this.rawPrisma, 'hr.view');
     const rows = await this.prisma.staffClaimEvent.findMany({
-      where: { staffClaimId: id },
+      where: { staffClaimId: id, staffClaim: { staff: scope.where(null) } },
       orderBy: { createdAt: 'asc' },
       include: { actor: { select: { fullName: true } } },
     });

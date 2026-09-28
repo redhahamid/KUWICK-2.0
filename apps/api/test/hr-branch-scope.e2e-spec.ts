@@ -181,6 +181,8 @@ describe('the branch on the attendance board and the HR reads beside it (e2e)', 
     stockA = bearerFor(tenantId, clerk.id, Role.STOCK_STAFF);
     employerId = (await row((tx) => tx.legalEmployer.create({ data: { tenantId, name: 'Klinik Scope Sdn Bhd' } }))).id;
 
+    // The claims this world posts carry no receipt; the policy insists on one by default.
+    await request(server()).put('/workforce/claim-policy').set('Authorization', owner).send({ receiptRequired: false, reason: 'Test world: paper receipts' }).expect(200);
     inA = await person('Person A', clinicA);
     inB = await person('Person B', clinicB);
     // Both on the group's one company, so its employee count is a question of branch.
@@ -393,6 +395,54 @@ describe('the branch on the attendance board and the HR reads beside it (e2e)', 
       await request(server()).delete(`/public-holidays/${created.body.id}`).set('Authorization', owner).expect(204);
       const audit = await row((tx) => tx.auditLog.findMany({ where: { action: { in: ['publicHoliday.created', 'publicHoliday.deleted'] } } }));
       expect(audit.map((entry) => entry.action).sort()).toEqual(['publicHoliday.created', 'publicHoliday.deleted']);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // A claim HR enters for somebody: a paper receipt, a person with no portal
+  // login. The same claim the portal makes, for a person the account may act
+  // for, with the receipt handed in on their behalf.
+  describe('a claim HR enters for somebody', () => {
+    const jpeg = Buffer.from('ffd8ffe000104a46494600010100000100010000ffd9', 'hex');
+    const receiptFor = (staffId: string, as: string, name = 'receipt.jpg') =>
+      request(server()).post(`/workforce/staff-files?kind=RECEIPT&staffId=${staffId}`).set('Authorization', as).attach('file', jpeg, { filename: name, contentType: 'image/jpeg' });
+
+    beforeAll(async () => {
+      await request(server()).put('/workforce/claim-policy').set('Authorization', owner).send({ receiptRequired: true, reason: 'Receipts back on for this block' }).expect(200);
+    });
+    afterAll(async () => {
+      await request(server()).put('/workforce/claim-policy').set('Authorization', owner).send({ receiptRequired: false, reason: 'Test world: paper receipts' }).expect(200);
+    });
+
+    it('is the same claim the portal makes: a receipt when the policy says so, mileage priced by the clinic, the submitter on the row', async () => {
+      const body = { staffId: inA, category: 'MEAL', amountClaimed: '30.00', claimDate: today, description: 'Lunch for the audit team' };
+      // No receipt while the policy insists on one.
+      await request(server()).post('/workforce/claims').set('Authorization', managerA).send(body).expect(400);
+      // The receipt goes up first, as the employee's own file, by HR.
+      const upload = await receiptFor(inA, managerA).expect(201);
+      const created = await request(server()).post('/workforce/claims').set('Authorization', managerA).send({ ...body, receiptFileId: upload.body.id }).expect(201);
+      const listed = (await get(`/workforce/claims?clinicId=${clinicA}`, managerA).expect(200)).body.find((row: { id: string }) => row.id === created.body.id);
+      expect(listed.enteredOnBehalf).toBe(true);
+      expect(listed.submittedBy).toBe('Branch A Manager');
+      expect(listed.attachments).toHaveLength(1);
+      // Mileage: the kilometres are the fact and the clinic's rate the price, whatever amount was sent.
+      const odometer = await receiptFor(inA, managerA, 'odometer.jpg').expect(201);
+      const mileage = await request(server())
+        .post('/workforce/claims')
+        .set('Authorization', managerA)
+        .send({ ...body, category: 'TRAVEL', amountClaimed: '1.00', distanceKm: 10, description: 'Mileage 10 km, Bangi to Kajang: stock run', receiptFileId: odometer.body.id })
+        .expect(201);
+      expect(Number(mileage.body.amountClaimed)).toBe(6); // 10 km at the policy's default RM0.60
+      expect(Number(mileage.body.distanceKm)).toBe(10);
+    });
+
+    it('REFUSES a person outside the branches the account manages, the receipt included', async () => {
+      await receiptFor(inB, managerA).expect(404);
+      await request(server())
+        .post('/workforce/claims')
+        .set('Authorization', managerA)
+        .send({ staffId: inB, category: 'MEAL', amountClaimed: '30.00', claimDate: today, description: 'Lunch', receiptFileId: '00000000-0000-4000-8000-000000000000' })
+        .expect(404);
     });
   });
 
