@@ -81,8 +81,10 @@ test('a new branch hires from 1 January and pays January', async ({ page, reques
   await loginAdmin(page);
 
   // -------------------------------------------------------------------------
-  // THE ADD EMPLOYEE FORM, as a clinic fills it. It asks for the EPF Part and
-  // nothing else statutory, and writes a standing dated at the join date.
+  // THE ADD EMPLOYEE FORM, as a clinic fills it. Since Batch 2 it also asks
+  // for the employing company, the rest day and LINDUNG; this walk leaves
+  // those blank on purpose, to show the blocked month below and the fix on
+  // the record, which is the path a clinic that skipped them takes.
   // -------------------------------------------------------------------------
   for (const person of PEOPLE) {
     await page.goto('/admin/hr/employees/new');
@@ -114,9 +116,10 @@ test('a new branch hires from 1 January and pays January', async ({ page, reques
   await page.screenshot({ path: `${SHOTS}/01-three-people-joined-1-jan.png`, fullPage: true });
 
   // -------------------------------------------------------------------------
-  // WHERE JANUARY USED TO STOP. The rest day has no field on Add employee and
+  // WHERE JANUARY USED TO STOP. The rest day had no field on Add employee and
   // the standing on the join date could not be corrected, so the month was
-  // blocked on facts with no input anywhere.
+  // blocked on facts with no input anywhere. Both have inputs now; the walk
+  // still arrives here because it left them blank at hire.
   // -------------------------------------------------------------------------
   await page.goto('/admin/hr/payroll?period=2026-01');
   // The clinic's own words for it: everybody held up, on four facts each, two

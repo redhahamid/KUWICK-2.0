@@ -16,9 +16,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * Malaysian citizen should never be asked. None of it needed the server.
  */
 const post = vi.fn();
+const patch = vi.fn();
 vi.mock('../../core/api-client', () => ({
-  apiClient: { post: (...args: unknown[]) => post(...args) },
+  apiClient: { post: (...args: unknown[]) => post(...args), patch: (...args: unknown[]) => patch(...args) },
   ApiError: class ApiError extends Error {},
+}));
+vi.mock('../hooks/useAdmin', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useAdmin')>()),
+  useLegalEmployers: () => ({ data: [{ id: 'emp-1', name: 'Klinik Contoh Sdn Bhd', active: true }] }),
 }));
 vi.mock('../../core/hooks/useClinics', () => ({
   useClinics: () => ({ data: [{ id: 'clinic-1', name: 'Klinik Contoh' }] }),
@@ -62,7 +67,15 @@ async function personal() {
 
 beforeEach(() => {
   post.mockReset().mockResolvedValue({ staffId: 'staff-new' });
+  patch.mockReset().mockResolvedValue({});
 });
+
+/** antd's DatePicker takes a typed date and Enter. */
+function typeDate(label: string, text: string) {
+  const box = screen.getByLabelText(label);
+  fireEvent.change(box, { target: { value: text } });
+  fireEvent.keyDown(box, { key: 'Enter', code: 'Enter' });
+}
 
 describe('the identity document', () => {
   it('refuses an IC that is not the Malaysian shape, on the stage that has the box', async () => {
@@ -132,6 +145,50 @@ describe('nationality', () => {
     await waitFor(() => expect(post).toHaveBeenCalled());
     expect(post.mock.calls[0][0]).toBe('/workforce/employees');
     expect(post.mock.calls[0][1]).toMatchObject({ fullName: 'Demo Person', nationality: 'Malaysian' });
+  });
+});
+
+describe('what payroll blocks on', () => {
+  it('asks for the employing company, the rest day and LINDUNG, records them at hire, and dates the standing from the start date', async () => {
+    open();
+    await personal();
+    fireEvent.click(continueButton());
+    await waitFor(() => expect(current()).toContain('Employment'));
+    typeDate('Started on', '1 Jan 2026');
+    fireEvent.click(continueButton());
+    await waitFor(() => expect(current()).toContain('Pay & Statutory'));
+    // One company on file: chosen for them. The rest day and the membership are theirs to say.
+    await choose('Rest day', 'Sunday');
+    await choose('EPF membership', 'Malaysian citizen');
+    fireEvent.click(continueButton());
+    await waitFor(() => expect(current()).toContain('Review'));
+    expect(screen.queryByText(/No employing company/)).toBeNull();
+    expect(screen.queryByText(/No rest day/)).toBeNull();
+    expect(screen.queryByText(/No EPF membership/)).toBeNull();
+    // Still missing, and said: the salary, the tax profile and the bank account.
+    expect(screen.getByText(/No salary in force/)).toBeVisible();
+    expect(screen.getByText(/No tax residence or MTD category/)).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add employee' }));
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    expect(patch.mock.calls[0][0]).toBe('/workforce/employees/staff-new/legal-employer');
+    expect(patch.mock.calls[0][1]).toMatchObject({ legalEmployerId: 'emp-1' });
+    await waitFor(() => expect(post.mock.calls.some((call) => call[0] === '/workforce/employees/staff-new/statutory-classification')).toBe(true));
+    const standing = post.mock.calls.find((call) => call[0] === '/workforce/employees/staff-new/statutory-classification')!;
+    expect(standing[1]).toMatchObject({ effectiveFrom: '2026-01-01', epfMembership: 'MALAYSIAN_CITIZEN', restDayOfWeek: 0, lindungParticipation: 'ENROLLED' });
+  });
+
+  it('names the employing company and the rest day as missing before the record is made', async () => {
+    open();
+    await personal();
+    fireEvent.click(continueButton());
+    await waitFor(() => expect(current()).toContain('Employment'));
+    fireEvent.click(continueButton());
+    await waitFor(() => expect(current()).toContain('Pay & Statutory'));
+    fireEvent.click(continueButton());
+    await waitFor(() => expect(current()).toContain('Review'));
+    expect(screen.getByText(/No rest day — payroll refuses the month/)).toBeVisible();
+    expect(screen.getByText(/No EPF membership/)).toBeVisible();
   });
 });
 

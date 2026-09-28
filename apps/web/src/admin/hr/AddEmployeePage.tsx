@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { App, AutoComplete, Button, DatePicker, Form, Input, Select, Switch } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -12,6 +12,8 @@ import { useClinics } from '../../core/hooks/useClinics';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { parseNric } from '../../core/nric';
 import { PhoneField } from './ui/PhoneField';
+import { DAY_NAMES } from './StatutoryStandingManager';
+import { useLegalEmployers } from '../hooks/useAdmin';
 import { RELATIONSHIPS } from './ui/reasons';
 
 /**
@@ -29,18 +31,25 @@ import { RELATIONSHIPS } from './ui/reasons';
  * where it belongs.
  *
  * THE POINT OF STAGE 3 IS THAT THE PERSON COMES OUT PAYABLE. "As payroll-ready
- * as the supplied information permits", in the brief's words. Salary, bank
- * account, the three statutory reference numbers and the statutory position
- * are the five things payroll blocks on, and a hiring form that collects none
- * of them creates somebody who is quietly left out of the next pay run.
+ * as the supplied information permits", in the brief's words. What payroll
+ * actually refuses a month for is an employing company, a salary, a rest day,
+ * a date of birth, the EPF membership and, from June 2026, a LINDUNG answer;
+ * the tax profile is what stops monthly tax being worked out. The first
+ * month's UAT found the form asked for none of the first three, so every hire
+ * was held up on facts the form could have taken. It asks for all of them now,
+ * and the readiness list on the last stage mirrors the run's own blockers.
  *
- * THREE WRITES, NOT ONE, and deliberately so. The employee is created through
- * the employment endpoint; the salary goes through the dated salary endpoint;
- * the statutory position goes through the dated classification endpoint. Both
- * of those refuse to be written on the employment record — because a salary
- * or a Third Schedule Part with no date is a figure the payroll run would
- * resolve differently from the profile, silently. This form therefore ASKS for
- * the date rather than inventing one, and each write keeps its own audit row.
+ * FOUR WRITES, NOT ONE, and deliberately so. The employee is created through
+ * the employment endpoint; the employing company through its own assignment;
+ * the salary through the dated salary endpoint; the statutory position
+ * (membership, tax, rest day, LINDUNG, overtime policy) through the dated
+ * classification endpoint. Those refuse to be written on the employment
+ * record — because a salary or a Third Schedule Part with no date is a figure
+ * the payroll run would resolve differently from the profile, silently. This
+ * form therefore ASKS for the date rather than inventing one, and each write
+ * keeps its own audit row. The EPF contribution basis is not asked: with no
+ * basis recorded the statutory assessment governs, which is the lawful
+ * default, and payroll does not block on it.
  */
 
 const ROLES = [
@@ -83,12 +92,22 @@ export function AddEmployeePage() {
   const { data: clinics } = useClinics();
   const { clinicId } = useClinicFilter();
   const queryClient = useQueryClient();
+  const employers = useLegalEmployers();
+  const activeEmployers = (employers.data ?? []).filter((row) => row.active);
 
   const fullName = Form.useWatch('fullName', form) ?? '';
   const role = Form.useWatch('role', form);
   const wantsLogin = Form.useWatch('wantsLogin', form);
   const epfMembership = Form.useWatch('epfMembership', form);
   const identifierType = Form.useWatch('identifierType', form);
+
+  // ONE COMPANY MEANS NO CHOICE: a single-entity clinic should not be asked
+  // which of its one company employs the person. Two or more stay a question.
+  useEffect(() => {
+    if (activeEmployers.length === 1 && !form.getFieldValue('legalEmployerId')) {
+      form.setFieldValue('legalEmployerId', activeEmployers[0].id);
+    }
+  }, [activeEmployers, form]);
   const isDoctorRole = role === 'DOCTOR_RESIDENT' || role === 'DOCTOR_LOCUM';
 
   /** What each stage insists on before the one after it opens. */
@@ -160,14 +179,30 @@ export function AddEmployeePage() {
       });
 
       const staffId = (created as { staffId?: string; id?: string }).staffId ?? (created as { id?: string }).id;
-      const effectiveFrom = (values.salaryEffectiveFrom ?? values.startDate)?.format('YYYY-MM-DD');
+      const salaryFrom = (values.salaryEffectiveFrom ?? values.startDate)?.format('YYYY-MM-DD');
+      // The standing is dated from the day they START, not from the salary's
+      // date: a salary "From" later than the start date used to leave the
+      // first month with no standing at all.
+      const standingFrom = (values.startDate ?? values.salaryEffectiveFrom)?.format('YYYY-MM-DD');
+
+      // THE EMPLOYING COMPANY, first: it is the one refusal the run cannot pass.
+      if (staffId && values.legalEmployerId) {
+        await apiClient
+          .patch(`/workforce/employees/${staffId}/legal-employer`, {
+            legalEmployerId: values.legalEmployerId,
+            reason: 'Recorded when the employee was added',
+          })
+          .catch((error: unknown) => {
+            notes.push(`employing company not recorded (${error instanceof ApiError ? error.message : 'unknown error'})`);
+          });
+      }
 
       if (staffId && values.salaryAmount) {
         await apiClient
           .post(`/workforce/employees/${staffId}/salary`, {
             amount: String(values.salaryAmount),
             basis: values.salaryBasis ?? 'MONTHLY',
-            effectiveFrom,
+            effectiveFrom: salaryFrom,
             reason: 'Recorded when the employee was added',
           })
           .catch((error: unknown) => {
@@ -182,22 +217,35 @@ export function AddEmployeePage() {
        * they are a citizen or they are not, and that is when the position
        * begins to matter for payroll. A later change — permanent residence
        * granted, a LINDUNG opt-in signed — closes this row and opens another
-       * with its own date, on the employee's page.
+       * with its own date, on the employee's page. Written whenever ANY part
+       * of the standing was given, not only the EPF membership: a rest day or
+       * a LINDUNG answer on its own is still a fact payroll needs.
        */
-      if (staffId && values.epfMembership && effectiveFrom) {
-        await apiClient
-          .post(`/workforce/employees/${staffId}/statutory-classification`, {
-            effectiveFrom,
-            epfMembership: values.epfMembership,
-            ...(values.pcbCategory ? { pcbCategory: values.pcbCategory } : {}),
-            ...(values.taxResidence ? { taxResidence: values.taxResidence } : {}),
-            reason: 'Recorded when the employee was added',
-          })
-          .catch((error: unknown) => {
-            notes.push(
-              `statutory position not recorded (${error instanceof ApiError ? error.message : 'unknown error'})`,
-            );
-          });
+      const hasRestDay = values.restDayOfWeek !== undefined && values.restDayOfWeek !== null;
+      const standing = {
+        ...(values.epfMembership ? { epfMembership: values.epfMembership } : {}),
+        ...(values.pcbCategory ? { pcbCategory: values.pcbCategory } : {}),
+        ...(values.taxResidence ? { taxResidence: values.taxResidence } : {}),
+        ...(values.lindungParticipation ? { lindungParticipation: values.lindungParticipation } : {}),
+        ...(hasRestDay ? { restDayOfWeek: values.restDayOfWeek } : {}),
+        ...(values.overtimeContractPolicy ? { overtimeContractPolicy: values.overtimeContractPolicy } : {}),
+      };
+      if (staffId && Object.keys(standing).length > 0) {
+        if (standingFrom) {
+          await apiClient
+            .post(`/workforce/employees/${staffId}/statutory-classification`, {
+              effectiveFrom: standingFrom,
+              ...standing,
+              reason: 'Recorded when the employee was added',
+            })
+            .catch((error: unknown) => {
+              notes.push(
+                `statutory position not recorded (${error instanceof ApiError ? error.message : 'unknown error'})`,
+              );
+            });
+        } else {
+          notes.push('the statutory position was not recorded (no start date to date it from)');
+        }
       }
 
       await queryClient.invalidateQueries({ queryKey: ['admin-hr'] });
@@ -225,16 +273,23 @@ export function AddEmployeePage() {
    * discovered when the pay run leaves somebody out.
    */
   const outstanding = [
+    // The run's own blockers, in the order it raises them.
+    !values.legalEmployerId ? 'No employing company — payroll refuses the month for them, and that refusal cannot be passed.' : null,
     !values.salaryAmount ? 'No salary in force — payroll leaves them out.' : null,
-    !values.bankAccountNo ? 'No bank account — they cannot be paid out.' : null,
+    values.salaryAmount && values.salaryBasis && values.salaryBasis !== 'MONTHLY'
+      ? 'Paid daily or hourly — payroll leaves them out until a monthly salary is recorded.'
+      : null,
+    values.restDayOfWeek === undefined || values.restDayOfWeek === null ? 'No rest day — payroll refuses the month for them.' : null,
     !values.dateOfBirth ? 'No date of birth — SOCSO and EIS need an age.' : null,
-    !values.epfMembership ? 'No statutory position — EPF, SOCSO and PCB cannot be worked out.' : null,
+    !values.epfMembership ? 'No EPF membership — EPF, SOCSO and EIS cannot be worked out.' : null,
+    !values.taxResidence || !values.pcbCategory ? 'No tax residence or MTD category — monthly tax has to be entered by hand each month.' : null,
+    !values.bankAccountNo ? 'No bank account — they cannot be paid out.' : null,
   ].filter(Boolean) as string[];
 
   return (
     <AdminShell
       title="Add employee"
-      subtitle="A name and a job create the record. Before payroll can pay anybody it also needs an employing company, a rest day, the statutory standing and a salary; the person’s page lists what is still missing."
+      subtitle="A name and a job create the record. Payroll also needs an employing company, a rest day, the statutory standing and a salary, all asked for here; the person’s page lists whatever is still missing."
       actions={
         <Button onClick={() => navigate('/admin/hr/employees')} disabled={saving}>
           Cancel
@@ -256,7 +311,7 @@ export function AddEmployeePage() {
       <Form
         form={form}
         layout="vertical"
-        initialValues={{ employmentType: 'PERMANENT', wantsLogin: false, clinicId, salaryBasis: 'MONTHLY', identifierType: 'NRIC' }}
+        initialValues={{ employmentType: 'PERMANENT', wantsLogin: false, clinicId, salaryBasis: 'MONTHLY', identifierType: 'NRIC', lindungParticipation: 'ENROLLED' }}
       >
         <div className="kw-formPage">
           <div style={{ display: stage === 0 ? 'block' : 'none' }}>
@@ -455,6 +510,41 @@ export function AddEmployeePage() {
             >
               <div className="kw-formRow">
                 <Form.Item
+                  name="legalEmployerId"
+                  label="Employed by"
+                  extra="The company that pays them and files their EPF, SOCSO and tax. Payroll refuses to work out a month for anybody without one. A branch is where they work; it files nothing."
+                >
+                  <Select
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    placeholder={activeEmployers.length > 0 ? 'Choose' : 'No company on file yet — add one in Settings, Company and statutory'}
+                    options={activeEmployers.map((row) => ({ value: row.id, label: row.name }))}
+                  />
+                </Form.Item>
+                <Form.Item
+                  name="restDayOfWeek"
+                  label="Rest day"
+                  extra="Section 60(1) gives one whole day a week and the employer appoints it. Payroll refuses to work out a month without it."
+                >
+                  <Select allowClear placeholder="Choose" options={DAY_NAMES.map((name, index) => ({ value: index, label: name }))} />
+                </Form.Item>
+                <Form.Item
+                  name="lindungParticipation"
+                  label="LINDUNG 24 JAM (SKBBK)"
+                  extra="Every employee is enrolled unless they opt out through PERKESO’s own form. Recorded at hire so the first month is not held up on it."
+                >
+                  <Select
+                    options={[
+                      { value: 'ENROLLED', label: 'Enrolled' },
+                      { value: 'NOT_PARTICIPATING', label: 'Opted out through PERKESO' },
+                      { value: 'MANDATORY_FOREIGN_WORKER', label: 'Mandatory — foreign worker' },
+                    ]}
+                  />
+                </Form.Item>
+              </div>
+              <div className="kw-formRow">
+                <Form.Item
                   name="epfMembership"
                   label="EPF membership"
                   extra="Decides the Third Schedule Part their contributions come from."
@@ -502,6 +592,20 @@ export function AddEmployeePage() {
                   <Input placeholder="e.g. Indonesian" />
                 </Form.Item>
               ) : null}
+              <Form.Item
+                name="overtimeContractPolicy"
+                label="Overtime above the Act limit"
+                extra="Matters only for wages above the Employment Act’s First Schedule ceiling, where the Act’s overtime rates do not apply by law and the contract decides. Payroll asks for it before pricing their overtime."
+              >
+                <Select
+                  allowClear
+                  placeholder="Set later"
+                  options={[
+                    { value: 'PAY_AT_STATUTORY_RATES', label: 'Company pays overtime at the statutory rates' },
+                    { value: 'NOT_PAID', label: 'Overtime is not paid' },
+                  ]}
+                />
+              </Form.Item>
               <div className="kw-formRow">
                 <Form.Item name="epfNumber" label="EPF number">
                   <Input placeholder="12345678" />
