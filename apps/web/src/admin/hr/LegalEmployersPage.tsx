@@ -200,7 +200,13 @@ export function LegalEmployersPage() {
                   <StatusChip tone="attn">Not recorded</StatusChip>
                 ),
             },
-            { title: clinicId ? `Employees at ${branchName ?? 'this branch'}` : 'Employees', dataIndex: 'employeeCount', num: true, width: clinicId ? 200 : 100 },
+            {
+              // Active people only — resigned and terminated are not counted — and the column says so.
+              title: clinicId ? `Active at ${branchName ?? 'this branch'}` : 'Active employees',
+              dataIndex: 'employeeCount',
+              num: true,
+              width: clinicId ? 200 : 150,
+            },
             {
               title: 'Could it file?',
               key: 'readiness',

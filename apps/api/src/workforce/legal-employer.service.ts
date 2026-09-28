@@ -40,7 +40,18 @@ export class LegalEmployerService {
     const { scope } = await requireScope(this.rawPrisma, 'hr.view');
     const rows = await this.prisma.legalEmployer.findMany({
       orderBy: { name: 'asc' },
-      include: { _count: { select: { employees: { where: { staff: scope.where(clinicId) } }, runs: true } } },
+      include: {
+        _count: {
+          select: {
+            // The people it employs NOW: anybody not resigned or terminated,
+            // which is what the Employees page calls active. Somebody who has
+            // left is still in the company's history; they are not a head it
+            // pays or files for.
+            employees: { where: { staff: scope.where(clinicId), employmentStatus: { notIn: ['RESIGNED', 'TERMINATED'] } } },
+            runs: true,
+          },
+        },
+      },
     });
     // The OPEN statutory version per employer — the class in force today.
     // Read in one query rather than per row.

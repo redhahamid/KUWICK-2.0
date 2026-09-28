@@ -70,6 +70,7 @@ Tanda ☐ apabila keputusan sepadan.
 | ☐ 11 | Doktor | `/my` dan `/my/payslips` | Kad *Latest payslip* → **Download PDF** | PDF September muncul hanya selepas *Paid* `[D]`; angka sama dengan `/admin/hr/payroll/<run>/employees/<staff>` |
 | ☐ 12 | Owner | `/admin/hr/reports` | Jana laporan kerajaan: EPF Borang A, SOCSO & EIS 8A, PCB CP39, HRD, EA, Borang E | Setiap laporan dibuka untuk run September; deep-link `?report=…&run=…` kekal |
 | ☐ 13 | Owner | `/admin/hr/settings/attendance-leave` | *Rules for: Contoh Central* → **Use where this device is now** (atau taip lat/long) → **Save attendance rules**; panel *Claims*: tukar kadar → **Save claim rules** | Geofence disimpan untuk cawangan itu sahaja (lat dan long kedua-duanya, atau kosong kedua-duanya); portal mengira mileage dengan kadar baharu untuk tuntutan seterusnya; tuntutan lama kekal pada kadar lama |
+| ☐ 13b | Owner | `/admin/hr/settings/company` | Pilih satu cawangan pada pemilih cawangan; tandakan seorang pekerja cawangan itu *Resigned*, kembali | Lajur bertukar kepada **Active at <cawangan>** dan mengira cawangan itu sahaja; orang yang berhenti tidak dikira lagi; tanpa cawangan, lajur **Active employees** mengira seluruh kumpulan `[D]` |
 
 Bulan yang sudah berbayar (Jun, Julai, Ogos) boleh dilihat di
 `/admin/hr/payroll/history` dan dalam portal setiap pekerja.

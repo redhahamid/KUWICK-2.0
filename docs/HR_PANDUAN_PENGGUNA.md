@@ -73,6 +73,11 @@ Tekan **+ New employer**, atau **Edit** pada baris sedia ada.
 Lajur **Could it file?** ialah pemeriksaan ringkas: **Complete** bermakna semua
 nombor majikan ada. Kalau tidak, ia tulis berapa yang hilang dan yang mana.
 
+Lajur **Active employees** mengira orang yang masih bekerja dengan syarikat itu
+sahaja — yang sudah berhenti atau ditamatkan tidak dikira. Pilih cawangan pada
+pemilih cawangan di atas dan lajur itu bertukar kepada **Active at <cawangan>**,
+mengira cawangan itu sahaja.
+
 **Mendaftarkan syarikat di sini tidak mengikat sesiapa kepadanya.** Setiap
 pekerja perlu diberitahu syarikat mana yang menggajinya, seorang demi seorang:
 buka rekod pekerja · tab **Employment & salary** · **Edit** · medan **Employed

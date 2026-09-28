@@ -321,7 +321,20 @@ describe('the branch on the attendance board and the HR reads beside it (e2e)', 
   describe('the employing companies', () => {
     const count = (body: { name: string; employeeCount: number }[]) => body.find((row) => row.name === 'Klinik Scope Sdn Bhd')!.employeeCount;
 
-    it('count the employees of the named branch, not of the whole group', async () => {
+    beforeAll(async () => {
+      // Somebody who has LEFT branch A: on the company's books once, not employed by it now, so not counted.
+      const left = await request(server())
+        .post('/workforce/employees')
+        .set('Authorization', owner)
+        .send({ fullName: 'Person C (left)', role: Role.FRONT_DESK_CLINICAL_STAFF, clinicId: clinicA, position: 'Clinic Assistant', employmentType: 'PERMANENT', startDate: '2025-01-01', dateOfBirth: '1990-01-01' })
+        .expect(201);
+      const leftId = left.body.staff.id as string;
+      await request(server()).patch(`/workforce/employees/${leftId}/legal-employer`).set('Authorization', owner).send({ legalEmployerId: employerId }).expect(200);
+      const resigned = await request(server()).post(`/workforce/employees/${leftId}`).set('Authorization', owner).send({ employmentStatus: 'RESIGNED', endDate: '2026-06-30' });
+      expect([200, 201]).toContain(resigned.status);
+    });
+
+    it('count the people the company employs now at the named branch — not the whole group, and not somebody who left', async () => {
       expect(count((await get(`/workforce/legal-employers?clinicId=${clinicA}`).expect(200)).body)).toBe(1);
       expect(count((await get('/workforce/legal-employers').expect(200)).body)).toBe(2);
     });
