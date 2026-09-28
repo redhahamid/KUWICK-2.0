@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   ADMIN_ACCOUNTS,
+  chooseBranch,
   collectAdminConsoleErrors,
   currentPayrollPeriod,
   deleteRuleSetsNamed,
@@ -184,6 +185,27 @@ test.describe("HR", () => {
     await expect(
       page.getByRole("heading", { name: "Payroll", exact: true }),
     ).toBeVisible();
+
+    /*
+     * UNDER ALL BRANCHES THE MONTH IS A LIST OF BRANCHES, not one branch's run
+     * wearing the tenant's name.
+     *
+     * This tenant has two branches and the seed pays Contoh Central's month
+     * only. The landing used to answer "All branches" with whichever run it
+     * found first, so an owner read Central's figures as the group's and the
+     * Start button offered a second, tenant-wide run for a month one branch
+     * had already paid. Each branch runs its own month, so the screen says so
+     * and offers each branch's run by name; the grid belongs to a branch.
+     */
+    await expect(page.getByText(/by branch$/i).first()).toBeVisible();
+    await expect(page.locator(".kw-payrollGrid")).toHaveCount(0);
+    await expect(
+      page.locator("tr", { hasText: "Contoh Central" }).getByRole("link", { name: "Open" }),
+    ).toBeVisible();
+
+    // Picking the branch is what the picker is for. The choice lives in
+    // sessionStorage, so it survives the navigation to the current month below.
+    await chooseBranch(page, "Contoh Central");
     // The month IS the landing screen — no dashboard between an owner and it.
     await expect(page.locator(".hr-stats")).toBeVisible();
     await expect(page.locator(".kw-payrollGrid")).toBeVisible();
@@ -270,6 +292,7 @@ test.describe("HR", () => {
      */
     const current = currentPayrollPeriod();
     await gotoAdmin(page, `/admin/hr/payroll?period=${current}`);
+    // Still Contoh Central: the sentence and the Start button are a branch's.
     await expect(page.getByText(/has not been started/i)).toBeVisible();
     await expect(
       page.getByRole("button", { name: /Start .* payroll/i }),
