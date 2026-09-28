@@ -102,6 +102,13 @@ recorded*, levi pada slip gaji jadi amaran, bukan angka.
 > satu hanya kalau ada dua Sdn Bhd berasingan yang masing-masing menggaji
 > orang.
 
+Lajur **HRD Corp** menunjukkan kelas yang direkodkan **dan tarikh ia berkuat
+kuasa** (*Registered — s.14 mandatory (1%) · from 1 Sep 2026*). Kelas itu
+hanya menyentuh bulan gaji dari tarikh itu: bulan yang sudah *Approved* atau
+*Paid* sebelum tarikh itu kekal seperti ia diluluskan, dan grid gaji bulan itu
+menunjukkan **—** pada *HRD levy* dengan sebabnya (lihat 3.5). Syarikat tanpa
+kelas HRD disenaraikan *missing* di bawah **Could it file?**.
+
 ### 2.2 Payroll items
 
 **Apa gunanya.** Senarai perkara yang klinik boleh bayar atau potong — gaji
@@ -192,6 +199,13 @@ pekerja. Tekan **Add rule set** atau **Edit**.
 ÷ 26, sejam = sehari ÷ jam normal, lebih masa 1.5×, hari rehat 2.0×, cuti umum
 3.0× dengan dua hari gaji untuk hari itu sendiri. **Ini pilihan yang betul
 untuk hampir semua klinik kecil.** Anda tidak perlu taip apa-apa nombor.
+
+**Memadam rule set.** Rule set yang bukan *Default*, tidak menetapkan harga
+sesiapa hari ini, tiada siapa ditugaskan kepadanya secara manual, dan tidak
+pernah dinamakan pada mana-mana baris slip gaji boleh dipadam: butang
+**Delete** muncul di sebelah **Edit** pada baris begitu sahaja, dengan sebab
+pilihan. Selain itu pelayan menolak dan menyatakan sebabnya — bulan yang
+pernah diharga oleh rule set itu mengekalkan namanya.
 
 ### Kalau klinik anda bayar LEBIH daripada Akta
 
@@ -444,6 +458,12 @@ yang bekerja pada Hari Raya dibayar seperti hari biasa.
 > persekutuan dan negeri anda untuk tahun semasa. Tarikh Islam dan Cina
 > berubah setiap tahun — semak warta, jangan agak.
 
+Kalendar ini satu untuk semua cawangan, dan setiap gaji cawangan membaca
+harganya dari sini. Jadi **menambah atau memadam cuti umum adalah kerja
+Owner** (`settings.manage`); pengurus cawangan boleh membaca senarai tetapi
+butang **Add holiday** dan **Remove** tidak dipaparkan kepadanya, dan pelayan
+menolak percubaan lain. Setiap tambahan dan padaman meninggalkan baris audit.
+
 ### 2.7 Opening balances
 
 **Apa gunanya.** Hanya untuk klinik yang mula guna Kuwick **pertengahan
@@ -534,6 +554,16 @@ statusnya yang berubah.
 | **No record** pada lajur Type | Orang ini ada akaun tapi tiada rekod pekerjaan | Klik baris itu — laci lengkapkan rekod akan terbuka |
 | Titik Bank kosong | Tiada akaun bank | Buka rekod, tab **Bank** |
 | **Records incomplete** tinggi | Tarikh lahir, nombor KWSP atau PERKESO hilang | Angka itu memberitahu yang mana paling kerap hilang |
+
+**Add employee** kini bertanya di peringkat *Pay & Statutory* tiga perkara
+yang gaji enggan berjalan tanpanya: **Employed by** (syarikat yang menggaji
+— dipilih sendiri jika hanya ada satu), **Rest day**, dan **LINDUNG 24 JAM
+(SKBBK)** (lalai *Enrolled*), serta **Overtime above the Act limit** untuk
+gaji melebihi siling Jadual Pertama. Semuanya direkodkan bertarikh dari
+tarikh mula kerja. Senarai *Payroll readiness* pada peringkat *Review*
+menyenaraikan tepat perkara yang run gaji akan halang, dalam susunannya.
+Asas caruman EPF tidak ditanya: tanpa rekod, penilaian statutori terpakai
+dan gaji tidak dihalang.
 
 ### 3.2 Attendance
 
@@ -644,6 +674,14 @@ untuk menolak atau untuk menukar jumlah.**
 Tuntutan jarak jauh menunjukkan apa ia dihargakan dengan — contoh
 *42 km × RM0.60* — kadar yang dibekukan pada tuntutan itu semasa ia dihantar.
 
+**Record claim** (HR). Untuk resit kertas atau staf tanpa log masuk portal,
+tekan **+ Record claim** di atas senarai: pilih pekerja, jenis, tarikh, jumlah
+(mileage dikira dari km × kadar klinik, sama seperti portal), tujuan, dan
+gambar/imbasan resit — wajib jika polisi tuntutan mewajibkannya. Tuntutan
+itu masuk giliran seperti tuntutan lain; laci *Review* menyatakan *entered on
+their behalf* dan siapa yang mengunci masuknya. HR hanya boleh merekod untuk
+pekerja di cawangan yang diuruskannya.
+
 ### 3.5 Payroll
 
 **Bila dibuka.** Hujung bulan, selepas kehadiran, cuti, lebih masa dan
@@ -711,6 +749,19 @@ menghalang, butang bertukar menjadi *Locked until the N items are sorted* dan
 **See what is blocking it**.
 
 Lihat soalan lazim di bahagian 5 untuk maksud **Blocked**.
+
+**All branches.** Setiap cawangan menjalankan bulannya sendiri. Dengan pemilih
+cawangan pada *All branches*, halaman bulan menyenaraikan setiap cawangan
+dengan status run-nya, bilangan pekerja dan gaji bersih: **Open** membuka run
+cawangan itu, **Start** memilih cawangan itu dahulu. Tiada lagi run satu
+cawangan dipaparkan seolah-olah ia bulan seluruh kumpulan.
+
+**HRD levy —.** Apabila petak *HRD levy* bertanda **—**, sebabnya ada pada
+baris itu (letak tetikus di atas sengkang) dan satu ayat di bawah grid
+menamakan syarikat, tarikh kelas HRD direkodkan berbanding bulan itu, dan apa
+yang perlu dibuat: rekod kelas dari tarikh sebenar, atau **Reopen** bulan,
+kira semula dan luluskan semula. Bulan yang sudah *Paid* tidak boleh dibuka
+semula; levinya diselesaikan di luar Kuwick.
 
 ### 3.6 Reports
 
