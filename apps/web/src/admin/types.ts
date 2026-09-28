@@ -3229,6 +3229,9 @@ export interface PayrollPolicyRow {
   /** Employees this rule set prices, resolved as the run resolves it. */
   employeeCount: number;
   employeeNames: string[];
+  /** Not the default, prices nobody, nobody assigned by hand. A payslip that names it still refuses at delete. */
+  removable: boolean;
+  removalBlockedBy: string | null;
   /**
    * The Act's floor, checked in advance for a clinic-rate rule set: how many
    * employees within the First Schedule it prices, and who it would underpay.

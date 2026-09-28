@@ -3,6 +3,7 @@ import {
   ADMIN_ACCOUNTS,
   collectAdminConsoleErrors,
   currentPayrollPeriod,
+  deleteRuleSetsNamed,
   gotoAdmin,
   loginAdmin,
   seededPayrollPeriod,
@@ -322,6 +323,15 @@ test.describe("HR", () => {
  */
 test.describe("a refused rule set says why, beside the box that is wrong", () => {
   const PHONE = { width: 390, height: 844 };
+  // Every rule set this block saves carries the prefix, and goes again after
+  // each test — a run pointed at a shared database used to leave two behind.
+  const PREFIX = "E2E rule set";
+  test.beforeAll(async ({ request }) => {
+    await deleteRuleSetsNamed(request, PREFIX);
+  });
+  test.afterEach(async ({ request }) => {
+    await deleteRuleSetsNamed(request, PREFIX);
+  });
 
   test("puts the reason directly under the divisor on a phone-width screen", async ({
     page,
@@ -331,7 +341,7 @@ test.describe("a refused rule set says why, beside the box that is wrong", () =>
     await gotoAdmin(page, "/admin/hr/settings/payroll");
 
     await page.getByRole("button", { name: "Add rule set" }).click();
-    await page.getByLabel("Name").fill("Phone width check");
+    await page.getByLabel("Name").fill(`${PREFIX} phone width ${Date.now()}`);
     const divisor = page.locator("#orp-ot-days");
     await divisor.fill("30");
     await page.getByRole("button", { name: "Add rule set" }).last().click();
@@ -375,7 +385,7 @@ test.describe("a refused rule set says why, beside the box that is wrong", () =>
     await gotoAdmin(page, "/admin/hr/settings/payroll");
 
     await page.getByRole("button", { name: "Add rule set" }).click();
-    await page.getByLabel("Name").fill(`Below the Act ${Date.now()}`);
+    await page.getByLabel("Name").fill(`${PREFIX} below the Act ${Date.now()}`);
     await page.locator("#ruleset-ot-multiplier").fill("1.25");
 
     // The warning is there BEFORE Save, naming the section and the minimum.
@@ -406,7 +416,7 @@ test.describe("a refused rule set says why, beside the box that is wrong", () =>
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
     await gotoAdmin(page, "/admin/hr/settings/payroll");
 
-    const name = `Paid below ${Date.now()}`;
+    const name = `${PREFIX} paid below ${Date.now()}`;
     await page.getByRole("button", { name: "Add rule set" }).click();
     await page.getByLabel("Name").fill(name);
     await page.locator("#ruleset-ot-multiplier").fill("1.25");
@@ -430,14 +440,15 @@ test.describe("a refused rule set says why, beside the box that is wrong", () =>
     await gotoAdmin(page, "/admin/hr/settings/payroll");
 
     await page.getByRole("button", { name: "Add rule set" }).click();
-    const name = `Overtime at two ${Date.now()}`;
+    const name = `${PREFIX} overtime at two ${Date.now()}`;
     await page.getByLabel("Name").fill(name);
     await page.locator("#ruleset-ot-multiplier").fill("2");
     await page.getByRole("button", { name: "Add rule set" }).last().click();
 
     // The rule set list says whose multipliers are in force, so nobody reads
     // the Act's figure over a clinic's own. Scoped to this test's own row:
-    // every run adds one, and a page-wide match would pass on somebody else's.
+    // every run adds one (and removes it afterwards), and a page-wide match
+    // would pass on somebody else's.
     const row = page.getByRole("row").filter({ hasText: name });
     await expect(row).toContainText("Clinic multipliers: 2×");
     // Above the Act carries no mark — there is nothing to warn about.

@@ -80,6 +80,8 @@ the demo seed assigns it, and a real clinic assigns it from Add employee.
 
 ## 7. Named and NOT fixed here
 
+> The full role and permission audit is `PERMISSIONS_AUDIT_2026-09.md` (September 2026): 82 keys, eleven unchecked, the shared Role enum brought level with the schema.
+
 `[D]` **`StaffAccessDrawer.tsx` is still never rendered**, and the Roles copy
 still refers to it. A *custom* role can therefore be created and not assigned.
 The built-in CLINIC_MANAGER is assignable from **Add employee**, which is the

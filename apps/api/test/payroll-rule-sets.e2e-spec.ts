@@ -350,4 +350,18 @@ describe('Rule sets and recurring items in the payroll run (e2e)', () => {
     const inputs = await inputsFor(clerkId);
     expect(inputs.some((row) => row.source === 'RECURRING')).toBe(false);
   });
+
+  it('deletes a rule set nobody uses, and refuses one that prices somebody today', async () => {
+    const spare = (
+      await http().post('/workforce/payroll-policies').set('Authorization', bearer).send({ name: 'Spare rule set', overtimeMode: 'STATUTORY' }).expect(201)
+    ).body.id as string;
+    const list = await http().get('/workforce/payroll-policies').set('Authorization', bearer).expect(200);
+    expect(list.body.policies.find((row: { id: string }) => row.id === spare)).toMatchObject({ removable: true, removalBlockedBy: null });
+    await http().delete(`/workforce/payroll-policies/${spare}`).set('Authorization', bearer).send({ reason: 'Added by mistake' }).expect(200);
+    await http().delete(`/workforce/payroll-policies/${spare}`).set('Authorization', bearer).expect(404);
+    // The front desk rule set prices the clerk today: it stays, and says why.
+    const refused = await http().delete(`/workforce/payroll-policies/${frontDeskPolicyId}`).set('Authorization', bearer).expect(409);
+    expect(refused.body.message).toMatch(/prices 1 employee today/);
+    expect(list.body.policies.find((row: { id: string }) => row.id === frontDeskPolicyId)).toMatchObject({ removable: false });
+  });
 });

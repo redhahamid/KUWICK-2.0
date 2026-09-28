@@ -865,6 +865,14 @@ export function useUpsertPayrollPolicy() {
   );
 }
 
+/** Delete a rule set nobody uses; the server refuses one that prices somebody or that a payslip names. */
+export function useDeletePayrollPolicy() {
+  return useAdminMutation(
+    ({ id, reason }: { id: string; reason?: string }) => apiClient.delete(`/workforce/payroll-policies/${id}`, { reason }),
+    ['admin-hr'],
+  );
+}
+
 export function useStatutoryRuleSets() {
   return useQuery({
     queryKey: ['admin-hr', 'statutory'],

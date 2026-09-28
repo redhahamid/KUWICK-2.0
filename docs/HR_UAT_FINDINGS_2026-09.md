@@ -179,7 +179,7 @@ and read the published array.
 
 ### `[A]` The gap underneath it, which is not fixed
 
-`[D]` **An existing employee's role cannot be changed anywhere in the product.**
+`[D]` **An existing employee's role cannot be changed on any screen.** (Correction, September audit: `PATCH /staff/:id` does accept `role` under `users.manage`, unaudited; no screen calls it. See `PERMISSIONS_AUDIT_2026-09.md` §3.)
 `staff.role` is written in exactly two places — creating an employee
 (`POST /workforce/employees`) and provisioning a tenant. `upsert-employee.dto.ts`
 has no `role` field, and Settings ▸ Roles assigns SystemRoles and custom roles,

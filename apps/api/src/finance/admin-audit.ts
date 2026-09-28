@@ -134,6 +134,7 @@ export type AuditAction =
   | 'statutory.checked'
   | 'payrollPolicy.created'
   | 'payrollPolicy.updated'
+  | 'payrollPolicy.deleted'
   | 'payrollInput.created'
   | 'payrollInput.updated'
   | 'payrollInput.deleted'

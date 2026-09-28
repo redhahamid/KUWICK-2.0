@@ -493,6 +493,12 @@ export class WorkforceController {
     return this.payrollPolicies.upsert(dto);
   }
 
+  /** A rule set nobody uses can go; one that prices somebody, or that a payslip names, is refused with the reason. */
+  @Delete('payroll-policies/:id')
+  removePayrollPolicy(@Param('id') id: string, @Body() body: { reason?: string } = {}) {
+    return this.payrollPolicies.remove(id, body?.reason);
+  }
+
   // --- Payroll inputs — the write path that did not exist -------------------
 
   @Get('payroll/inputs')

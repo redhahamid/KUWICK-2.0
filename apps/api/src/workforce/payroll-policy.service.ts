@@ -110,9 +110,29 @@ export class PayrollPolicyService {
       onRuleSet.set(policy.id, list);
     }
 
+    // Hand assignments across every employment status: somebody who left is
+    // still on the rule set's books, and deleting it would silently unassign them.
+    const handAssigned = new Map(
+      (
+        await this.prisma.employeeProfile.groupBy({
+          by: ['payrollPolicyId'],
+          where: { payrollPolicyId: { not: null } },
+          _count: { _all: true },
+        })
+      ).map((row) => [row.payrollPolicyId as string, row._count._all]),
+    );
+
     return {
       policies: rows.map((row) => {
         const covered = onRuleSet.get(row.id) ?? [];
+        const assigned = handAssigned.get(row.id) ?? 0;
+        const removalBlockedBy = row.isDefault
+          ? 'It is the default rule set.'
+          : covered.length > 0
+            ? `It prices ${covered.length} ${covered.length === 1 ? 'employee' : 'employees'} today.`
+            : assigned > 0
+              ? `${assigned} ${assigned === 1 ? 'employee is' : 'employees are'} assigned to it by hand.`
+              : null;
         const rates = clinicRatesOf(row);
         // THE FLOOR, SAID IN ADVANCE. For every employee this rule set prices
         // whose wages the First Schedule reaches, what the clinic rate would
@@ -223,6 +243,13 @@ export class PayrollPolicyService {
           isDefault: row.isDefault,
           employeeCount: covered.length,
           employeeNames: covered.map((employee) => employee.staff.fullName).sort(),
+          /**
+           * WHETHER IT CAN GO: not the default, prices nobody, nobody assigned.
+           * A payslip line that names it still refuses at delete — that check
+           * reads every line and is made once, when somebody asks.
+           */
+          removable: removalBlockedBy === null,
+          removalBlockedBy,
           floor,
           updatedAt: row.updatedAt.toISOString(),
         };
@@ -299,6 +326,78 @@ export class PayrollPolicyService {
     });
     const protectedWages = salaries.map((row) => toCents(row.amount)).filter((cents) => cents <= FIRST_SCHEDULE_WAGE_CEILING_CENTS);
     return protectedWages.length === 0 ? null : Math.max(...protectedWages);
+  }
+
+  /**
+   * DELETE A RULE SET NOBODY USES.
+   *
+   * There was no way to remove one, so a browser test that saved two per run
+   * left a dozen "Paid below 1758…" rows on the demo tenant's Settings page.
+   * A rule set that is not the default, prices nobody today, has nobody
+   * assigned to it by hand, and that no payslip line ever named can go, with
+   * an audit row holding what it said. Anything else is refused with the
+   * reason: a month that was priced by a rule set keeps its name, and a name
+   * on a payslip has to stay readable.
+   */
+  async remove(id: string, reason?: string) {
+    return withAdminTx(this.rawPrisma, 'hr.statutory.manage', async (tx, actor) => {
+      const row = await tx.payrollPolicy.findFirst({ where: { id } });
+      if (!row) throw new NotFoundException('Payroll policy not found');
+      if (row.isDefault) {
+        throw new ConflictException('This is the default rule set. Make another the default before deleting it.');
+      }
+      const assigned = await tx.employeeProfile.count({ where: { payrollPolicyId: id } });
+      if (assigned > 0) {
+        throw new ConflictException(
+          `${assigned} ${assigned === 1 ? 'employee is' : 'employees are'} assigned to this rule set by hand. Move them first.`,
+        );
+      }
+      const policies = await tx.payrollPolicy.findMany();
+      const employees = await tx.employeeProfile.findMany({
+        where: { engagement: 'EMPLOYEE', employmentStatus: { in: [...ACTIVE_STATUSES] } },
+        select: { payrollPolicyId: true, legalEmployerId: true, staff: { select: { active: true, role: true, professionalType: true } } },
+      });
+      const covers = employees.filter(
+        (employee) =>
+          employee.staff.active &&
+          resolvePayrollPolicy(policies, {
+            payrollPolicyId: employee.payrollPolicyId,
+            legalEmployerId: employee.legalEmployerId,
+            category: workforceCategoryOf(employee.staff),
+          }).policy?.id === id,
+      ).length;
+      if (covers > 0) {
+        throw new ConflictException(
+          `This rule set prices ${covers} ${covers === 1 ? 'employee' : 'employees'} today. Change what it applies to first.`,
+        );
+      }
+      const named = await tx.payrollLine.count({ where: { breakdown: { path: ['overtimePolicy', 'ruleSet'], equals: row.name } } });
+      if (named > 0) {
+        throw new ConflictException(
+          `${named} payslip ${named === 1 ? 'line names' : 'lines name'} this rule set. A month priced by it keeps its name, so it cannot be deleted.`,
+        );
+      }
+
+      await tx.payrollPolicy.delete({ where: { id } });
+      await recordAudit(tx, actor, {
+        action: 'payrollPolicy.deleted',
+        entityType: 'PayrollPolicy',
+        entityId: id,
+        before: {
+          name: row.name,
+          overtimeMode: row.overtimeMode,
+          workforceCategory: row.workforceCategory,
+          legalEmployerId: row.legalEmployerId,
+          isDefault: row.isDefault,
+          createdAt: row.createdAt.toISOString(),
+          updatedAt: row.updatedAt.toISOString(),
+        },
+        after: null,
+        reason: reason?.trim() || `Deleted the unused rule set "${row.name}"`,
+        source: 'hr.settings',
+      });
+      return { deleted: true, name: row.name };
+    });
   }
 
   async upsert(dto: UpsertPayrollPolicyDto) {

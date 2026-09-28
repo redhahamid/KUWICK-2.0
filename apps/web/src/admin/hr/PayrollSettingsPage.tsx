@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { App, Input, Select, Switch } from 'antd';
+import { App, Input, Modal, Select, Switch } from 'antd';
 import dayjs from 'dayjs';
 import { useCan } from '../../core/hooks/useCan';
 import {
@@ -9,6 +9,7 @@ import {
   useSetPayrollApprovalPolicy,
   useStatutoryRates,
   useUpsertPayrollPolicy,
+  useDeletePayrollPolicy,
 } from '../hooks/useAdmin';
 import {
   Drawer,
@@ -200,6 +201,11 @@ export function PayrollSettingsPage() {
 
   const mayManage = useCan('hr.statutory.manage');
   const upsert = useUpsertPayrollPolicy();
+  // A rule set nobody uses can go. The server is the judge: it refuses one that
+  // prices somebody, has somebody assigned, is the default, or that a payslip names.
+  const removePolicy = useDeletePayrollPolicy();
+  const [removing, setRemoving] = useState<PayrollPolicyRow | null>(null);
+  const [removeReason, setRemoveReason] = useState('');
   const [editing, setEditing] = useState<PayrollPolicyRow | 'new' | null>(null);
   const [name, setName] = useState('');
   const [appliesTo, setAppliesTo] = useState<string>('__hand');
@@ -619,12 +625,26 @@ export function PayrollSettingsPage() {
                   {
                     title: '',
                     key: 'edit',
-                    width: 90,
+                    width: 170,
                     render: (_: unknown, row: PayrollPolicyRow) => (
-                      <button type="button" className="hr-btn hr-btn--sm" onClick={() => openEdit(row)}>
-                        <IconEdit />
-                        Edit
-                      </button>
+                      <span style={{ display: 'inline-flex', gap: 6 }}>
+                        <button type="button" className="hr-btn hr-btn--sm" onClick={() => openEdit(row)}>
+                          <IconEdit />
+                          Edit
+                        </button>
+                        {row.removable ? (
+                          <button
+                            type="button"
+                            className="hr-btn hr-btn--sm hr-btn--ghost"
+                            onClick={() => {
+                              setRemoving(row);
+                              setRemoveReason('');
+                            }}
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </span>
                     ),
                   },
                 ]
@@ -966,6 +986,34 @@ export function PayrollSettingsPage() {
           <span />
         </div>
       </Panel>
+
+      {/* A RULE SET NOBODY USES, GOING. What it said stays in the audit row. */}
+      <Modal
+        open={removing !== null}
+        title={removing ? `Delete “${removing.name}”?` : ''}
+        okText="Delete"
+        okButtonProps={{ danger: true, loading: removePolicy.isPending }}
+        onCancel={() => setRemoving(null)}
+        onOk={async () => {
+          if (!removing) return;
+          try {
+            await removePolicy.mutateAsync({ id: removing.id, reason: removeReason.trim() || undefined });
+            message.success(`“${removing.name}” deleted.`);
+            setRemoving(null);
+          } catch (error) {
+            message.error((error as Error).message);
+          }
+        }}
+      >
+        <p>
+          Nobody is priced by it and nobody is assigned to it. A month that was ever priced by it keeps its name, and the
+          server refuses to delete one of those.
+        </p>
+        <label htmlFor="ruleset-delete-why" className="hr-small hr-muted">
+          Why (optional)
+        </label>
+        <Input id="ruleset-delete-why" value={removeReason} onChange={(event) => setRemoveReason(event.target.value)} placeholder="Added by mistake" />
+      </Modal>
     </HrPage>
   );
 }

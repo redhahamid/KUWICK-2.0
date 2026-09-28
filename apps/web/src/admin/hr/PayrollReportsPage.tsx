@@ -461,7 +461,7 @@ export function PayrollReportsPage() {
         ))}
         <ReportRow
           title="EA forms"
-          detail="Year-end statement of remuneration, one per employee. Built from the year's approved months."
+          detail="Year-end statement of remuneration, one per employee. Not built yet — the EA form is a later piece; the box mapping on each payroll item is stored for it and read by nothing."
           state={{ tone: 'muted', label: `From January ${dayjs().year() + 1}` }}
           action={
             <button type="button" className="hr-btn hr-btn--sm" onClick={() => openReport('YTD')}>

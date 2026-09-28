@@ -298,8 +298,8 @@ export class PayComponentService {
         if (identityMoved) {
           throw new ConflictException(
             `"${preset.code}" is a system component: what it IS cannot be redefined, because the calculation reads ` +
-              'its type and the year-end forms read its category. Its statutory treatment — EPF, SOCSO, EIS, PCB ' +
-              'and the bases — is yours to set.',
+              'its type, and its category is kept for the year-end forms (not used yet — the EA form is a later piece). ' +
+              'Its statutory treatment — EPF, SOCSO, EIS, PCB and the bases — is yours to set.',
           );
         }
       }

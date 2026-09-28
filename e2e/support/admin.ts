@@ -1,4 +1,4 @@
-import { Page, expect } from "@playwright/test";
+import { APIRequestContext, Page, expect } from "@playwright/test";
 
 /**
  * THE ADMIN GUARDRAIL — shared moves.
@@ -405,4 +405,32 @@ export function seededPayrollPeriod(): string {
  */
 export function currentPayrollPeriod(): string {
   return periodKey(0);
+}
+
+export const ADMIN_API = process.env.E2E_API_URL ?? "http://localhost:3000";
+
+/**
+ * DELETE THE RULE SETS A SPEC LEFT BEHIND. The rule-set specs save a row or
+ * two per run, named with a prefix and a stamp so a rerun never clashes with
+ * the last one; this removes every row carrying that prefix through the API,
+ * so a run pointed at a shared database leaves nothing on the Settings page.
+ * Silent when the API refuses: cleanup is never the thing under test.
+ */
+export async function deleteRuleSetsNamed(request: APIRequestContext, prefix: string): Promise<void> {
+  const auth = await request.post(`${ADMIN_API}/auth/login`, {
+    data: { email: ADMIN_ACCOUNTS.owner, password: ADMIN_PASSWORD },
+  });
+  if (!auth.ok()) return;
+  const headers = { Authorization: `Bearer ${(await auth.json()).accessToken}` };
+  const list = await request.get(`${ADMIN_API}/workforce/payroll-policies`, { headers });
+  if (!list.ok()) return;
+  const { policies } = (await list.json()) as {
+    policies: { id: string; name: string; isDefault: boolean; employeeCount: number }[];
+  };
+  for (const row of policies.filter((row) => row.name.startsWith(prefix) && !row.isDefault && row.employeeCount === 0)) {
+    await request.delete(`${ADMIN_API}/workforce/payroll-policies/${row.id}`, {
+      headers,
+      data: { reason: "Browser test cleanup" },
+    });
+  }
 }

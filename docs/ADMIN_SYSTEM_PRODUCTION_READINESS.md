@@ -230,6 +230,8 @@ The UAT seed re-derives every one of these from the rows it writes and refuses t
 
 ## 5. Permission model
 
+> September 2026: the catalogue has grown to 82 keys, eleven of which nothing checks. The count, the eleven and the other findings are in `PERMISSIONS_AUDIT_2026-09.md`; the text below predates it.
+
 73 permissions in one policy module, `core/permissions.ts`. Roles map to permission sets; individual grants are possible only for permissions listed in `INDIVIDUALLY_GRANTABLE`. Every refusal carries a message naming the permission required.
 
 35 permissions are new. The ones that gate money, stock and people:

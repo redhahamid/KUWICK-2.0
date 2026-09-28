@@ -71,6 +71,9 @@ const whole = (row: PayComponentRow) => ({
   employerSide: row.employerSide,
   gridColumn: row.gridColumn,
   carryForward: row.carryForward,
+  // Stored, not used yet: carried through so a save from this page does not wipe what the API was told.
+  pcbExemptionLimitCents: row.pcbExemptionLimitCents,
+  eaField: row.eaField,
   active: row.active,
 });
 
@@ -355,7 +358,7 @@ export function PayrollItemsPage() {
                   <div className="hr-strong">
                     {value}
                     {row.systemControlled ? (
-                      <Tooltip title="System item: what it IS cannot be changed — the calculation reads its type and the year-end forms read its category. What it counts towards is yours to set.">
+                      <Tooltip title="System item: what it IS cannot be changed — the calculation reads its type, and its category is kept for the year-end forms (not used yet; the EA form is a later piece). What it counts towards is yours to set.">
                         <span className="hr-lock" role="img" aria-label="System item: its kind is fixed, its treatment is not">
                           <IconLock />
                         </span>
@@ -702,7 +705,7 @@ export function PayrollItemsPage() {
                 { value: 'TAX_DEDUCTION', label: 'Tax deduction' },
               ]}
             />
-            <span className="hr-faint hr-small">This drives the year-end forms, and it cannot be changed later.</span>
+            <span className="hr-faint hr-small">Kept for the year-end forms — not used yet; the EA form is a later piece. It cannot be changed later.</span>
           </div>
 
           <div className="hr-fld">
