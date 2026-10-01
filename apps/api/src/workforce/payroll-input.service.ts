@@ -10,6 +10,7 @@ import { UpsertPayrollInputDto } from './dto/upsert-payroll-input.dto';
 import {
   carriedReason,
   columnItems,
+  itemAppliesTo,
   itemsByCode,
   monthBefore,
   monthLabel,
@@ -87,7 +88,7 @@ export class PayrollInputService {
       this.prisma.payComponent.findMany({
         where: { effectiveTo: null },
         orderBy: [{ category: 'asc' }, { code: 'asc' }],
-        select: { code: true, name: true, type: true, includeIn: true, gridColumn: true, carryForward: true, active: true },
+        select: { code: true, name: true, type: true, includeIn: true, gridColumn: true, carryForward: true, active: true, appliesTo: true, appliesToStaffIds: true },
       }),
     ]);
     const itemByCode = itemsByCode(components);
@@ -143,6 +144,14 @@ export class PayrollInputService {
       if (!component) {
         throw new BadRequestException(
           `"${dto.componentCode}" is not an active pay component. An input naming a component the system does not know would be silently dropped from somebody's pay.`,
+        );
+      }
+      // An item for named people is for them alone; a line for anybody else
+      // would pay a director's fee to somebody the item was never meant for.
+      if (!itemAppliesTo(component, dto.staffId)) {
+        throw new BadRequestException(
+          `${component.name} is for selected employees only, and ${profile.staff.fullName} is not one of them. ` +
+            'Add them to the item under Payroll items first, or choose another item.',
         );
       }
 
@@ -294,8 +303,9 @@ export class PayrollInputService {
     const items = await tx.payComponent.findMany({
       where: { effectiveTo: null, active: true, carryForward: true },
       orderBy: [{ category: 'asc' }, { code: 'asc' }],
-      select: { code: true, name: true, type: true, includeIn: true, gridColumn: true, carryForward: true, active: true },
+      select: { code: true, name: true, type: true, includeIn: true, gridColumn: true, carryForward: true, active: true, appliesTo: true, appliesToStaffIds: true },
     });
+    const audienceByCode = itemsByCode(items);
     // The same guard as the switch: only an addition keyed by hand carries.
     const codes = items.filter((item) => item.type === 'ADDITION' && columnItems([{ ...item, gridColumn: true }]).length > 0).map((item) => item.code);
     if (codes.length === 0) return summary(0, 0, 0, false);
@@ -343,6 +353,9 @@ export class PayrollInputService {
     const people = new Set<string>();
     for (const row of previousRows) {
       if (already.has(`${row.staffId}:${row.componentCode}`)) continue;
+      // The item is no longer for this person: last month's line stays last
+      // month's, and nothing of theirs is copied for it.
+      if (!itemAppliesTo(audienceByCode.get(row.componentCode), row.staffId)) continue;
       let earnedPeriod: Date | null = null;
       if (row.earnedPeriod) {
         if (monthStartOf(row.earnedPeriod).getTime() !== monthBeforePrevious) {

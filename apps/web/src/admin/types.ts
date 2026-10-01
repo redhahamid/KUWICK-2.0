@@ -1821,6 +1821,12 @@ export interface PayComponentRow {
   gridColumn: boolean;
   /** Layout, not treatment: a new month starts with last month's hand-keyed amount. */
   carryForward: boolean;
+  /** Who the item is for: everybody, or the employees named below. */
+  appliesTo: 'EVERYONE' | 'SELECTED';
+  appliesToStaffIds: string[];
+  appliesToStaff: { staffId: string; fullName: string; active: boolean }[];
+  /** A person keys this item, so it can be for named people; the derived ones are for whoever the records say. */
+  audienceEditable: boolean;
   /** A person keys this item's amount, so the two switches above are offered for it. */
   handKeyed: boolean;
   systemControlled: boolean;
@@ -2276,6 +2282,8 @@ export interface PayrollJourneyColumn {
   code: string;
   name: string;
   carryForward: boolean;
+  /** Everybody has a cell, or only the employees the item names. */
+  appliesTo?: 'EVERYONE' | 'SELECTED';
 }
 
 /**

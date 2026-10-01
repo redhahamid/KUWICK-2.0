@@ -37,6 +37,10 @@ const component = (over: Partial<PayComponentRow> = {}): PayComponentRow => ({
   employerSide: false,
   gridColumn: false,
   carryForward: false,
+  appliesTo: 'EVERYONE',
+  appliesToStaffIds: [],
+  appliesToStaff: [],
+  audienceEditable: true,
   handKeyed: true,
   systemControlled: true,
   active: true,
@@ -141,7 +145,13 @@ const upsertMutate = vi.fn();
 /** What `usePayComponents` returns for the test currently running. */
 let served: PayComponentList = list;
 
+const employees = [
+  { staffId: 's-doctor', fullName: 'Dr Demo Doktor', position: 'Medical officer', active: true },
+  { staffId: 's-nurse', fullName: 'Demo Jururawat', position: 'Staff nurse', active: true },
+];
+
 vi.mock('../hooks/useAdmin', () => ({
+  useEmployees: () => ({ data: employees, isLoading: false }),
   usePayComponents: () => ({ data: served, isLoading: false, error: null }),
   usePayComponentHistory: (code: string | null) => ({ data: code ? history : undefined, isLoading: false }),
   useSeedPayComponents: () => ({ mutate: vi.fn(), isPending: false }),
@@ -404,5 +414,51 @@ describe('how an item sits on the payroll grid', () => {
     expect(screen.queryByLabelText('Own column for Overtime')).toBeNull();
     expect(screen.queryByLabelText('Carry forward for Overtime')).toBeNull();
     expect(screen.getByLabelText('Own column for Allowance')).toBeTruthy();
+  });
+});
+
+/*
+ * WHO AN ITEM IS FOR. An item with a column of its own gave that column to
+ * every employee; now it names its people, and the save is in place like the
+ * layout switches: no date, no reason, the whole row sent back with the list.
+ */
+describe('who an item is for', () => {
+  it('names the employees an item is for, and saves the list in place', () => {
+    upsertMutate.mockReset();
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Who Allowance is for' }));
+    expect(screen.getByRole('dialog', { name: 'Who Allowance is for' })).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Selected employees only'));
+    fireEvent.click(screen.getByLabelText(/Dr Demo Doktor/));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(upsertMutate).toHaveBeenCalledTimes(1);
+    const body = upsertMutate.mock.calls[0][0] as Record<string, unknown>;
+    expect(body).toMatchObject({ code: 'ALLOWANCE', appliesTo: 'SELECTED', appliesToStaffIds: ['s-doctor'] });
+    expect(body.effectiveFrom).toBeUndefined();
+    expect(body.reason).toBeUndefined();
+  });
+
+  it('refuses an empty list, and shows who is named on the row', () => {
+    upsertMutate.mockReset();
+    mount({
+      ...list,
+      components: [component({ appliesTo: 'SELECTED', appliesToStaffIds: ['s-doctor'], appliesToStaff: [{ staffId: 's-doctor', fullName: 'Dr Demo Doktor', active: true }] })],
+    });
+    const button = screen.getByRole('button', { name: 'Who Allowance is for' });
+    expect(button).toHaveTextContent('1 employee');
+    fireEvent.click(button);
+    // Untick the one person: the drawer refuses rather than saving nobody.
+    fireEvent.click(screen.getByLabelText(/Dr Demo Doktor/));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(upsertMutate).not.toHaveBeenCalled();
+    expect(screen.getByText(/Pick at least one employee Allowance is for/)).toBeTruthy();
+  });
+
+  it('is not offered on an item the run derives', () => {
+    mount({
+      ...list,
+      components: [component({ id: 'c-ot', code: 'OVERTIME', name: 'Overtime', type: 'OVERTIME', category: 'REMUNERATION', handKeyed: false, audienceEditable: false })],
+    });
+    expect(screen.queryByRole('button', { name: 'Who Overtime is for' })).toBeNull();
   });
 });

@@ -137,7 +137,10 @@ export function PayrollInputsDrawer({
    * is the salary record, never a line keyed here.
    */
   const options = useMemo(() => {
-    const active = (components.data?.components ?? []).filter((item) => item.active && item.code !== 'BASIC');
+    // An item for named people is offered to them alone; the server refuses it for anybody else.
+    const forThisPerson = (item: { appliesTo: string; appliesToStaffIds: string[] }) =>
+      !staffId || item.appliesTo !== 'SELECTED' || item.appliesToStaffIds.includes(staffId);
+    const active = (components.data?.components ?? []).filter((item) => item.active && item.code !== 'BASIC' && forThisPerson(item));
     const additions = active.filter((item) => item.type !== 'DEDUCTION');
     const deductions = active.filter((item) => item.type === 'DEDUCTION');
     const toOption = (item: { code: string; name: string }) => ({ value: item.code, label: `${item.name} (${item.code})` });
@@ -145,7 +148,7 @@ export function PayrollInputsDrawer({
       { label: 'Additions', options: additions.map(toOption) },
       { label: 'Deductions', options: deductions.map(toOption) },
     ];
-  }, [components.data]);
+  }, [components.data, staffId]);
 
   const subtotal = (bucket: Bucket) => fromCents(rows.filter((row) => row.bucket === bucket).reduce((sum, row) => sum + toCents(row.amount), 0));
 

@@ -8132,6 +8132,12 @@ enum PayComponentCalculationMode {
 /// EVERY FLAG VALUE SEEDED BY THIS STAGE IS UNVERIFIED. The seed reproduces
 /// today's behaviour exactly so the migration changes no figure; it does not
 /// assert that today's behaviour is correct.
+/// Who a payroll item is for: everybody on the run, or the employees named on it.
+enum PayComponentAudience {
+  EVERYONE
+  SELECTED
+}
+
 model PayComponent {
   id       String @id @default(uuid())
   tenantId String @map("tenant_id")
@@ -8176,6 +8182,12 @@ model PayComponent {
   gridColumn   Boolean @default(false) @map("grid_column")
   /// Layout, not treatment: a new month starts with last month's hand-keyed amount for this item.
   carryForward Boolean @default(false) @map("carry_forward")
+  /// WHO THE ITEM IS FOR. Everyone, or only the employees named below: the
+  /// grid gives the item's column to those people alone, the drawer offers
+  /// it to them alone, and carry forward copies it for them alone. Audience,
+  /// not treatment, so it changes in place and a new version carries it.
+  appliesTo         PayComponentAudience @default(EVERYONE) @map("applies_to")
+  appliesToStaffIds String[]             @default([]) @map("applies_to_staff_ids")
 
   /// System presets may be enabled or disabled, never redefined.
   systemControlled Boolean @default(false) @map("system_controlled")

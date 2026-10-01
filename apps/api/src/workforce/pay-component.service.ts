@@ -78,6 +78,14 @@ export class PayComponentService {
       where: { effectiveTo: null },
       orderBy: [{ category: 'asc' }, { code: 'asc' }],
     });
+    // The people named on the items, by name: a list of ids is no use to the
+    // person deciding who a director's fee is for, and a leaver stays named
+    // until somebody takes them off.
+    const namedIds = [...new Set(rows.flatMap((row) => row.appliesToStaffIds))];
+    const named = namedIds.length
+      ? await this.prisma.staff.findMany({ where: { id: { in: namedIds } }, select: { id: true, fullName: true, active: true } })
+      : [];
+    const nameOf = new Map(named.map((person) => [person.id, person]));
     return {
       components: rows.map((row) => ({
         id: row.id,
@@ -102,6 +110,16 @@ export class PayComponentService {
         employerSide: row.employerSide,
         gridColumn: row.gridColumn,
         carryForward: row.carryForward,
+        /** Who the item is for: everybody, or the employees named below. */
+        appliesTo: row.appliesTo,
+        appliesToStaffIds: row.appliesToStaffIds,
+        appliesToStaff: row.appliesToStaffIds.map((id) => ({
+          staffId: id,
+          fullName: nameOf.get(id)?.fullName ?? 'Former employee',
+          active: nameOf.get(id)?.active ?? false,
+        })),
+        /** A person keys this item, so it can be for named people; the derived ones are for whoever the records say. */
+        audienceEditable: !DERIVED_CODES.has(row.code) && row.type !== 'OVERTIME',
         /** A person keys this item's amount, so it may have its own column and carry forward. */
         handKeyed: row.type === 'ADDITION' && !DERIVED_CODES.has(row.code),
         systemControlled: row.systemControlled,
@@ -333,6 +351,29 @@ export class PayComponentService {
         }
       }
 
+      /*
+       * WHO THE ITEM IS FOR. Everybody unless the clinic names its people, and
+       * then those people alone — so the grid, the drawer and the month start
+       * all read one list. An item the run works out has no list: it applies
+       * to whoever the records say.
+       */
+      const appliesTo = dto.appliesTo ?? 'EVERYONE';
+      const appliesToStaffIds = appliesTo === 'SELECTED' ? [...new Set(dto.appliesToStaffIds ?? [])] : [];
+      if (appliesTo === 'SELECTED') {
+        if (DERIVED_CODES.has(dto.code) || dto.type === 'OVERTIME') {
+          throw new BadRequestException(
+            `${dto.name} is worked out from the records, so it has no list of people: it applies to whoever the records say.`,
+          );
+        }
+        if (appliesToStaffIds.length === 0) {
+          throw new BadRequestException(`Pick at least one employee ${dto.name} is for, or choose Everyone.`);
+        }
+        const known = await tx.staff.findMany({ where: { id: { in: appliesToStaffIds } }, select: { id: true } });
+        if (known.length !== appliesToStaffIds.length) {
+          throw new BadRequestException('One of the employees picked is not on this clinic’s staff list.');
+        }
+      }
+
       const data = {
         code: dto.code,
         name: dto.name,
@@ -353,6 +394,8 @@ export class PayComponentService {
         employerSide: dto.employerSide ?? false,
         gridColumn: dto.gridColumn ?? false,
         carryForward: dto.carryForward ?? false,
+        appliesTo,
+        appliesToStaffIds,
         active: dto.active ?? true,
         // A clinic-defined component is UNVERIFIED by construction.
         verificationStatus: 'DRAFT' as const,

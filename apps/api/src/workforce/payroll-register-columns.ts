@@ -23,6 +23,9 @@
  */
 export const DERIVED_CODES = new Set(['BASIC', 'OVERTIME', 'UNPAID_LEAVE', 'CLAIM_REIMBURSEMENT', 'LEAVE_PAYOUT', 'PCB']);
 
+/** Who an item is for: everybody, or the employees named on it. Absent means everybody. */
+export type ItemAudience = { appliesTo: string; appliesToStaffIds: string[] };
+
 export type RegisterItem = {
   code: string;
   name: string;
@@ -31,9 +34,21 @@ export type RegisterItem = {
   gridColumn: boolean;
   carryForward: boolean;
   active: boolean;
-};
+} & Partial<ItemAudience>;
 
-export type RegisterColumn = { code: string; name: string; carryForward: boolean };
+export type RegisterColumn = { code: string; name: string; carryForward: boolean; appliesTo: 'EVERYONE' | 'SELECTED' };
+
+/**
+ * WHETHER AN ITEM IS FOR THIS PERSON. An item is for everybody unless it
+ * names its people, in which case it is for them alone: no column cell, no
+ * drawer option, no keyed line and no carried line for anybody else. One
+ * answer here, so the grid, the drawer, the save route and the month start
+ * cannot disagree about who a director's fee is for.
+ */
+export function itemAppliesTo(item: Partial<ItemAudience> | undefined, staffId: string | undefined): boolean {
+  if (!item || item.appliesTo !== 'SELECTED' || !staffId) return true;
+  return (item.appliesToStaffIds ?? []).includes(staffId);
+}
 
 export type RegisterBucket = 'OTHER_INCOME' | 'OWN_COLUMN' | 'DEDUCTION' | 'UNKNOWN';
 
@@ -53,7 +68,7 @@ export function itemsByCode<T extends { code: string }>(rows: T[]): Map<string, 
 export function columnItems(rows: RegisterItem[]): RegisterColumn[] {
   return rows
     .filter((row) => row.gridColumn && row.active && row.type === 'ADDITION' && !DERIVED_CODES.has(row.code))
-    .map((row) => ({ code: row.code, name: row.name, carryForward: row.carryForward }));
+    .map((row) => ({ code: row.code, name: row.name, carryForward: row.carryForward, appliesTo: row.appliesTo === 'SELECTED' ? 'SELECTED' : 'EVERYONE' }));
 }
 
 /**
@@ -68,8 +83,8 @@ export function columnItems(rows: RegisterItem[]): RegisterColumn[] {
  * line the cell counts.
  */
 export function placeOnRegister(
-  row: { componentCode: string; source: string },
-  item: Pick<RegisterItem, 'code' | 'name' | 'type' | 'includeIn' | 'gridColumn' | 'active'> | undefined,
+  row: { componentCode: string; source: string; staffId?: string },
+  item: (Pick<RegisterItem, 'code' | 'name' | 'type' | 'includeIn' | 'gridColumn' | 'active'> & Partial<ItemAudience>) | undefined,
 ): { bucket: RegisterBucket; column: string } {
   if (row.componentCode === 'PCB') return { bucket: 'OWN_COLUMN', column: 'PCB' };
   if (!item) return { bucket: 'UNKNOWN', column: 'Not paid' };
@@ -80,7 +95,11 @@ export function placeOnRegister(
     if (item.includeIn === 'NET_ONLY') return { bucket: 'DEDUCTION', column: 'Other' };
     return { bucket: 'OWN_COLUMN', column: row.componentCode === 'UNPAID_LEAVE' ? 'Unpaid d' : 'Gross' };
   }
-  if (columnItems([{ ...item, carryForward: false }]).length > 0) return { bucket: 'OWN_COLUMN', column: item.name };
+  // A column the item keeps for its own people: somebody else's line for it
+  // (keyed before the list was set, say) is still paid, in Other income.
+  if (columnItems([{ ...item, carryForward: false }]).length > 0 && itemAppliesTo(item, row.staffId)) {
+    return { bucket: 'OWN_COLUMN', column: item.name };
+  }
   return { bucket: 'OTHER_INCOME', column: 'Other income' };
 }
 

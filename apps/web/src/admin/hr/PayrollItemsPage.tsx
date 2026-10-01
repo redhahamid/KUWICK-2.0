@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { App, DatePicker, Input, Select, Switch, Tooltip } from 'antd';
+import { App, DatePicker, Input, Radio, Select, Switch, Tooltip } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useCan } from '../../core/hooks/useCan';
-import { usePayComponentHistory, usePayComponents, useSeedPayComponents, useUpsertPayComponent } from '../hooks/useAdmin';
+import { useEmployees, usePayComponentHistory, usePayComponents, useSeedPayComponents, useUpsertPayComponent } from '../hooks/useAdmin';
 import { Drawer, HrPage, Panel, StatusChip } from './ui';
 import { Table } from './ui/Table';
 import { IconLock } from './ui/icons';
@@ -71,6 +71,8 @@ const whole = (row: PayComponentRow) => ({
   employerSide: row.employerSide,
   gridColumn: row.gridColumn,
   carryForward: row.carryForward,
+  appliesTo: row.appliesTo,
+  appliesToStaffIds: row.appliesToStaffIds,
   // Stored, not used yet: carried through so a save from this page does not wipe what the API was told.
   pcbExemptionLimitCents: row.pcbExemptionLimitCents,
   eaField: row.eaField,
@@ -188,6 +190,25 @@ export function PayrollItemsPage() {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState(BLANK);
   const [addProblem, setAddProblem] = useState<string | null>(null);
+  /** The item whose people are being chosen. */
+  const [audienceOf, setAudienceOf] = useState<PayComponentRow | null>(null);
+
+  /** Who an item is for is audience, not treatment: saved in place like the two layout switches. */
+  const saveAudience = (row: PayComponentRow, appliesTo: 'EVERYONE' | 'SELECTED', appliesToStaffIds: string[]) =>
+    upsert.mutate(
+      { ...whole(row), appliesTo, appliesToStaffIds },
+      {
+        onSuccess: () => {
+          setAudienceOf(null);
+          message.success(
+            appliesTo === 'EVERYONE'
+              ? `${row.name} is for everyone again.`
+              : `${row.name} is for ${appliesToStaffIds.length} ${appliesToStaffIds.length === 1 ? 'employee' : 'employees'} only.`,
+          );
+        },
+        onError: (error: Error) => message.error(error.message),
+      },
+    );
 
   const addComponent = () => {
     const code = draft.code.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
@@ -560,6 +581,29 @@ export function PayrollItemsPage() {
                 ),
             })),
             {
+              title: 'Applies to',
+              key: 'appliesTo',
+              width: 150,
+              render: (_: unknown, row: PayComponentRow) =>
+                row.audienceEditable ? (
+                  <button
+                    type="button"
+                    className="hr-linkButton"
+                    disabled={!mayManage || upsert.isPending}
+                    aria-label={`Who ${row.name} is for`}
+                    onClick={() => setAudienceOf(row)}
+                  >
+                    {row.appliesTo === 'SELECTED'
+                      ? `${row.appliesToStaffIds.length} ${row.appliesToStaffIds.length === 1 ? 'employee' : 'employees'}`
+                      : 'Everyone'}
+                  </button>
+                ) : (
+                  <span className="hr-faint" title="This item is worked out from the records, so it applies to whoever the records say.">
+                    Everyone
+                  </span>
+                ),
+            },
+            {
               title: 'In use',
               dataIndex: 'active',
               width: 80,
@@ -580,10 +624,21 @@ export function PayrollItemsPage() {
           <strong>Own column</strong> gives the item a column of its own on the payroll grid, between Basic and Other income, typed
           straight in. <strong>Carry forward</strong> starts each new month with last month’s amount for each person, marked as
           carried until it is edited or cleared; a line earned in the month before is carried with its earned-in month moved on
-          by one, and a one-off late payment is not carried. Both are layout, not treatment: they need no date or reason.
+          by one, and a one-off late payment is not carried. <strong>Applies to</strong> says who the item is for: everyone, or
+          the employees you name, who alone get its column, its line in the items drawer and its carried amount. All three are
+          layout, not treatment: they need no date or reason.
         </div>
         {components.data ? <div className="hr-panelNote">{components.data.verificationNotice.statement}</div> : null}
       </Panel>
+
+      {audienceOf ? (
+        <AudienceDrawer
+          row={audienceOf}
+          saving={upsert.isPending}
+          onClose={() => setAudienceOf(null)}
+          onSave={(appliesTo, ids) => saveAudience(audienceOf, appliesTo, ids)}
+        />
+      ) : null}
 
       {historyOf ? (
         <Drawer
@@ -756,5 +811,125 @@ export function PayrollItemsPage() {
         </Drawer>
       ) : null}
     </HrPage>
+  );
+}
+
+/**
+ * WHO AN ITEM IS FOR. Everyone, or a list of named employees: a director's
+ * fee is for the directors, a locum session for the doctors, and the nurse's
+ * row should not carry an empty box for either every month. The list is
+ * checkboxes rather than a tag picker, because a clinic has twelve people
+ * and a phone has a thumb. A leaver who is still named stays on the list,
+ * marked, until somebody takes them off.
+ */
+function AudienceDrawer({
+  row,
+  saving,
+  onClose,
+  onSave,
+}: {
+  row: PayComponentRow;
+  saving: boolean;
+  onClose: () => void;
+  onSave: (appliesTo: 'EVERYONE' | 'SELECTED', appliesToStaffIds: string[]) => void;
+}) {
+  const employees = useEmployees({ status: 'ACTIVE' });
+  const [appliesTo, setAppliesTo] = useState<'EVERYONE' | 'SELECTED'>(row.appliesTo);
+  const [chosen, setChosen] = useState<string[]>(row.appliesToStaffIds);
+  const [search, setSearch] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+
+  // Every active employee, plus anybody named on the item who is no longer active.
+  const people = useMemo(() => {
+    const active = (employees.data ?? []).map((person) => ({ staffId: person.staffId, fullName: person.fullName, active: true, position: person.position ?? null }));
+    const known = new Set(active.map((person) => person.staffId));
+    const named = row.appliesToStaff
+      .filter((person) => !known.has(person.staffId))
+      .map((person) => ({ staffId: person.staffId, fullName: person.fullName, active: person.active, position: null as string | null }));
+    return [...active, ...named].sort((a, b) => a.fullName.localeCompare(b.fullName));
+  }, [employees.data, row.appliesToStaff]);
+  const needle = search.trim().toLowerCase();
+  const shown = needle ? people.filter((person) => person.fullName.toLowerCase().includes(needle)) : people;
+
+  const toggle = (staffId: string, on: boolean) =>
+    setChosen((current) => (on ? [...new Set([...current, staffId])] : current.filter((id) => id !== staffId)));
+
+  const save = () => {
+    if (appliesTo === 'SELECTED' && chosen.length === 0) {
+      setProblem(`Pick at least one employee ${row.name} is for, or choose Everyone.`);
+      return;
+    }
+    setProblem(null);
+    onSave(appliesTo, appliesTo === 'SELECTED' ? chosen : []);
+  };
+
+  return (
+    <Drawer
+      open
+      title={`Who ${row.name} is for`}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="hr-btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="hr-btn hr-btn--primary" onClick={save} disabled={saving}>
+            Save
+          </button>
+        </>
+      }
+    >
+      <Radio.Group
+        value={appliesTo}
+        onChange={(event) => setAppliesTo(event.target.value as 'EVERYONE' | 'SELECTED')}
+        options={[
+          { value: 'EVERYONE', label: 'Everyone on the payroll' },
+          { value: 'SELECTED', label: 'Selected employees only' },
+        ]}
+      />
+      {appliesTo === 'SELECTED' ? (
+        <div style={{ marginTop: 14 }}>
+          <Input
+            allowClear
+            placeholder="Search by name"
+            aria-label="Search employees"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            style={{ marginBottom: 10 }}
+          />
+          {employees.isLoading ? <div className="hr-faint">Loading employees…</div> : null}
+          <div role="group" aria-label={`Employees ${row.name} is for`} style={{ display: 'grid', gap: 6 }}>
+            {shown.map((person) => (
+              <label key={person.staffId} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="checkbox"
+                  checked={chosen.includes(person.staffId)}
+                  onChange={(event) => toggle(person.staffId, event.target.checked)}
+                />
+                <span>
+                  {person.fullName}
+                  {person.position ? <span className="hr-faint"> · {person.position}</span> : null}
+                  {!person.active ? <span className="hr-faint"> · no longer active</span> : null}
+                </span>
+              </label>
+            ))}
+            {shown.length === 0 && !employees.isLoading ? <div className="hr-faint">Nobody matches.</div> : null}
+          </div>
+          <div className="hr-faint" style={{ marginTop: 10 }}>
+            {chosen.length} chosen. Only these people get the {row.name} column, its line in the items drawer and its carried
+            amount; a line for anybody else is refused.
+          </div>
+        </div>
+      ) : (
+        <div className="hr-faint" style={{ marginTop: 12 }}>
+          Every employee on the run can have a {row.name} line, and the column, if it has one, is on every row.
+        </div>
+      )}
+      {problem ? (
+        <div className="hr-notice hr-notice--attn" style={{ marginTop: 12 }}>
+          {problem}
+        </div>
+      ) : null}
+    </Drawer>
   );
 }

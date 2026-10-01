@@ -15,7 +15,7 @@ import { resolveSalaryForPayroll, SalaryRow } from './salary-resolution';
 import { resolveClassificationForPayroll } from './statutory-classification';
 import { statutoryStatusOf } from './statutory';
 import { toClassificationRow } from './statutory-classification.service';
-import { columnItems, monthBefore, monthLabel } from './payroll-register-columns';
+import { columnItems, monthBefore, monthLabel, itemAppliesTo } from './payroll-register-columns';
 import { hrdAdviceFor } from './hrd-advice';
 
 function monthStart(value: string | Date): Date {
@@ -521,9 +521,11 @@ export class PayrollJourneyService {
     const items = await this.prisma.payComponent.findMany({
       where: { effectiveTo: null },
       orderBy: [{ category: 'asc' }, { code: 'asc' }],
-      select: { code: true, name: true, type: true, includeIn: true, gridColumn: true, carryForward: true, active: true },
+      select: { code: true, name: true, type: true, includeIn: true, gridColumn: true, carryForward: true, active: true, appliesTo: true, appliesToStaffIds: true },
     });
     const columns = columnItems(items);
+    // Who each column is for: a cell exists only on the rows of its people.
+    const audienceByCode = new Map(items.map((item) => [item.code, item]));
     // A line keyed without a label of its own is named after its item, not its code.
     const itemName = new Map(items.map((item) => [item.code, item.name]));
 
@@ -660,6 +662,9 @@ export class PayrollJourneyService {
       const columnCells: Record<string, { amount: string; entered: string | null; editable: boolean; carried: boolean; inputId: string | null }> = {};
       let ownColumnsCents = 0;
       for (const column of columns) {
+        // Not this person's column: no cell, and any line of theirs for the
+        // item stays in Other income, where the drawer also counts it.
+        if (!itemAppliesTo(audienceByCode.get(column.code), line.staffId)) continue;
         const cents = lineComponents
           .filter((component) => component.code === column.code && component.kind === 'EARNING')
           .reduce((sum, component) => sum + toCents(component.amount as never), 0);

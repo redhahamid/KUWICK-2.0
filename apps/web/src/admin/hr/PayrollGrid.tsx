@@ -94,6 +94,8 @@ export interface GridColumn {
    * and the cell is typed into, then saved in one batch.
    */
   itemCode?: string;
+  /** Set on an own column that is for named employees only: the others get a dash, not a box. */
+  audience?: 'EVERYONE' | 'SELECTED';
 }
 
 export const GRID_COLUMNS: GridColumn[] = [
@@ -280,6 +282,7 @@ export function gridColumnsFor(columns: OwnColumn[]): GridColumn[] {
     total: 'columns',
     money: true,
     itemCode: column.code,
+    audience: column.appliesTo,
     exportTitle: column.name,
   }));
   return [GRID_COLUMNS[0], ...own, ...GRID_COLUMNS.slice(1)];
@@ -700,7 +703,13 @@ function Cell({
 
   if (column.itemCode) {
     const cell = row.columns?.[column.itemCode];
-    if (!cell) return <td className={className}>—</td>;
+    if (!cell) {
+      return (
+        <td className={className} title={column.audience === 'SELECTED' ? `${column.title} is for selected employees, and ${row.name} is not one of them.` : undefined}>
+          —
+        </td>
+      );
+    }
     if (canEdit && cell.editable) {
       // THE CELL IS A BOX. What it shows is what was keyed for the item —
       // blank when nothing was — and the amber marker says when the line is

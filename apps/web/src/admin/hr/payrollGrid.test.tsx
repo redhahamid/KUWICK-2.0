@@ -632,6 +632,18 @@ describe('the clinic’s own columns', () => {
     expect(screen.getByRole('button', { name: "Director's fee for Nurul Hidayah: open the month's items" })).toHaveTextContent('2,000.00');
   });
 
+  it('give a dash, not a box, to a person the item is not for', () => {
+    viewport(1280);
+    const onSaveCells = vi.fn().mockResolvedValue({ failed: [] });
+    const forDoctorsOnly = [{ code: 'DIRECTOR_FEE', name: "Director's fee", carryForward: true, appliesTo: 'SELECTED' as const }];
+    grid({ columns: forDoctorsOnly, rows: [row({ columns: {} })], totals: totals({ columns: { DIRECTOR_FEE: '0.00' } }), canEdit: true, onSaveCells });
+    fireEvent.click(screen.getByRole('button', { name: 'Show all columns' }));
+    expect(screen.queryByRole('textbox', { name: "Director's fee for Nurul Hidayah" })).toBeNull();
+    const dash = [...document.querySelectorAll('tbody td')].find((cell) => cell.getAttribute('title')?.includes('is for selected employees'));
+    expect(dash).toBeTruthy();
+    expect(dash).toHaveTextContent('—');
+  });
+
   it('fold a column nobody in this list has an amount in, and Show all columns brings it back', () => {
     viewport(1280);
     grid({ columns: OWN, rows: [withColumns({ columns: { DIRECTOR_FEE: cell('2000.00'), LOCUM_FEE: cell('0.00') } })], totals: ownTotals() });
