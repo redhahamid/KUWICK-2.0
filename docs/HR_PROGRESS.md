@@ -6,6 +6,31 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 9 — 1 Oktober 2026 — laporan hala tuju (dokumen sahaja)
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 8 (`7d82564`). **Tiada kod, tiada migrasi.**
+
+- `docs/HR_DIRECTION_AUDIT.md` `[D]`: audit modul HR berbanding Talenox,
+  PayrollPanda, SQL Payroll dan Kakitangan pada paksi *Setup* dan kitaran
+  bulanan *Prepare, Adjust, Review, Pay*, kemudian hujung tahun; setiap
+  kenyataan ditanda `[D]` (kod Kuwick) atau `[A]` (bahan awam vendor,
+  dibaca 1 Oktober 2026 — sumber disenaraikan). Jurang utama: fail muat naik
+  portal, fail bank, Borang EA / Borang E / C.P.8D, import .xlsx, aplikasi
+  mudah alih asli. Pelan Borang EA enam langkah (katalog kotak EA beredisi
+  milik platform, pemetaan item, pengagregat tahunan dari snapshot yang
+  diluluskan sahaja, PDF EA, Borang E + C.P.8D sebagai senarai dahulu, ujian
+  dengan dunia demo) — dengan satu titik berhenti untuk anda: senarai kotak
+  EA ialah tafsiran statutori.
+
+### Uji
+
+1. Buka `docs/HR_DIRECTION_AUDIT.md` dan semak bahagian 3 (di mana Kuwick di
+   hadapan / di belakang) dan bahagian 5 (pelan EA) — beritahu saya jika
+   susunan keutamaan dalam bahagian 6 tidak seperti yang anda mahu.
+
+---
+
 ## Batch 8 — 1 Oktober 2026 — pembantu pemfailan statutori (versi kecil)
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
