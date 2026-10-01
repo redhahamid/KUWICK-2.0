@@ -165,12 +165,17 @@ describe('My Kuwick: employee self-service (e2e)', () => {
       await rosterShift(nurse, '2026-09-22', '2026-09-22T00:00:00.000Z', '2026-09-22T09:00:00.000Z');
       await request(server()).post('/me/attendance/clock').set('Authorization', nurseBearer).send({}).expect(201);
 
+      // The punch lands on TODAY's clinic-local date, so the window is drawn
+      // around today rather than typed in: a September window went red on
+      // 1 October with nothing wrong but the calendar.
+      const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+      const window = `from=${day(-1)}&to=${day(1)}`;
       const mine = await request(server())
-        .get('/me/attendance?from=2026-09-01&to=2026-09-30')
+        .get(`/me/attendance?${window}`)
         .set('Authorization', nurseBearer)
         .expect(200);
       const theirs = await request(server())
-        .get('/me/attendance?from=2026-09-01&to=2026-09-30')
+        .get(`/me/attendance?${window}`)
         .set('Authorization', colleagueBearer)
         .expect(200);
 

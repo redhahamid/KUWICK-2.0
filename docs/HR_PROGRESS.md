@@ -57,6 +57,17 @@ diluluskan beku, dan setiap lajur baharu lalai kepada tingkah laku lama `[D]`.
   profile); masih boleh ditaip ganti `[D]`.
 - **32 — Placeholder** yang kelihatan seperti data sebenar berawalan *e.g.*
   (borang pekerja, PhoneField, borang klinik platform) `[D]`.
+- **Dua pembetulan sebelah ujian, dijumpai semasa gate:** (i) `seed-admin-uat.ts`
+  — senarai *reset* jadual tenant kini merangkumi `job_titles` (selepas
+  `employee_profiles` yang menunjuk kepadanya); tanpa ini, seed UAT enggan
+  berjalan kali kedua (semakan liputannya sendiri) — ini juga akan menimpa
+  *HR UAT seed* di staging kalau dijalankan `[D]`; (ii) `me-self-service
+  .e2e-spec.ts` — tetingkap kehadiran dilukis sekitar hari ini, bukan
+  September yang ditaip (merah pada 1 Oktober tanpa apa-apa yang salah)
+  `[D]`. Tiga kegagalan Playwright pada 1 Oktober (bulan yang di-seed,
+  *Reversed* pada *Payments*, baris *Profitability*) berpunca dari data seed
+  yang tinggal di September; selepas seed semula tempatan, kelima-lima spec
+  (termasuk dua yang sebelum ini disangka kegagalan sedia ada) lulus `[D]`.
 
 ### Uji di staging (ikut urutan)
 
