@@ -896,6 +896,20 @@ export class PayrollService {
         orderBy: { effectiveFrom: 'asc' },
         include: { createdBy: { select: { fullName: true } } },
       });
+      // A DISCREPANCY ALREADY ACKNOWLEDGED FOR THIS YEAR, per selection: the
+      // warning is raised once per policy decision, then rides as a one-line
+      // note until the selection changes or the year turns.
+      const acknowledgedBasis = new Map<string, { by: string; on: string; reason: string }>();
+      for (const ack of await tx.payrollWarningAcknowledgement.findMany({
+        where: { tenantId: currentTenantId(), code: 'EPF_BASIS_DISCREPANCY', year: period.getUTCFullYear() },
+        include: { acknowledgedBy: { select: { fullName: true } } },
+      })) {
+        acknowledgedBasis.set(ack.subjectId, {
+          by: ack.acknowledgedBy?.fullName ?? 'somebody no longer on the staff list',
+          on: ack.createdAt.toISOString().slice(0, 10),
+          reason: ack.reason,
+        });
+      }
       const basisByStaff = new Map<string, ContributionBasisRow[]>();
       // WHO CHOSE IT, WHEN, AND WHY — carried beside the resolution because a
       // selection that departs from the assessment has to be attributable on
@@ -1802,7 +1816,7 @@ export class PayrollService {
           if (amountCents === 0) continue;
           componentLines.push({
             code: input.componentCode,
-            label: input.label ?? component.label,
+            label: earnedInLabel(input.label ?? component.label, input.earnedPeriod, period),
             // The catalogue decides whether this reduces the wages or is
             // withheld from them; a negative amount still forces a withholding.
             kind: amountCents < 0 ? 'DEDUCTION' : component.kind,
@@ -1951,7 +1965,12 @@ export class PayrollService {
         if (payslip.epfBasis && payslip.epfBasis.excluded.length > 0) {
           const provenance =
             basisOutcome.kind === 'RESOLVED' ? basisProvenance.get(basisOutcome.row.id) : undefined;
-          raise('EPF_BASIS_DISCREPANCY', employee, {
+          // Once acknowledged for the year, the same selection is a note, not a warning.
+          const acknowledged = basisOutcome.kind === 'RESOLVED' ? acknowledgedBasis.get(basisOutcome.row.id) : undefined;
+          raise(acknowledged ? 'EPF_BASIS_ACKNOWLEDGED' : 'EPF_BASIS_DISCREPANCY', employee, {
+            acknowledgedBy: acknowledged?.by ?? '',
+            acknowledgedOn: acknowledged?.on ?? '',
+            acknowledgementReason: acknowledged?.reason ?? '',
             components: payslip.epfBasis.excluded
               .map((row) => `${row.label} RM${fromCents(row.amountCents).toFixed(2)}`)
               .join(', '),
@@ -1997,6 +2016,21 @@ export class PayrollService {
               payslip.statutory.eis.employeeCents === null ||
               payslip.statutory.lindung.employeeCents === null;
           }
+        }
+        /*
+         * ADDITIONAL PCB EACH MONTH, recorded on the standing: a CP38 direction
+         * from LHDN or the employee's own request. On top of the COMPUTED
+         * figure only — a hand-entered PCB is the month's whole figure — and
+         * carried in the PCB line itself, so the year-to-date the MTD method
+         * reads next month counts it as tax already paid, which it is.
+         */
+        const additionalPcbCents = classification.additionalPcbCents ?? 0;
+        if (additionalPcbCents > 0 && payslip.statutory.pcbCents !== null && !pcbEnteredByHand) {
+          payslip.statutory.pcbCents += additionalPcbCents;
+          payslip.employeeDeductionCents += additionalPcbCents;
+          payslip.netCents -= additionalPcbCents;
+          const why = classification.additionalPcbNote ? ` (${classification.additionalPcbNote})` : '';
+          payslip.statutory.pcbNote = `${payslip.statutory.pcbNote ? `${payslip.statutory.pcbNote} ` : ''}Includes RM${formatCents(additionalPcbCents)} additional PCB each month, as recorded on the statutory standing${why}.`;
         }
         // THE FAIL-SAFE. A statutory figure that came back NULL is unknown, not
         // nil, and an unknown contribution must stop the run rather than reach
@@ -2099,6 +2133,8 @@ export class PayrollService {
                 restDayOfWeek: classification.restDayOfWeek,
                 restDayVaries: classification.restDayVaries,
                 overtimeContractPolicy: classification.overtimeContractPolicy,
+                additionalPcbCents: classification.additionalPcbCents,
+                additionalPcbNote: classification.additionalPcbNote,
               },
               /** Kept under its old key so existing readers do not break. */
               statutoryApplicability: {
@@ -3902,6 +3938,43 @@ export class PayrollService {
         where: { id: exceptionId },
         data: { overriddenByStaffId: actor.id, overrideReason: reason, overriddenAt: new Date() },
       });
+      /*
+       * AN EPF BASIS DISCREPANCY IS A POLICY DECISION, not a monthly accident:
+       * acknowledging it once covers that selection for the year, and the
+       * months after this one carry a one-line note instead of the warning.
+       * Keyed by the dated basis row, so a changed selection asks again.
+       */
+      if (row.code === 'EPF_BASIS_DISCREPANCY' && row.staffId) {
+        const run = await tx.payrollRun.findUnique({ where: { id: row.payrollRunId }, select: { period: true } });
+        if (run) {
+          const periodEnd = new Date(Date.UTC(run.period.getUTCFullYear(), run.period.getUTCMonth() + 1, 0));
+          const rows = await tx.employeeContributionBasis.findMany({
+            where: { staffId: row.staffId, scheme: 'EPF' },
+            orderBy: { effectiveFrom: 'asc' },
+          });
+          const outcome = resolveContributionBasisForPayroll(
+            rows.map((r) => ({ id: r.id, mode: r.mode, includedComponentCodes: r.includedComponentCodes, effectiveFrom: r.effectiveFrom, effectiveTo: r.effectiveTo })),
+            run.period,
+            periodEnd,
+          );
+          if (outcome.kind === 'RESOLVED') {
+            const year = run.period.getUTCFullYear();
+            await tx.payrollWarningAcknowledgement.upsert({
+              where: { tenantId_code_subjectId_year: { tenantId: currentTenantId(), code: row.code, subjectId: outcome.row.id, year } },
+              create: { tenantId: currentTenantId(), code: row.code, subjectId: outcome.row.id, year, acknowledgedByStaffId: actor.id, reason },
+              update: { acknowledgedByStaffId: actor.id, reason },
+            });
+            await recordAudit(tx, actor, {
+              action: 'payrollWarning.acknowledged',
+              entityType: 'EmployeeContributionBasis',
+              entityId: outcome.row.id,
+              after: { code: row.code, year, staffId: row.staffId },
+              reason,
+              source: 'hr.payroll',
+            });
+          }
+        }
+      }
       await recordAudit(tx, actor, {
         action: 'payrollException.overridden',
         entityType: 'PayrollException',
@@ -3914,6 +3987,16 @@ export class PayrollService {
     });
   }
 
+}
+
+/**
+ * A LINE EARNED IN ANOTHER MONTH SAYS SO ON THE PAYSLIP: "Director's fee
+ * (January 2026)" paid in March is arrears, and the label is where the
+ * employee reads that. Same month, same label as before.
+ */
+function earnedInLabel(label: string, earnedPeriod: Date | null | undefined, period: Date): string {
+  if (!earnedPeriod || earnedPeriod.getTime() === period.getTime()) return label;
+  return `${label} (${earnedPeriod.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })})`;
 }
 
 function nullableCents(cents: number | null): number | null {

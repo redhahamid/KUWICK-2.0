@@ -646,6 +646,18 @@ perkataan yang sama. Kerani HR boleh menambah orang tetapi tidak boleh
 merekod gaji (sel gaji ditolak dengan sebab); pengurus cawangan hanya boleh
 menambah ke cawangannya.
 
+**PCB tambahan setiap bulan (Batch 5).** Pada *Statutory standing* (rekod
+pekerja, tab *Statutory*, **Record a statutory standing** atau *Correct*),
+medan **Additional PCB each month (RM)** dan **Additional PCB note**
+merekod potongan cukai bulanan tambahan — arahan CP38 daripada LHDN, atau
+atas permintaan pekerja sendiri. Ia bertarikh seperti kedudukan statutori
+yang lain. Run gaji menambahnya **di atas MTD yang dikira** dan membawanya
+dalam baris PCB itu sendiri (jadi *year-to-date* bulan berikutnya mengira
+ia sebagai cukai yang sudah dibayar); nota payslip menyebut *Includes RM…
+additional PCB each month*. Angka PCB yang **ditaip tangan** untuk bulan itu
+ialah angka penuh bulan itu — tiada apa ditambah di atasnya. Kosong = tiada;
+taip 0 untuk membatalkan.
+
 ### 3.2 Attendance
 
 **Bila dibuka.** Setiap pagi, sebelum apa-apa yang lain.

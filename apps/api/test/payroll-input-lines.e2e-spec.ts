@@ -144,6 +144,11 @@ describe('the month’s items, one line each (e2e)', () => {
     const codes = mine.components.map((component) => component.code);
     expect(codes).toEqual(expect.arrayContaining(['DIRECTOR_FEE', 'LOCUM_FEE', 'ADVANCE_RECOVERY']));
     expect(codes.filter((code) => code === 'DIRECTOR_FEE')).toHaveLength(1);
+    // Arrears say which month they were earned in, on the payslip's own lines; a line for this month says nothing extra.
+    const payslip = await withTenantContext(prisma, tenantId, (tx) => tx.payrollLine.findFirst({ where: { payrollRunId: runId, staffId } }));
+    const frozen = JSON.stringify(payslip?.breakdown ?? {});
+    expect(frozen).toMatch(/Locum fee \(December 2025\)/);
+    expect(frozen).not.toMatch(/Director.s fee \(/);
   });
 
   it('says which cell counts each row and where it came from', async () => {

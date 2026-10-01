@@ -6,6 +6,72 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 5 — 1 Oktober 2026 — statutori dan payslip (c, d, e)
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+master Batch 4 (`61ef48b`). Komit: komit yang menambah bahagian ini (hash
+dalam laporan akhir). **Migrasi: satu** — diterapkan dengan *Migrate only
+(manual)* sebelum merge.
+
+| Migrasi | Apa | Risiko kepada bulan lepas |
+|---|---|---|
+| `20261001120000_pcb_additional_and_warning_acknowledgements` | 2 lajur pada `employee_statutory_classifications` (`additional_pcb_cents` lalai 0, `additional_pcb_note`); jadual `payroll_warning_acknowledgements` (RLS + grant `kuwick_app`) | Tiada: lalai 0 = tingkah laku lama; run diluluskan beku `[D]` |
+
+### Apa yang berubah
+
+- **3c — PCB tambahan setiap bulan**, pada kedudukan statutori bertarikh
+  (`additionalPcbCents`, `additionalPcbNote`): ditambah **di atas MTD yang
+  dikira**, dibawa dalam baris PCB (YTD bulan berikutnya mengiranya sebagai
+  cukai dibayar), nota payslip menyebutnya; **tidak** ditambah pada angka
+  PCB yang ditaip tangan. Borang *Statutory standing* ada dua medan baharu;
+  sejarah versi menunjukkannya `[D]`.
+- **3d — Baris tunggakan menamakan bulan ia diperoleh** pada label payslip
+  dan register: *Locum fee (December 2025)*; baris bulan ini tanpa akhiran
+  `[D]`.
+- **3e — Amaran asas EPF diakui sekali setiap keputusan polisi.** Butang
+  *Acknowledge* yang sedia ada pada Review kini juga merekod pengakuan
+  (`payroll_warning_acknowledgements`, kunci: pilihan asas bertarikh + tahun).
+  Bulan yang sama dikira semula dan bulan-bulan berikutnya menunjukkan satu
+  baris INFO `EPF_BASIS_ACKNOWLEDGED` (*acknowledged for the year by … on …:
+  “…”*), tidak boleh di-*override*; pilihan asas baharu (baris bertarikh
+  baharu) atau tahun baharu menanyakannya semula. Dialog *Acknowledge*
+  menyatakan liputan ini `[D]`. Audit: `payrollWarning.acknowledged` `[D]`.
+- Ujian: `pcb-additional.e2e-spec.ts`, `epf-basis-acknowledgement
+  .e2e-spec.ts`, label tunggakan dalam `payroll-input-lines.e2e-spec.ts`,
+  fixture `statutory-classification.spec.ts` `[D]`.
+
+### Uji di staging (ikut urutan)
+
+1. **Rekod pekerja → Statutory → Record a statutory standing**: *Additional
+   PCB each month* 100, nota *CP38 ref 2026/0001*, tarikh 1 bulan ujian.
+   Kira semula bulan: PCB orang itu naik tepat RM100.00; payslip (dan laci
+   *Statutory*) menyebut *Includes RM100.00 additional PCB each month*.
+2. Orang yang PCB-nya **ditaip tangan** (tiada profil cukai): angka yang
+   ditaip kekal — tiada +100.
+3. **Prepare → Other income → Add a line** dengan *Earned in* bulan lepas:
+   register dan payslip menunjukkan *Nama item (Bulan Tahun)*.
+4. **Review**: pada pekerja dengan asas EPF pilihan majikan di bawah
+   penilaian, **Acknowledge** dengan sebab. Kira semula: amaran bertukar
+   satu baris INFO; mulakan bulan berikutnya: INFO sahaja, tiada amaran.
+5. Rekod pilihan asas EPF **baharu** (tarikh bulan berikutnya) → amaran
+   ditanya semula untuk bulan itu.
+
+### Keputusan terbuka / yang saya pilih bagi pihak anda
+
+- `[A]` **PCB tambahan dibawa dalam baris PCB** (bukan baris berasingan) dan
+  dikira dalam *X* (MTD dibayar) bulan berikutnya — rawatan yang sama untuk
+  arahan CP38 dan permintaan pekerja. Laporan CP39 Kuwick **tiada lajur CP38
+  berasingan** (sebelum ini pun tiada); kalau LHDN memerlukan lajur CP38
+  dalam fail CP39 anda, itu kerja lanjutan — nota pada kedudukan merekod
+  rujukan CP38 untuk sementara.
+- `[A]` **Pengakuan terikat pada tahun kalendar** (tahun tempoh gaji) dan pada
+  baris pilihan asas bertarikh; pengakuan tidak dipindahkan ke pilihan yang
+  disemak semula walaupun isinya sama — pilihan baharu, soalan baharu.
+- `[A]` Kod amaran lain (bukan asas EPF) kekal diakui **setiap run** seperti
+  sebelum ini; hanya `EPF_BASIS_DISCREPANCY` yang disebut dalam arahan.
+
+---
+
 ## Batch 4 — 1 Oktober 2026 — tambah beberapa pekerja sekali gus
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas

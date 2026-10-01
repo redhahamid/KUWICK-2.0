@@ -33,6 +33,8 @@ function row(
     disabledSpouse: false,
     restDayOfWeek: 0,
     restDayVaries: false,
+    additionalPcbCents: 0,
+    additionalPcbNote: null,
     overtimeContractPolicy: null,
     ...over,
   };

@@ -1360,6 +1360,9 @@ export interface EmployeeRecord {
     /** No fixed rest day: it varies week to week. */
     restDayVaries: boolean;
     overtimeContractPolicy: string | null;
+    /** On top of the computed MTD each month, in cents; 0 when none. */
+    additionalPcbCents: number;
+    additionalPcbNote: string | null;
     epfApplicable: boolean;
     socsoApplicable: boolean;
     eisApplicable: boolean;
@@ -3010,6 +3013,9 @@ export interface StatutoryClassificationVersion {
   /** No fixed rest day. Absent on rows read before the field existed. */
   restDayVaries?: boolean;
   overtimeContractPolicy: string | null;
+  /** On top of the computed MTD each month, in cents. Absent on rows read before the field existed. */
+  additionalPcbCents?: number;
+  additionalPcbNote?: string | null;
   reason: string | null;
   note: string | null;
   recordedBy: string | null;
@@ -3037,6 +3043,9 @@ export interface RecordStatutoryClassificationBody {
   /** True when the rest day varies week to week; sent with restDayOfWeek null. */
   restDayVaries?: boolean;
   overtimeContractPolicy?: string | null;
+  /** On top of the computed MTD each month, in cents; 0 clears it. */
+  additionalPcbCents?: number;
+  additionalPcbNote?: string | null;
   reason?: string;
 }
 

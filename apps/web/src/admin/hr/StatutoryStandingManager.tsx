@@ -80,6 +80,14 @@ export function StatutoryStandingSection({
     ['Tax residence', value(s.taxResidence)],
     ['MTD category', value(s.pcbCategory)],
     ['Qualifying children', resolved ? String(s.qualifyingChildren) : null],
+    [
+      'Additional PCB each month',
+      resolved
+        ? s.additionalPcbCents > 0
+          ? `RM${(s.additionalPcbCents / 100).toFixed(2)}${s.additionalPcbNote ? ` · ${s.additionalPcbNote}` : ''}`
+          : 'None'
+        : null,
+    ],
     ['Rest day', resolved ? (s.restDayVaries ? 'Varies week to week' : s.restDayOfWeek !== null ? DAY_NAMES[s.restDayOfWeek] : null) : null],
     ['Overtime above the Act limit', value(s.overtimeContractPolicy)],
   ];
@@ -155,6 +163,9 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
   const [disabledSelf, setDisabledSelf] = useState<boolean | null>(null);
   const [disabledSpouse, setDisabledSpouse] = useState<boolean | null>(null);
   const [restDay, setRestDay] = useState<number | 'VARIES' | undefined>();
+  /** Ringgit as typed; blank leaves the standing's figure as it is, 0 clears it. */
+  const [additionalPcb, setAdditionalPcb] = useState('');
+  const [additionalPcbNote, setAdditionalPcbNote] = useState('');
   const [otPolicy, setOtPolicy] = useState<string | undefined>();
   const [reason, setReason] = useState('');
 
@@ -179,6 +190,9 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
     setTaxResidence(base?.taxResidence ?? fallback?.taxResidence ?? undefined);
     setPcbCategory(base?.pcbCategory ?? fallback?.pcbCategory ?? undefined);
     setChildren(base?.qualifyingChildren ?? fallback?.qualifyingChildren ?? null);
+    const additionalCents = base?.additionalPcbCents ?? fallback?.additionalPcbCents ?? 0;
+    setAdditionalPcb(additionalCents > 0 ? (additionalCents / 100).toFixed(2) : '');
+    setAdditionalPcbNote(base?.additionalPcbNote ?? fallback?.additionalPcbNote ?? '');
     setDisabledSelf(base?.disabledSelf ?? null);
     setDisabledSpouse(base?.disabledSpouse ?? null);
     setRestDay(base?.restDayVaries || fallback?.restDayVaries ? 'VARIES' : (base?.restDayOfWeek ?? fallback?.restDayOfWeek ?? undefined));
@@ -326,6 +340,8 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
               ...(taxResidence !== undefined ? { taxResidence } : {}),
               ...(pcbCategory !== undefined ? { pcbCategory } : {}),
               ...(children !== null ? { qualifyingChildren: children } : {}),
+              ...(additionalPcb.trim() !== '' ? { additionalPcbCents: Math.round(Number(additionalPcb) * 100) } : {}),
+              ...(additionalPcb.trim() !== '' ? { additionalPcbNote: additionalPcbNote.trim() || null } : {}),
               ...(disabledSelf !== null ? { disabledSelf } : {}),
               ...(disabledSpouse !== null ? { disabledSpouse } : {}),
               ...(restDay === 'VARIES' ? { restDayOfWeek: null, restDayVaries: true } : restDay !== undefined ? { restDayOfWeek: restDay, restDayVaries: false } : {}),
@@ -461,6 +477,27 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
             <div>
               <label htmlFor="st-children">Qualifying children</label>
               <InputNumber id="st-children" min={0} max={20} value={children} onChange={(v) => setChildren(v)} placeholder="Not recorded" style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label htmlFor="st-additional-pcb">Additional PCB each month (RM)</label>
+              <Input
+                id="st-additional-pcb"
+                inputMode="decimal"
+                value={additionalPcb}
+                onChange={(event) => setAdditionalPcb(event.target.value)}
+                placeholder="e.g. 100.00 — blank for none"
+              />
+              <span className="hr-fld__help">On top of the computed MTD: a CP38 direction from LHDN, or at the employee’s own request. Not added to a PCB figure typed by hand.</span>
+            </div>
+            <div>
+              <label htmlFor="st-additional-pcb-note">Additional PCB note</label>
+              <Input
+                id="st-additional-pcb-note"
+                value={additionalPcbNote}
+                onChange={(event) => setAdditionalPcbNote(event.target.value)}
+                placeholder="e.g. CP38 ref 2026/1234"
+                maxLength={120}
+              />
             </div>
             <div>
               <label htmlFor="st-rest">Rest day</label>

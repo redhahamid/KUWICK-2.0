@@ -510,6 +510,25 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'Kuwick’s assessment follows.',
     deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=statutory&focus=epfBasis`,
   },
+  /**
+   * THE SAME DISCREPANCY, ALREADY ACKNOWLEDGED FOR THE YEAR. A selection is a
+   * policy decision, not a monthly accident, so once an approver has passed it
+   * with a reason the months after carry this one line instead of the warning
+   * — until the selection changes (a new dated row) or the year turns.
+   */
+  EPF_BASIS_ACKNOWLEDGED: {
+    code: 'EPF_BASIS_ACKNOWLEDGED',
+    severity: 'INFO',
+    overridable: false,
+    cause: (c) =>
+      `EPF runs on the employer-selected basis of RM${String(c.selectedBasis)}, RM${String(c.difference)} below Kuwick’s ` +
+      `assessment — acknowledged for the year by ${String(c.acknowledgedBy)} on ${String(c.acknowledgedOn)}: “${String(c.acknowledgementReason)}”.`,
+    consequence: (c) =>
+      `Both shares are calculated on the selected basis, excluding ${String(c.components)}. Any shortfall against the Act ` +
+      'stays the employer’s to make good; the acknowledgement records the decision, it does not make the selection compliant.',
+    remediation: 'Nothing this month. The warning is asked again when the selection changes, or next year.',
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=statutory&focus=epfBasis`,
+  },
   /** Mirrors a mid-month salary change: either figure looks correct. */
   EPF_BASIS_CHANGED_MID_PERIOD: {
     code: 'EPF_BASIS_CHANGED_MID_PERIOD',

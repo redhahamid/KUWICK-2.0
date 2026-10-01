@@ -139,6 +139,8 @@ export class PayrollReadinessService {
               pcbCategory: null,
               restDayOfWeek: null,
               restDayVaries: false,
+              additionalPcbCents: 0,
+              additionalPcbNote: null,
             };
       const pcbInput = pcbByStaff.get(employee.staffId);
       const readiness = buildPayrollReadiness({

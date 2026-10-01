@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsISO8601, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsISO8601, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
 /**
  * A COMPLETE STATEMENT OF STATUTORY STANDING FROM A DATE — not a patch.
@@ -35,6 +35,9 @@ export class RecordStatutoryClassificationDto {
   @IsOptional() @IsInt() @Min(0) @Max(6) restDayOfWeek?: number | null;
   /** True when the rest day is not a fixed weekday (s.59 lets the employer vary it). Sent with restDayOfWeek null. */
   @IsOptional() @IsBoolean() restDayVaries?: boolean;
+  /** On top of the computed MTD each month, in cents: a CP38 direction or the employee's own request. 0 clears it. */
+  @IsOptional() @IsInt() @Min(0) @Max(10_000_000) additionalPcbCents?: number;
+  @IsOptional() @IsString() @MaxLength(120) additionalPcbNote?: string | null;
   @IsOptional()
   @IsIn(['PAY_AT_STATUTORY_RATES', 'NOT_PAID', null])
   overtimeContractPolicy?: 'PAY_AT_STATUTORY_RATES' | 'NOT_PAID' | null;

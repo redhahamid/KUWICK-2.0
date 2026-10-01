@@ -58,6 +58,9 @@ export interface SnapshotClassification {
   /** Absent on snapshots frozen before the field existed. */
   restDayVaries?: boolean | null;
   overtimeContractPolicy: string | null;
+  /** On top of the computed MTD each month. Absent on rows frozen before the field existed. */
+  additionalPcbCents?: number | null;
+  additionalPcbNote?: string | null;
 }
 
 /**

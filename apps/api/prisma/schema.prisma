@@ -346,6 +346,7 @@ model Tenant {
   dayEndClosings             DayEndClosing[]
   employeeProfiles           EmployeeProfile[]
   jobTitles                  JobTitle[]
+  payrollWarningAcknowledgements PayrollWarningAcknowledgement[]
   attendanceRecords          AttendanceRecord[]
   attendancePunches          AttendancePunch[]
   attendancePolicies         AttendancePolicy[]
@@ -1135,6 +1136,7 @@ model Staff {
   // Malaysia payroll — Stage 1 + 2
   salaryHistory                    EmployeeSalary[]                  @relation("EmployeeSalaryStaff")
   salaryHistoryAuthored            EmployeeSalary[]                  @relation("EmployeeSalaryAuthor")
+  payrollWarningsAcknowledged      PayrollWarningAcknowledgement[]   @relation("PayrollWarningAcknowledgedBy")
   contributionBases                EmployeeContributionBasis[]       @relation("ContributionBasisStaff")
   contributionBasesAuthored        EmployeeContributionBasis[]       @relation("ContributionBasisAuthor")
   statutoryClassifications         EmployeeStatutoryClassification[] @relation("EmployeeStatutoryStaff")
@@ -8048,6 +8050,11 @@ model EmployeeStatutoryClassification {
   /// rest-day work by itself for this person.
   restDayVaries          Boolean                 @default(false) @map("rest_day_varies")
   overtimeContractPolicy OvertimeContractPolicy? @map("overtime_contract_policy")
+  /// On top of the computed MTD each month: a CP38 direction from LHDN, or the
+  /// employee's own request. Never on top of a hand-entered PCB figure, which is
+  /// the month's whole figure.
+  additionalPcbCents Int     @default(0) @map("additional_pcb_cents")
+  additionalPcbNote  String? @map("additional_pcb_note")
 
   effectiveFrom DateTime  @map("effective_from") @db.Date
   effectiveTo   DateTime? @map("effective_to") @db.Date
@@ -8758,6 +8765,31 @@ enum PayrollExceptionSeverity {
 /// now names the CONSEQUENCE as well as the cause — modelled on the best piece
 /// of copy found in the competitor audit, which names the condition, the
 /// consequence and two distinct remedies.
+/// A WARNING THAT IS A POLICY DECISION, acknowledged once. The employer-selected
+/// EPF basis sitting below Kuwick's assessment is raised on every run; once an
+/// approver has passed it with a reason, the months after carry a one-line note
+/// instead — until the selection changes (`subjectId` is the dated basis row)
+/// or the year turns.
+model PayrollWarningAcknowledgement {
+  id                    String   @id @default(uuid())
+  tenantId              String   @map("tenant_id")
+  code                  String
+  subjectId             String   @map("subject_id")
+  year                  Int
+  acknowledgedByStaffId String   @map("acknowledged_by_staff_id")
+  reason                String
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  tenant         Tenant @relation(fields: [tenantId], references: [id])
+  acknowledgedBy Staff  @relation("PayrollWarningAcknowledgedBy", fields: [acknowledgedByStaffId], references: [id])
+
+  // Postgres keeps 63 characters of an identifier; this is the name the migration's index actually has.
+  @@unique([tenantId, code, subjectId, year], map: "payroll_warning_acknowledgements_tenant_id_code_subject_id_year")
+  @@index([tenantId])
+  @@map("payroll_warning_acknowledgements")
+}
+
 model PayrollException {
   id           String  @id @default(uuid())
   tenantId     String  @map("tenant_id")

@@ -198,6 +198,12 @@ export function PayrollExceptionCentre({
       >
         {error ? <AdminNotice tone="warn">{error}</AdminNotice> : null}
         <p style={{ marginTop: 12 }}>{target?.consequence}</p>
+        {target?.code === 'EPF_BASIS_DISCREPANCY' ? (
+          <p>
+            This is a policy decision, so acknowledging it covers this selection for the rest of the year: the months after carry a
+            one-line note instead of the warning, until the selection changes or the year turns.
+          </p>
+        ) : null}
         <Input.TextArea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason" />
       </Modal>
     </>

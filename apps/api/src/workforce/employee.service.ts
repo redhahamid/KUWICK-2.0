@@ -280,6 +280,8 @@ export class EmployeeService {
             restDayOfWeek: null,
             restDayVaries: false,
             overtimeContractPolicy: null,
+            additionalPcbCents: 0,
+            additionalPcbNote: null,
           };
 
     const worked = attendance.filter((row) => row.workedMinutes !== null);
@@ -394,6 +396,8 @@ export class EmployeeService {
         restDayOfWeek: statutory.restDayOfWeek,
         restDayVaries: statutory.restDayVaries,
         overtimeContractPolicy: statutory.overtimeContractPolicy,
+        additionalPcbCents: statutory.additionalPcbCents,
+        additionalPcbNote: statutory.additionalPcbNote,
         epfMembership: statutory.epfMembership,
         lindungParticipation: statutory.lindungParticipation,
         epfApplicable: statutory.epfApplicable,
