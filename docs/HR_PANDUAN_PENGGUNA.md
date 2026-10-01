@@ -528,6 +528,25 @@ tulis.
 
 ### 2.8 Statutory rates
 
+**Edisi dan jadual penuh (Batch 6).** Skrin ini kini menunjukkan jadual
+untuk **bulan yang dipilih** (pemilih bulan di atas): run gaji memutuskan
+edisi mengikut hari terakhir bulan itu, jadi bulan lepas menunjukkan edisi
+yang menghargakannya, bukan semestinya edisi hari ini. Setiap panel
+menyebut edisinya — *Built-in edition* (ditranskripsi dalam kod Kuwick dan
+disahkan dengan contoh kiraan pihak berkuasa) atau *Platform edition*
+(ditambah oleh Kuwick sebagai data: dokumen sumber, tahun, tarikh berkuat
+kuasa). **View Third Schedule, band by band** membuka Jadual Ketiga KWSP
+bahagian demi bahagian (A, C, E, F) dengan carian gaji untuk mencari band;
+**View SOCSO table** dan **View EIS table** seperti sebelum ini; **View
+Table 1 and the parameters** membuka Jadual 1 PCB dan setiap parameter yang
+formula baca (pelepasan individu, pasangan, anak, OKU, had pelepasan KWSP,
+kadar bukan pemastautin, minimum). Panel **Editions on file** menyenaraikan
+edisi yang ditambah Kuwick. Klinik hanya membaca; tiada yang boleh ditaip.
+Edisi baharu ditambah oleh pemilik Kuwick di konsol platform (*Statutory
+Tables*), dan terpakai dari tarikhnya untuk semua klinik — bulan yang sudah
+dibayar tidak berubah.
+
+
 **Apa gunanya.** Menunjukkan kadar KWSP, PERKESO dan LHDN yang Kuwick guna.
 **Anda tidak menaip kadar di sini — anda menyemaknya.**
 
@@ -855,6 +874,15 @@ menamakan syarikat, tarikh kelas HRD direkodkan berbanding bulan itu, dan apa
 yang perlu dibuat: rekod kelas dari tarikh sebenar, atau **Reopen** bulan,
 kira semula dan luluskan semula. Bulan yang sudah *Paid* tidak boleh dibuka
 semula; levinya diselesaikan di luar Kuwick.
+
+**Bagaimana angka ini dikira (Batch 6).** Pada halaman gaji seorang pekerja
+(*Payroll → baris pekerja*), butang **How this was worked out** di bawah
+potongan membuka, untuk setiap angka statutori, baris: gaji yang dibaca,
+bahagian/kategori, **baris jadual** yang dipadankan (contoh *RM3,480.01 to
+RM3,500.00: employer RM420.00, employee RM385.00*), siling, dan edisi; untuk
+PCB, huruf spesifikasi — P, M, R, B, n, K2, pelepasan — dengan angka bulan
+itu. Dibekukan bersama payslip semasa dikira; baris yang dibekukan sebelum
+ciri ini wujud tidak menunjukkannya.
 
 ### 3.6 Reports
 

@@ -889,8 +889,9 @@ export class WorkforceController {
    * Read-only by construction: there is nothing here a clinic can type into.
    */
   @Get('payroll/statutory-rates')
-  statutoryRates() {
-    return this.statutorySettings.rates();
+  // `?period=YYYY-MM` shows the edition that priced that month; blank is this month.
+  statutoryRates(@Query('period') period?: string) {
+    return this.statutorySettings.rates(period || undefined);
   }
 
   /** A named person here looked at the tables today. Kept apart from the

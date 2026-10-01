@@ -174,6 +174,14 @@ export interface SnapshotPayslipDetail {
   /** Every calculation line: earnings, wage reductions and deductions. */
   componentLines: { code: string; label: string; kind: string; amountCents: number }[];
   /** Why a statutory figure is what it is — or why it is absent. Verbatim. */
+  /** How each statutory figure was worked out, as rows. Absent on rows frozen before the field existed. */
+  workings?: {
+    epf?: Record<string, string | number | null> | null;
+    socso?: Record<string, string | number | null> | null;
+    eis?: Record<string, string | number | null> | null;
+    lindung?: Record<string, string | number | null> | null;
+    pcb?: Record<string, string | number | null> | null;
+  };
   statutoryNotes: {
     epf: string | null;
     socso: string | null;

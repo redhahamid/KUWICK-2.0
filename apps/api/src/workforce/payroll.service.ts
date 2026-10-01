@@ -19,6 +19,7 @@ import {
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
+import { editionsFor } from '../statutory/editions';
 import {
   Permission,
   can,
@@ -695,13 +696,17 @@ export class PayrollService {
       // Which schedules govern is decided by the PERIOD, never by today: a
       // September run re-calculated in December must not acquire December's
       // rates.
-      const statutoryContext: StatutoryContext = { periodEnd: statutoryResolutionDay };
+      // THE EDITIONS IN FORCE FOR THE PERIOD: the built-in tables, or a later
+      // one the platform added as data for a date on or before the period's
+      // last day. Resolved by the period, never by today, like the schedules.
+      const editions = editionsFor(statutoryResolutionDay, await tx.statutoryTableVersion.findMany());
+      const statutoryContext: StatutoryContext = { periodEnd: statutoryResolutionDay, editions };
       const statutoryStatus = statutoryStatusOf(statutoryResolutionDay) as StatutoryStatus;
       // The schemes a payslip depends on, named ONCE in `statutory.ts`. This
       // list was written out again here and had drifted: LINDUNG was missing,
       // so a run stamped its provenance without recording which LINDUNG
       // schedule it had applied.
-      const statutoryStamp = stampFor(PAYSLIP_SCHEMES, statutoryResolutionDay);
+      const statutoryStamp = stampFor(PAYSLIP_SCHEMES, statutoryResolutionDay, editions);
 
       // The month's public holidays, read ONCE for the run rather than per
       // employee. Work on one is paid at two days' ordinary rate under
@@ -2327,6 +2332,16 @@ export class PayrollService {
                 lindung: payslip.statutory.lindung.note ?? null,
                 pcb: payslip.statutory.pcbNote ?? null,
                 hrd: payslip.hrdNote ?? null,
+              },
+              // HOW EACH STATUTORY FIGURE WAS WORKED OUT — the wages it was
+              // read against, the table row or the formula step, the edition
+              // — frozen with the figure so the payslip can show it later.
+              workings: {
+                epf: payslip.statutory.epf.working ?? null,
+                socso: payslip.statutory.socso.working ?? null,
+                eis: payslip.statutory.eis.working ?? null,
+                lindung: payslip.statutory.lindung.working ?? null,
+                pcb: pcbWorkingRows(payslip.statutory.pcbWorking, payslip.statutory.pcbNote ?? null, editions.sources.PCB.document),
               },
               // CALCULATED from the official specification, or ENTERED by a
               // person. Null when there is no figure at all.
@@ -3997,6 +4012,34 @@ export class PayrollService {
 function earnedInLabel(label: string, earnedPeriod: Date | null | undefined, period: Date): string {
   if (!earnedPeriod || earnedPeriod.getTime() === period.getTime()) return label;
   return `${label} (${earnedPeriod.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })})`;
+}
+
+/**
+ * THE MTD WORKING AS ROWS: the specification's own letters, with the figure
+ * each one took this month, so a payslip's PCB line can be followed back to
+ * [(P − M) R + B] rather than taken on trust.
+ */
+function pcbWorkingRows(
+  working: { pCents: number; mCents: number; ratePercent: number; bCents: number; n: number; k2Cents: number; totalReliefCents: number; pWithAdditionalCents?: number; yearTaxCents?: number; yearMtdCents?: number } | null | undefined,
+  note: string | null,
+  edition: string,
+): Record<string, string | number | null> | null {
+  if (!working) return null;
+  const rm = (cents: number | undefined) => (cents === undefined ? null : `RM${formatCents(cents)}`);
+  return {
+    'P — chargeable income for the year': rm(working.pCents),
+    'M — band floor': rm(working.mCents),
+    'R — rate': `${working.ratePercent}%`,
+    'B — band adjustment': rm(working.bCents),
+    'n — months left after this one': working.n,
+    'K2 — EPF relief spread over the months left': rm(working.k2Cents),
+    'Reliefs (individual, spouse, children, disability)': rm(working.totalReliefCents),
+    ...(working.yearTaxCents !== undefined ? { 'Year tax with additional remuneration, [(P − M) R + B]': rm(working.yearTaxCents) } : {}),
+    ...(working.yearMtdCents !== undefined ? { 'MTD for the year so far plus this month': rm(working.yearMtdCents) } : {}),
+    ...(working.pWithAdditionalCents !== undefined ? { 'P with additional remuneration': rm(working.pWithAdditionalCents) } : {}),
+    Edition: edition,
+    ...(note ? { Note: note } : {}),
+  };
 }
 
 function nullableCents(cents: number | null): number | null {

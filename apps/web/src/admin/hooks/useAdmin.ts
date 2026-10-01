@@ -857,10 +857,10 @@ export function useApprovePayroll() {
   );
 }
 
-export function useStatutoryRates() {
+export function useStatutoryRates(period?: string) {
   return useQuery({
-    queryKey: ['admin-hr', 'statutory-rates'],
-    queryFn: () => apiClient.get<StatutoryRates>('/workforce/payroll/statutory-rates'),
+    queryKey: ['admin-hr', 'statutory-rates', period ?? ''],
+    queryFn: () => apiClient.get<StatutoryRates>(`/workforce/payroll/statutory-rates${period ? `?period=${period}` : ''}`),
   });
 }
 

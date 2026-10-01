@@ -22,6 +22,7 @@ const NAV_ITEMS = [
   navItem('/platform/panel-clinics', 'Panel Clinics'),
   navItem('/platform/procedures', 'Procedures'),
   navItem('/platform/document-templates', 'Document Templates'),
+  navItem('/platform/statutory-tables', 'Statutory Tables'),
   navItem('/platform/settings', 'Settings'),
 ];
 

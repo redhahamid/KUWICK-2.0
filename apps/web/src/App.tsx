@@ -21,6 +21,7 @@ import { PlatformSubscriptionsPage } from './platform/PlatformSubscriptionsPage'
 import { PlatformPanelClinicsPage } from './platform/PlatformPanelClinicsPage';
 import { PlatformProceduresPage } from './platform/PlatformProceduresPage';
 import { PlatformSettingsPage } from './platform/PlatformSettingsPage';
+import { PlatformStatutoryTablesPage } from './platform/PlatformStatutoryTablesPage';
 import { AppointmentsModulePage } from './appointment/AppointmentsModulePage';
 import { PublicBookingPage } from './appointment/public/PublicBookingPage';
 import { ManageBookingPage } from './appointment/public/ManageBookingPage';
@@ -147,6 +148,7 @@ export function App() {
           <Route path="/platform/procedures" element={<PlatformProceduresPage />} />
           <Route path="/platform/document-templates" element={<PlatformDocumentTemplatesPage />} />
           <Route path="/platform/settings" element={<PlatformSettingsPage />} />
+          <Route path="/platform/statutory-tables" element={<PlatformStatutoryTablesPage />} />
         </Route>
       </Route>
 

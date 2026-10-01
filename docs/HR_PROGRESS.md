@@ -6,6 +6,108 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 6 — 1 Oktober 2026 — jadual statutori beredisi dan kiraan payslip (a, b)
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+master Batch 5 (`28ea34b`). Komit: komit yang menambah bahagian ini (hash
+dalam laporan akhir). **Migrasi: satu** — diterapkan dengan *Migrate only
+(manual)* sebelum merge.
+
+| Migrasi | Apa | Risiko kepada bulan lepas |
+|---|---|---|
+| `20261001130000_statutory_table_versions` | jadual platform `statutory_table_versions` (tiada tenant, tiada RLS, grant `kuwick_app`), FK ke `platform_admins` | Tiada: tiada baris = jadual terbina dalam seperti sebelum ini; run diluluskan beku `[D]` |
+
+### Apa yang berubah
+
+- **3a — Jadual statutori beredisi.** Enjin (`contributions.ts`, `lindung-24-jam
+  .ts`, `pcb-2026.ts`) kini menerima jadual sebagai parameter dengan jadual
+  terbina dalam sebagai lalai — tanpa apa-apa diserahkan, angka sama seperti
+  sebelum ini (ujian vektor rasmi tidak berubah) `[D]`. Modul baharu
+  `statutory/editions.ts`: `editionsFor(tarikh, versi)` memilih edisi yang
+  berkuat kuasa pada hari terakhir tempoh — terbina dalam atau edisi platform
+  yang lebih kemudian; kandungan edisi disemak band demi band (bentuk,
+  susunan menaik, sambungan tanpa jurang, siling) `[D]`. Run gaji memuatkan
+  versi platform sekali setiap run dan menyerahkannya melalui
+  `StatutoryContext.editions`; **cap** run (`stampFor`) menamakan edisi
+  platform (`platform:<id>`, dokumen, hash) apabila ia yang menghargakan
+  bulan `[D]`.
+- **Hanya pemilik Kuwick menambah edisi:** `POST/GET/DELETE /platform/
+  statutory-tables` dengan `PlatformAuthGuard`; token klinik ditolak (401);
+  edisi mesti berkuat kuasa **selepas** edisi terbina dalam; edisi yang sudah
+  berkuat kuasa tidak boleh ditarik balik (bulan mungkin sudah diharga
+  dengannya); halaman konsol platform **Statutory Tables** (senarai edisi
+  terbina dalam + platform setiap skim, borang *Add an edition* dengan JSON,
+  masalah dinamakan baris demi baris, *Withdraw*) `[D]`.
+- **Klinik membaca sahaja:** `GET /workforce/payroll/statutory-rates?period=
+  YYYY-MM` mengembalikan edisi mengikut bulan, jadual penuh (EPF 4 bahagian
+  band demi band, SOCSO, EIS, LINDUNG, PCB Jadual 1 + parameter, HRD) dan
+  senarai versi platform; halaman *Statutory rates* mendapat pemilih bulan,
+  baris edisi pada setiap panel, laci *View Third Schedule, band by band*
+  (bahagian + carian gaji), laci *View Table 1 and the parameters*, panel
+  *Editions on file* `[D]`.
+- **3b — "How this was worked out" setiap baris statutori payslip.** Enjin
+  melampirkan `working` pada setiap sumbangan (gaji yang dibaca, bahagian/
+  kategori, baris jadual yang dipadankan, siling, edisi) dan baris PCB (P, M,
+  R, B, n, K2, pelepasan, cukai tahun, MTD tahun) — dibekukan ke dalam
+  snapshot payslip (`workings`) dan dipaparkan oleh butang **How this was
+  worked out** pada halaman gaji pekerja `[D]`. Baris payslip lama (sebelum
+  medan wujud) tidak mempunyainya.
+- Ujian: `editions.spec.ts` (terbina dalam = pemalar mengikut rujukan;
+  edisi platform terpakai dari tarikhnya dan bukan sebulan sebelumnya;
+  LINDUNG mengikut edisi SOCSO; edisi rosak diabaikan; penolakan jurang/
+  bahagian hilang), `statutory-table-versions.e2e-spec.ts` (guard, tambah,
+  tolak, senarai, resolusi bulan klinik, tarik balik), `payslipWorkings
+  .test.tsx`, `statutoryRatesEditions.test.tsx` `[D]`.
+
+### Uji di staging (ikut urutan)
+
+1. **Settings → Statutory rates**: pilih **Jun 2026**; setiap panel menyebut
+   *Built-in edition … in force from …*. **View Third Schedule, band by
+   band** → Part A → taip 3250 → tujuh baris sekitar band itu.
+2. **View Table 1 and the parameters** → Jadual 1 PCB dan parameter
+   (pelepasan individu RM9,000, had KWSP RM4,000, bukan pemastautin 30%).
+3. **Konsol platform → Statutory Tables → Add an edition**: EIS, 2099,
+   berkuat kuasa 2099-01-01, JSON contoh dalam senarai semak (1i). Cuba JSON
+   berjurang → ditolak dengan sebab. Tersenarai dengan *Withdraw*.
+4. Kembali ke klinik, *Statutory rates* → pilih **Feb 2099** → panel SOCSO &
+   EIS menyebut *Platform edition 2099*; pilih **Jun 2026** → *Built-in*.
+   **Withdraw** edisi itu di konsol platform.
+5. **Payroll → baris pekerja → How this was worked out**: baris EPF/SOCSO/
+   EIS/PCB dengan gaji, baris jadual dan edisi.
+
+### Keputusan terbuka / yang saya pilih bagi pihak anda
+
+- `[A]` **Edisi platform dianggap *OFFICIAL_SOURCE_VERIFIED*** untuk cap run
+  (memenuhi bar kelulusan): pemilik Kuwick merekod dokumen sumber; tiada
+  vektor ujian rasmi dijalankan terhadapnya. Kalau anda mahu bar yang lebih
+  tinggi (contoh: edisi platform perlu "disahkan" dahulu sebelum run boleh
+  diluluskan), itu kerja lanjutan.
+- `[A]` **Edisi platform mesti berkuat kuasa selepas edisi terbina dalam**
+  — Kuwick tidak membenarkan angka yang ditaip menggantikan angka yang
+  disahkan untuk bulan yang sama atau sebelumnya.
+- `[A]` **Kandungan ialah JSON** dalam bentuk yang enjin baca (ditunjukkan
+  pada borang); tiada penyunting band demi band — jadual KWSP ada ~1,000
+  baris sebahagian dan lebih selamat ditampal dari fail yang disediakan.
+- `[A]` PDF payslip **tidak** memuatkan kiraan (hanya halaman web); pekerja
+  melihat angka, klinik melihat kiraan.
+- `[A]` HRD: kadar beredisi; kelas pendaftaran majikan kekal pada majikan.
+- `[D]` **Untuk disemak (tidak diubah):** pemalar enjin
+  `DEDUCTION_SPOUSE_CENTS` dalam `apps/api/src/statutory/pcb-2026.ts` ialah
+  **RM9,000** ("Exhibit 5"), kini dipaparkan dalam laci PCB sebagai *Spouse
+  relief (category 2)*. `[A]` Spesifikasi MTD HASiL yang saya ingat menyebut
+  S = RM4,000 untuk pasangan tanpa pendapatan. Saya **tidak** mengubahnya
+  kerana ia akan mengubah PCB bulan sedia ada bagi pekerja kategori 2 —
+  sila semak terhadap dokumen D1 dan beritahu saya; pembetulan ialah satu
+  pemalar + satu edisi baharu, bukan kerja besar.
+- `[D]` **Dibaiki sambil lalu:** halaman payslip yang dibuka terus dari
+  penanda buku (sebelum baris pekerja tiba) ranap pada nama kosong
+  (`initialsOf('')`); kini avatar kosong. Ujian `ui/who.test.ts`.
+- `[D]` **Ditangguh ke batch polish:** pada 390px, halaman payslip pekerja
+  (`PayrollEmployeePage`) melimpah ke kanan (panel 421px dalam skrin 390px)
+  — sedia ada sebelum batch ini; dibaiki dalam Batch 7 (visual sahaja).
+
+---
+
 ## Batch 5 — 1 Oktober 2026 — statutori dan payslip (c, d, e)
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas

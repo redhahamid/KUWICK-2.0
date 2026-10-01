@@ -418,9 +418,38 @@ export interface StatutoryStamp {
  * payslip reprinted next year must show the schedule that produced it, not the
  * one in force when somebody pressed print.
  */
-export function stampFor(schemes: readonly StatutoryScheme[], on: Date): StatutoryStamp {
+/** What the stamp needs to know about a platform-added edition; structural, so this file imports nothing from editions.ts. */
+export interface StampedEditionSource {
+  readonly origin: 'BUILT_IN' | 'PLATFORM';
+  readonly id: string;
+  readonly document: string;
+  readonly contentHash: string;
+  readonly inForceFrom: string;
+}
+
+export function stampFor(
+  schemes: readonly StatutoryScheme[],
+  on: Date,
+  editions?: { readonly sources: Readonly<Partial<Record<string, StampedEditionSource>>> },
+): StatutoryStamp {
   const blockers: string[] = [];
   const schedules = schemes.map<ScheduleStamp>((scheme) => {
+    // A PLATFORM EDITION IN FORCE FOR THIS PERIOD prices it in place of the
+    // built-in schedule, and the stamp says so by name: a month's figures
+    // stay traceable to the exact table that produced them.
+    const platform = editions?.sources[scheme];
+    if (platform && platform.origin === 'PLATFORM') {
+      return {
+        scheme,
+        scheduleId: `platform:${platform.id}`,
+        contentHash: platform.contentHash,
+        verification: 'OFFICIAL_SOURCE_VERIFIED',
+        document: platform.document,
+        effectiveFrom: `${platform.inForceFrom}T00:00:00.000Z`,
+        missing: false,
+        notYetInForce: false,
+      };
+    }
     const schedule = scheduleFor(scheme, on);
     if (!schedule) {
       // A scheme with a LATER start has not gone missing; it has not begun.

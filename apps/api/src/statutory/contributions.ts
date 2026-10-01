@@ -1,6 +1,55 @@
-import { EPF_PARTS, EPF_TABLE_CEILING_CENTS, EpfPart } from './epf-third-schedule';
-import { EIS_BANDS, EIS_WAGE_CEILING_CENTS } from './eis-act800';
-import { SOCSO_BANDS, SOCSO_WAGE_CEILING_CENTS } from './socso-act4';
+import { EPF_PARTS, EPF_TABLE_CEILING_CENTS, EpfBand, EpfPart } from './epf-third-schedule';
+import { EIS_BANDS, EIS_WAGE_CEILING_CENTS, EisBand } from './eis-act800';
+import { SOCSO_BANDS, SOCSO_WAGE_CEILING_CENTS, SocsoBand } from './socso-act4';
+
+/**
+ * THE TABLES AN ENGINE READS, handed in rather than reached for, so a later
+ * edition — added by the platform as data, in force from a date — prices a
+ * month without a code change. Nothing is handed in by default: the engines
+ * read the built-in, verified tables exactly as they always have.
+ */
+export interface EpfTables {
+  readonly parts: readonly EpfPart[];
+  readonly ceilingCents: number;
+}
+export interface SocsoTables {
+  readonly bands: readonly SocsoBand[];
+  readonly ceilingCents: number;
+}
+export interface EisTables {
+  readonly bands: readonly EisBand[];
+  readonly ceilingCents: number;
+}
+export const BUILT_IN_EPF_TABLES: EpfTables = { parts: EPF_PARTS, ceilingCents: EPF_TABLE_CEILING_CENTS };
+export const BUILT_IN_SOCSO_TABLES: SocsoTables = { bands: SOCSO_BANDS, ceilingCents: SOCSO_WAGE_CEILING_CENTS };
+export const BUILT_IN_EIS_TABLES: EisTables = { bands: EIS_BANDS, ceilingCents: EIS_WAGE_CEILING_CENTS };
+
+/** The Third Schedule row a wage falls in, for a working that shows its row; null above the table or at nil. */
+export function epfBandFor(tables: EpfTables, part: EpfPart['part'], wagesCents: number): EpfBand | null {
+  const found = tables.parts.find((candidate) => candidate.part === part);
+  if (!found || wagesCents <= 0 || wagesCents > tables.ceilingCents) return null;
+  return found.bands.find(([fromCents, toCents]) => wagesCents >= fromCents && wagesCents <= toCents) ?? null;
+}
+/** The Act 4 row a wage falls in. */
+export function socsoBandFor(tables: SocsoTables, wagesCents: number): SocsoBand | null {
+  if (wagesCents <= 0) return null;
+  return (
+    tables.bands.find(([fromCents, toCents]) => {
+      const matches = toCents === null ? wagesCents > fromCents : wagesCents > fromCents || fromCents === 0;
+      return matches && (toCents === null || wagesCents <= toCents);
+    }) ?? null
+  );
+}
+/** The Act 800 row a wage falls in. */
+export function eisBandFor(tables: EisTables, wagesCents: number): EisBand | null {
+  if (wagesCents <= 0) return null;
+  return (
+    tables.bands.find(([fromCents, toCents]) => {
+      const aboveLower = fromCents === 0 ? true : wagesCents > fromCents;
+      return aboveLower && (toCents === null || wagesCents <= toCents);
+    }) ?? null
+  );
+}
 
 /**
  * THE CONTRIBUTION ENGINES — EPF, SOCSO AND EIS.
@@ -83,6 +132,7 @@ export function epfContribution(
   wagesCents: number,
   membership: EpfMembership,
   ageYears: number | null,
+  tables: EpfTables = BUILT_IN_EPF_TABLES,
 ): ContributionOutcome<EpfContribution> {
   if (ageYears === null) {
     // Age decides the Part, so an unknown date of birth is not a nil
@@ -98,13 +148,13 @@ export function epfContribution(
   }
 
   const partLetter = epfPartFor(membership, ageYears);
-  const part = EPF_PARTS.find((candidate) => candidate.part === partLetter);
+  const part = tables.parts.find((candidate) => candidate.part === partLetter);
   if (!part) {
     return { kind: 'CANNOT_DETERMINE', reason: `No Third Schedule Part is defined for ${membership}.` };
   }
 
   // Part F has no band table: the Schedule states a flat percentage.
-  if (part.bands.length === 0 || wagesCents > EPF_TABLE_CEILING_CENTS) {
+  if (part.bands.length === 0 || wagesCents > tables.ceilingCents) {
     const employer = wagesCents * (part.aboveCeiling.employerPercent / 100);
     const employee = wagesCents * (part.aboveCeiling.employeePercent / 100);
     const rounded = roundTotalToNextRinggit(Math.round(employer), Math.round(employee));
@@ -156,7 +206,11 @@ export interface SocsoContribution {
   readonly atCeiling: boolean;
 }
 
-export function socsoContribution(wagesCents: number, category: SocsoCategory): ContributionOutcome<SocsoContribution> {
+export function socsoContribution(
+  wagesCents: number,
+  category: SocsoCategory,
+  tables: SocsoTables = BUILT_IN_SOCSO_TABLES,
+): ContributionOutcome<SocsoContribution> {
   if (wagesCents <= 0) {
     return {
       kind: 'COMPUTED',
@@ -165,8 +219,8 @@ export function socsoContribution(wagesCents: number, category: SocsoCategory): 
       },
     };
   }
-  const atCeiling = wagesCents > SOCSO_WAGE_CEILING_CENTS;
-  for (const [fromCents, toCents, c1Er, c1Inv, , c2Er] of SOCSO_BANDS) {
+  const atCeiling = wagesCents > tables.ceilingCents;
+  for (const [fromCents, toCents, c1Er, c1Inv, , c2Er] of tables.bands) {
     const matches = toCents === null ? wagesCents > fromCents : wagesCents > fromCents || fromCents === 0;
     const withinUpper = toCents === null || wagesCents <= toCents;
     if (matches && withinUpper) {
@@ -207,12 +261,12 @@ export interface EisContribution {
   readonly atCeiling: boolean;
 }
 
-export function eisContribution(wagesCents: number): ContributionOutcome<EisContribution> {
+export function eisContribution(wagesCents: number, tables: EisTables = BUILT_IN_EIS_TABLES): ContributionOutcome<EisContribution> {
   if (wagesCents <= 0) {
     return { kind: 'COMPUTED', value: { employerCents: 0, employeeCents: 0, atCeiling: false } };
   }
-  const atCeiling = wagesCents > EIS_WAGE_CEILING_CENTS;
-  for (const [fromCents, toCents, employerCents, employeeCents] of EIS_BANDS) {
+  const atCeiling = wagesCents > tables.ceilingCents;
+  for (const [fromCents, toCents, employerCents, employeeCents] of tables.bands) {
     const aboveLower = fromCents === 0 ? true : wagesCents > fromCents;
     const withinUpper = toCents === null || wagesCents <= toCents;
     if (aboveLower && withinUpper) {

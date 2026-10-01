@@ -15,6 +15,8 @@ import { DefaultCatalogService } from './default-catalog.service';
 import { PlatformDashboardController } from './platform-dashboard.controller';
 import { PlatformDashboardService } from './platform-dashboard.service';
 import { PlatformSettingService } from './platform-setting.service';
+import { PlatformStatutoryTableController } from './platform-statutory-table.controller';
+import { PlatformStatutoryTableService } from './platform-statutory-table.service';
 
 // Real auth (D-034) + Platform console (D-037). AuthController's routes
 // (login/refresh/platform-login) and every platform/* controller are all
@@ -31,11 +33,13 @@ import { PlatformSettingService } from './platform-setting.service';
     TenantSubscriptionController,
     DefaultCatalogController,
     PlatformDashboardController,
+    PlatformStatutoryTableController,
   ],
   providers: [
     AuthService,
     PlatformAuthGuard,
     PlatformTenantService,
+    PlatformStatutoryTableService,
     SubscriptionPlanService,
     TenantSubscriptionService,
     DefaultCatalogService,

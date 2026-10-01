@@ -8,7 +8,9 @@ import {
 } from '../statutory/contributions';
 import { EPF_PARTS } from '../statutory/epf-third-schedule';
 import { LindungParticipation, lindungContribution } from '../statutory/lindung-24-jam';
-import { PcbResult, computePcb as computeMtd } from '../statutory/pcb-2026';
+import { PcbParams, PcbResult, computePcb as computeMtd } from '../statutory/pcb-2026';
+import { BUILT_IN_EDITIONS, Editions } from '../statutory/editions';
+import { eisBandFor, epfBandFor, socsoBandFor } from '../statutory/contributions';
 import {
   StatutoryScheme,
   StatutoryStamp,
@@ -63,11 +65,15 @@ import {
 // What a scheme answers
 // ---------------------------------------------------------------------------
 
+/** How a figure was worked out, as rows a screen can print: inputs, the table row, the rate. */
+export type StatutoryWorking = Record<string, string | number | null>;
+
 export interface Contribution {
   employeeCents: number | null;
   employerCents: number | null;
   /** Why a figure is absent, or which Part produced it. Shown verbatim. */
   note?: string;
+  working?: StatutoryWorking;
 }
 
 /**
@@ -178,6 +184,8 @@ export interface StatutoryContext {
    * blocking, and a May 2026 run charged LINDUNG before the scheme existed.
    */
   periodEnd: Date;
+  /** The tables in force for the period — the built-in ones when absent. */
+  editions?: Editions;
 }
 
 /**
@@ -236,7 +244,7 @@ export function computeEpf(wageCents: number, context: StatutoryContext, profile
     }
   }
 
-  return fromOutcome(epfContribution(wageCents, membership, ageOrNull(profile.age)), (value) =>
+  return fromOutcome(epfContribution(wageCents, membership, ageOrNull(profile.age), context.editions?.epf), (value) =>
     value.abovePercentage
       ? `Third Schedule Part ${value.part}, percentage rate above RM20,000.`
       : `Third Schedule Part ${value.part}.`,
@@ -257,7 +265,7 @@ export function computeSocso(wageCents: number, context: StatutoryContext, profi
   }
 
   const category = age >= 60 ? 'SECOND' : 'FIRST';
-  return fromOutcome(socsoContribution(wageCents, category), (value) =>
+  return fromOutcome(socsoContribution(wageCents, category, context.editions?.socso), (value) =>
     category === 'FIRST'
       ? `First Category — Employment Injury, Invalidity and Non-Employment Injury. Employee share shown here is the invalidity column, ${(value.employeeInvalidityCents / 100).toFixed(2)}; the non-employment injury column is on its own line.`
       : // NOT "no employee share". The schedule gives the Second Category an
@@ -282,7 +290,7 @@ export function computeEis(wageCents: number, context: StatutoryContext, profile
   if (age >= 60) {
     return { employeeCents: 0, employerCents: 0, note: 'EIS does not apply from age 60.' };
   }
-  return fromOutcome(eisContribution(wageCents));
+  return fromOutcome(eisContribution(wageCents, context.editions?.eis));
 }
 
 /**
@@ -318,7 +326,7 @@ export function computeLindung(
     };
   }
   return fromOutcome(
-    lindungContribution(wagesCents, profile.lindungParticipation, context.periodEnd),
+    lindungContribution(wagesCents, profile.lindungParticipation, context.periodEnd, context.editions?.lindung),
     (value) =>
       value.participation === 'MANDATORY_FOREIGN_WORKER'
         ? 'Non-Employment Injury Scheme, phase 1 — mandatory for foreign workers. Borne by the employee and remitted by the employer.'
@@ -435,6 +443,7 @@ export function computePcb(
   month: PcbMonthInput,
   ytd: PcbYearToDate,
   on: Date,
+  params?: PcbParams,
 ): PcbAnswer {
   if (profile.pcbApplicable === false) {
     return { cents: 0, note: 'This employee is recorded as outside PCB.', tp1Captured: true, working: null };
@@ -479,7 +488,7 @@ export function computePcb(
     accumulatedMtdPaidCents: ytd.accumulatedMtdPaidCents,
     accumulatedZakatCents: ytd.accumulatedZakatCents,
     zakatThisMonthCents: month.zakatThisMonthCents,
-  });
+  }, undefined, params);
 
   if (outcome.kind === 'UNSUPPORTED') {
     return { cents: null, note: outcome.reason, tp1Captured: false, working: null };
@@ -627,21 +636,91 @@ export function computeStatutory(
     },
     ytd,
     context.periodEnd,
+    context.editions?.pcb,
   );
+
+  const socso = computeSocso(bases.socsoCents, context, profile);
+  const eis = computeEis(bases.eisCents, context, profile);
+  // Priced on the SOCSO wage base — the same Act 4 table carries its column.
+  const lindung = computeLindung(bases.socsoCents, context, profile);
+  const editions = context.editions ?? BUILT_IN_EDITIONS;
+  attachWorkings({ epf, socso, eis, lindung }, bases, profile, editions);
 
   return {
     epf,
-    socso: computeSocso(bases.socsoCents, context, profile),
-    eis: computeEis(bases.eisCents, context, profile),
-    // Priced on the SOCSO wage base — the same Act 4 table carries its column.
-    lindung: computeLindung(bases.socsoCents, context, profile),
+    socso,
+    eis,
+    lindung,
     pcbCents: pcb.cents,
     pcbNote: pcb.note,
     pcbTp1Captured: pcb.tp1Captured,
     pcbWorking: pcb.working,
     bases,
-    stamp: stampFor(PAYSLIP_SCHEMES, context.periodEnd),
+    stamp: stampFor(PAYSLIP_SCHEMES, context.periodEnd, context.editions),
   };
+}
+
+const rm = (cents: number | null | undefined): string | null => (cents === null || cents === undefined ? null : `RM${(cents / 100).toFixed(2)}`);
+
+/**
+ * HOW EACH FIGURE WAS WORKED OUT, as rows: the wages it was read against,
+ * the table row or the rate, the edition that held the row. Only on figures
+ * that were computed — a figure that could not be has its note instead.
+ */
+function attachWorkings(
+  figures: { epf: Contribution; socso: Contribution; eis: Contribution; lindung: Contribution },
+  bases: StatutoryBases,
+  profile: EmployeeStatutoryProfile,
+  editions: Editions,
+): void {
+  const age = ageOrNull(profile.age);
+  if (figures.epf.employeeCents !== null && profile.epfMembership && age !== null) {
+    const part = epfPartFor(profile.epfMembership, age);
+    const band = epfBandFor(editions.epf, part, bases.epfCents);
+    const parts = editions.epf.parts.find((candidate) => candidate.part === part);
+    figures.epf.working = {
+      'EPF wages': rm(bases.epfCents),
+      'Third Schedule part': `Part ${part} (${profile.epfMembership.toLowerCase().replace(/_/g, ' ')}, age ${age})`,
+      'Table row': band
+        ? `${rm(band[0])} to ${rm(band[1])}: employer ${rm(band[2])}, employee ${rm(band[3])}`
+        : bases.epfCents > editions.epf.ceilingCents && parts
+          ? `Above ${rm(editions.epf.ceilingCents)}: ${parts.aboveCeiling.employeePercent}% employee, ${parts.aboveCeiling.employerPercent}% employer, total rounded up to the ringgit`
+          : null,
+      Edition: editions.sources.EPF.document,
+    };
+  }
+  if (figures.socso.employeeCents !== null && age !== null) {
+    const band = socsoBandFor(editions.socso, bases.socsoCents);
+    const category = age >= 60 ? 'Second' : 'First';
+    figures.socso.working = {
+      'SOCSO wages': rm(bases.socsoCents),
+      Category: `${category} category (age ${age})`,
+      'Table row': band
+        ? `${rm(band[0])} to ${band[1] === null ? 'above' : rm(band[1])}: ${category === 'First' ? `employer ${rm(band[2])}, employee ${rm(band[3])}` : `employer ${rm(band[5])}, no employee share`}`
+        : null,
+      Ceiling: rm(editions.socso.ceilingCents),
+      Edition: editions.sources.SOCSO.document,
+    };
+  }
+  if (figures.eis.employeeCents !== null && age !== null && age < 60) {
+    const band = eisBandFor(editions.eis, bases.eisCents);
+    figures.eis.working = {
+      'EIS wages': rm(bases.eisCents),
+      'Table row': band ? `${rm(band[0])} to ${band[1] === null ? 'above' : rm(band[1])}: employer ${rm(band[2])}, employee ${rm(band[3])}` : null,
+      Ceiling: rm(editions.eis.ceilingCents),
+      Edition: editions.sources.EIS.document,
+    };
+  }
+  if (figures.lindung.employeeCents !== null && figures.lindung.employeeCents > 0) {
+    const band = socsoBandFor(editions.lindung.socso, bases.socsoCents);
+    figures.lindung.working = {
+      Wages: rm(bases.socsoCents),
+      Participation: profile.lindungParticipation ?? 'ENROLLED (nothing recorded, so enrolled)',
+      'Table row': band ? `${rm(band[0])} to ${band[1] === null ? 'above' : rm(band[1])}: employee ${rm(band[4])}, borne by the employee` : null,
+      'In force from': editions.lindung.effectiveFrom.toISOString().slice(0, 10),
+      Edition: editions.sources.LINDUNG.document,
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------

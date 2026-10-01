@@ -542,6 +542,32 @@ model UserClinicAccess {
 // from Staff/User — a platform admin is not a member of any clinic's
 // staff, and logs in through a separate endpoint issuing a differently-
 // shaped JWT (no tenantId claim).
+/// A LATER EDITION OF A STATUTORY TABLE, added by the platform as data. The
+/// built-in tables are code, verified against the authorities' worked
+/// examples; this is what Kuwick's owner adds when a later edition is
+/// gazetted, with its source document, year and in-force date. A payroll
+/// period resolves to whichever edition was in force on its last day. A
+/// platform table: no tenant, no row policy; clinics read it, only platform
+/// routes write it.
+model StatutoryTableVersion {
+  id                       String   @id @default(uuid())
+  scheme                   String
+  year                     Int
+  inForceFrom              DateTime @map("in_force_from") @db.Date
+  sourceDocument           String   @map("source_document")
+  sourceUrl                String?  @map("source_url")
+  note                     String?
+  content                  Json
+  contentHash              String   @map("content_hash")
+  createdByPlatformAdminId String   @map("created_by_platform_admin_id")
+  createdAt                DateTime @default(now()) @map("created_at")
+
+  createdBy PlatformAdmin @relation(fields: [createdByPlatformAdminId], references: [id])
+
+  @@unique([scheme, inForceFrom])
+  @@map("statutory_table_versions")
+}
+
 model PlatformAdmin {
   id           String    @id @default(uuid())
   email        String    @unique
@@ -551,6 +577,8 @@ model PlatformAdmin {
   lastLoginAt  DateTime? @map("last_login_at")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  statutoryTableVersions StatutoryTableVersion[]
 
   @@map("platform_admins")
 }

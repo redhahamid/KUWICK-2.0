@@ -2867,3 +2867,60 @@ textarea.hr-f {
   font-size: 12px;
   color: var(--hr-ink3);
 }
+
+/* ── How a payslip figure was worked out ─────────────────────────────────── */
+.hr-workings {
+  padding: 8px 22px 14px;
+}
+.hr-workings__body {
+  margin-top: 10px;
+  display: grid;
+  gap: 14px;
+}
+.hr-workings__scheme h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--hr-ink3);
+}
+/* One fact per row: the label in a fixed gutter, the finding beside it,
+   left-aligned and wrapping — these are sentences and table rows, not a
+   column of money, so they do not right-align. */
+.hr-workings__rows {
+  margin: 0;
+  display: grid;
+  gap: 4px 0;
+}
+.hr-workings__row {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 0 14px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--hr-line);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.hr-workings__row:last-child {
+  border-bottom: 0;
+}
+.hr-workings__row dt {
+  color: var(--hr-ink2);
+}
+.hr-workings__row dd {
+  margin: 0;
+  color: var(--hr-ink);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .hr-workings {
+    padding: 8px 14px 14px;
+  }
+  .hr-workings__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px 0;
+  }
+  .hr-workings__row dt {
+    font-size: 12px;
+  }
+}

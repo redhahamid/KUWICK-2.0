@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { App } from "antd";
+import { App, DatePicker } from "antd";
 import dayjs from "dayjs";
 import { useClinicFilter } from "../../core/hooks/useClinicFilter";
 import { useCan } from "../../core/hooks/useCan";
@@ -12,6 +12,7 @@ import {
 } from "../hooks/useAdmin";
 import { Drawer, HrPage, Panel, PanelHead, StatusChip } from "./ui";
 import { Table } from "./ui/Table";
+import { EpfScheduleTable, PcbParametersView, editionLine } from "./StatutoryTablesView";
 
 /**
  * STATUTORY RATES — what Kuwick deducts and what the clinic pays on top.
@@ -42,7 +43,11 @@ const HRD_LABELS: Record<string, string> = {
 export function StatutoryRatesPage() {
   const { message } = App.useApp();
   const { clinicId } = useClinicFilter();
-  const rates = useStatutoryRates();
+  // THE MONTH THE TABLES ARE SHOWN FOR. A run resolves its schedules on the
+  // period's last day, so a past month shows the edition that priced it,
+  // which may not be the one in force today.
+  const [period, setPeriod] = useState(dayjs().format("YYYY-MM"));
+  const rates = useStatutoryRates(period);
   const employers = useLegalEmployers();
   const readiness = usePayrollReadiness({
     period: dayjs().format("YYYY-MM"),
@@ -50,7 +55,9 @@ export function StatutoryRatesPage() {
   });
   const mark = useMarkStatutoryChecked();
   const mayCheck = useCan("hr.payroll.approve");
-  const [showBands, setShowBands] = useState<"SOCSO" | "EIS" | null>(null);
+  const [showBands, setShowBands] = useState<"SOCSO" | "EIS" | "EPF" | "PCB" | null>(null);
+  const [epfPart, setEpfPart] = useState<"A" | "C" | "E" | "F">("A");
+  const [wageSearch, setWageSearch] = useState("");
 
   const data = rates.data;
   const check = data?.check ?? null;
@@ -94,6 +101,14 @@ export function StatutoryRatesPage() {
       error={rates.error instanceof Error ? rates.error.message : null}
       actions={
         <>
+          <DatePicker
+            picker="month"
+            allowClear={false}
+            aria-label="Month"
+            value={dayjs(`${period}-01`)}
+            onChange={(value) => value && setPeriod(value.format("YYYY-MM"))}
+            format="MMM YYYY"
+          />
           {check ? (
             <StatusChip tone={check.current ? "done" : "attn"}>
               {check.current ? "Checked" : "Checked before the current edition"}{" "}
@@ -121,7 +136,7 @@ export function StatutoryRatesPage() {
     >
       <div className="hr-grid2">
         <Panel>
-          <PanelHead title="EPF (KWSP)" sub={inForce(data?.epf.schedule)} />
+          <PanelHead title="EPF (KWSP)" sub={editionLine(data?.editions?.EPF) ?? inForce(data?.epf.schedule)} />
           <div className="hr-rate">
             <div className="hr-rate__h">Employee group</div>
             <div className="hr-rate__h hr-rate__num">Employee</div>
@@ -162,14 +177,21 @@ export function StatutoryRatesPage() {
             employee's Statutory tab.
             {data?.epf.schedule
               ? ` Registry: ${data.epf.schedule.evidence}`
-              : ""}
+              : ""}{" "}
+            <button
+              type="button"
+              className="hr-btn hr-btn--ghost hr-btn--sm"
+              onClick={() => setShowBands("EPF")}
+            >
+              View Third Schedule, band by band
+            </button>
           </div>
         </Panel>
 
         <Panel>
           <PanelHead
             title="SOCSO & EIS (PERKESO)"
-            sub={`${inForce(data?.socso.schedule)} · wage ceiling ${data?.wageCeilingLabel ?? "—"}`}
+            sub={`${editionLine(data?.editions?.SOCSO) ?? inForce(data?.socso.schedule)} · wage ceiling ${data?.wageCeilingLabel ?? "—"}`}
           />
           <div className="hr-rate">
             <div className="hr-rate__h">Scheme</div>
@@ -231,9 +253,10 @@ export function StatutoryRatesPage() {
           <PanelHead
             title="PCB / MTD (LHDN)"
             sub={
-              data?.pcb.schedule
+              editionLine(data?.editions?.PCB) ??
+              (data?.pcb.schedule
                 ? `${data.pcb.schedule.section}`
-                : "Computerised method"
+                : "Computerised method")
             }
           />
           <div className="hr-rate">
@@ -259,6 +282,15 @@ export function StatutoryRatesPage() {
             </div>
           </div>
           <div className="hr-panelNote">
+            <button
+              type="button"
+              className="hr-btn hr-btn--ghost hr-btn--sm"
+              onClick={() => setShowBands("PCB")}
+            >
+              View Table 1 and the parameters
+            </button>
+          </div>
+          <div className="hr-panelNote">
             {taxOutstanding > 0 ? (
               <>
                 {taxOutstanding} employee
@@ -278,7 +310,7 @@ export function StatutoryRatesPage() {
         </Panel>
 
         <Panel>
-          <PanelHead title="HRD Corp levy" sub="Optional" />
+          <PanelHead title="HRD Corp levy" sub={editionLine(data?.editions?.HRD_LEVY) ?? "Optional"} />
           {employerRows.length === 0 ? (
             <div className="hr-panelNote">
               No legal employer is recorded yet.
@@ -345,21 +377,73 @@ export function StatutoryRatesPage() {
         </Panel>
       </div>
 
+      <Panel>
+        <PanelHead
+          title="Editions on file"
+          sub="Built-in editions are verified in code. A later edition is added by Kuwick, never typed by a clinic; a month is priced on the edition in force on its last day."
+        />
+        {(data?.versions ?? []).length === 0 ? (
+          <div className="hr-panelNote">
+            No later edition has been added by Kuwick yet: every scheme runs on
+            the built-in, verified tables.
+          </div>
+        ) : (
+          <Table
+            rows={data?.versions ?? []}
+            rowKey={(row) => row.id}
+            columns={[
+              { title: "Scheme", render: (_: unknown, row) => row.scheme },
+              { title: "Year", render: (_: unknown, row) => String(row.year) },
+              { title: "In force from", render: (_: unknown, row) => row.inForceFrom },
+              {
+                title: "Source document",
+                render: (_: unknown, row) =>
+                  row.sourceUrl ? (
+                    <a href={row.sourceUrl} target="_blank" rel="noreferrer">
+                      {row.sourceDocument}
+                    </a>
+                  ) : (
+                    row.sourceDocument
+                  ),
+              },
+              { title: "Note", render: (_: unknown, row) => row.note ?? "" },
+            ]}
+          />
+        )}
+      </Panel>
       <Drawer
         open={showBands !== null}
         title={
           showBands === "SOCSO"
             ? "SOCSO contribution table"
-            : "EIS contribution table"
+            : showBands === "EIS"
+              ? "EIS contribution table"
+              : showBands === "EPF"
+                ? "EPF Third Schedule"
+                : "PCB — Table 1 and parameters"
         }
         sub={
           showBands === "SOCSO"
             ? `Act 4 schedule, including SKBBK · ${data?.socso.bands.length ?? 0} wage bands · ceiling ${data?.wageCeilingLabel ?? ""}`
-            : `Act 800 schedule · ${data?.eis.bands.length ?? 0} wage bands · ceiling ${data?.wageCeilingLabel ?? ""}`
+            : showBands === "EIS"
+              ? `Act 800 schedule · ${data?.eis.bands.length ?? 0} wage bands · ceiling ${data?.wageCeilingLabel ?? ""}`
+              : showBands === "EPF"
+                ? (editionLine(data?.editions?.EPF) ?? "")
+                : (editionLine(data?.editions?.PCB) ?? "")
         }
         onClose={() => setShowBands(null)}
       >
-        {showBands === "SOCSO" ? (
+        {showBands === "EPF" ? (
+          <EpfScheduleTable
+            tables={data?.tables?.epf}
+            part={epfPart}
+            onPart={setEpfPart}
+            wages={wageSearch}
+            onWages={setWageSearch}
+          />
+        ) : showBands === "PCB" ? (
+          <PcbParametersView pcb={data?.tables?.pcb} />
+        ) : showBands === "SOCSO" ? (
           <Table
             rows={data?.socso.bands}
             rowKey={(band) => String(band.fromCents)}

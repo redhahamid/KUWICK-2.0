@@ -5,6 +5,7 @@ import { currentTenantId } from '../core/tenant-context';
 import { requirePermission, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { STATUTORY_SCHEDULES, meetsApprovalBar, scheduleFor } from '../statutory/registry';
+import { editionsFor } from '../statutory/editions';
 import { EPF_PARTS, EPF_TABLE_CEILING_CENTS } from '../statutory/epf-third-schedule';
 import { SOCSO_BANDS, SOCSO_WAGE_CEILING_CENTS } from '../statutory/socso-act4';
 import { EIS_BANDS, EIS_WAGE_CEILING_CENTS } from '../statutory/eis-act800';
@@ -34,6 +35,16 @@ import { HRD_LEVY_RATE_MANDATORY_PERCENT, HRD_LEVY_RATE_OPTIONAL_PERCENT } from 
  */
 const RM = (cents: number) => (cents / 100).toLocaleString('en-MY', { minimumFractionDigits: 0 });
 
+/** The last day of the month asked for (YYYY-MM), or of this month: the day a run resolves its schedules on. */
+function resolutionDayOf(period: string | undefined): Date {
+  const match = period ? /^(\d{4})-(\d{2})$/.exec(period) : null;
+  const year = match ? Number(match[1]) : new Date().getUTCFullYear();
+  const month = match ? Number(match[2]) : new Date().getUTCMonth() + 1;
+  if (!match && period) throw new BadRequestException('period must be YYYY-MM.');
+  if (month < 1 || month > 12) throw new BadRequestException('period must be YYYY-MM.');
+  return new Date(Date.UTC(year, month, 0));
+}
+
 @Injectable()
 export class StatutorySettingsService {
   constructor(
@@ -44,10 +55,30 @@ export class StatutorySettingsService {
   /** The name this tenant's check is filed under. One row, updated in place. */
   private static readonly CHECK_NAME = 'Clinic check of the statutory registry';
 
-  async rates() {
+  async rates(period?: string) {
     await requirePermission(this.rawPrisma, 'hr.payroll.view');
-    const today = new Date();
+    // RESOLVED FOR A MONTH, the way a run resolves: the last day of the month
+    // asked for, or of this month. A past month shows the edition that priced
+    // it, which may not be the one in force today.
+    const on = resolutionDayOf(period);
+    const today = on;
+    const versions = await this.rawPrisma.statutoryTableVersion.findMany({ orderBy: [{ scheme: 'asc' }, { inForceFrom: 'desc' }] });
+    const editions = editionsFor(on, versions);
     const stamp = (scheme: Parameters<typeof scheduleFor>[0]) => {
+      const platform = editions.sources[scheme as keyof typeof editions.sources];
+      if (platform && platform.origin === 'PLATFORM') {
+        return {
+          id: `platform:${platform.id}`,
+          effectiveFrom: platform.inForceFrom,
+          authority: 'Platform edition',
+          document: platform.document,
+          section: `Added by Kuwick for ${platform.year ?? ''}`.trim(),
+          verification: 'OFFICIAL_SOURCE_VERIFIED' as const,
+          verified: true,
+          evidence: 'Transcribed by the platform from the source document named.',
+          contentHash: platform.contentHash,
+        };
+      }
       const schedule = scheduleFor(scheme, today);
       return schedule
         ? {
@@ -67,16 +98,43 @@ export class StatutorySettingsService {
     const check = await this.readCheck();
 
     return {
+      period: on.toISOString().slice(0, 7),
+      resolvedOn: on.toISOString().slice(0, 10),
+      /** Which edition answers for each scheme on that day. */
+      editions: editions.sources,
+      /** Every platform-added edition, in force or not yet, for the history list. */
+      versions: versions.map((row) => ({
+        id: row.id,
+        scheme: row.scheme,
+        year: row.year,
+        inForceFrom: row.inForceFrom.toISOString().slice(0, 10),
+        sourceDocument: row.sourceDocument,
+        sourceUrl: row.sourceUrl,
+        note: row.note,
+        createdAt: row.createdAt.toISOString(),
+      })),
+      /** The tables themselves, band by band, as resolved for the month. */
+      tables: {
+        epf: {
+          ceilingCents: editions.epf.ceilingCents,
+          parts: editions.epf.parts.map((part) => ({ part: part.part, appliesTo: part.appliesTo, aboveCeiling: part.aboveCeiling, bands: part.bands })),
+        },
+        socso: { ceilingCents: editions.socso.ceilingCents, bands: editions.socso.bands },
+        eis: { ceilingCents: editions.eis.ceilingCents, bands: editions.eis.bands },
+        lindung: { effectiveFrom: editions.lindung.effectiveFrom.toISOString().slice(0, 10), phaseRatesPercent: editions.lindung.phaseRatesPercent },
+        pcb: editions.pcb,
+        hrd: editions.hrd,
+      },
       epf: {
         schedule: stamp('EPF'),
-        tableCeilingCents: EPF_TABLE_CEILING_CENTS,
+        tableCeilingCents: editions.epf.ceilingCents,
         /*
          * The Schedule's parts, as the Schedule states them. A part's headline
          * rate is what applies above the table ceiling; inside the table the
          * employer's share steps at RM5,000, which the row says in words rather
          * than pretending a single percentage.
          */
-        parts: EPF_PARTS.map((part) => ({
+        parts: editions.epf.parts.map((part) => ({
           part: part.part,
           appliesTo: part.appliesTo,
           employeePercent: part.aboveCeiling.employeePercent,
@@ -89,8 +147,8 @@ export class StatutorySettingsService {
       },
       socso: {
         schedule: stamp('SOCSO'),
-        wageCeilingCents: SOCSO_WAGE_CEILING_CENTS,
-        bands: SOCSO_BANDS.map(([fromCents, toCents, cat1Employer, cat1Employee, cat1EmployeeNonInjury, cat2Employer, cat2EmployeeNonInjury]) => ({
+        wageCeilingCents: editions.socso.ceilingCents,
+        bands: editions.socso.bands.map(([fromCents, toCents, cat1Employer, cat1Employee, cat1EmployeeNonInjury, cat2Employer, cat2EmployeeNonInjury]) => ({
           fromCents,
           toCents,
           cat1EmployerCents: cat1Employer,
@@ -102,8 +160,8 @@ export class StatutorySettingsService {
       },
       eis: {
         schedule: stamp('EIS'),
-        wageCeilingCents: EIS_WAGE_CEILING_CENTS,
-        bands: EIS_BANDS.map(([fromCents, toCents, employerCents, employeeCents]) => ({
+        wageCeilingCents: editions.eis.ceilingCents,
+        bands: editions.eis.bands.map(([fromCents, toCents, employerCents, employeeCents]) => ({
           fromCents,
           toCents,
           employerCents,
@@ -112,16 +170,16 @@ export class StatutorySettingsService {
       },
       pcb: {
         schedule: stamp('PCB'),
-        nonResidentRatePercent: NON_RESIDENT_RATE_PERCENT,
+        nonResidentRatePercent: editions.pcb.nonResidentRatePercent,
       },
       hrd: {
         schedule: stamp('HRD_LEVY'),
-        mandatoryPercent: HRD_LEVY_RATE_MANDATORY_PERCENT,
-        optionalPercent: HRD_LEVY_RATE_OPTIONAL_PERCENT,
+        mandatoryPercent: editions.hrd.mandatoryPercent,
+        optionalPercent: editions.hrd.optionalPercent,
       },
       /** The whole registry's hash, so a check can say WHAT was checked. */
       registryHash: STATUTORY_SCHEDULES.map((schedule) => schedule.contentHash).join(':'),
-      wageCeilingLabel: `RM${RM(SOCSO_WAGE_CEILING_CENTS)}`,
+      wageCeilingLabel: `RM${RM(editions.socso.ceilingCents)}`,
       check,
     };
   }

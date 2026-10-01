@@ -1,5 +1,5 @@
 import { SOCSO_BANDS, SOCSO_WAGE_CEILING_CENTS } from './socso-act4';
-import { ContributionOutcome } from './contributions';
+import { BUILT_IN_SOCSO_TABLES, ContributionOutcome, SocsoTables } from './contributions';
 
 /**
  * LINDUNG 24 JAM — the Non-Employment Injury Security Scheme (SKBBK).
@@ -88,15 +88,28 @@ export interface LindungContribution {
  * nobody recorded is an open question, and paying nil for them is a guess that
  * happens to be cheap.
  */
+/** The scheme's own dates and rates, plus the Act 4 table its column sits in. Built-in by default. */
+export interface LindungTables {
+  readonly effectiveFrom: Date;
+  readonly phaseRatesPercent: { readonly PHASE_1: number; readonly PHASE_2: number; readonly PHASE_3: number };
+  readonly socso: SocsoTables;
+}
+export const BUILT_IN_LINDUNG_TABLES: LindungTables = {
+  effectiveFrom: LINDUNG_EFFECTIVE_FROM,
+  phaseRatesPercent: LINDUNG_PHASE_RATES_PERCENT,
+  socso: BUILT_IN_SOCSO_TABLES,
+};
+
 export function lindungContribution(
   wagesCents: number,
   participation: LindungParticipation | null | undefined,
   on: Date,
+  tables: LindungTables = BUILT_IN_LINDUNG_TABLES,
 ): ContributionOutcome<LindungContribution> {
-  if (on < LINDUNG_EFFECTIVE_FROM) {
+  if (on < tables.effectiveFrom) {
     return {
       kind: 'NOT_ELIGIBLE',
-      reason: `LINDUNG 24 JAM is in force from ${LINDUNG_EFFECTIVE_FROM.toISOString().slice(0, 10)}, so nothing is due for this period.`,
+      reason: `LINDUNG 24 JAM is in force from ${tables.effectiveFrom.toISOString().slice(0, 10)}, so nothing is due for this period.`,
     };
   }
 
@@ -134,8 +147,8 @@ export function lindungContribution(
     };
   }
 
-  const atCeiling = wagesCents > SOCSO_WAGE_CEILING_CENTS;
-  for (const [fromCents, toCents, , , c1Nei] of SOCSO_BANDS) {
+  const atCeiling = wagesCents > tables.socso.ceilingCents;
+  for (const [fromCents, toCents, , , c1Nei] of tables.socso.bands) {
     const matches = toCents === null ? wagesCents > fromCents : wagesCents > fromCents || fromCents === 0;
     const withinUpper = toCents === null || wagesCents <= toCents;
     if (matches && withinUpper) {

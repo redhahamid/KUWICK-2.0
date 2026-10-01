@@ -22,6 +22,7 @@ import { PayrollInputsDrawer } from './PayrollInputsDrawer';
 import { HrPage, Panel, PanelHead, StatusChip } from './ui';
 import { IconDownload, IconPlus } from './ui/icons';
 import { initialsOf } from './ui/who';
+import { PayslipWorkings } from './PayslipWorkings';
 import type { PayrollJourney } from '../types';
 
 /** The query's own error, as a sentence, or nothing. */
@@ -95,6 +96,8 @@ interface Breakdown {
   ordinaryRateOfPay?: { hoursPerDay?: number; overtimeDays?: number; overtimeHourly?: number };
   overtimePolicy?: { ruleSet: string | null; mode: string; how: string };
   statutoryNotes?: { epf?: string | null; socso?: string | null; eis?: string | null; pcb?: string | null; lindung?: string | null };
+  /** How each statutory figure was worked out, frozen with the payslip. Absent on older rows. */
+  workings?: Partial<Record<string, Record<string, string | number | null> | null>>;
   pcbSource?: 'CALCULATED' | 'ENTERED' | null;
   age?: number | null;
 }
@@ -386,6 +389,7 @@ export function PayrollEmployeePage() {
                   </div>
                 </div>
               </div>
+              <PayslipWorkings workings={breakdown.workings} />
               <div className="hr-netBox">
                 <div>
                   <div className="hr-netBox__l">Net pay{snapshot?.bankName ? ` · to ${snapshot.bankName}` : ''}</div>

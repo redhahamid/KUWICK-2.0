@@ -228,15 +228,15 @@ export function roundUpToFiveCents(cents: number): number {
 /** Section E(3): below RM10 for the month, the employer deducts nothing. */
 export const MTD_MINIMUM_CENTS = 1_000;
 
-function applyMinimum(cents: number): number {
-  return cents < MTD_MINIMUM_CENTS ? 0 : cents;
+function applyMinimum(cents: number, params: PcbParams = BUILT_IN_PCB_PARAMS): number {
+  return cents < params.minimumCents ? 0 : cents;
 }
 
 // ---------------------------------------------------------------------------
 
 /** Table 1 lookup. P at or below RM5,000 attracts no tax. */
-export function bandForP(pCents: number): PcbBand | null {
-  for (const band of PCB_TABLE_1) {
+export function bandForP(pCents: number, params: PcbParams = BUILT_IN_PCB_PARAMS): PcbBand | null {
+  for (const band of params.table1) {
     if (pCents >= band.fromCents && (band.toCents === null || pCents <= band.toCents)) return band;
   }
   return null;
@@ -252,12 +252,12 @@ function bValue(band: PcbBand, category: PcbCategory): number {
  * The specification sets S to zero outside category 2, and C to zero in
  * category 1, so those are enforced here rather than trusted to the caller.
  */
-export function reliefCents(input: PcbInput): number {
-  const spouse = input.category === 2 ? DEDUCTION_SPOUSE_CENTS : 0;
+export function reliefCents(input: PcbInput, params: PcbParams = BUILT_IN_PCB_PARAMS): number {
+  const spouse = input.category === 2 ? params.spouseCents : 0;
   const children = input.category === 1 ? 0 : input.qualifyingChildren;
-  const disabledSelf = input.disabledSelf ? DEDUCTION_DISABLED_SELF_CENTS : 0;
-  const disabledSpouse = input.category === 2 && input.disabledSpouse ? DEDUCTION_DISABLED_SPOUSE_CENTS : 0;
-  return DEDUCTION_INDIVIDUAL_CENTS + spouse + disabledSelf + disabledSpouse + children * DEDUCTION_PER_CHILD_CENTS;
+  const disabledSelf = input.disabledSelf ? params.disabledSelfCents : 0;
+  const disabledSpouse = input.category === 2 && input.disabledSpouse ? params.disabledSpouseCents : 0;
+  return params.individualCents + spouse + disabledSelf + disabledSpouse + children * params.perChildCents;
 }
 
 /** DU — deduction for a disabled individual. */
@@ -266,16 +266,45 @@ export const DEDUCTION_DISABLED_SELF_CENTS = 600_000;
 export const DEDUCTION_DISABLED_SPOUSE_CENTS = 500_000;
 
 /**
+ * THE SPECIFICATION'S PARAMETERS, handed in rather than reached for, so a
+ * later year's specification — added by the platform as data, in force from
+ * a date — is applied without a code change. Built-in by default: with
+ * nothing handed in the engine reads the 2026 figures exactly as before.
+ */
+export interface PcbParams {
+  readonly table1: readonly PcbBand[];
+  readonly individualCents: number;
+  readonly spouseCents: number;
+  readonly perChildCents: number;
+  readonly disabledSelfCents: number;
+  readonly disabledSpouseCents: number;
+  readonly epfReliefCapCents: number;
+  readonly nonResidentRatePercent: number;
+  readonly minimumCents: number;
+}
+export const BUILT_IN_PCB_PARAMS: PcbParams = {
+  table1: PCB_TABLE_1,
+  individualCents: DEDUCTION_INDIVIDUAL_CENTS,
+  spouseCents: DEDUCTION_SPOUSE_CENTS,
+  perChildCents: DEDUCTION_PER_CHILD_CENTS,
+  disabledSelfCents: DEDUCTION_DISABLED_SELF_CENTS,
+  disabledSpouseCents: DEDUCTION_DISABLED_SPOUSE_CENTS,
+  epfReliefCapCents: EPF_RELIEF_CAP_CENTS,
+  nonResidentRatePercent: NON_RESIDENT_RATE_PERCENT,
+  minimumCents: MTD_MINIMUM_CENTS,
+};
+
+/**
  * K2 — the estimated EPF for each remaining month.
  *
  * "[[Total qualifying amount per year – (K + K1 + Kt)] / n] or K1, whichever
  * is lower". Truncated to cents like every other intermediate value: Exhibit 5
  * takes 3,395/11 = 308.6363… to RM308.63, not RM308.64.
  */
-export function computeK2Cents(input: PcbInput, n: number): number {
+export function computeK2Cents(input: PcbInput, n: number, params: PcbParams = BUILT_IN_PCB_PARAMS): number {
   if (n <= 0) return 0;
   const used = input.accumulatedEpfCents + input.epfOnNormalCents + input.epfOnAdditionalCents;
-  const remaining = Math.max(0, EPF_RELIEF_CAP_CENTS - used);
+  const remaining = Math.max(0, params.epfReliefCapCents - used);
   const spread = truncateToCents(remaining / n);
   return Math.min(spread, input.epfOnNormalCents);
 }
@@ -299,8 +328,14 @@ function cappedNetCents(grossCents: number, epfCents: number, allowanceLeft: num
  * additional-remuneration method: the same expression, once without this
  * month's bonus and once with it.
  */
-export function computeP(input: PcbInput, n: number, k2Cents: number, includeAdditional: boolean): number {
-  let allowanceLeft = EPF_RELIEF_CAP_CENTS;
+export function computeP(
+  input: PcbInput,
+  n: number,
+  k2Cents: number,
+  includeAdditional: boolean,
+  params: PcbParams = BUILT_IN_PCB_PARAMS,
+): number {
+  let allowanceLeft = params.epfReliefCapCents;
 
   const prior = cappedNetCents(input.accumulatedGrossCents, input.accumulatedEpfCents, allowanceLeft);
   allowanceLeft -= prior.used;
@@ -319,13 +354,13 @@ export function computeP(input: PcbInput, n: number, k2Cents: number, includeAdd
 
   const income = prior.net + current.net + future + additional.net;
   const deductions =
-    reliefCents(input) + input.accumulatedDeductionsCents + input.deductionsThisMonthCents;
+    reliefCents(input, params) + input.accumulatedDeductionsCents + input.deductionsThisMonthCents;
   return income - deductions;
 }
 
 /** [(P − M) R + B], the year's tax before any month is apportioned. */
-export function yearTaxCents(pCents: number, category: PcbCategory): number {
-  const band = bandForP(pCents);
+export function yearTaxCents(pCents: number, category: PcbCategory, params: PcbParams = BUILT_IN_PCB_PARAMS): number {
+  const band = bandForP(pCents, params);
   if (!band) return 0;
   return truncateToCents((pCents - band.mCents) * (band.ratePercent / 100)) + bValue(band, category);
 }
@@ -337,7 +372,7 @@ export function yearTaxCents(pCents: number, category: PcbCategory): number {
  * special methods gets a refusal naming the method, because running the
  * ordinary formula for them would produce a confident wrong answer.
  */
-export function computePcb(input: PcbInput, special?: SpecialMethod): PcbOutcome {
+export function computePcb(input: PcbInput, special?: SpecialMethod, params: PcbParams = BUILT_IN_PCB_PARAMS): PcbOutcome {
   if (special && special !== 'NONE') {
     return { kind: 'UNSUPPORTED', reason: SPECIAL_METHOD_REASON[special] };
   }
@@ -345,8 +380,8 @@ export function computePcb(input: PcbInput, special?: SpecialMethod): PcbOutcome
   if (input.residence === 'NON_RESIDENT') {
     // Section D(a): 30% of remuneration, flat. No reliefs, no accumulation.
     const remuneration = input.grossNormalCents + input.grossAdditionalCents;
-    const raw = truncateToCents(remuneration * (NON_RESIDENT_RATE_PERCENT / 100));
-    const mtd = applyMinimum(roundUpToFiveCents(raw));
+    const raw = truncateToCents(remuneration * (params.nonResidentRatePercent / 100));
+    const mtd = applyMinimum(roundUpToFiveCents(raw), params);
     return {
       kind: 'COMPUTED',
       result: {
@@ -356,7 +391,7 @@ export function computePcb(input: PcbInput, special?: SpecialMethod): PcbOutcome
         additionalMtdCents: 0,
         zakatCarriedForwardCents: input.accumulatedZakatCents + input.zakatThisMonthCents,
         working: {
-          pCents: 0, mCents: 0, ratePercent: NON_RESIDENT_RATE_PERCENT, bCents: 0,
+          pCents: 0, mCents: 0, ratePercent: params.nonResidentRatePercent, bCents: 0,
           n: 0, k2Cents: 0, totalReliefCents: 0,
         },
       },
@@ -380,20 +415,20 @@ export function computePcb(input: PcbInput, special?: SpecialMethod): PcbOutcome
    * entirely reasonable.
    */
   const normalOnly: PcbInput = { ...input, grossAdditionalCents: 0, epfOnAdditionalCents: 0 };
-  const k2 = computeK2Cents(normalOnly, n);
+  const k2 = computeK2Cents(normalOnly, n, params);
 
   // --- Step 1: the month's MTD on normal remuneration -----------------------
-  const p = computeP(normalOnly, n, k2, false);
-  const band = bandForP(p);
+  const p = computeP(normalOnly, n, k2, false, params);
+  const band = bandForP(p, params);
   const b = band ? bValue(band, input.category) : 0;
   const m = band ? band.mCents : 0;
   const rate = band ? band.ratePercent : 0;
 
-  const yearTax = yearTaxCents(p, input.category);
+  const yearTax = yearTaxCents(p, input.category, params);
   // The whole numerator is divided by n+1; see the note at the top of the file.
   const numerator = yearTax - (input.accumulatedZakatCents + input.accumulatedMtdPaidCents);
   const normalRaw = truncateToCents(numerator / (n + 1));
-  const normalMtd = applyMinimum(roundUpToFiveCents(Math.max(0, normalRaw)));
+  const normalMtd = applyMinimum(roundUpToFiveCents(Math.max(0, normalRaw)), params);
 
   // Step 1[D]: net of this month's zakat. A negative result is nil, and the
   // unused zakat is carried forward in Z rather than lost.
@@ -410,7 +445,7 @@ export function computePcb(input: PcbInput, special?: SpecialMethod): PcbOutcome
         netNormalMtdCents: netNormalMtd,
         additionalMtdCents: 0,
         zakatCarriedForwardCents: zakatCarried,
-        working: { pCents: p, mCents: m, ratePercent: rate, bCents: b, n, k2Cents: k2, totalReliefCents: reliefCents(input) },
+        working: { pCents: p, mCents: m, ratePercent: rate, bCents: b, n, k2Cents: k2, totalReliefCents: reliefCents(input, params) },
       },
     };
   }
@@ -421,15 +456,15 @@ export function computePcb(input: PcbInput, special?: SpecialMethod): PcbOutcome
 
   // Step 2[B]: P again, this time including the bonus. K2 is recomputed from
   // the FULL input, because Kt now consumes part of the year's EPF relief.
-  const k2WithAdditional = computeK2Cents(input, n);
-  const pWithAdditional = computeP(input, n, k2WithAdditional, true);
+  const k2WithAdditional = computeK2Cents(input, n, params);
+  const pWithAdditional = computeP(input, n, k2WithAdditional, true, params);
 
   // Step 3: the year's total tax at that higher chargeable income.
-  const totalYearTax = yearTaxCents(pWithAdditional, input.category);
+  const totalYearTax = yearTaxCents(pWithAdditional, input.category, params);
 
   // Step 4: the bonus's own MTD is the difference, plus zakat already paid.
   const additionalRaw = truncateToCents(totalYearTax - yearMtd + input.accumulatedZakatCents);
-  const additionalMtd = applyMinimum(roundUpToFiveCents(Math.max(0, additionalRaw)));
+  const additionalMtd = applyMinimum(roundUpToFiveCents(Math.max(0, additionalRaw)), params);
 
   // Step 5: what is deducted this month.
   return {
@@ -442,7 +477,7 @@ export function computePcb(input: PcbInput, special?: SpecialMethod): PcbOutcome
       zakatCarriedForwardCents: zakatCarried,
       working: {
         pCents: p, mCents: m, ratePercent: rate, bCents: b, n, k2Cents: k2,
-        totalReliefCents: reliefCents(input),
+        totalReliefCents: reliefCents(input, params),
         pWithAdditionalCents: pWithAdditional,
         yearTaxCents: totalYearTax,
         yearMtdCents: yearMtd,

@@ -3182,6 +3182,63 @@ export interface StatutoryRates {
   registryHash: string;
   wageCeilingLabel: string;
   check: StatutoryCheck | null;
+  /** The month the tables were resolved for (YYYY-MM) and the day they were resolved on. */
+  period?: string;
+  resolvedOn?: string;
+  /** Which edition answers for each scheme on that day. */
+  editions?: Record<'EPF' | 'SOCSO' | 'EIS' | 'LINDUNG' | 'PCB' | 'HRD_LEVY', StatutoryEditionSource>;
+  /** Every platform-added edition, in force or not yet. */
+  versions?: StatutoryTableVersionRow[];
+  /** The tables themselves, band by band, as resolved for the month. */
+  tables?: StatutoryTables;
+}
+
+export interface StatutoryEditionSource {
+  scheme: string;
+  origin: 'BUILT_IN' | 'PLATFORM';
+  id: string;
+  document: string;
+  year: number | null;
+  inForceFrom: string;
+  contentHash: string;
+}
+
+export interface StatutoryTableVersionRow {
+  id: string;
+  scheme: string;
+  year: number;
+  inForceFrom: string;
+  sourceDocument: string;
+  sourceUrl: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface StatutoryTables {
+  epf: {
+    ceilingCents: number;
+    parts: {
+      part: 'A' | 'C' | 'E' | 'F';
+      appliesTo: string;
+      aboveCeiling: { employerPercent: number; employeePercent: number };
+      bands: [number, number, number, number][];
+    }[];
+  };
+  socso: { ceilingCents: number; bands: [number, number | null, number, number, number, number, number][] };
+  eis: { ceilingCents: number; bands: [number, number | null, number, number][] };
+  lindung: { effectiveFrom: string; phaseRatesPercent: { PHASE_1: number; PHASE_2: number; PHASE_3: number } };
+  pcb: {
+    table1: { fromCents: number; toCents: number | null; mCents: number; ratePercent: number; bCategory13Cents: number; bCategory2Cents: number }[];
+    individualCents: number;
+    spouseCents: number;
+    perChildCents: number;
+    disabledSelfCents: number;
+    disabledSpouseCents: number;
+    epfReliefCapCents: number;
+    nonResidentRatePercent: number;
+    minimumCents: number;
+  };
+  hrd: { mandatoryPercent: number; optionalPercent: number };
 }
 
 /** One of the clinic's pay-rule sets ("How pay is worked out"). */
