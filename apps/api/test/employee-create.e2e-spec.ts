@@ -317,3 +317,97 @@ describe('Adding an employee (e2e)', () => {
     expect(Array.isArray(response.body)).toBe(true);
   });
 });
+
+/*
+ * THE RECORD SET THE FIRST MONTH'S UAT ASKED FOR: the clinic's own job titles,
+ * the address in parts, a passport beside the IC, the days a week, and a rest
+ * day that varies as an answer rather than a gap.
+ */
+describe('the employee record set (e2e)', () => {
+  let app: INestApplication;
+  let prisma: PrismaClient;
+  let tenantId: string;
+  let bearer: string;
+  let clinicId: string;
+
+  const server = () => app.getHttpServer();
+  const create = (body: Record<string, unknown>) =>
+    request(server()).post('/workforce/employees').set('Authorization', bearer).send(body);
+  const record = async (staffId: string) =>
+    (await request(server()).get(`/workforce/employees/${staffId}/record`).set('Authorization', bearer).expect(200)).body;
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = moduleRef.createNestApplication();
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    await app.init();
+    prisma = createTestPrismaClient();
+    tenantId = randomId();
+    await withTenantContext(prisma, tenantId, (tx) => tx.tenant.create({ data: { id: tenantId, name: 'Klinik Rekod (Synthetic)' } }));
+    bearer = (await createOwnerAndBearer(prisma, tenantId)).bearer;
+    clinicId = (await request(server()).post('/clinics').set('Authorization', bearer).send({ name: 'Klinik Rekod' }).expect(201)).body.id;
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+    await app.close();
+  });
+
+  it('adopts the positions already typed as job titles, picks one by id, and renames it through every record', async () => {
+    const typed = await create({ fullName: 'Typed Position Ujian', role: Role.FRONT_DESK_CLINICAL_STAFF, clinicId, position: 'Clinic assistant', startDate: '2026-09-01' }).expect(201);
+
+    const listed = (await request(server()).get('/workforce/job-titles').set('Authorization', bearer).expect(200)).body as { id: string; name: string; active: boolean; employeeCount: number }[];
+    const adopted = listed.find((row) => row.name === 'Clinic assistant')!;
+    expect(adopted).toMatchObject({ active: true, employeeCount: 1 });
+    expect((await record(typed.body.staff.id)).employment).toMatchObject({ position: 'Clinic assistant', jobTitleId: adopted.id });
+
+    const pharmacist = await request(server()).post('/workforce/job-titles').set('Authorization', bearer).send({ name: 'Pharmacist' }).expect(201);
+    await request(server()).post('/workforce/job-titles').set('Authorization', bearer).send({ name: 'pharmacist' }).expect(409);
+    const picked = await create({ fullName: 'Picked Title Ujian', role: Role.FRONT_DESK_CLINICAL_STAFF, clinicId, jobTitleId: pharmacist.body.id, startDate: '2026-09-01' }).expect(201);
+    expect((await record(picked.body.staff.id)).employment).toMatchObject({ position: 'Pharmacist', jobTitleId: pharmacist.body.id });
+    await create({ fullName: 'Stranger Title Ujian', role: Role.FRONT_DESK_CLINICAL_STAFF, clinicId, jobTitleId: randomId() }).expect(400);
+
+    await request(server()).patch(`/workforce/job-titles/${pharmacist.body.id}`).set('Authorization', bearer).send({ name: 'Pharmacist (registered)' }).expect(200);
+    expect((await record(picked.body.staff.id)).employment.position).toBe('Pharmacist (registered)');
+    const retired = await request(server()).patch(`/workforce/job-titles/${pharmacist.body.id}`).set('Authorization', bearer).send({ active: false }).expect(200);
+    expect(retired.body).toMatchObject({ active: false, employeeCount: 1 });
+  });
+
+  it('records the address in parts, the passport beside the IC, and the days a week; the passport never comes back', async () => {
+    const created = await create({
+      fullName: 'Alamat Penuh Ujian',
+      role: Role.FRONT_DESK_CLINICAL_STAFF,
+      clinicId,
+      startDate: '2026-09-01',
+      identifierType: 'NRIC',
+      identifierValue: '900101-14-5567',
+      passportNumber: 'A12345678',
+      address: '12, Jalan Bangi Avenue 3',
+      postcode: '43650',
+      city: 'Bandar Baru Bangi',
+      state: 'Selangor',
+      workDaysPerWeek: 5.5,
+    }).expect(201);
+    expect(created.body.passportNumber).toBeUndefined();
+    expect(created.body.passportOnFile).toBe(true);
+    const full = await record(created.body.staff.id);
+    expect(full.identity).toMatchObject({ address: '12, Jalan Bangi Avenue 3', postcode: '43650', city: 'Bandar Baru Bangi', state: 'Selangor', passportOnFile: true });
+    expect(full.identity.passportNumber).toBeUndefined();
+    expect(full.employment.workDaysPerWeek).toBe(5.5);
+  });
+
+  it('takes a rest day that varies as an answer the month can run on', async () => {
+    const created = await create({ fullName: 'Rehat Berubah Ujian', role: Role.FRONT_DESK_CLINICAL_STAFF, clinicId, startDate: '2026-09-01' }).expect(201);
+    const staffId = created.body.staff.id as string;
+    await request(server())
+      .post(`/workforce/employees/${staffId}/statutory-classification`)
+      .set('Authorization', bearer)
+      .send({ effectiveFrom: '2026-09-01', epfMembership: 'MALAYSIAN_CITIZEN', taxResidence: 'RESIDENT', pcbCategory: 'CATEGORY_1', restDayOfWeek: null, restDayVaries: true, reason: 'No fixed rest day' })
+      .expect(201);
+    const full = await record(staffId);
+    expect(full.statutory).toMatchObject({ restDayOfWeek: null, restDayVaries: true });
+    const restDay = (full.payrollReadiness.items as { key: string; done: boolean; detail: string }[]).find((item) => item.key === 'restDay')!;
+    expect(restDay.done).toBe(true);
+    expect(restDay.detail).toContain('Varies week to week');
+  });
+});

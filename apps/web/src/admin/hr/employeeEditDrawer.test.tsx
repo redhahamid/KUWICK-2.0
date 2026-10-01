@@ -45,7 +45,12 @@ const EMPLOYERS = [
   { id: 'emp-old', name: 'Syarikat Lama Sdn Bhd', active: false },
 ];
 
+const createTitleMutate = vi.fn().mockResolvedValue({ id: 'jt-new', name: 'Pharmacist', active: true, employeeCount: 0 });
+
 vi.mock('../hooks/useAdmin', () => ({
+  useJobTitles: () => ({ data: [{ id: 'jt-1', name: 'Clinic assistant', active: true, employeeCount: 1 }], isLoading: false }),
+  useCreateJobTitle: () => ({ mutateAsync: createTitleMutate, isPending: false }),
+  useUpdateJobTitle: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpsertEmployee: () => ({ mutateAsync: upsertMutate, isPending: false }),
   useAssignEmployer: () => ({ mutateAsync: assignMutate, isPending: false }),
   useEmployees: () => ({ data: [] }),
@@ -129,7 +134,7 @@ describe('the employing company, on the employment tab', () => {
 
   it('leaves the company alone when nothing about it was touched', async () => {
     open();
-    fireEvent.change(screen.getByLabelText('Position'), { target: { value: 'Senior clinic assistant' } });
+    fireEvent.change(screen.getByLabelText('Department'), { target: { value: 'Clinical' } });
     fireEvent.click(saveButton());
 
     await waitFor(() => expect(upsertMutate).toHaveBeenCalled());
@@ -217,6 +222,28 @@ describe('the rest day, on the employment tab', () => {
       staffId: 'staff-1',
       effectiveFrom: '2026-01-01',
       restDayOfWeek: 0,
+      restDayVaries: false,
+      reason: 'Rest day recorded on the employment record',
+    });
+  });
+
+  /*
+   * NO FIXED REST DAY is an answer too: s.59 lets the employer vary it week to
+   * week. Recorded as "varies" with no weekday, so the month runs and the run
+   * says rest-day pay for them is keyed by hand.
+   */
+  it('records a rest day that varies week to week, with no weekday', async () => {
+    versions = [{ id: 'v1', effectiveFrom: '2026-01-01', current: true, restDayOfWeek: null }];
+    open({ startDate: '2026-01-01' });
+    await chooseDay('Varies week to week');
+    fireEvent.click(saveButton());
+
+    await waitFor(() => expect(standingMutate).toHaveBeenCalled());
+    expect(standingMutate).toHaveBeenCalledWith({
+      staffId: 'staff-1',
+      effectiveFrom: '2026-01-01',
+      restDayOfWeek: null,
+      restDayVaries: true,
       reason: 'Rest day recorded on the employment record',
     });
   });
@@ -279,7 +306,7 @@ describe('the rest day, on the employment tab', () => {
   it('leaves the standing alone when the rest day was not touched', async () => {
     versions = [{ id: 'v1', effectiveFrom: '2026-01-01', current: true, restDayOfWeek: 0 }];
     open({ startDate: '2026-01-01' });
-    fireEvent.change(screen.getByLabelText('Position'), { target: { value: 'Senior clinic assistant' } });
+    fireEvent.change(screen.getByLabelText('Department'), { target: { value: 'Clinical' } });
     fireEvent.click(saveButton());
 
     await waitFor(() => expect(upsertMutate).toHaveBeenCalled());

@@ -16,6 +16,11 @@ export class UpsertEmployeeDto {
   @IsOptional() @IsString() @MaxLength(40) phone?: string;
   @IsOptional() @IsString() @MaxLength(160) email?: string;
   @IsOptional() @IsString() @MaxLength(500) address?: string;
+  @IsOptional() @IsString() @MaxLength(10) postcode?: string;
+  @IsOptional() @IsString() @MaxLength(80) city?: string;
+  @IsOptional() @IsString() @MaxLength(60) state?: string;
+  /** A non-citizen's passport, beside the identity document rather than instead of it. Write-only, like the IC. */
+  @IsOptional() @IsString() @MaxLength(40) passportNumber?: string;
   @IsOptional() @IsString() @MaxLength(120) emergencyContactName?: string;
   @IsOptional() @IsString() @MaxLength(40) emergencyContactPhone?: string;
   @IsOptional() @IsString() @MaxLength(60) emergencyContactRelation?: string;
@@ -24,6 +29,10 @@ export class UpsertEmployeeDto {
   @IsOptional() @IsEnum(EmploymentStatus) employmentStatus?: EmploymentStatus;
   @IsOptional() @IsString() @MaxLength(80) department?: string;
   @IsOptional() @IsString() @MaxLength(80) position?: string;
+  /** The clinic's own job title the position came from; the service copies its name into `position`. */
+  @IsOptional() @IsUUID() jobTitleId?: string;
+  /** 5, 5.5 or 6 — the days a week they work. Recorded and shown; the ordinary-rate divisor is the rule set's. */
+  @IsOptional() @IsNumber() @Min(1) @Max(7) workDaysPerWeek?: number;
   @IsOptional() @IsUUID() managerStaffId?: string;
   @IsOptional() @IsISO8601() startDate?: string;
   @IsOptional() @IsISO8601() confirmedDate?: string;

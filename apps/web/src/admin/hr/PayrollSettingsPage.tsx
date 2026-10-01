@@ -263,7 +263,7 @@ export function PayrollSettingsPage() {
     setOtDays('26');
     setPcbProjection('CURRENT_MONTH');
     setHoursDay('7.5');
-    setMultipliers({ 'ruleset-ot-multiplier': '', 'ruleset-restday-multiplier': '', 'ruleset-holiday-multiplier': '' });
+    setMultipliers({ 'ruleset-ot-multiplier': '', 'ruleset-restday-multiplier': '', 'ruleset-holiday-multiplier': '', 'ruleset-festive-multiplier': '' });
     setBelowActOk(false);
     setBelowActWhy('');
     setProblem(null);

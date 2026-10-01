@@ -71,6 +71,8 @@ export interface ReadinessStanding {
   taxResidence: string | null;
   pcbCategory: string | number | null;
   restDayOfWeek: number | null;
+  /** No fixed rest day: an answer, not a gap. */
+  restDayVaries?: boolean;
 }
 
 export interface ReadinessFacts {
@@ -143,11 +145,13 @@ export function buildPayrollReadiness(facts: ReadinessFacts): ReadinessResult {
       link: '?tab=statutory&focus=standing',
       label: 'Rest day',
       severity: 'BLOCKING',
-      done: standing.restDayOfWeek !== null && standing.restDayOfWeek !== undefined,
+      done: (standing.restDayOfWeek !== null && standing.restDayOfWeek !== undefined) || standing.restDayVaries === true,
       detail:
-        standing.restDayOfWeek === null || standing.restDayOfWeek === undefined
-          ? 'No rest day is designated. The Employment Act requires one a week, and working it is paid in days at the ordinary rate rather than as hours of overtime — so without it their extra hours cannot be priced.'
-          : `${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][standing.restDayOfWeek]}. Work on it is paid under s.60(3), not as ordinary overtime.`,
+        standing.restDayVaries === true
+          ? 'Varies week to week. Kuwick cannot tell which worked day was the rest day, so rest-day pay for them is keyed by hand when it arises; the run says so each month.'
+          : standing.restDayOfWeek === null || standing.restDayOfWeek === undefined
+            ? 'No rest day is designated. The Employment Act requires one a week, and working it is paid in days at the ordinary rate rather than as hours of overtime — so without it their extra hours cannot be priced.'
+            : `${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][standing.restDayOfWeek]}. Work on it is paid under s.60(3), not as ordinary overtime.`,
     },
     {
       key: 'bank',

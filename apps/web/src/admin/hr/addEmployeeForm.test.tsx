@@ -62,7 +62,7 @@ const current = () => document.querySelector('[aria-current="step"]')?.textConte
 
 async function personal() {
   fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Demo Person' } });
-  await choose('Job', 'Front desk / clinical staff');
+  await choose('Account role', 'Front desk / clinical staff');
 }
 
 beforeEach(() => {
@@ -206,5 +206,69 @@ describe('the stage strip', () => {
     // The stage it came back from was reached, so it is still a tap away.
     fireEvent.click(screen.getByRole('button', { name: /Employment/ }));
     await waitFor(() => expect(current()).toContain('Employment'));
+  });
+});
+
+/*
+ * THE IC SAYS WHEN THEY WERE BORN AND WHICH THEY ARE. YYMMDD is the birth date
+ * and the last digit is odd for a man, even for a woman, so a valid IC fills
+ * both — into boxes that are still boxes.
+ */
+describe('what the IC already says', () => {
+  it('fills the date of birth and the gender from a valid IC, and keeps a typed answer', async () => {
+    open();
+    fireEvent.change(screen.getByLabelText('IC number'), { target: { value: '900101-14-5567' } });
+    await waitFor(() => expect((screen.getByLabelText('Date of birth') as HTMLInputElement).value).toBe('1 Jan 1990'));
+    // 7 is odd: male. The combobox shows the chosen label.
+    await waitFor(() => expect(screen.getByLabelText('Gender').closest('.ant-select')?.textContent).toContain('Male'));
+    // Typed over, the typed answer stays when the IC changes.
+    await choose('Gender', 'Female');
+    fireEvent.change(screen.getByLabelText('IC number'), { target: { value: '850505-10-5571' } });
+    await waitFor(() => expect((screen.getByLabelText('Date of birth') as HTMLInputElement).value).toBe('5 May 1985'));
+    expect(screen.getByLabelText('Gender').closest('.ant-select')?.textContent).toContain('Female');
+  });
+
+  it('leaves both alone for a passport, which says neither', async () => {
+    open();
+    await choose('Document', 'Passport');
+    fireEvent.change(screen.getByLabelText('Passport number'), { target: { value: '900101145567' } });
+    await act(async () => {});
+    expect((screen.getByLabelText('Date of birth') as HTMLInputElement).value).toBe('');
+  });
+});
+
+/*
+ * THE RECORD SET: a rest day that varies is an answer, the address goes in
+ * parts, and the days a week are recorded rather than derived.
+ */
+describe('the employee record set', () => {
+  it('records a rest day that varies as an answer, and sends the address in parts', async () => {
+    open();
+    await personal();
+    fireEvent.change(screen.getByLabelText('Street address'), { target: { value: '12, Jalan Bangi Avenue 3' } });
+    fireEvent.change(screen.getByLabelText('Postcode'), { target: { value: '43650' } });
+    fireEvent.change(screen.getByLabelText('City or town'), { target: { value: 'Bandar Baru Bangi' } });
+    fireEvent.change(screen.getByLabelText('State'), { target: { value: 'Selangor' } });
+    fireEvent.click(await screen.findByTitle('Selangor'));
+    await act(async () => {});
+    fireEvent.click(continueButton());
+    await waitFor(() => expect(current()).toContain('Employment'));
+    typeDate('Started on', '1 Jan 2026');
+    await choose('Days a week', '5½ days');
+    fireEvent.click(continueButton());
+    await waitFor(() => expect(current()).toContain('Pay & Statutory'));
+    await choose('Rest day', 'Varies week to week');
+    fireEvent.click(continueButton());
+    await waitFor(() => expect(current()).toContain('Review'));
+    // Varies is an answer: the review no longer says the rest day is missing.
+    expect(screen.queryByText(/No rest day/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add employee' }));
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    const created = post.mock.calls.find((call) => call[0] === '/workforce/employees')!;
+    expect(created[1]).toMatchObject({ address: '12, Jalan Bangi Avenue 3', postcode: '43650', city: 'Bandar Baru Bangi', state: 'Selangor', workDaysPerWeek: 5.5 });
+    await waitFor(() => expect(post.mock.calls.some((call) => call[0] === '/workforce/employees/staff-new/statutory-classification')).toBe(true));
+    const standing = post.mock.calls.find((call) => call[0] === '/workforce/employees/staff-new/statutory-classification')!;
+    expect(standing[1]).toMatchObject({ restDayOfWeek: null, restDayVaries: true });
   });
 });

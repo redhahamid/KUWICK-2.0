@@ -178,6 +178,17 @@ describe('the statutory standing item', () => {
     expect(result.ready).toBe(true);
   });
 
+  it('takes a rest day that varies week to week as recorded, and says what that costs', () => {
+    const result = buildPayrollReadiness({
+      ...COMPLETE,
+      standing: { ...COMPLETE.standing, restDayOfWeek: null, restDayVaries: true },
+    });
+    const restDay = result.items.find((item) => item.key === 'restDay')!;
+    expect(restDay.done).toBe(true);
+    expect(restDay.detail).toContain('Varies week to week');
+    expect(result.ready).toBe(true);
+  });
+
   it('does not demand a membership number for a scheme that does not apply', () => {
     const result = buildPayrollReadiness({
       ...COMPLETE,

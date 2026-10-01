@@ -47,6 +47,7 @@ type PrismaClassification = {
   disabledSelf: boolean;
   disabledSpouse: boolean;
   restDayOfWeek: number | null;
+  restDayVaries?: boolean;
   overtimeContractPolicy: StatutoryClassificationRow['overtimeContractPolicy'];
 };
 
@@ -75,6 +76,7 @@ export function toClassificationRow(row: PrismaClassification): StatutoryClassif
     disabledSelf: row.disabledSelf,
     disabledSpouse: row.disabledSpouse,
     restDayOfWeek: row.restDayOfWeek,
+    restDayVaries: row.restDayVaries ?? false,
     overtimeContractPolicy: row.overtimeContractPolicy,
   };
 }
@@ -111,6 +113,7 @@ function applyToBase(
     disabledSelf: pick('disabledSelf', false),
     disabledSpouse: pick('disabledSpouse', false),
     restDayOfWeek: pick('restDayOfWeek', null),
+    restDayVaries: pick('restDayVaries', false),
     overtimeContractPolicy: pick('overtimeContractPolicy', null),
   };
 }
@@ -167,6 +170,7 @@ export class StatutoryClassificationService {
         disabledSelf: row.disabledSelf,
         disabledSpouse: row.disabledSpouse,
         restDayOfWeek: row.restDayOfWeek,
+        restDayVaries: row.restDayVaries,
         overtimeContractPolicy: row.overtimeContractPolicy,
         reason: row.reason,
         note: row.note,

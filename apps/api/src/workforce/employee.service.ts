@@ -126,9 +126,9 @@ export class EmployeeService {
       },
     });
     if (!profile) throw new NotFoundException('No employee profile for that staff member');
-    const { basicSalary, hourlyRate, bankAccountNo, bankName, bankAccountName, epfNumber, socsoNumber, taxNumber, identifierValue, ...safe } =
+    const { basicSalary, hourlyRate, bankAccountNo, bankName, bankAccountName, epfNumber, socsoNumber, taxNumber, identifierValue, passportNumber, ...safe } =
       profile;
-    return { ...safe, hasSalaryOnRecord: basicSalary !== null || hourlyRate !== null };
+    return { ...safe, passportOnFile: Boolean(passportNumber), hasSalaryOnRecord: basicSalary !== null || hourlyRate !== null };
   }
 
   /**
@@ -278,6 +278,7 @@ export class EmployeeService {
             disabledSelf: false,
             disabledSpouse: false,
             restDayOfWeek: null,
+            restDayVaries: false,
             overtimeContractPolicy: null,
           };
 
@@ -304,6 +305,11 @@ export class EmployeeService {
         nationality: profile.nationality,
         maritalStatus: profile.maritalStatus,
         address: profile.address,
+        postcode: profile.postcode,
+        city: profile.city,
+        state: profile.state,
+        /** The number itself never leaves the record read; the payslip and the filings read it. */
+        passportOnFile: Boolean(profile.passportNumber),
         emergencyContactName: profile.emergencyContactName,
         emergencyContactPhone: profile.emergencyContactPhone,
         emergencyContactRelation: profile.emergencyContactRelation,
@@ -311,6 +317,8 @@ export class EmployeeService {
       employment: {
         employeeNo: profile.employeeNo,
         position: profile.position,
+        jobTitleId: profile.jobTitleId,
+        workDaysPerWeek: profile.workDaysPerWeek === null ? null : Number(profile.workDaysPerWeek),
         department: profile.department,
         employmentType: profile.employmentType,
         employmentStatus: profile.employmentStatus,
@@ -384,6 +392,7 @@ export class EmployeeService {
         pcbCategory: statutory.pcbCategory,
         qualifyingChildren: statutory.qualifyingChildren,
         restDayOfWeek: statutory.restDayOfWeek,
+        restDayVaries: statutory.restDayVaries,
         overtimeContractPolicy: statutory.overtimeContractPolicy,
         epfMembership: statutory.epfMembership,
         lindungParticipation: statutory.lindungParticipation,
@@ -937,8 +946,17 @@ export class EmployeeService {
       // by including it in the same form submission.
       const mayEditPay = actorCan(actor, 'hr.payroll.view');
       const payFields = dto.bankAccountNo !== undefined;
+      // A job title from the clinic's list carries its name into `position`,
+      // so every reader of the record sees the same words the list holds.
+      let titledPosition: string | undefined;
+      if (dto.jobTitleId) {
+        const title = await tx.jobTitle.findFirst({ where: { id: dto.jobTitleId } });
+        if (!title) throw new BadRequestException('That job title is not on this clinic’s list.');
+        titledPosition = title.name;
+      }
       const data = {
         ...dto,
+        ...(titledPosition === undefined ? {} : { position: titledPosition }),
         ...(payFields && !mayEditPay ? { bankAccountNo: undefined } : {}),
         ...(dto.dateOfBirth ? { dateOfBirth: new Date(dto.dateOfBirth) } : {}),
         ...(dto.startDate ? { startDate: new Date(dto.startDate) } : {}),
@@ -998,6 +1016,7 @@ const SENSITIVE = new Set([
   'bankAccountNo',
   'bankAccountName',
   'identifierValue',
+  'passportNumber',
   'epfNumber',
   'socsoNumber',
   'taxNumber',

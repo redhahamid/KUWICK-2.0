@@ -85,13 +85,13 @@ export function CompleteProfileDrawer({
       </p>
       <Form form={form} layout="vertical" initialValues={{ employmentType: 'PERMANENT', startDate: dayjs() }}>
         <Form.Item name="position" label="Position">
-          <Input size="large" placeholder="Staff Nurse" />
+          <Input size="large" placeholder="e.g. Staff Nurse" />
         </Form.Item>
         <Form.Item name="employeeNo" label="Employee number">
-          <Input size="large" placeholder="E-1024" />
+          <Input size="large" placeholder="e.g. E-1024" />
         </Form.Item>
         <Form.Item name="department" label="Department or team">
-          <Input size="large" placeholder="Clinical" />
+          <Input size="large" placeholder="e.g. Clinical" />
         </Form.Item>
         <Form.Item name="employmentType" label="Employment type">
           <Select options={EMPLOYMENT_TYPES} size="large" />
@@ -121,9 +121,17 @@ export function CompleteProfileDrawer({
             }),
           ]}
         >
-          <Input size="large" placeholder="e.g. 900101-14-5567" />
+          <Input
+            size="large"
+            placeholder="e.g. 900101-14-5567"
+            onChange={(event) => {
+              // A valid IC fills the date of birth into a box that stays a box.
+              const parsed = form.getFieldValue('identifierType') === 'PASSPORT' ? null : parseNric(event.target.value);
+              if (parsed) form.setFieldValue('dateOfBirth', parsed.dob);
+            }}
+          />
         </Form.Item>
-        <Form.Item name="dateOfBirth" label="Date of birth">
+        <Form.Item name="dateOfBirth" label="Date of birth" extra="Filled from a Malaysian IC; still yours to change.">
           <DatePicker style={{ width: '100%' }} size="large" format="D MMM YYYY" />
         </Form.Item>
         <Form.Item name="phone" label="Phone">

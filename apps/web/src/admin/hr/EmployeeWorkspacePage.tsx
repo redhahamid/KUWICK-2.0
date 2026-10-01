@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { addressTail } from './malaysianStates';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Dropdown, Tooltip } from 'antd';
 import dayjs from 'dayjs';
@@ -277,6 +278,9 @@ function ProfileTab({ data, onEdit }: { data: EmployeeRecord; onEdit?: () => voi
     : null;
   const sighted = [
     { label: 'IC or passport', present: Boolean(id.dateOfBirth), detail: 'Date of birth recorded' },
+    ...(id.passportOnFile || (id.nationality && id.nationality !== 'Malaysian')
+      ? [{ label: 'Passport', present: id.passportOnFile, detail: 'A non-citizen’s passport, for the filings' }]
+      : []),
     { label: 'EPF / KWSP number', present: data.statutory.epfNumberOnFile, detail: 'Needed for the EPF return' },
     { label: 'SOCSO / PERKESO number', present: data.statutory.socsoNumberOnFile, detail: 'Needed for the SOCSO return' },
     { label: 'Income tax number', present: data.statutory.taxNumberOnFile, detail: 'Needed for the monthly-tax return' },
@@ -295,7 +299,7 @@ function ProfileTab({ data, onEdit }: { data: EmployeeRecord; onEdit?: () => voi
           ['Marital status', id.maritalStatus ? humanise(id.maritalStatus) : null],
           ['Phone', id.phone],
           ['Email', id.email],
-          ['Address', id.address],
+          ['Address', [id.address, addressTail(id)].filter(Boolean).join(', ') || null],
           ['Emergency contact', emergency],
         ]}
       />
@@ -329,14 +333,22 @@ function EmploymentTab({ data, onEdit, onResign }: { data: EmployeeRecord; onEdi
   const canSeePay = data.payVisible && data.salaryPeriods !== null;
   const rules = policies.data?.policies.find((row) => row.isDefault) ?? policies.data?.policies[0];
   const restDay = data.statutory.classificationState === 'RESOLVED' ? data.statutory.restDayOfWeek : null;
+  const restDayVaries = data.statutory.classificationState === 'RESOLVED' && data.statutory.restDayVaries;
+  const daysPerWeek = data.employment.workDaysPerWeek;
+  /*
+   * WHAT IS RECORDED, not what a six-day span would imply: the days a week
+   * off the record, the rest day off the standing, and the divisor off the
+   * rule set, each named only when it is known.
+   */
   const workingDays = useMemo(() => {
-    if (restDay === null || restDay === undefined) return null;
-    // Six days around the rest day: rest day Sunday → Mon – Sat.
-    const first = DAY_NAMES[(restDay + 1) % 7].slice(0, 3);
-    const last = DAY_NAMES[(restDay + 6) % 7].slice(0, 3);
+    const parts: string[] = [];
+    if (daysPerWeek !== null && daysPerWeek !== undefined) parts.push(`${daysPerWeek}-day week`);
+    if (restDayVaries) parts.push('rest day varies week to week');
+    else if (restDay !== null && restDay !== undefined) parts.push(`rest day ${DAY_NAMES[restDay]}`);
+    if (parts.length === 0) return null;
     const divisor = rules?.overtime.days ? `, ${rules.overtime.days}-day divisor` : '';
-    return `${first} – ${last}${divisor}`;
-  }, [restDay, rules]);
+    return `${parts.join(' · ')}${divisor}`;
+  }, [daysPerWeek, restDay, restDayVaries, rules]);
   const employment = data.employment;
   const gone = GONE.has(employment.employmentStatus);
 
@@ -352,7 +364,7 @@ function EmploymentTab({ data, onEdit, onResign }: { data: EmployeeRecord; onEdi
       <Kv
         pairs={[
           ['Type', gone ? `${humanise(employment.employmentStatus)} · was ${TYPE_LABEL[employment.employmentType] ?? humanise(employment.employmentType)}` : TYPE_LABEL[employment.employmentType] ?? humanise(employment.employmentType)],
-          ['Working days', workingDays ?? <span className="hr-faint">Rest day not recorded</span>],
+          ['Working days', workingDays ?? <span className="hr-faint">Days a week and rest day not recorded</span>],
           ['Position', employment.position],
           [
             'Annual leave',

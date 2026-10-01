@@ -1419,10 +1419,23 @@ export class PayrollService {
         if (
           !isBonusRun &&
           classification.restDayOfWeek === null &&
+          !classification.restDayVaries &&
           fullMonthlyCents <= FIRST_SCHEDULE_WAGE_CEILING_CENTS &&
           attendance.some((row) => (row.workedMinutes ?? 0) > 0)
         ) {
           raise('NO_REST_DAY', employee);
+        }
+        // A REST DAY THAT VARIES is an answer, not a gap — but it is an answer
+        // the engine cannot price from: no weekday is the rest day, so a day
+        // worked is priced as a normal day. Said once per person per month,
+        // as information, so rest-day pay is keyed by hand where it arises.
+        if (
+          !isBonusRun &&
+          classification.restDayOfWeek === null &&
+          classification.restDayVaries &&
+          attendance.some((row) => (row.workedMinutes ?? 0) > 0)
+        ) {
+          raise('REST_DAY_VARIES', employee);
         }
 
         // LINDUNG 24 JAM raises nothing for a blank participation: PERKESO
@@ -2084,6 +2097,7 @@ export class PayrollService {
                 disabledSelf: classification.disabledSelf,
                 disabledSpouse: classification.disabledSpouse,
                 restDayOfWeek: classification.restDayOfWeek,
+                restDayVaries: classification.restDayVaries,
                 overtimeContractPolicy: classification.overtimeContractPolicy,
               },
               /** Kept under its old key so existing readers do not break. */

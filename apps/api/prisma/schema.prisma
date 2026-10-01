@@ -345,6 +345,7 @@ model Tenant {
   procurementBudgets         ProcurementBudget[]
   dayEndClosings             DayEndClosing[]
   employeeProfiles           EmployeeProfile[]
+  jobTitles                  JobTitle[]
   attendanceRecords          AttendanceRecord[]
   attendancePunches          AttendancePunch[]
   attendancePolicies         AttendancePolicy[]
@@ -983,153 +984,153 @@ model Staff {
   /// is what the web app already does; set it to override.
   calendarColor           String?              @map("calendar_color")
 
-  tenant                       Tenant                        @relation(fields: [tenantId], references: [id])
-  user                         User?                         @relation(fields: [userId], references: [id])
-  clinic                       Clinic?                       @relation(fields: [clinicId], references: [id])
-  providerShifts               ProviderShift[]               @relation("ProviderShiftProvider")
-  providerShiftsCreated        ProviderShift[]               @relation("ProviderShiftAuthor")
-  scheduleModePeriods          ProviderScheduleModePeriod[]  @relation("ScheduleModePeriodProvider")
-  staffNotifications           StaffNotification[]
-  changeRequestsDecided        AppointmentChangeRequest[]
-  mediaAssets                  MediaAsset[]
-  scheduleModePeriodsCreated   ProviderScheduleModePeriod[]  @relation("ScheduleModePeriodAuthor")
-  appointmentEvents            AppointmentEvent[]            @relation("AppointmentEventActor")
-  appointmentsOverridden       Appointment[]                 @relation("AppointmentOverrideAuthor")
-  appointmentSeriesCreated     AppointmentSeries[]           @relation("AppointmentSeriesAuthor")
-  appointmentSeriesProvided    AppointmentSeries[]           @relation("AppointmentSeriesProvider")
-  waitlistEntries              WaitlistEntry[]               @relation("WaitlistPreferredProvider")
-  waitlistEntriesCreated       WaitlistEntry[]               @relation("WaitlistAuthor")
-  appointmentCommunications    AppointmentCommunication[]    @relation("CommunicationActor")
-  doctorSchedules              DoctorSchedule[]
-  scheduleExceptions           ScheduleException[]
-  slotCapacityConfigs          SlotCapacityConfig[]
-  clinicClosedDates            ClinicClosedDate[]
-  appointmentRemindersSent     Appointment[]                 @relation("AppointmentReminderAuthor")
-  appointmentsCancelled        Appointment[]                 @relation("AppointmentCancelAuthor")
-  doctorServiceQualifications  DoctorServiceQualification[]
-  appointments                 Appointment[]
+  tenant                              Tenant                        @relation(fields: [tenantId], references: [id])
+  user                                User?                         @relation(fields: [userId], references: [id])
+  clinic                              Clinic?                       @relation(fields: [clinicId], references: [id])
+  providerShifts                      ProviderShift[]               @relation("ProviderShiftProvider")
+  providerShiftsCreated               ProviderShift[]               @relation("ProviderShiftAuthor")
+  scheduleModePeriods                 ProviderScheduleModePeriod[]  @relation("ScheduleModePeriodProvider")
+  staffNotifications                  StaffNotification[]
+  changeRequestsDecided               AppointmentChangeRequest[]
+  mediaAssets                         MediaAsset[]
+  scheduleModePeriodsCreated          ProviderScheduleModePeriod[]  @relation("ScheduleModePeriodAuthor")
+  appointmentEvents                   AppointmentEvent[]            @relation("AppointmentEventActor")
+  appointmentsOverridden              Appointment[]                 @relation("AppointmentOverrideAuthor")
+  appointmentSeriesCreated            AppointmentSeries[]           @relation("AppointmentSeriesAuthor")
+  appointmentSeriesProvided           AppointmentSeries[]           @relation("AppointmentSeriesProvider")
+  waitlistEntries                     WaitlistEntry[]               @relation("WaitlistPreferredProvider")
+  waitlistEntriesCreated              WaitlistEntry[]               @relation("WaitlistAuthor")
+  appointmentCommunications           AppointmentCommunication[]    @relation("CommunicationActor")
+  doctorSchedules                     DoctorSchedule[]
+  scheduleExceptions                  ScheduleException[]
+  slotCapacityConfigs                 SlotCapacityConfig[]
+  clinicClosedDates                   ClinicClosedDate[]
+  appointmentRemindersSent            Appointment[]                 @relation("AppointmentReminderAuthor")
+  appointmentsCancelled               Appointment[]                 @relation("AppointmentCancelAuthor")
+  doctorServiceQualifications         DoctorServiceQualification[]
+  appointments                        Appointment[]
   // Two different roles on a visit: the attending clinician, and whoever
   // completed the doctor phase. Usually the same person, but not necessarily
   // — a locum can finish a colleague's consultation — so they are recorded
   // separately rather than one being assumed from the other.
-  visits                       Visit[]                       @relation("VisitAttendingStaff")
-  visitsRegistered             Visit[]                       @relation("VisitRegisteredBy")
-  visitsDoctorCompleted        Visit[]                       @relation("VisitDoctorCompletedBy")
-  visitsPanelVerified          Visit[]                       @relation("VisitPanelVerifiedBy")
-  visitsPanelBenefitOverridden Visit[]                       @relation("VisitPanelBenefitOverriddenBy")
-  workflowEvents               VisitWorkflowEvent[]          @relation("WorkflowEventActor")
-  workflowEventsHandedOver     VisitWorkflowEvent[]          @relation("WorkflowEventPreviousStaff")
-  workflowEventsReceived       VisitWorkflowEvent[]          @relation("WorkflowEventNewStaff")
-  roleAssignments              StaffRoleAssignment[]         @relation("StaffRoleHolder")
-  permissionGrants             StaffPermissionGrant[]        @relation("StaffPermissionHolder")
-  permissionGrantsMade         StaffPermissionGrant[]        @relation("StaffPermissionGrantedBy")
-  roleAssignmentsGranted       StaffRoleAssignment[]         @relation("StaffRoleGrantedBy")
-  customRolesCreated           ClinicCustomRole[]            @relation("CustomRoleCreatedBy")
-  queueTicketsHeld             QueueTicket[]                 @relation("QueueTicketHeldBy")
-  orderServices                OrderService[]
-  prescriptions                Prescription[]
-  attachments                  Attachment[]
-  visitAttachments             VisitAttachment[]
-  chatMessages                 ChatMessage[]
-  documentsIssued              Document[]                    @relation("DocumentIssuedBy")
-  documentsSigned              Document[]                    @relation("DocumentSignedBy")
-  invoices                     Invoice[]
-  stockBatchesAdded            StockBatch[]
-  claimBatchesCreated          ClaimBatch[]
-  leaveRequests                LeaveRequest[]                @relation("LeaveRequestStaff")
-  leaveRequestsApproved        LeaveRequest[]                @relation("LeaveRequestApprovedBy")
-  clinicalNotesAuthored        ClinicalNote[]                @relation("ClinicalNoteAuthor")
-  clinicalNotesSigned          ClinicalNote[]                @relation("ClinicalNoteSigner")
-  clinicalNotesFinalized       ClinicalNote[]                @relation("ClinicalNoteFinalizer")
-  observationsRecorded         VisitObservation[]            @relation("ObservationRecorder")
-  observationsUpdated          VisitObservation[]            @relation("ObservationUpdater")
-  diagnosesRecorded            Diagnosis[]                   @relation("DiagnosisRecorder")
-  diagnosesRemoved             Diagnosis[]                   @relation("DiagnosisRemover")
-  documentsVoided              Document[]                    @relation("DocumentVoidedBy")
-  visitAttachmentsRemoved      VisitAttachment[]             @relation("VisitAttachmentRemovedBy")
-  visitAttachmentsFiled        VisitAttachment[]             @relation("VisitAttachmentCategoryBy")
-  orderAttachmentsRemoved      Attachment[]                  @relation("OrderAttachmentRemovedBy")
-  professionalAudits           StaffProfessionalAudit[]      @relation("ProfessionalAuditSubject")
-  professionalAuditsMade       StaffProfessionalAudit[]      @relation("ProfessionalAuditActor")
-  labelPrints                  LabelPrint[]
-  paymentsReceived             Payment[]                     @relation("PaymentReceivedBy")
-  creditNotesCreated           CreditNote[]                  @relation("CreditNoteCreatedBy")
-  creditNotesApproved          CreditNote[]                  @relation("CreditNoteApprovedBy")
-  creditNotesVoided            CreditNote[]                  @relation("CreditNoteVoidedBy")
-  dayEndsCounted               DayEndClosing[]               @relation("DayEndCountedBy")
-  dayEndsClosed                DayEndClosing[]               @relation("DayEndClosedBy")
-  stockTransfersCreated        StockTransfer[]               @relation("StockTransferCreatedBy")
-  stockTransfersSent           StockTransfer[]               @relation("StockTransferSentBy")
-  stockTransfersReceived       StockTransfer[]               @relation("StockTransferReceivedBy")
-  stockTransfersCancelled      StockTransfer[]               @relation("StockTransferCancelledBy")
-  stockTakesCreated            StockTake[]                   @relation("StockTakeCreatedBy")
-  stockTakesSubmitted          StockTake[]                   @relation("StockTakeSubmittedBy")
-  stockTakesReviewed           StockTake[]                   @relation("StockTakeReviewedBy")
-  stockTakeAssignments         StockTakeAssignment[]         @relation("StockTakeCounter")
-  stockTakeLinesCounted        StockTakeLine[]               @relation("StockTakeLineCounter")
-  procurementBudgetsCreated    ProcurementBudget[]           @relation("ProcurementBudgetCreatedBy")
-  panelRemittancesRecorded     PanelRemittance[]             @relation("PanelRemittanceRecordedBy")
-  claimsResponsibleFor         ClaimBatchLine[]              @relation("ClaimResponsibleStaff")
-  claimsWrittenOff             ClaimBatchLine[]              @relation("ClaimWrittenOffBy")
-  claimsChargedToPatient       ClaimBatchLine[]              @relation("ClaimChargedToPatientBy")
-  supplierInvoicesRecorded     SupplierInvoice[]             @relation("SupplierInvoiceRecordedBy")
-  supplierPaymentsRecorded     SupplierPayment[]             @relation("SupplierPaymentRecordedBy")
-  panelFeeTermsRecorded        PanelFeeTerm[]                @relation("PanelFeeTermRecordedBy")
-  itemPriceChanges             ItemPriceChange[]             @relation("ItemPriceChangedBy")
-  newItemRequestsRaised        NewItemRequest[]              @relation("NewItemRequestedBy")
-  newItemRequestsDecided       NewItemRequest[]              @relation("NewItemRequestDecidedBy")
-  claimEvents                  ClaimEvent[]                  @relation("ClaimEventActor")
-  stockMovementsMade           StockMovement[]               @relation("StockMovementActor")
-  dayEndsReopened              DayEndClosing[]               @relation("DayEndReopenedBy")
-  employeeProfile              EmployeeProfile?              @relation("StaffEmployeeProfile")
-  directReports                EmployeeProfile[]             @relation("EmployeeManager")
-  attendanceRecords            AttendanceRecord[]            @relation("AttendanceStaff")
-  attendancePoliciesAuthored   AttendancePolicy[]            @relation("AttendancePolicyAuthor")
-  attendanceCorrectionsAsked   AttendanceCorrectionRequest[] @relation("AttendanceCorrectionRequester")
-  attendanceCorrectionsDecided AttendanceCorrectionRequest[] @relation("AttendanceCorrectionDecider")
-  attendanceCorrections        AttendanceRecord[]            @relation("AttendanceCorrectedBy")
-  overtimeApprovals            AttendanceRecord[]            @relation("AttendanceOvertimeApprover")
-  attendancePunches            AttendancePunch[]             @relation("AttendancePunchStaff")
-  attendancePunchesSuperseded  AttendancePunch[]             @relation("AttendancePunchSupersededBy")
-  attendancePunchesRecorded    AttendancePunch[]             @relation("AttendancePunchRecordedBy")
-  leaveBalances                LeaveBalance[]                @relation("LeaveBalanceStaff")
-  incentiveRulesTargeting      IncentiveRule[]               @relation("IncentiveRuleTarget")
-  incentiveRulesAuthored       IncentiveRule[]               @relation("IncentiveRuleAuthor")
-  incentiveRunsAuthored        IncentiveRun[]                @relation("IncentiveRunAuthor")
-  incentiveRunsApproved        IncentiveRun[]                @relation("IncentiveRunApprover")
-  incentiveResults             IncentiveResult[]             @relation("IncentiveResultStaff")
-  benefitAccounts              StaffBenefitAccount[]         @relation("StaffBenefitAccountStaff")
-  benefitUsagesRecorded        StaffBenefitUsage[]           @relation("StaffBenefitUsageRecorder")
-  statutoryRuleSetsAuthored    StatutoryRuleSet[]            @relation("StatutoryRuleSetAuthor")
-  statutoryRuleSetsVerified    StatutoryRuleSet[]            @relation("StatutoryRuleSetVerifier")
-  payrollPoliciesBelowActAcknowledged PayrollPolicy[]         @relation("PayrollPolicyBelowActAcknowledger")
-  leavePoliciesNotPayingAcknowledged  LeavePolicy[]           @relation("LeavePolicyNotPayingAcknowledger")
-  payrollRunsAuthored          PayrollRun[]                  @relation("PayrollRunAuthor")
-  payrollRunsApproved          PayrollRun[]                  @relation("PayrollRunApprover")
-  payrollLines                 PayrollLine[]                 @relation("PayrollLineStaff")
-  payrollAdjustments           PayrollAdjustment[]           @relation("PayrollAdjustmentStaff")
-  programmeEnrolments          ProgrammeEnrolment[]          @relation("ProgrammeEnroller")
-  marketingAudiences           MarketingAudience[]           @relation("MarketingAudienceAuthor")
-  marketingTemplates           MarketingTemplate[]           @relation("MarketingTemplateAuthor")
-  marketingDispatches          MarketingDispatch[]           @relation("MarketingDispatchAuthor")
-  payrollAdjustmentsAuthored   PayrollAdjustment[]           @relation("PayrollAdjustmentAuthor")
-  prescriptionsReviewed        Prescription[]                @relation("PrescriptionReviewer")
-  payrollInputs                PayrollInputEntry[]           @relation("PayrollInputStaff")
-  payrollInputsCreated         PayrollInputEntry[]           @relation("PayrollInputAuthor")
-  payrollApprovalPolicies      PayrollApprovalPolicy[]       @relation("PayrollApprovalPolicyEditor")
-  payrollRunApprovals          PayrollRunApproval[]          @relation("PayrollRunApprovalApprover")
-  staffClaims                  StaffClaim[]                  @relation("StaffClaimSubject")
-  staffClaimsSubmitted         StaffClaim[]                  @relation("StaffClaimSubmitter")
-  staffClaimsDecided           StaffClaim[]                  @relation("StaffClaimDecider")
-  staffClaimAttachments        StaffClaimAttachment[]        @relation("StaffClaimAttachmentAuthor")
-  leaveRequestAttachments      LeaveRequestAttachment[]      @relation("LeaveRequestAttachmentAuthor")
-  claimPolicies                ClaimPolicy[]                 @relation("ClaimPolicyAuthor")
-  staffFiles                   StaffFile[]                   @relation("StaffFileOwner")
-  staffClaimEvents             StaffClaimEvent[]             @relation("StaffClaimEventActor")
-  locumSessions                LocumSession[]                @relation("LocumSessionSubject")
-  locumSessionsApproved        LocumSession[]                @relation("LocumSessionApprover")
-  locumSessionsCreated         LocumSession[]                @relation("LocumSessionAuthor")
-  claimImportBatches           ClaimImportBatch[]            @relation("ClaimImportedBy")
+  visits                              Visit[]                       @relation("VisitAttendingStaff")
+  visitsRegistered                    Visit[]                       @relation("VisitRegisteredBy")
+  visitsDoctorCompleted               Visit[]                       @relation("VisitDoctorCompletedBy")
+  visitsPanelVerified                 Visit[]                       @relation("VisitPanelVerifiedBy")
+  visitsPanelBenefitOverridden        Visit[]                       @relation("VisitPanelBenefitOverriddenBy")
+  workflowEvents                      VisitWorkflowEvent[]          @relation("WorkflowEventActor")
+  workflowEventsHandedOver            VisitWorkflowEvent[]          @relation("WorkflowEventPreviousStaff")
+  workflowEventsReceived              VisitWorkflowEvent[]          @relation("WorkflowEventNewStaff")
+  roleAssignments                     StaffRoleAssignment[]         @relation("StaffRoleHolder")
+  permissionGrants                    StaffPermissionGrant[]        @relation("StaffPermissionHolder")
+  permissionGrantsMade                StaffPermissionGrant[]        @relation("StaffPermissionGrantedBy")
+  roleAssignmentsGranted              StaffRoleAssignment[]         @relation("StaffRoleGrantedBy")
+  customRolesCreated                  ClinicCustomRole[]            @relation("CustomRoleCreatedBy")
+  queueTicketsHeld                    QueueTicket[]                 @relation("QueueTicketHeldBy")
+  orderServices                       OrderService[]
+  prescriptions                       Prescription[]
+  attachments                         Attachment[]
+  visitAttachments                    VisitAttachment[]
+  chatMessages                        ChatMessage[]
+  documentsIssued                     Document[]                    @relation("DocumentIssuedBy")
+  documentsSigned                     Document[]                    @relation("DocumentSignedBy")
+  invoices                            Invoice[]
+  stockBatchesAdded                   StockBatch[]
+  claimBatchesCreated                 ClaimBatch[]
+  leaveRequests                       LeaveRequest[]                @relation("LeaveRequestStaff")
+  leaveRequestsApproved               LeaveRequest[]                @relation("LeaveRequestApprovedBy")
+  clinicalNotesAuthored               ClinicalNote[]                @relation("ClinicalNoteAuthor")
+  clinicalNotesSigned                 ClinicalNote[]                @relation("ClinicalNoteSigner")
+  clinicalNotesFinalized              ClinicalNote[]                @relation("ClinicalNoteFinalizer")
+  observationsRecorded                VisitObservation[]            @relation("ObservationRecorder")
+  observationsUpdated                 VisitObservation[]            @relation("ObservationUpdater")
+  diagnosesRecorded                   Diagnosis[]                   @relation("DiagnosisRecorder")
+  diagnosesRemoved                    Diagnosis[]                   @relation("DiagnosisRemover")
+  documentsVoided                     Document[]                    @relation("DocumentVoidedBy")
+  visitAttachmentsRemoved             VisitAttachment[]             @relation("VisitAttachmentRemovedBy")
+  visitAttachmentsFiled               VisitAttachment[]             @relation("VisitAttachmentCategoryBy")
+  orderAttachmentsRemoved             Attachment[]                  @relation("OrderAttachmentRemovedBy")
+  professionalAudits                  StaffProfessionalAudit[]      @relation("ProfessionalAuditSubject")
+  professionalAuditsMade              StaffProfessionalAudit[]      @relation("ProfessionalAuditActor")
+  labelPrints                         LabelPrint[]
+  paymentsReceived                    Payment[]                     @relation("PaymentReceivedBy")
+  creditNotesCreated                  CreditNote[]                  @relation("CreditNoteCreatedBy")
+  creditNotesApproved                 CreditNote[]                  @relation("CreditNoteApprovedBy")
+  creditNotesVoided                   CreditNote[]                  @relation("CreditNoteVoidedBy")
+  dayEndsCounted                      DayEndClosing[]               @relation("DayEndCountedBy")
+  dayEndsClosed                       DayEndClosing[]               @relation("DayEndClosedBy")
+  stockTransfersCreated               StockTransfer[]               @relation("StockTransferCreatedBy")
+  stockTransfersSent                  StockTransfer[]               @relation("StockTransferSentBy")
+  stockTransfersReceived              StockTransfer[]               @relation("StockTransferReceivedBy")
+  stockTransfersCancelled             StockTransfer[]               @relation("StockTransferCancelledBy")
+  stockTakesCreated                   StockTake[]                   @relation("StockTakeCreatedBy")
+  stockTakesSubmitted                 StockTake[]                   @relation("StockTakeSubmittedBy")
+  stockTakesReviewed                  StockTake[]                   @relation("StockTakeReviewedBy")
+  stockTakeAssignments                StockTakeAssignment[]         @relation("StockTakeCounter")
+  stockTakeLinesCounted               StockTakeLine[]               @relation("StockTakeLineCounter")
+  procurementBudgetsCreated           ProcurementBudget[]           @relation("ProcurementBudgetCreatedBy")
+  panelRemittancesRecorded            PanelRemittance[]             @relation("PanelRemittanceRecordedBy")
+  claimsResponsibleFor                ClaimBatchLine[]              @relation("ClaimResponsibleStaff")
+  claimsWrittenOff                    ClaimBatchLine[]              @relation("ClaimWrittenOffBy")
+  claimsChargedToPatient              ClaimBatchLine[]              @relation("ClaimChargedToPatientBy")
+  supplierInvoicesRecorded            SupplierInvoice[]             @relation("SupplierInvoiceRecordedBy")
+  supplierPaymentsRecorded            SupplierPayment[]             @relation("SupplierPaymentRecordedBy")
+  panelFeeTermsRecorded               PanelFeeTerm[]                @relation("PanelFeeTermRecordedBy")
+  itemPriceChanges                    ItemPriceChange[]             @relation("ItemPriceChangedBy")
+  newItemRequestsRaised               NewItemRequest[]              @relation("NewItemRequestedBy")
+  newItemRequestsDecided              NewItemRequest[]              @relation("NewItemRequestDecidedBy")
+  claimEvents                         ClaimEvent[]                  @relation("ClaimEventActor")
+  stockMovementsMade                  StockMovement[]               @relation("StockMovementActor")
+  dayEndsReopened                     DayEndClosing[]               @relation("DayEndReopenedBy")
+  employeeProfile                     EmployeeProfile?              @relation("StaffEmployeeProfile")
+  directReports                       EmployeeProfile[]             @relation("EmployeeManager")
+  attendanceRecords                   AttendanceRecord[]            @relation("AttendanceStaff")
+  attendancePoliciesAuthored          AttendancePolicy[]            @relation("AttendancePolicyAuthor")
+  attendanceCorrectionsAsked          AttendanceCorrectionRequest[] @relation("AttendanceCorrectionRequester")
+  attendanceCorrectionsDecided        AttendanceCorrectionRequest[] @relation("AttendanceCorrectionDecider")
+  attendanceCorrections               AttendanceRecord[]            @relation("AttendanceCorrectedBy")
+  overtimeApprovals                   AttendanceRecord[]            @relation("AttendanceOvertimeApprover")
+  attendancePunches                   AttendancePunch[]             @relation("AttendancePunchStaff")
+  attendancePunchesSuperseded         AttendancePunch[]             @relation("AttendancePunchSupersededBy")
+  attendancePunchesRecorded           AttendancePunch[]             @relation("AttendancePunchRecordedBy")
+  leaveBalances                       LeaveBalance[]                @relation("LeaveBalanceStaff")
+  incentiveRulesTargeting             IncentiveRule[]               @relation("IncentiveRuleTarget")
+  incentiveRulesAuthored              IncentiveRule[]               @relation("IncentiveRuleAuthor")
+  incentiveRunsAuthored               IncentiveRun[]                @relation("IncentiveRunAuthor")
+  incentiveRunsApproved               IncentiveRun[]                @relation("IncentiveRunApprover")
+  incentiveResults                    IncentiveResult[]             @relation("IncentiveResultStaff")
+  benefitAccounts                     StaffBenefitAccount[]         @relation("StaffBenefitAccountStaff")
+  benefitUsagesRecorded               StaffBenefitUsage[]           @relation("StaffBenefitUsageRecorder")
+  statutoryRuleSetsAuthored           StatutoryRuleSet[]            @relation("StatutoryRuleSetAuthor")
+  statutoryRuleSetsVerified           StatutoryRuleSet[]            @relation("StatutoryRuleSetVerifier")
+  payrollPoliciesBelowActAcknowledged PayrollPolicy[]               @relation("PayrollPolicyBelowActAcknowledger")
+  leavePoliciesNotPayingAcknowledged  LeavePolicy[]                 @relation("LeavePolicyNotPayingAcknowledger")
+  payrollRunsAuthored                 PayrollRun[]                  @relation("PayrollRunAuthor")
+  payrollRunsApproved                 PayrollRun[]                  @relation("PayrollRunApprover")
+  payrollLines                        PayrollLine[]                 @relation("PayrollLineStaff")
+  payrollAdjustments                  PayrollAdjustment[]           @relation("PayrollAdjustmentStaff")
+  programmeEnrolments                 ProgrammeEnrolment[]          @relation("ProgrammeEnroller")
+  marketingAudiences                  MarketingAudience[]           @relation("MarketingAudienceAuthor")
+  marketingTemplates                  MarketingTemplate[]           @relation("MarketingTemplateAuthor")
+  marketingDispatches                 MarketingDispatch[]           @relation("MarketingDispatchAuthor")
+  payrollAdjustmentsAuthored          PayrollAdjustment[]           @relation("PayrollAdjustmentAuthor")
+  prescriptionsReviewed               Prescription[]                @relation("PrescriptionReviewer")
+  payrollInputs                       PayrollInputEntry[]           @relation("PayrollInputStaff")
+  payrollInputsCreated                PayrollInputEntry[]           @relation("PayrollInputAuthor")
+  payrollApprovalPolicies             PayrollApprovalPolicy[]       @relation("PayrollApprovalPolicyEditor")
+  payrollRunApprovals                 PayrollRunApproval[]          @relation("PayrollRunApprovalApprover")
+  staffClaims                         StaffClaim[]                  @relation("StaffClaimSubject")
+  staffClaimsSubmitted                StaffClaim[]                  @relation("StaffClaimSubmitter")
+  staffClaimsDecided                  StaffClaim[]                  @relation("StaffClaimDecider")
+  staffClaimAttachments               StaffClaimAttachment[]        @relation("StaffClaimAttachmentAuthor")
+  leaveRequestAttachments             LeaveRequestAttachment[]      @relation("LeaveRequestAttachmentAuthor")
+  claimPolicies                       ClaimPolicy[]                 @relation("ClaimPolicyAuthor")
+  staffFiles                          StaffFile[]                   @relation("StaffFileOwner")
+  staffClaimEvents                    StaffClaimEvent[]             @relation("StaffClaimEventActor")
+  locumSessions                       LocumSession[]                @relation("LocumSessionSubject")
+  locumSessionsApproved               LocumSession[]                @relation("LocumSessionApprover")
+  locumSessionsCreated                LocumSession[]                @relation("LocumSessionAuthor")
+  claimImportBatches                  ClaimImportBatch[]            @relation("ClaimImportedBy")
 
   // Malaysia payroll — Stage 1 + 2
   salaryHistory                    EmployeeSalary[]                  @relation("EmployeeSalaryStaff")
@@ -6428,6 +6429,26 @@ enum EmploymentStatus {
   TERMINATED
 }
 
+/// THE CLINIC'S OWN JOB TITLES, picked from and added to on the employee
+/// form. A profile keeps the name in `position` for every reader; this is the
+/// list entry it came from, so a rename follows through.
+model JobTitle {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  name      String
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id])
+  employees EmployeeProfile[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("job_titles")
+}
+
 /// The employment half of a person. 1:1 with `Staff`, never a second identity.
 ///
 /// SENSITIVE BY CONSTRUCTION: salary, bank details and statutory identifiers
@@ -6450,9 +6471,15 @@ model EmployeeProfile {
   nationality     String?
   maritalStatus   String?   @map("marital_status")
 
-  phone   String?
-  email   String?
-  address String?
+  phone          String?
+  email          String?
+  /// The street line; the rest of the address is split below.
+  address        String?
+  postcode       String?
+  city           String?
+  state          String?
+  /// A non-citizen's passport, beside the identity document above rather than instead of it.
+  passportNumber String? @map("passport_number")
 
   emergencyContactName     String? @map("emergency_contact_name")
   emergencyContactPhone    String? @map("emergency_contact_phone")
@@ -6466,7 +6493,11 @@ model EmployeeProfile {
   engagement       EngagementType   @default(EMPLOYEE)
   employmentStatus EmploymentStatus @default(ACTIVE) @map("employment_status")
   department       String?
+  /// The job in the clinic's own words. Kept as text for every reader; `jobTitle` is the list entry it came from.
   position         String?
+  jobTitleId       String?          @map("job_title_id")
+  /// 5, 5.5 or 6: recorded, not derived from the rest day.
+  workDaysPerWeek  Decimal?         @map("work_days_per_week") @db.Decimal(2, 1)
   managerStaffId   String?          @map("manager_staff_id")
   startDate        DateTime?        @map("start_date") @db.Date
   confirmedDate    DateTime?        @map("confirmed_date") @db.Date
@@ -6561,10 +6592,12 @@ model EmployeeProfile {
   staff         Staff          @relation("StaffEmployeeProfile", fields: [staffId], references: [id], onDelete: Cascade)
   manager       Staff?         @relation("EmployeeManager", fields: [managerStaffId], references: [id])
   leavePolicy   LeavePolicy?   @relation(fields: [leavePolicyId], references: [id])
+  jobTitle      JobTitle?      @relation(fields: [jobTitleId], references: [id])
   legalEmployer LegalEmployer? @relation(fields: [legalEmployerId], references: [id])
   payrollPolicy PayrollPolicy? @relation(fields: [payrollPolicyId], references: [id])
 
   @@unique([tenantId, employeeNo])
+  @@index([jobTitleId])
   @@index([tenantId, employmentStatus])
   @@map("employee_profiles")
 }
@@ -6758,12 +6791,12 @@ model AttendancePolicy {
 
   /// Extra time below this is not even an overtime CANDIDATE — staying eight
   /// minutes to finish a note is not a claim on the payroll.
-  overtimeMinimumMinutes   Int     @default(30) @map("overtime_minimum_minutes")
+  overtimeMinimumMinutes  Int     @default(30) @map("overtime_minimum_minutes")
   /// Candidate overtime is rounded DOWN to a multiple of this. 0 = no rounding.
-  overtimeRoundingMinutes  Int     @default(15) @map("overtime_rounding_minutes")
+  overtimeRoundingMinutes Int     @default(15) @map("overtime_rounding_minutes")
   /// Whether clocking in EARLY counts toward extra time. Off by default:
   /// arriving at 07:30 for an 08:00 shift is not usually overtime.
-  countEarlyClockIn        Boolean @default(false) @map("count_early_clock_in")
+  countEarlyClockIn       Boolean @default(false) @map("count_early_clock_in")
 
   /// `overtimeRequiresApproval` WAS HERE, and it was a switch with one
   /// position. Approval is required whatever it said: only approved extra time
@@ -6894,22 +6927,22 @@ model LeavePolicy {
   /// The three columns under it record who chose, when, and why, exactly as a
   /// below-Act overtime multiplier does; Settings marks the policy permanently;
   /// and every run names the leaver and the amount that was not paid.
-  payUntakenLeaveOnExit Boolean @default(true) @map("pay_untaken_leave_on_exit")
+  payUntakenLeaveOnExit          Boolean   @default(true) @map("pay_untaken_leave_on_exit")
   /// Why, in the words of whoever chose it. Required to switch the payout off.
   notPayingReason                String?   @map("not_paying_reason")
   notPayingAcknowledgedAt        DateTime? @map("not_paying_acknowledged_at")
   notPayingAcknowledgedByStaffId String?   @map("not_paying_acknowledged_by_staff_id")
   /// Whether entitlement is pro-rated for a mid-year joiner.
-  proRateOnJoin    Boolean @default(true) @map("pro_rate_on_join")
-  notes            String?
+  proRateOnJoin                  Boolean   @default(true) @map("pro_rate_on_join")
+  notes                          String?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant                     Tenant                   @relation(fields: [tenantId], references: [id])
-  entitlements               LeavePolicyEntitlement[]
-  employees                  EmployeeProfile[]
-  notPayingAcknowledgedBy    Staff?                   @relation("LeavePolicyNotPayingAcknowledger", fields: [notPayingAcknowledgedByStaffId], references: [id])
+  tenant                  Tenant                   @relation(fields: [tenantId], references: [id])
+  entitlements            LeavePolicyEntitlement[]
+  employees               EmployeeProfile[]
+  notPayingAcknowledgedBy Staff?                   @relation("LeavePolicyNotPayingAcknowledger", fields: [notPayingAcknowledgedByStaffId], references: [id])
 
   @@unique([tenantId, name])
   @@map("leave_policies")
@@ -8010,6 +8043,10 @@ model EmployeeStatutoryClassification {
   disabledSpouse     Boolean       @default(false) @map("disabled_spouse")
 
   restDayOfWeek          Int?                    @map("rest_day_of_week")
+  /// No fixed rest day: s.59 lets the employer vary it week to week. With this
+  /// set the run no longer waits for a weekday, and says it cannot price
+  /// rest-day work by itself for this person.
+  restDayVaries          Boolean                 @default(false) @map("rest_day_varies")
   overtimeContractPolicy OvertimeContractPolicy? @map("overtime_contract_policy")
 
   effectiveFrom DateTime  @map("effective_from") @db.Date
@@ -8184,13 +8221,13 @@ model PayComponent {
   eaField                String? @map("ea_field")
 
   /// Whether a partial month reduces it.
-  prorated     Boolean @default(false)
+  prorated          Boolean              @default(false)
   /// Employer cost, not employee pay.
-  employerSide Boolean @default(false) @map("employer_side")
+  employerSide      Boolean              @default(false) @map("employer_side")
   /// Layout, not treatment: the item has its own editable column on the payroll grid.
-  gridColumn   Boolean @default(false) @map("grid_column")
+  gridColumn        Boolean              @default(false) @map("grid_column")
   /// Layout, not treatment: a new month starts with last month's hand-keyed amount for this item.
-  carryForward Boolean @default(false) @map("carry_forward")
+  carryForward      Boolean              @default(false) @map("carry_forward")
   /// WHO THE ITEM IS FOR. Everyone, or only the employees named below: the
   /// grid gives the item's column to those people alone, the drawer offers
   /// it to them alone, and carry forward copies it for them alone. Audience,
@@ -8316,17 +8353,17 @@ model PayrollPolicy {
   /// For an employee within the First Schedule (wages of RM4,000 or less)
   /// the Act's rates are a floor: a clinic rate below them warns in Settings
   /// and blocks the run. Enforced in code against the month's actual days.
-  overtimeMode             OvertimeMode @default(STATUTORY) @map("overtime_mode")
+  overtimeMode              OvertimeMode @default(STATUTORY) @map("overtime_mode")
   /// RM per hour of approved overtime on a normal working day.
-  clinicOvertimeHourly     Decimal?     @map("clinic_overtime_hourly") @db.Decimal(12, 2)
+  clinicOvertimeHourly      Decimal?     @map("clinic_overtime_hourly") @db.Decimal(12, 2)
   /// RM per public holiday worked, whatever the hours.
-  clinicPublicHolidayShift Decimal?     @map("clinic_public_holiday_shift") @db.Decimal(12, 2)
+  clinicPublicHolidayShift  Decimal?     @map("clinic_public_holiday_shift") @db.Decimal(12, 2)
   /// RM per FESTIVE public holiday worked. Blank means the public holiday shift.
-  clinicFestiveHolidayShift Decimal?    @map("clinic_festive_holiday_shift") @db.Decimal(12, 2)
+  clinicFestiveHolidayShift Decimal?     @map("clinic_festive_holiday_shift") @db.Decimal(12, 2)
   /// RM per rest day worked beyond half the normal hours.
-  clinicRestDayShift       Decimal?     @map("clinic_rest_day_shift") @db.Decimal(12, 2)
+  clinicRestDayShift        Decimal?     @map("clinic_rest_day_shift") @db.Decimal(12, 2)
   /// RM per session: a rest day or public holiday worked for at most half the normal hours.
-  clinicSessionRate        Decimal?     @map("clinic_session_rate") @db.Decimal(12, 2)
+  clinicSessionRate         Decimal?     @map("clinic_session_rate") @db.Decimal(12, 2)
 
   /// THE CLINIC'S OWN MULTIPLIERS, on the hour beyond normal hours.
   ///
@@ -8344,11 +8381,11 @@ model PayrollPolicy {
   /// The DAY on a rest day or public holiday is NOT priced from these. It is
   /// days of ordinary rate under ss.60(3)(b) and 60D(3)(a)(i) — two days' wages
   /// for a public holiday worked, however few hours — and is not settable.
-  overtimeMultiplier        Decimal?    @map("overtime_multiplier") @db.Decimal(4, 2)
-  restDayMultiplier         Decimal?    @map("rest_day_multiplier") @db.Decimal(4, 2)
-  publicHolidayMultiplier   Decimal?    @map("public_holiday_multiplier") @db.Decimal(4, 2)
+  overtimeMultiplier       Decimal? @map("overtime_multiplier") @db.Decimal(4, 2)
+  restDayMultiplier        Decimal? @map("rest_day_multiplier") @db.Decimal(4, 2)
+  publicHolidayMultiplier  Decimal? @map("public_holiday_multiplier") @db.Decimal(4, 2)
   /// The hours beyond normal hours on a FESTIVE public holiday. Blank means the public holiday multiplier.
-  festiveHolidayMultiplier  Decimal?    @map("festive_holiday_multiplier") @db.Decimal(4, 2)
+  festiveHolidayMultiplier Decimal? @map("festive_holiday_multiplier") @db.Decimal(4, 2)
 
   /// A CLINIC THAT CHOSE TO PAY BELOW THE ACT, AND SAID SO.
   ///
@@ -8379,16 +8416,16 @@ model PayrollPolicy {
   /// no group; the default rule set covers whoever no group claims.
   /// UNIQUE per (tenant, category) and per (tenant, employer, category) by two
   /// partial indexes that live in the migration, not expressible here.
-  workforceCategory        String?      @map("workforce_category")
+  workforceCategory             String?   @map("workforce_category")
 
   isDefault Boolean  @default(false) @map("is_default")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant                Tenant            @relation(fields: [tenantId], references: [id])
-  legalEmployer         LegalEmployer?    @relation(fields: [legalEmployerId], references: [id])
-  employees             EmployeeProfile[]
-  belowActAcknowledgedBy Staff?           @relation("PayrollPolicyBelowActAcknowledger", fields: [belowActAcknowledgedByStaffId], references: [id])
+  tenant                 Tenant            @relation(fields: [tenantId], references: [id])
+  legalEmployer          LegalEmployer?    @relation(fields: [legalEmployerId], references: [id])
+  employees              EmployeeProfile[]
+  belowActAcknowledgedBy Staff?            @relation("PayrollPolicyBelowActAcknowledger", fields: [belowActAcknowledgedByStaffId], references: [id])
 
   @@unique([tenantId, name])
   @@index([tenantId, legalEmployerId])

@@ -80,7 +80,7 @@ export function StatutoryStandingSection({
     ['Tax residence', value(s.taxResidence)],
     ['MTD category', value(s.pcbCategory)],
     ['Qualifying children', resolved ? String(s.qualifyingChildren) : null],
-    ['Rest day', resolved && s.restDayOfWeek !== null ? DAY_NAMES[s.restDayOfWeek] : null],
+    ['Rest day', resolved ? (s.restDayVaries ? 'Varies week to week' : s.restDayOfWeek !== null ? DAY_NAMES[s.restDayOfWeek] : null) : null],
     ['Overtime above the Act limit', value(s.overtimeContractPolicy)],
   ];
   return (
@@ -154,7 +154,7 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
   const [children, setChildren] = useState<number | null>(null);
   const [disabledSelf, setDisabledSelf] = useState<boolean | null>(null);
   const [disabledSpouse, setDisabledSpouse] = useState<boolean | null>(null);
-  const [restDay, setRestDay] = useState<number | undefined>();
+  const [restDay, setRestDay] = useState<number | 'VARIES' | undefined>();
   const [otPolicy, setOtPolicy] = useState<string | undefined>();
   const [reason, setReason] = useState('');
 
@@ -181,7 +181,7 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
     setChildren(base?.qualifyingChildren ?? fallback?.qualifyingChildren ?? null);
     setDisabledSelf(base?.disabledSelf ?? null);
     setDisabledSpouse(base?.disabledSpouse ?? null);
-    setRestDay(base?.restDayOfWeek ?? fallback?.restDayOfWeek ?? undefined);
+    setRestDay(base?.restDayVaries || fallback?.restDayVaries ? 'VARIES' : (base?.restDayOfWeek ?? fallback?.restDayOfWeek ?? undefined));
     setOtPolicy(base?.overtimeContractPolicy ?? fallback?.overtimeContractPolicy ?? undefined);
     // Never the old reason: a correction has its own, and it is the only place
     // the history will say why the row stopped saying what it said.
@@ -328,7 +328,7 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
               ...(children !== null ? { qualifyingChildren: children } : {}),
               ...(disabledSelf !== null ? { disabledSelf } : {}),
               ...(disabledSpouse !== null ? { disabledSpouse } : {}),
-              ...(restDay !== undefined ? { restDayOfWeek: restDay } : {}),
+              ...(restDay === 'VARIES' ? { restDayOfWeek: null, restDayVaries: true } : restDay !== undefined ? { restDayOfWeek: restDay, restDayVaries: false } : {}),
               ...(otPolicy !== undefined ? { overtimeContractPolicy: otPolicy } : {}),
               reason: reason.trim(),
             });
@@ -470,7 +470,7 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
                 onChange={setRestDay}
                 style={{ width: '100%' }}
                 placeholder="Not recorded"
-                options={DAY_NAMES.map((day, index) => ({ value: index, label: day }))}
+                options={[...DAY_NAMES.map((day, index) => ({ value: index, label: day })), { value: 'VARIES', label: 'Varies week to week' }]}
               />
             </div>
             <div>

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, uploadFile } from '../../core/api-client';
+import type { JobTitleRow } from '../types';
 import type {
   CreditNoteRow,
   DayEndView,
@@ -707,6 +708,25 @@ export function useUpsertEmployee() {
   return useAdminMutation(
     ({ staffId, ...body }: { staffId: string } & Record<string, unknown>) =>
       apiClient.post(`/workforce/employees/${staffId}`, body),
+    ['admin-hr'],
+  );
+}
+
+/** The clinic's own job titles, picked from and added to on the employee form. */
+export function useJobTitles() {
+  return useQuery({
+    queryKey: ['admin-hr', 'job-titles'],
+    queryFn: () => apiClient.get<JobTitleRow[]>('/workforce/job-titles'),
+  });
+}
+
+export function useCreateJobTitle() {
+  return useAdminMutation((body: { name: string }) => apiClient.post<JobTitleRow>('/workforce/job-titles', body), ['admin-hr']);
+}
+
+export function useUpdateJobTitle() {
+  return useAdminMutation(
+    ({ id, ...body }: { id: string; name?: string; active?: boolean }) => apiClient.patch<JobTitleRow>(`/workforce/job-titles/${id}`, body),
     ['admin-hr'],
   );
 }

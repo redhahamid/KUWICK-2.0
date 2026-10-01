@@ -55,6 +55,8 @@ export interface SnapshotClassification {
   disabledSelf: boolean | null;
   disabledSpouse: boolean | null;
   restDayOfWeek: number | null;
+  /** Absent on snapshots frozen before the field existed. */
+  restDayVaries?: boolean | null;
   overtimeContractPolicy: string | null;
 }
 

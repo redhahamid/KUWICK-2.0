@@ -73,6 +73,8 @@ export interface StatutoryClassificationRow {
   readonly disabledSpouse: boolean;
 
   readonly restDayOfWeek: number | null;
+  /** No fixed rest day: it varies week to week, so no weekday is the rest day. */
+  readonly restDayVaries: boolean;
   readonly overtimeContractPolicy: OvertimeContractPolicyCode | null;
 }
 
@@ -99,6 +101,7 @@ export const CLASSIFICATION_FIELDS = {
   disabledSelf: 'disabled (self)',
   disabledSpouse: 'disabled (spouse)',
   restDayOfWeek: 'designated rest day',
+  restDayVaries: 'whether the rest day varies week to week',
   overtimeContractPolicy: 'overtime policy above the First Schedule limit',
 } as const satisfies Record<
   Exclude<keyof StatutoryClassificationRow, 'id' | 'effectiveFrom' | 'effectiveTo'>,

@@ -32,6 +32,7 @@ function row(
     disabledSelf: false,
     disabledSpouse: false,
     restDayOfWeek: 0,
+    restDayVaries: false,
     overtimeContractPolicy: null,
     ...over,
   };

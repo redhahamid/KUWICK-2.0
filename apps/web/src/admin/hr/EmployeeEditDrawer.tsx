@@ -14,6 +14,8 @@ import { PhoneField } from './ui/PhoneField';
 import { ReasonPicker } from './ui/ReasonPicker';
 import { EMPLOYER_REASONS, RELATIONSHIPS } from './ui/reasons';
 import { DAY_NAMES } from './StatutoryStandingManager';
+import { JobTitlePicker } from './JobTitlePicker';
+import { MALAYSIAN_STATES } from './malaysianStates';
 import type { EmployeeRecord } from '../types';
 
 /**
@@ -65,6 +67,13 @@ const TITLES: Record<EditSection, string> = {
 const day = (value: Dayjs | null) => (value ? value.format('YYYY-MM-DD') : undefined);
 const parse = (value: string | null | undefined) => (value ? dayjs(value) : null);
 
+/** The weekday a standing names, or VARIES when it says the rest day is not fixed. */
+function restDayValueOf(row: { restDayOfWeek: number | null; restDayVaries?: boolean } | null | undefined): number | 'VARIES' | undefined {
+  if (!row) return undefined;
+  if (row.restDayVaries) return 'VARIES';
+  return row.restDayOfWeek ?? undefined;
+}
+
 export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffId: string; data: EmployeeRecord; section: EditSection | null; onClose: () => void }) {
   const { message } = App.useApp();
   const upsert = useUpsertEmployee();
@@ -96,6 +105,8 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
   // Employment
   const [employeeNo, setEmployeeNo] = useState('');
   const [position, setPosition] = useState('');
+  const [jobTitleId, setJobTitleId] = useState<string | undefined>();
+  const [workDays, setWorkDays] = useState<number | undefined>();
   const [department, setDepartment] = useState('');
   const [employmentType, setEmploymentType] = useState<string | undefined>();
   const [managerStaffId, setManagerStaffId] = useState<string | undefined>();
@@ -104,7 +115,13 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
   const [employerReason, setEmployerReason] = useState('');
   const [notes, setNotes] = useState('');
   const [legalEmployerId, setLegalEmployerId] = useState<string | undefined>();
-  const [restDay, setRestDay] = useState<number | undefined>();
+  // A weekday, or VARIES for an employee whose rest day is not fixed (s.59).
+  const [restDay, setRestDay] = useState<number | 'VARIES' | undefined>();
+  const [postcode, setPostcode] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState<string | undefined>();
+  // Write-only, like the IC: typed to replace, never shown back.
+  const [passport, setPassport] = useState('');
   // Statutory numbers
   const [epfNumber, setEpfNumber] = useState('');
   const [socsoNumber, setSocsoNumber] = useState('');
@@ -126,11 +143,17 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
     setPhone(id.phone ?? '');
     setEmail(id.email ?? '');
     setAddress(id.address ?? '');
+    setPostcode(id.postcode ?? '');
+    setCity(id.city ?? '');
+    setState(id.state ?? undefined);
+    setPassport('');
     setEcName(id.emergencyContactName ?? '');
     setEcPhone(id.emergencyContactPhone ?? '');
     setEcRelation(id.emergencyContactRelation ?? '');
     setEmployeeNo(em.employeeNo ?? '');
     setPosition(em.position ?? '');
+    setJobTitleId(em.jobTitleId ?? undefined);
+    setWorkDays(em.workDaysPerWeek ?? undefined);
     setDepartment(em.department ?? '');
     setEmploymentType(em.employmentType);
     setManagerStaffId(people.data?.find((row) => row.fullName === em.manager)?.staffId);
@@ -138,7 +161,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
     setConfirmedDate(parse(em.confirmedDate));
     setNotes(em.notes ?? '');
     setLegalEmployerId(em.legalEmployerId ?? undefined);
-    setRestDay(standingNow?.restDayOfWeek ?? data.statutory.restDayOfWeek ?? undefined);
+    setRestDay(restDayValueOf(standingNow) ?? (data.statutory.restDayVaries ? 'VARIES' : (data.statutory.restDayOfWeek ?? undefined)));
     setEpfNumber('');
     setSocsoNumber('');
     setTaxNumber('');
@@ -156,7 +179,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
    */
   useEffect(() => {
     if (!section || !standingNow) return;
-    setRestDay((chosen) => chosen ?? standingNow.restDayOfWeek ?? undefined);
+    setRestDay((chosen) => chosen ?? restDayValueOf(standingNow));
   }, [section, standingNow]);
 
   /**
@@ -172,7 +195,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
    * the day they were worked out with.
    */
   const monthStart = dayjs().startOf('month');
-  const everRecorded = versions.some((row) => row.restDayOfWeek !== null);
+  const everRecorded = versions.some((row) => row.restDayOfWeek !== null || row.restDayVaries === true);
   const changeFrom =
     versions[0] && dayjs(versions[0].effectiveFrom).isAfter(monthStart)
       ? versions[0].effectiveFrom
@@ -180,12 +203,14 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
 
   const saveRestDay = async () => {
     if (restDay === undefined) return;
+    // The weekday, or "it varies" with no weekday: the standing carries both.
+    const chosen = restDay === 'VARIES' ? { restDayOfWeek: null, restDayVaries: true } : { restDayOfWeek: restDay, restDayVaries: false };
     if (everRecorded) {
-      if (restDay === standingNow?.restDayOfWeek) return;
+      if (restDay === restDayValueOf(standingNow)) return;
       await recordStanding.mutateAsync({
         staffId,
         effectiveFrom: changeFrom,
-        restDayOfWeek: restDay,
+        ...chosen,
         reason: 'Rest day changed on the employment record',
       });
       return;
@@ -195,13 +220,13 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
       await recordStanding.mutateAsync({
         staffId,
         effectiveFrom: day(startDate) ?? changeFrom,
-        restDayOfWeek: restDay,
+        ...chosen,
         reason,
       });
       return;
     }
     for (const row of versions) {
-      await recordStanding.mutateAsync({ staffId, effectiveFrom: row.effectiveFrom, restDayOfWeek: restDay, reason });
+      await recordStanding.mutateAsync({ staffId, effectiveFrom: row.effectiveFrom, ...chosen, reason });
     }
   };
 
@@ -219,6 +244,10 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
         phone: blank(phone),
         email: blank(email),
         address: blank(address),
+        postcode: blank(postcode),
+        city: blank(city),
+        state: state ?? undefined,
+        passportNumber: blank(passport),
         emergencyContactName: blank(ecName),
         emergencyContactPhone: blank(ecPhone),
         emergencyContactRelation: blank(ecRelation),
@@ -231,6 +260,8 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
       body = {
         employeeNo: blank(employeeNo),
         position: blank(position),
+        jobTitleId,
+        workDaysPerWeek: workDays,
         department: blank(department),
         employmentType,
         managerStaffId,
@@ -397,8 +428,26 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
               </div>
             </div>
             <div>
-              <label htmlFor="ed-address">Address</label>
-              <Input.TextArea id="ed-address" rows={2} value={address} onChange={(e) => setAddress(e.target.value)} />
+              <label htmlFor="ed-address">Street address</label>
+              <Input id="ed-address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="e.g. 12, Jalan Bangi Avenue 3" />
+            </div>
+            <div className="hr-form__row">
+              <div>
+                <label htmlFor="ed-postcode">Postcode</label>
+                <Input id="ed-postcode" inputMode="numeric" value={postcode} onChange={(e) => setPostcode(e.target.value)} placeholder="e.g. 43650" />
+              </div>
+              <div>
+                <label htmlFor="ed-city">City or town</label>
+                <Input id="ed-city" value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Bandar Baru Bangi" />
+              </div>
+              <div>
+                <label htmlFor="ed-state">State</label>
+                <Select id="ed-state" value={state} onChange={setState} allowClear showSearch placeholder="Choose" style={{ width: '100%' }} options={MALAYSIAN_STATES.map((name) => ({ value: name, label: name }))} />
+              </div>
+              <div>
+                <label htmlFor="ed-passport">Passport number</label>
+                <Input id="ed-passport" value={passport} onChange={(e) => setPassport(e.target.value)} placeholder={data.identity.passportOnFile ? 'On file — type to replace' : 'Not recorded'} />
+              </div>
             </div>
             <div className="hr-form__group">Emergency contact</div>
             <div className="hr-form__row">
@@ -442,8 +491,31 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
                 />
               </div>
               <div>
-                <label htmlFor="ed-pos">Position</label>
-                <Input id="ed-pos" value={position} onChange={(e) => setPosition(e.target.value)} />
+                <label htmlFor="ed-pos">Job title</label>
+                <JobTitlePicker
+                  id="ed-pos"
+                  value={jobTitleId}
+                  onChange={(id, name) => {
+                    setJobTitleId(id);
+                    setPosition(name ?? '');
+                  }}
+                />
+              </div>
+              <div>
+                <label htmlFor="ed-days">Days a week</label>
+                <Select
+                  id="ed-days"
+                  value={workDays}
+                  onChange={setWorkDays}
+                  allowClear
+                  placeholder="Not recorded"
+                  style={{ width: '100%' }}
+                  options={[
+                    { value: 5, label: '5 days' },
+                    { value: 5.5, label: '5½ days' },
+                    { value: 6, label: '6 days' },
+                  ]}
+                />
               </div>
               <div>
                 <label htmlFor="ed-dept">Department</label>
@@ -491,11 +563,12 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
                 onChange={setRestDay}
                 placeholder="Not recorded"
                 style={{ width: '100%' }}
-                options={DAY_NAMES.map((name, index) => ({ value: index, label: name }))}
+                options={[...DAY_NAMES.map((name, index) => ({ value: index, label: name })), { value: 'VARIES', label: 'Varies week to week' }]}
               />
               <div className="hr-form__help">
                 {restDayNote} Section 60(1) gives one whole day a week and the employer appoints it. Payroll refuses to
-                work out a month without it, and that refusal cannot be passed.
+                work out a month without it, and that refusal cannot be passed. Where it varies week to week, say so: the
+                month runs, and the run says rest-day pay for them is keyed by hand.
               </div>
             </div>
             <div>

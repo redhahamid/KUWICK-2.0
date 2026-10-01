@@ -299,6 +299,21 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    * the two apart. So the run says how many such lines nobody has touched,
    * as information: it never blocks, and editing or clearing a line clears it.
    */
+  /**
+   * NO FIXED REST DAY. s.59 lets the employer vary the rest day week to
+   * week, and the record says so for this person — so no weekday is the
+   * rest day, and a day worked is priced as a normal day. Information, not
+   * a block: the reviewer keys rest-day pay by hand where it arises.
+   */
+  REST_DAY_VARIES: {
+    code: 'REST_DAY_VARIES',
+    severity: 'INFO',
+    overridable: false,
+    cause: () => 'Their rest day varies week to week, so Kuwick cannot tell which worked day was a rest day.',
+    consequence: 'Every day worked this month is priced as a normal day. Rest-day pay under s.60(3), if any is due, is not in this figure.',
+    remediation: 'Check the timesheet against the roster. If a rest day was worked, key the rest-day pay as a line on their items.',
+    deepLink: (c) => `/admin/hr/attendance?staffId=${String(c.staffId)}`,
+  },
   CARRIED_FORWARD_UNCHECKED: {
     code: 'CARRIED_FORWARD_UNCHECKED',
     severity: 'INFO',

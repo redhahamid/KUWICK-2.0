@@ -228,21 +228,21 @@ export function PlatformClinicsPage() {
           onFinish={(values) => editing && updateTenant.mutate({ id: editing.id, values })}
         >
           <Form.Item name="name" label="Clinic Name" rules={[{ required: true }]}>
-            <Input placeholder="Clinic Name" />
+            <Input placeholder="e.g. Clinic Name" />
           </Form.Item>
           <Form.Item name="address" label="Address">
-            <Input placeholder="Full Address" />
+            <Input placeholder="e.g. Full Address" />
           </Form.Item>
           <Space style={{ display: 'flex' }} styles={{ item: { flex: 1 } }}>
             <Form.Item name="phone" label="Phone Number">
-              <Input placeholder="+6012..." />
+              <Input placeholder="e.g. +6012..." />
             </Form.Item>
             <Form.Item name="email" label="Clinic Email">
-              <Input placeholder="info@clinic.com" />
+              <Input placeholder="e.g. info@clinic.com" />
             </Form.Item>
           </Space>
           <Form.Item name="registrationNo" label="Registration No. (SSM/MEPCSA)">
-            <Input placeholder="202401000001" />
+            <Input placeholder="e.g. 202401000001" />
           </Form.Item>
           <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 12, marginBottom: 12 }}>
             <Text strong style={{ display: 'block', marginBottom: 4 }}>
@@ -258,7 +258,7 @@ export function PlatformClinicsPage() {
               label="Owner Full Name"
               rules={editing?.owner ? undefined : [{ required: true, message: 'Enter the owner’s name' }]}
             >
-              <Input placeholder="Dr. Aisyah Binti Ahmad" />
+              <Input placeholder="e.g. Dr. Aisyah Binti Ahmad" />
             </Form.Item>
             <Space style={{ display: 'flex' }} styles={{ item: { flex: 1 } }}>
               <Form.Item
@@ -269,7 +269,7 @@ export function PlatformClinicsPage() {
                   { type: 'email' as const, message: 'Enter a valid email' },
                 ]}
               >
-                <Input placeholder="owner@clinic.com" />
+                <Input placeholder="e.g. owner@clinic.com" />
               </Form.Item>
               <Form.Item
                 name="ownerPassword"
@@ -295,22 +295,22 @@ export function PlatformClinicsPage() {
       <Modal title="Create Clinic" open={open} onCancel={() => setOpen(false)} footer={null} destroyOnHidden>
         <Form form={form} layout="vertical" onFinish={(values) => createTenant.mutate(values)}>
           <Form.Item name="name" label="Clinic Name" rules={[{ required: true }]}>
-            <Input placeholder="Clinic Name" />
+            <Input placeholder="e.g. Clinic Name" />
           </Form.Item>
           <Form.Item name="address" label="Address">
-            <Input placeholder="Full Address" />
+            <Input placeholder="e.g. Full Address" />
           </Form.Item>
           <Space style={{ display: 'flex' }} styles={{ item: { flex: 1 } }}>
             <Form.Item name="phone" label="Phone Number">
-              <Input placeholder="+6012..." />
+              <Input placeholder="e.g. +6012..." />
             </Form.Item>
             <Form.Item name="email" label="Clinic Email">
-              <Input placeholder="info@clinic.com" />
+              <Input placeholder="e.g. info@clinic.com" />
             </Form.Item>
           </Space>
           <Space style={{ display: 'flex', alignItems: 'center' }} styles={{ item: { flex: 1 } }}>
             <Form.Item name="registrationNo" label="Registration No. (SSM/MEPCSA)">
-              <Input placeholder="202401000001" />
+              <Input placeholder="e.g. 202401000001" />
             </Form.Item>
             <Form.Item name="startAsTrial" valuePropName="checked" style={{ marginTop: 24 }}>
               <Checkbox>Start as Trial</Checkbox>
@@ -325,7 +325,7 @@ export function PlatformClinicsPage() {
               Staff).
             </Text>
             <Form.Item name="ownerFullName" label="Owner Full Name" rules={[{ required: true, message: 'Enter the owner’s name' }]}>
-              <Input placeholder="Dr. Aisyah Binti Ahmad" />
+              <Input placeholder="e.g. Dr. Aisyah Binti Ahmad" />
             </Form.Item>
             <Space style={{ display: 'flex' }} styles={{ item: { flex: 1 } }}>
               <Form.Item
@@ -333,7 +333,7 @@ export function PlatformClinicsPage() {
                 label="Owner Login Email"
                 rules={[{ required: true, type: 'email', message: 'Enter a valid email' }]}
               >
-                <Input placeholder="owner@clinic.com" />
+                <Input placeholder="e.g. owner@clinic.com" />
               </Form.Item>
               <Form.Item
                 name="ownerPassword"

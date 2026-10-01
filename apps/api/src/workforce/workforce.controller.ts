@@ -4,6 +4,8 @@ import { memoryStorage } from 'multer';
 import { Response } from 'express';
 import { EmploymentStatus, LeaveType, AttendanceCorrectionStatus } from '@prisma/client';
 import { EmployeeService } from './employee.service';
+import { JobTitleService } from './job-title.service';
+import { CreateJobTitleDto, UpdateJobTitleDto } from './dto/job-title.dto';
 import { AttendanceRecordService } from './attendance-record.service';
 import { AttendancePolicyService } from './attendance-policy.service';
 import { LeaveService } from './leave.service';
@@ -72,6 +74,7 @@ import { ClaimPolicyService } from './claim-policy.service';
 export class WorkforceController {
   constructor(
     private readonly employees: EmployeeService,
+    private readonly jobTitles: JobTitleService,
     private readonly attendance: AttendanceRecordService,
     private readonly attendancePolicies: AttendancePolicyService,
     private readonly leave: LeaveService,
@@ -120,6 +123,22 @@ export class WorkforceController {
   @Post('legal-employers')
   upsertLegalEmployer(@Body() dto: UpsertLegalEmployerDto) {
     return this.legalEmployers.upsert(dto);
+  }
+
+  // The clinic's own job titles, picked from and added to on the employee form.
+  @Get('job-titles')
+  listJobTitles() {
+    return this.jobTitles.list();
+  }
+
+  @Post('job-titles')
+  createJobTitle(@Body() dto: CreateJobTitleDto) {
+    return this.jobTitles.create(dto);
+  }
+
+  @Patch('job-titles/:id')
+  updateJobTitle(@Param('id') id: string, @Body() dto: UpdateJobTitleDto) {
+    return this.jobTitles.update(id, dto);
   }
 
   @Patch('employees/:staffId/legal-employer')

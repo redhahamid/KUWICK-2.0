@@ -80,6 +80,8 @@ export type AuditAction =
   | 'panel.claimsImported'
   // HR
   | 'employee.changed'
+  | 'jobTitle.created'
+  | 'jobTitle.updated'
   | 'attendance.corrected'
   | 'attendancePolicy.saved'
   | 'staffFile.uploaded'

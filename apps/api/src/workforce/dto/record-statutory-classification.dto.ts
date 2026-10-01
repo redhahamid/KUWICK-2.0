@@ -33,6 +33,8 @@ export class RecordStatutoryClassificationDto {
   @IsOptional() @IsBoolean() disabledSpouse?: boolean;
 
   @IsOptional() @IsInt() @Min(0) @Max(6) restDayOfWeek?: number | null;
+  /** True when the rest day is not a fixed weekday (s.59 lets the employer vary it). Sent with restDayOfWeek null. */
+  @IsOptional() @IsBoolean() restDayVaries?: boolean;
   @IsOptional()
   @IsIn(['PAY_AT_STATUTORY_RATES', 'NOT_PAID', null])
   overtimeContractPolicy?: 'PAY_AT_STATUTORY_RATES' | 'NOT_PAID' | null;

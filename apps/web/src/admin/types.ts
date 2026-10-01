@@ -1289,7 +1289,13 @@ export interface EmployeeRecord {
     gender: string | null;
     nationality: string | null;
     maritalStatus: string | null;
+    /** The street line; the rest is split below. */
     address: string | null;
+    postcode: string | null;
+    city: string | null;
+    state: string | null;
+    /** Whether a passport number is on file. The number itself never leaves the record read. */
+    passportOnFile: boolean;
     emergencyContactName: string | null;
     emergencyContactPhone: string | null;
     emergencyContactRelation: string | null;
@@ -1297,6 +1303,10 @@ export interface EmployeeRecord {
   employment: {
     employeeNo: string | null;
     position: string | null;
+    /** The clinic's own job title the position came from, when it came from the list. */
+    jobTitleId: string | null;
+    /** 5, 5.5 or 6: recorded, not derived from the rest day. */
+    workDaysPerWeek: number | null;
     department: string | null;
     employmentType: string;
     employmentStatus: string;
@@ -1347,6 +1357,8 @@ export interface EmployeeRecord {
     pcbCategory: string | null;
     qualifyingChildren: number;
     restDayOfWeek: number | null;
+    /** No fixed rest day: it varies week to week. */
+    restDayVaries: boolean;
     overtimeContractPolicy: string | null;
     epfApplicable: boolean;
     socsoApplicable: boolean;
@@ -2995,6 +3007,8 @@ export interface StatutoryClassificationVersion {
   disabledSelf: boolean;
   disabledSpouse: boolean;
   restDayOfWeek: number | null;
+  /** No fixed rest day. Absent on rows read before the field existed. */
+  restDayVaries?: boolean;
   overtimeContractPolicy: string | null;
   reason: string | null;
   note: string | null;
@@ -3020,6 +3034,8 @@ export interface RecordStatutoryClassificationBody {
   disabledSelf?: boolean;
   disabledSpouse?: boolean;
   restDayOfWeek?: number | null;
+  /** True when the rest day varies week to week; sent with restDayOfWeek null. */
+  restDayVaries?: boolean;
   overtimeContractPolicy?: string | null;
   reason?: string;
 }
@@ -3281,4 +3297,13 @@ export interface RecurringItemChoice {
   name: string;
   direction: 'ADDITION' | 'DEDUCTION';
   treatment: { epf: boolean; socso: boolean; pcb: boolean };
+}
+
+/** One of the clinic's own job titles, as the employee form and the Job titles drawer read it. */
+export interface JobTitleRow {
+  id: string;
+  name: string;
+  active: boolean;
+  /** People whose record points at this title, leavers included. */
+  employeeCount: number;
 }

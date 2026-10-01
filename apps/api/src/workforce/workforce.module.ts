@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CoreModule } from '../core/core.module';
 import { WorkforceController } from './workforce.controller';
 import { EmployeeService } from './employee.service';
+import { JobTitleService } from './job-title.service';
 import { AttendanceRecordService } from './attendance-record.service';
 import { AttendancePolicyService } from './attendance-policy.service';
 import { LeaveService } from './leave.service';
@@ -47,6 +48,7 @@ import { PayrollFinanceService } from './payroll-finance.service';
   controllers: [WorkforceController],
   providers: [
     EmployeeService,
+    JobTitleService,
     AttendanceRecordService,
     AttendancePolicyService,
     LeaveService,

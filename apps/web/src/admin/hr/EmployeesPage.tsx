@@ -14,6 +14,7 @@ import { CompleteProfileDrawer } from './CompleteProfileDrawer';
 import { MarkResignedModal } from './MarkResignedModal';
 import { DeleteEmployeeModal } from './DeleteEmployeeModal';
 import { BenefitsView } from './BenefitsView';
+import { JobTitlesDrawer } from './JobTitlesDrawer';
 import type { EmployeeRow, PayrollReadinessItem } from '../types';
 
 /**
@@ -103,6 +104,7 @@ export function EmployeesPage() {
 
   const [seg, setSeg] = useState<Seg>('ACTIVE');
   const [completing, setCompleting] = useState<{ staffId: string; fullName: string } | null>(null);
+  const [titlesOpen, setTitlesOpen] = useState(false);
   const [resigning, setResigning] = useState<{ staffId: string; fullName: string } | null>(null);
   const [deleting, setDeleting] = useState<{ staffId: string; fullName: string } | null>(null);
 
@@ -212,6 +214,11 @@ export function EmployeesPage() {
               Export
             </button>
           ) : null}
+          {mayManage && view === 'employees' ? (
+            <button type="button" className="hr-btn" onClick={() => setTitlesOpen(true)}>
+              Job titles
+            </button>
+          ) : null}
           {mayManage ? (
             <button type="button" className="hr-btn hr-btn--primary" onClick={() => navigate('/admin/hr/employees/new')}>
               <IconPlus />
@@ -221,6 +228,7 @@ export function EmployeesPage() {
         </>
       }
     >
+      {titlesOpen ? <JobTitlesDrawer open onClose={() => setTitlesOpen(false)} /> : null}
       <CompleteProfileDrawer staffId={completing?.staffId ?? null} fullName={completing?.fullName ?? ''} onClose={() => setCompleting(null)} />
       <MarkResignedModal staffId={resigning?.staffId ?? null} fullName={resigning?.fullName ?? ''} open={Boolean(resigning)} onClose={() => setResigning(null)} />
       <DeleteEmployeeModal staffId={deleting?.staffId ?? null} fullName={deleting?.fullName ?? ''} open={Boolean(deleting)} onClose={() => setDeleting(null)} />

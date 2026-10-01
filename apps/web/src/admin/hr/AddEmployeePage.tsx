@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { App, AutoComplete, Button, DatePicker, Form, Input, Select, Switch } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -13,7 +13,9 @@ import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { parseNric } from '../../core/nric';
 import { PhoneField } from './ui/PhoneField';
 import { DAY_NAMES } from './StatutoryStandingManager';
-import { useLegalEmployers } from '../hooks/useAdmin';
+import { useJobTitles, useLegalEmployers } from '../hooks/useAdmin';
+import { JobTitlePicker } from './JobTitlePicker';
+import { MALAYSIAN_STATES } from './malaysianStates';
 import { RELATIONSHIPS } from './ui/reasons';
 
 /**
@@ -100,6 +102,29 @@ export function AddEmployeePage() {
   const wantsLogin = Form.useWatch('wantsLogin', form);
   const epfMembership = Form.useWatch('epfMembership', form);
   const identifierType = Form.useWatch('identifierType', form);
+  const identifierValue = Form.useWatch('identifierValue', form);
+  const jobTitles = useJobTitles();
+  /*
+   * THE IC SAYS WHEN THEY WERE BORN AND WHICH THEY ARE. A valid Malaysian IC
+   * fills the date of birth and the gender, into a box that is still a box:
+   * typed over, the typed answer stays, and only a box this filled is
+   * refilled when the IC changes.
+   */
+  const autoFilled = useRef({ dob: false, gender: false });
+  useEffect(() => {
+    if (identifierType === 'PASSPORT' || !identifierValue) return;
+    const parsed = parseNric(identifierValue);
+    if (!parsed) return;
+    const current = form.getFieldsValue(['dateOfBirth', 'gender']) as { dateOfBirth?: unknown; gender?: string };
+    if (!current.dateOfBirth || autoFilled.current.dob) {
+      form.setFieldValue('dateOfBirth', parsed.dob);
+      autoFilled.current.dob = true;
+    }
+    if (!current.gender || autoFilled.current.gender) {
+      form.setFieldValue('gender', parsed.gender === 'Male' ? 'MALE' : 'FEMALE');
+      autoFilled.current.gender = true;
+    }
+  }, [identifierValue, identifierType, form]);
 
   // ONE COMPANY MEANS NO CHOICE: a single-entity clinic should not be asked
   // which of its one company employs the person. Two or more stay a question.
@@ -149,12 +174,16 @@ export function AddEmployeePage() {
         role: values.role,
         clinicId: values.clinicId ?? clinicId,
         employeeNo: values.employeeNo || undefined,
-        position: values.position || undefined,
+        jobTitleId: values.jobTitleId || undefined,
+        position: jobTitles.data?.find((row) => row.id === values.jobTitleId)?.name,
+        workDaysPerWeek: values.workDaysPerWeek ?? undefined,
         department: values.department || undefined,
         employmentType: values.employmentType || undefined,
         startDate: values.startDate ? values.startDate.format('YYYY-MM-DD') : undefined,
         identifierType: values.identifierValue ? (values.identifierType ?? 'NRIC') : undefined,
         identifierValue: values.identifierValue || undefined,
+        // A passport on file as the identity document is the passport; a non-citizen with an IC on file may add theirs beside it.
+        passportNumber: values.identifierType === 'PASSPORT' ? values.identifierValue || undefined : values.passportNumber || undefined,
         dateOfBirth: values.dateOfBirth ? values.dateOfBirth.format('YYYY-MM-DD') : undefined,
         gender: values.gender || undefined,
         // A Malaysian citizen is Malaysian; the form asks nobody to say so twice.
@@ -162,6 +191,9 @@ export function AddEmployeePage() {
         phone: values.phone || undefined,
         email: values.email || undefined,
         address: values.address || undefined,
+        postcode: values.postcode || undefined,
+        city: values.city || undefined,
+        state: values.state || undefined,
         emergencyContactName: values.emergencyContactName || undefined,
         emergencyContactPhone: values.emergencyContactPhone || undefined,
         emergencyContactRelation: values.emergencyContactRelation || undefined,
@@ -227,7 +259,11 @@ export function AddEmployeePage() {
         ...(values.pcbCategory ? { pcbCategory: values.pcbCategory } : {}),
         ...(values.taxResidence ? { taxResidence: values.taxResidence } : {}),
         ...(values.lindungParticipation ? { lindungParticipation: values.lindungParticipation } : {}),
-        ...(hasRestDay ? { restDayOfWeek: values.restDayOfWeek } : {}),
+        ...(hasRestDay
+          ? values.restDayOfWeek === 'VARIES'
+            ? { restDayOfWeek: null, restDayVaries: true }
+            : { restDayOfWeek: values.restDayOfWeek, restDayVaries: false }
+          : {}),
         ...(values.overtimeContractPolicy ? { overtimeContractPolicy: values.overtimeContractPolicy } : {}),
       };
       if (staffId && Object.keys(standing).length > 0) {
@@ -333,10 +369,15 @@ export function AddEmployeePage() {
                     label="Full name"
                     rules={[{ required: true, min: 2, message: 'A name is the one thing this cannot be created without.' }]}
                   >
-                    <Input size="large" placeholder="Nurul Hidayah binti Ahmad" />
+                    <Input size="large" placeholder="e.g. Nurul Hidayah binti Ahmad" />
                   </Form.Item>
                   <div className="kw-formRow">
-                    <Form.Item name="role" label="Job" rules={[{ required: true, message: 'Which job?' }]}>
+                    <Form.Item
+                      name="role"
+                      label="Account role"
+                      rules={[{ required: true, message: 'Which role?' }]}
+                      extra="What they can open in Kuwick, and their payroll group. Their job title is on the next stage."
+                    >
                       <Select options={ROLES} placeholder="Choose" />
                     </Form.Item>
                     <Form.Item
@@ -363,12 +404,21 @@ export function AddEmployeePage() {
                     </Form.Item>
                   </div>
                   <div className="kw-formRow">
-                    <Form.Item name="dateOfBirth" label="Date of birth" extra="SOCSO and EIS need an age.">
-                      <DatePicker style={{ width: '100%' }} format="D MMM YYYY" />
+                    <Form.Item name="dateOfBirth" label="Date of birth" extra="Filled from a Malaysian IC; SOCSO and EIS need an age.">
+                      <DatePicker
+                        style={{ width: '100%' }}
+                        format="D MMM YYYY"
+                        onChange={() => {
+                          autoFilled.current.dob = false;
+                        }}
+                      />
                     </Form.Item>
                     <Form.Item name="gender" label="Gender">
                       <Select
                         allowClear
+                        onChange={() => {
+                          autoFilled.current.gender = false;
+                        }}
                         options={[
                           { value: 'MALE', label: 'Male' },
                           { value: 'FEMALE', label: 'Female' },
@@ -386,12 +436,23 @@ export function AddEmployeePage() {
                   <PhoneField />
                 </Form.Item>
                 <Form.Item name="email" label="Email">
-                  <Input placeholder="nurul@example.com" />
+                  <Input placeholder="e.g. nurul@example.com" />
                 </Form.Item>
               </div>
-              <Form.Item name="address" label="Address">
-                <Input.TextArea rows={2} />
+              <Form.Item name="address" label="Street address">
+                <Input placeholder="e.g. 12, Jalan Bangi Avenue 3" />
               </Form.Item>
+              <div className="kw-formRow">
+                <Form.Item name="postcode" label="Postcode">
+                  <Input inputMode="numeric" placeholder="e.g. 43650" />
+                </Form.Item>
+                <Form.Item name="city" label="City or town">
+                  <Input placeholder="e.g. Bandar Baru Bangi" />
+                </Form.Item>
+                <Form.Item name="state" label="State">
+                  <Select allowClear showSearch placeholder="Choose" options={MALAYSIAN_STATES.map((name) => ({ value: name, label: name }))} />
+                </Form.Item>
+              </div>
               <div className="kw-formRow">
                 <Form.Item name="emergencyContactName" label="Emergency contact">
                   <Input />
@@ -410,13 +471,26 @@ export function AddEmployeePage() {
             <Panel title="The job">
               <div className="kw-formRow">
                 <Form.Item name="employeeNo" label="Employee number">
-                  <Input placeholder="E-1024" />
+                  <Input placeholder="e.g. E-1024" />
                 </Form.Item>
-                <Form.Item name="position" label="Position">
-                  <Input placeholder="Staff Nurse" />
+                <Form.Item name="jobTitleId" label="Job title" extra="The clinic’s own list. Add to it here if the title is new.">
+                  <JobTitlePicker id="jobTitleId" />
                 </Form.Item>
                 <Form.Item name="department" label="Department or team">
-                  <Input placeholder="Clinical" />
+                  <Input placeholder="e.g. Clinical" />
+                </Form.Item>
+              </div>
+              <div className="kw-formRow">
+                <Form.Item name="workDaysPerWeek" label="Days a week" extra="Recorded on the record and shown there. The overtime divisor stays the rule set’s.">
+                  <Select
+                    allowClear
+                    placeholder="Choose"
+                    options={[
+                      { value: 5, label: '5 days' },
+                      { value: 5.5, label: '5½ days' },
+                      { value: 6, label: '6 days' },
+                    ]}
+                  />
                 </Form.Item>
               </div>
               <div className="kw-formRow">
@@ -440,7 +514,7 @@ export function AddEmployeePage() {
                   label="Medical registration number"
                   extra="A registration number is what makes somebody a bookable provider who can sign notes. Leave it empty for an employee with a clinical job title."
                 >
-                  <Input placeholder="MMC 12345" />
+                  <Input placeholder="e.g. MMC 12345" />
                 </Form.Item>
               ) : null}
             </Panel>
@@ -475,7 +549,7 @@ export function AddEmployeePage() {
             <Panel title="Pay" hint="Salary is dated, so a later change closes this one rather than overwriting it.">
               <div className="kw-formRow">
                 <Form.Item name="salaryAmount" label="Basic salary">
-                  <Input prefix="RM" inputMode="decimal" placeholder="3200.00" />
+                  <Input prefix="RM" inputMode="decimal" placeholder="e.g. 3200.00" />
                 </Form.Item>
                 <Form.Item name="salaryBasis" label="Paid">
                   <Select
@@ -492,7 +566,7 @@ export function AddEmployeePage() {
               </div>
               <div className="kw-formRow">
                 <Form.Item name="bankName" label="Bank">
-                  <Input placeholder="Maybank" />
+                  <Input placeholder="e.g. Maybank" />
                 </Form.Item>
                 <Form.Item
                   name="bankAccountNo"
@@ -525,9 +599,13 @@ export function AddEmployeePage() {
                 <Form.Item
                   name="restDayOfWeek"
                   label="Rest day"
-                  extra="Section 60(1) gives one whole day a week and the employer appoints it. Payroll refuses to work out a month without it."
+                  extra="Section 60(1) gives one whole day a week and the employer appoints it. Payroll refuses to work out a month without it. Where it varies week to week, say so: the month runs, and rest-day pay is keyed by hand."
                 >
-                  <Select allowClear placeholder="Choose" options={DAY_NAMES.map((name, index) => ({ value: index, label: name }))} />
+                  <Select
+                    allowClear
+                    placeholder="Choose"
+                    options={[...DAY_NAMES.map((name, index) => ({ value: index, label: name })), { value: 'VARIES', label: 'Varies week to week' }]}
+                  />
                 </Form.Item>
                 <Form.Item
                   name="lindungParticipation"
@@ -592,6 +670,15 @@ export function AddEmployeePage() {
                   <Input placeholder="e.g. Indonesian" />
                 </Form.Item>
               ) : null}
+              {epfMembership && epfMembership !== 'MALAYSIAN_CITIZEN' && identifierType !== 'PASSPORT' ? (
+                <Form.Item
+                  name="passportNumber"
+                  label="Passport number"
+                  extra="Beside the IC above, for a non-citizen whose document on file is an IC. Kept for the filings; never shown back."
+                >
+                  <Input placeholder="e.g. A12345678" />
+                </Form.Item>
+              ) : null}
               <Form.Item
                 name="overtimeContractPolicy"
                 label="Overtime above the Act limit"
@@ -608,13 +695,13 @@ export function AddEmployeePage() {
               </Form.Item>
               <div className="kw-formRow">
                 <Form.Item name="epfNumber" label="EPF number">
-                  <Input placeholder="12345678" />
+                  <Input placeholder="e.g. 12345678" />
                 </Form.Item>
                 <Form.Item name="socsoNumber" label="SOCSO number">
                   <Input />
                 </Form.Item>
                 <Form.Item name="taxNumber" label="Income tax number">
-                  <Input placeholder="SG 12345678090" />
+                  <Input placeholder="e.g. SG 12345678090" />
                 </Form.Item>
               </div>
             </Panel>
@@ -629,8 +716,8 @@ export function AddEmployeePage() {
                     columns={3}
                     items={[
                       { label: 'Name', value: values.fullName },
-                      { label: 'Job', value: roleLabel },
-                      { label: 'Position', value: values.position },
+                      { label: 'Account role', value: roleLabel },
+                      { label: 'Job title', value: jobTitles.data?.find((row) => row.id === values.jobTitleId)?.name },
                       { label: 'Employee number', value: values.employeeNo },
                       {
                         label: 'Starts',

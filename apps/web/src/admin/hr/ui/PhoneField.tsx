@@ -67,7 +67,7 @@ export function PhoneField({
         id={id}
         value={local}
         inputMode="tel"
-        placeholder={placeholder ?? '12-345 6789'}
+        placeholder={placeholder ?? 'e.g. 12-345 6789'}
         onChange={(event) => onChange?.(joinPhone(code, event.target.value))}
       />
     </Space.Compact>
