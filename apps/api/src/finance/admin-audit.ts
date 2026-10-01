@@ -174,6 +174,8 @@ export type AuditAction =
   // was actually made at the authority's portal — the only "submitted" there is.
   | 'payrollStatutory.listingDownloaded'
   | 'payrollStatutory.submissionRecorded'
+  | 'payrollStatutory.filingViewed'
+  | 'payrollStatutory.filingRecorded'
   // TP1/TP3 — the two LHDN forms that change a month's tax. Recording and
   // deleting are both acts on somebody's cumulative tax position.
   | 'payrollTax.tp1Recorded'

@@ -102,6 +102,7 @@ import { PayrollHistoryPage } from './admin/hr/PayrollHistoryPage';
 import { YtdOpeningImportPage } from './admin/hr/YtdOpeningImportPage';
 import { PayrollRunPage } from './admin/hr/PayrollRunPage';
 import { PayrollEmployeePage } from './admin/hr/PayrollEmployeePage';
+import { StatutoryFilingPage } from './admin/hr/StatutoryFilingPage';
 import { EmployeeWorkspacePage } from './admin/hr/EmployeeWorkspacePage';
 import { AddEmployeePage } from './admin/hr/AddEmployeePage';
 import { BulkEmployeesPage } from './admin/hr/BulkEmployeesPage';
@@ -357,6 +358,7 @@ export function App() {
             <Route path="/admin/hr/payroll/all" element={<Navigate to="/admin/hr/payroll/history" replace />} />
             {/* ONE PERSON'S MONTH — employee-payroll.html. Reached from the grid's rows. */}
             <Route path="/admin/hr/payroll/:id/employees/:staffId" element={<PayrollEmployeePage />} />
+            <Route path="/admin/hr/payroll/:id/filing" element={<StatutoryFilingPage />} />
             <Route path="/admin/hr/payroll/:id" element={<PayrollRunPage />} />
             <Route path="/admin/hr/incentives" element={<IncentivesPage />} />
             {/* Medical benefits is a view of Employees now (Piece 1 decision); the old address still lands on it. */}

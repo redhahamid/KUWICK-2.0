@@ -180,7 +180,13 @@ export class PayrollStatutoryOutputService {
 
   // -------------------------------------------------------------------------
 
-  private async compose(runId: string) {
+  /**
+   * The prepared month: per scheme, from the verified snapshot. Public so the
+   * filing helper can regroup the SAME figures per agency rather than
+   * computing a second set; it is not a route, and it writes no audit — the
+   * caller that shows or files the figures does.
+   */
+  async compose(runId: string) {
     const run = await this.prisma.payrollRun.findUnique({
       where: { id: runId },
       include: { legalEmployer: true },
@@ -416,6 +422,12 @@ export class PayrollStatutoryOutputService {
         'with its date and reference.',
       schemes,
     };
-    return { view, snapshotVersion: snapshot.version, snapshotHash: snapshot.hash };
+    return {
+      view,
+      snapshotVersion: snapshot.version,
+      snapshotHash: snapshot.hash,
+      payload,
+      identifierOf: (staffId: string) => profileByStaff.get(staffId)?.identifierValue ?? null,
+    };
   }
 }

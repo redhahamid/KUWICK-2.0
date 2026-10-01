@@ -1,6 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiClient, uploadFile } from '../../core/api-client';
-import type { EmployeeIntakeResult, EmployeeIntakeRowDto, JobTitleRow } from '../types';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiClient, uploadFile } from "../../core/api-client";
+import type {
+  EmployeeIntakeResult,
+  EmployeeIntakeRowDto,
+  JobTitleRow,
+  StatutoryFiling,
+} from "../types";
 import type {
   CreditNoteRow,
   DayEndView,
@@ -97,15 +102,17 @@ import type {
   PayComponentRow,
   RecurringItemRow,
   RecurringItemChoice,
-} from '../types';
+} from "../types";
 
-function qs(params: Record<string, string | number | boolean | undefined>): string {
+function qs(
+  params: Record<string, string | number | boolean | undefined>,
+): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== '') search.set(key, String(value));
+    if (value !== undefined && value !== "") search.set(key, String(value));
   }
   const query = search.toString();
-  return query ? `?${query}` : '';
+  return query ? `?${query}` : "";
 }
 
 /**
@@ -138,17 +145,25 @@ function useAdminMutation<TVars, TResult>(
 
 export function useInvoicePosition(invoiceId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-finance', 'position', invoiceId],
-    queryFn: () => apiClient.get<InvoicePosition>(`/finance/invoices/${invoiceId}/position`),
+    queryKey: ["admin-finance", "position", invoiceId],
+    queryFn: () =>
+      apiClient.get<InvoicePosition>(`/finance/invoices/${invoiceId}/position`),
     enabled: Boolean(invoiceId),
   });
 }
 
 export function useRecordPayment(invoiceId: string) {
   return useAdminMutation(
-    (body: { amount: string; tender?: string; methodLabel?: string; kind?: string; referenceNo?: string; notes?: string; allowOverpayment?: boolean }) =>
-      apiClient.post(`/finance/invoices/${invoiceId}/payments`, body),
-    ['admin-finance'],
+    (body: {
+      amount: string;
+      tender?: string;
+      methodLabel?: string;
+      kind?: string;
+      referenceNo?: string;
+      notes?: string;
+      allowOverpayment?: boolean;
+    }) => apiClient.post(`/finance/invoices/${invoiceId}/payments`, body),
+    ["admin-finance"],
   );
 }
 
@@ -156,7 +171,7 @@ export function useReversePayment() {
   return useAdminMutation(
     ({ paymentId, reason }: { paymentId: string; reason: string }) =>
       apiClient.post(`/finance/payments/${paymentId}/reverse`, { reason }),
-    ['admin-finance'],
+    ["admin-finance"],
   );
 }
 
@@ -166,80 +181,121 @@ export function useReversePayment() {
  * drawer to ask about, and asking anyway returns "No branch selected for this
  * request." — an error the screen would then have to explain away.
  */
-export function useDayEnd(date: string, clinicId?: string, options?: { enabled?: boolean }) {
+export function useDayEnd(
+  date: string,
+  clinicId?: string,
+  options?: { enabled?: boolean },
+) {
   return useQuery({
-    queryKey: ['admin-finance', 'day-end', date, clinicId],
-    queryFn: () => apiClient.get<DayEndView>(`/finance/day-end${qs({ date, clinicId })}`),
+    queryKey: ["admin-finance", "day-end", date, clinicId],
+    queryFn: () =>
+      apiClient.get<DayEndView>(`/finance/day-end${qs({ date, clinicId })}`),
     enabled: Boolean(date) && (options?.enabled ?? true),
   });
 }
 
 export function useOpenDays(clinicId?: string) {
   return useQuery({
-    queryKey: ['admin-finance', 'open-days', clinicId],
-    queryFn: () => apiClient.get<OpenDayRow[]>(`/finance/day-end/open${qs({ clinicId })}`),
+    queryKey: ["admin-finance", "open-days", clinicId],
+    queryFn: () =>
+      apiClient.get<OpenDayRow[]>(`/finance/day-end/open${qs({ clinicId })}`),
   });
 }
 
 export function useCountDayEnd(date: string, clinicId?: string) {
   return useAdminMutation(
-    (body: { cash?: string; card?: string; qr?: string; other?: string; varianceReason?: string }) =>
+    (body: {
+      cash?: string;
+      card?: string;
+      qr?: string;
+      other?: string;
+      varianceReason?: string;
+    }) =>
       apiClient.post(`/finance/day-end/count${qs({ date, clinicId })}`, body),
-    ['admin-finance'],
+    ["admin-finance"],
   );
 }
 
 export function useCloseDayEnd(date: string, clinicId?: string) {
   return useAdminMutation(
-    (body: { varianceReason?: string }) => apiClient.post(`/finance/day-end/close${qs({ date, clinicId })}`, body),
-    ['admin-finance'],
+    (body: { varianceReason?: string }) =>
+      apiClient.post(`/finance/day-end/close${qs({ date, clinicId })}`, body),
+    ["admin-finance"],
   );
 }
 
 export function useReopenDayEnd(date: string, clinicId?: string) {
   return useAdminMutation(
-    (body: { reason: string }) => apiClient.post(`/finance/day-end/reopen${qs({ date, clinicId })}`, body),
-    ['admin-finance'],
+    (body: { reason: string }) =>
+      apiClient.post(`/finance/day-end/reopen${qs({ date, clinicId })}`, body),
+    ["admin-finance"],
   );
 }
 
-export function usePatientReceivables(params: { clinicId?: string; asOf?: string }) {
+export function usePatientReceivables(params: {
+  clinicId?: string;
+  asOf?: string;
+}) {
   return useQuery({
-    queryKey: ['admin-finance', 'receivables', params],
-    queryFn: () => apiClient.get<ReceivablesReport>(`/finance/receivables/patients${qs(params)}`),
+    queryKey: ["admin-finance", "receivables", params],
+    queryFn: () =>
+      apiClient.get<ReceivablesReport>(
+        `/finance/receivables/patients${qs(params)}`,
+      ),
   });
 }
 
-export function usePaymentReport(params: { from: string; to: string; clinicId?: string }) {
+export function usePaymentReport(params: {
+  from: string;
+  to: string;
+  clinicId?: string;
+}) {
   return useQuery({
-    queryKey: ['admin-finance', 'payments', params],
-    queryFn: () => apiClient.get<PaymentReport>(`/finance/payments${qs(params)}`),
+    queryKey: ["admin-finance", "payments", params],
+    queryFn: () =>
+      apiClient.get<PaymentReport>(`/finance/payments${qs(params)}`),
     enabled: Boolean(params.from && params.to),
   });
 }
 
-export function useCreditNotes(params: { clinicId?: string; status?: string; from?: string; to?: string }) {
+export function useCreditNotes(params: {
+  clinicId?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+}) {
   return useQuery({
-    queryKey: ['admin-finance', 'credit-notes', params],
-    queryFn: () => apiClient.get<CreditNoteRow[]>(`/finance/credit-notes${qs(params)}`),
+    queryKey: ["admin-finance", "credit-notes", params],
+    queryFn: () =>
+      apiClient.get<CreditNoteRow[]>(`/finance/credit-notes${qs(params)}`),
   });
 }
 
 export function useCreateCreditNote() {
   return useAdminMutation(
-    (body: { invoiceId: string; reason: string; lines: { invoiceLineId?: string; description: string; amount: string }[] }) =>
-      apiClient.post('/finance/credit-notes', body),
-    ['admin-finance'],
+    (body: {
+      invoiceId: string;
+      reason: string;
+      lines: { invoiceLineId?: string; description: string; amount: string }[];
+    }) => apiClient.post("/finance/credit-notes", body),
+    ["admin-finance"],
   );
 }
 
 export function useApproveCreditNote() {
-  return useAdminMutation((id: string) => apiClient.patch(`/finance/credit-notes/${id}/approve`, {}), ['admin-finance']);
+  return useAdminMutation(
+    (id: string) => apiClient.patch(`/finance/credit-notes/${id}/approve`, {}),
+    ["admin-finance"],
+  );
 }
 
-export function useTaxReport(params: { from: string; to: string; clinicId?: string }) {
+export function useTaxReport(params: {
+  from: string;
+  to: string;
+  clinicId?: string;
+}) {
   return useQuery({
-    queryKey: ['admin-finance', 'tax', params],
+    queryKey: ["admin-finance", "tax", params],
     queryFn: () => apiClient.get<TaxReport>(`/finance/tax/report${qs(params)}`),
     enabled: Boolean(params.from && params.to),
   });
@@ -247,8 +303,8 @@ export function useTaxReport(params: { from: string; to: string; clinicId?: stri
 
 export function useTaxCodes() {
   return useQuery({
-    queryKey: ['admin-finance', 'tax-codes'],
-    queryFn: () => apiClient.get<TaxCode[]>('/finance/tax/codes'),
+    queryKey: ["admin-finance", "tax-codes"],
+    queryFn: () => apiClient.get<TaxCode[]>("/finance/tax/codes"),
   });
 }
 
@@ -258,108 +314,183 @@ export function useTaxCodes() {
 
 export function useStockExceptions(clinicId?: string) {
   return useQuery({
-    queryKey: ['admin-stock', 'exceptions', clinicId],
-    queryFn: () => apiClient.get<StockExceptions>(`/stock-admin/exceptions${qs({ clinicId })}`),
+    queryKey: ["admin-stock", "exceptions", clinicId],
+    queryFn: () =>
+      apiClient.get<StockExceptions>(
+        `/stock-admin/exceptions${qs({ clinicId })}`,
+      ),
   });
 }
 
-export function useStockExceptionRows(kind: string | undefined, clinicId?: string) {
+export function useStockExceptionRows(
+  kind: string | undefined,
+  clinicId?: string,
+) {
   return useQuery({
-    queryKey: ['admin-stock', 'exception-rows', kind, clinicId],
-    queryFn: () => apiClient.get<Record<string, unknown>[]>(`/stock-admin/exceptions/${kind}${qs({ clinicId })}`),
+    queryKey: ["admin-stock", "exception-rows", kind, clinicId],
+    queryFn: () =>
+      apiClient.get<Record<string, unknown>[]>(
+        `/stock-admin/exceptions/${kind}${qs({ clinicId })}`,
+      ),
     enabled: Boolean(kind),
   });
 }
 
 export function useStockValuation(clinicId?: string) {
   return useQuery({
-    queryKey: ['admin-stock', 'valuation', clinicId],
-    queryFn: () => apiClient.get<StockValuation>(`/stock-admin/valuation${qs({ clinicId })}`),
+    queryKey: ["admin-stock", "valuation", clinicId],
+    queryFn: () =>
+      apiClient.get<StockValuation>(
+        `/stock-admin/valuation${qs({ clinicId })}`,
+      ),
   });
 }
 
-export function useStockMovements(params: { clinicId?: string; itemId?: string; from?: string; to?: string }) {
+export function useStockMovements(params: {
+  clinicId?: string;
+  itemId?: string;
+  from?: string;
+  to?: string;
+}) {
   return useQuery({
-    queryKey: ['admin-stock', 'movements', params],
-    queryFn: () => apiClient.get<StockMovementRow[]>(`/stock-admin/movements${qs(params)}`),
+    queryKey: ["admin-stock", "movements", params],
+    queryFn: () =>
+      apiClient.get<StockMovementRow[]>(`/stock-admin/movements${qs(params)}`),
   });
 }
 
 export function useAdjustStock() {
   return useAdminMutation(
-    (body: { clinicId?: string; itemId: string; quantityDelta: number; reason: string; notes?: string }) =>
-      apiClient.post('/stock-admin/adjustments', body),
-    ['admin-stock'],
+    (body: {
+      clinicId?: string;
+      itemId: string;
+      quantityDelta: number;
+      reason: string;
+      notes?: string;
+    }) => apiClient.post("/stock-admin/adjustments", body),
+    ["admin-stock"],
   );
 }
 
-export function useStockTransfers(params: { clinicId?: string; status?: string; direction?: string }) {
+export function useStockTransfers(params: {
+  clinicId?: string;
+  status?: string;
+  direction?: string;
+}) {
   return useQuery({
-    queryKey: ['admin-stock', 'transfers', params],
-    queryFn: () => apiClient.get<StockTransferRow[]>(`/stock-admin/transfers${qs(params)}`),
+    queryKey: ["admin-stock", "transfers", params],
+    queryFn: () =>
+      apiClient.get<StockTransferRow[]>(`/stock-admin/transfers${qs(params)}`),
   });
 }
 
 export function useCreateTransfer() {
   return useAdminMutation(
-    (body: { fromClinicId: string; toClinicId: string; notes?: string; interCompany?: boolean; lines: { itemId: string; quantity: number }[] }) =>
-      apiClient.post('/stock-admin/transfers', body),
-    ['admin-stock'],
+    (body: {
+      fromClinicId: string;
+      toClinicId: string;
+      notes?: string;
+      interCompany?: boolean;
+      lines: { itemId: string; quantity: number }[];
+    }) => apiClient.post("/stock-admin/transfers", body),
+    ["admin-stock"],
   );
 }
 
 export function useSendTransfer() {
-  return useAdminMutation((id: string) => apiClient.patch(`/stock-admin/transfers/${id}/send`, {}), ['admin-stock']);
+  return useAdminMutation(
+    (id: string) => apiClient.patch(`/stock-admin/transfers/${id}/send`, {}),
+    ["admin-stock"],
+  );
 }
 
 export function useReceiveTransfer() {
   return useAdminMutation(
-    ({ id, lines }: { id: string; lines: { lineId: string; quantityReceived: number; discrepancyReason?: string }[] }) =>
-      apiClient.patch(`/stock-admin/transfers/${id}/receive`, { lines }),
-    ['admin-stock'],
+    ({
+      id,
+      lines,
+    }: {
+      id: string;
+      lines: {
+        lineId: string;
+        quantityReceived: number;
+        discrepancyReason?: string;
+      }[];
+    }) => apiClient.patch(`/stock-admin/transfers/${id}/receive`, { lines }),
+    ["admin-stock"],
   );
 }
 
 export function useStockTakes(clinicId?: string) {
   return useQuery({
-    queryKey: ['admin-stock', 'takes', clinicId],
-    queryFn: () => apiClient.get<StockTakeRow[]>(`/stock-admin/stock-takes${qs({ clinicId })}`),
+    queryKey: ["admin-stock", "takes", clinicId],
+    queryFn: () =>
+      apiClient.get<StockTakeRow[]>(
+        `/stock-admin/stock-takes${qs({ clinicId })}`,
+      ),
   });
 }
 
 export function useStockTake(id: string | undefined) {
   return useQuery({
-    queryKey: ['admin-stock', 'take', id],
-    queryFn: () => apiClient.get<StockTakeDetail>(`/stock-admin/stock-takes/${id}`),
+    queryKey: ["admin-stock", "take", id],
+    queryFn: () =>
+      apiClient.get<StockTakeDetail>(`/stock-admin/stock-takes/${id}`),
     enabled: Boolean(id),
   });
 }
 
 export function useCreateStockTake() {
   return useAdminMutation(
-    (body: { clinicId?: string; name: string; location?: string; category?: string; counterStaffIds?: string[] }) =>
-      apiClient.post('/stock-admin/stock-takes', body),
-    ['admin-stock'],
+    (body: {
+      clinicId?: string;
+      name: string;
+      location?: string;
+      category?: string;
+      counterStaffIds?: string[];
+    }) => apiClient.post("/stock-admin/stock-takes", body),
+    ["admin-stock"],
   );
 }
 
 export function useRecordCounts(id: string) {
   return useAdminMutation(
-    (counts: { lineId: string; quantity: number; looseUnits?: number; varianceReason?: string }[]) =>
-      apiClient.patch(`/stock-admin/stock-takes/${id}/counts`, { counts }),
-    ['admin-stock'],
+    (
+      counts: {
+        lineId: string;
+        quantity: number;
+        looseUnits?: number;
+        varianceReason?: string;
+      }[],
+    ) => apiClient.patch(`/stock-admin/stock-takes/${id}/counts`, { counts }),
+    ["admin-stock"],
   );
 }
 
 export function useSubmitStockTake() {
-  return useAdminMutation((id: string) => apiClient.patch(`/stock-admin/stock-takes/${id}/submit`, {}), ['admin-stock']);
+  return useAdminMutation(
+    (id: string) =>
+      apiClient.patch(`/stock-admin/stock-takes/${id}/submit`, {}),
+    ["admin-stock"],
+  );
 }
 
 export function useApproveStockTake() {
   return useAdminMutation(
-    ({ id, excludeLineIds, notes }: { id: string; excludeLineIds?: string[]; notes?: string }) =>
-      apiClient.patch(`/stock-admin/stock-takes/${id}/approve`, { excludeLineIds, notes }),
-    ['admin-stock'],
+    ({
+      id,
+      excludeLineIds,
+      notes,
+    }: {
+      id: string;
+      excludeLineIds?: string[];
+      notes?: string;
+    }) =>
+      apiClient.patch(`/stock-admin/stock-takes/${id}/approve`, {
+        excludeLineIds,
+        notes,
+      }),
+    ["admin-stock"],
   );
 }
 
@@ -369,46 +500,69 @@ export function useApproveStockTake() {
 
 export function usePanelSubmissionQueue(panelClinicId?: string) {
   return useQuery({
-    queryKey: ['admin-panel', 'submission-queue', panelClinicId],
-    queryFn: () => apiClient.get<SubmissionQueueRow[]>(`/panel-workspace/submission-queue${qs({ panelClinicId })}`),
+    queryKey: ["admin-panel", "submission-queue", panelClinicId],
+    queryFn: () =>
+      apiClient.get<SubmissionQueueRow[]>(
+        `/panel-workspace/submission-queue${qs({ panelClinicId })}`,
+      ),
   });
 }
 
-export function usePanelReconciliation(params: { panelClinicId?: string; from?: string; to?: string }) {
+export function usePanelReconciliation(params: {
+  panelClinicId?: string;
+  from?: string;
+  to?: string;
+}) {
   return useQuery({
-    queryKey: ['admin-panel', 'reconciliation', params],
-    queryFn: () => apiClient.get<PanelReconciliation>(`/panel-workspace/reconciliation${qs(params)}`),
+    queryKey: ["admin-panel", "reconciliation", params],
+    queryFn: () =>
+      apiClient.get<PanelReconciliation>(
+        `/panel-workspace/reconciliation${qs(params)}`,
+      ),
   });
 }
 
-export function usePanelAwaitingPayment(params: { panelClinicId?: string }, enabled = true) {
+export function usePanelAwaitingPayment(
+  params: { panelClinicId?: string },
+  enabled = true,
+) {
   return useQuery({
-    queryKey: ['admin-panel', 'awaiting-payment', params],
-    queryFn: () => apiClient.get<PanelAwaitingPaymentRow[]>(`/panel-workspace/awaiting-payment${qs(params)}`),
+    queryKey: ["admin-panel", "awaiting-payment", params],
+    queryFn: () =>
+      apiClient.get<PanelAwaitingPaymentRow[]>(
+        `/panel-workspace/awaiting-payment${qs(params)}`,
+      ),
     enabled,
   });
 }
 
-export function usePanelWorkQueue(params: { panelClinicId?: string; includeResolved?: boolean }) {
+export function usePanelWorkQueue(params: {
+  panelClinicId?: string;
+  includeResolved?: boolean;
+}) {
   return useQuery({
-    queryKey: ['admin-panel', 'work-queue', params],
-    queryFn: () => apiClient.get<PanelWorkQueueRow[]>(`/panel-workspace/work-queue${qs(params)}`),
+    queryKey: ["admin-panel", "work-queue", params],
+    queryFn: () =>
+      apiClient.get<PanelWorkQueueRow[]>(
+        `/panel-workspace/work-queue${qs(params)}`,
+      ),
   });
 }
 
 export function usePanelConfigs() {
   return useQuery({
-    queryKey: ['admin-panel', 'panels'],
-    queryFn: () => apiClient.get<PanelConfigRow[]>('/panel-workspace/panels'),
+    queryKey: ["admin-panel", "panels"],
+    queryFn: () => apiClient.get<PanelConfigRow[]>("/panel-workspace/panels"),
   });
 }
 
 export function useUpdatePanelConfig() {
   return useAdminMutation(
-    ({ id, ...body }: { id: string } & Record<string, unknown>) => apiClient.patch(`/panel-workspace/panels/${id}`, body),
+    ({ id, ...body }: { id: string } & Record<string, unknown>) =>
+      apiClient.patch(`/panel-workspace/panels/${id}`, body),
     // A fee term changes what every panel receivable is worth, and receivables
     // are shown in Finance ▸ Outstanding as well as in Panel.
-    ['admin-panel', 'admin-finance'],
+    ["admin-panel", "admin-finance"],
   );
 }
 
@@ -418,9 +572,19 @@ export function useUpdatePanelConfig() {
  */
 export function useChargeClaimToPatient() {
   return useAdminMutation(
-    ({ claimLineId, ...body }: { claimLineId: string; amount?: string; reason: string }) =>
-      apiClient.patch(`/panel-workspace/claims/${claimLineId}/charge-to-patient`, body),
-    ['admin-panel', 'admin-finance'],
+    ({
+      claimLineId,
+      ...body
+    }: {
+      claimLineId: string;
+      amount?: string;
+      reason: string;
+    }) =>
+      apiClient.patch(
+        `/panel-workspace/claims/${claimLineId}/charge-to-patient`,
+        body,
+      ),
+    ["admin-panel", "admin-finance"],
   );
 }
 
@@ -430,15 +594,15 @@ export function useChargeClaimToPatient() {
 
 export function useNewItemRequests() {
   return useQuery({
-    queryKey: ['admin-stock', 'new-item-requests'],
-    queryFn: () => apiClient.get<NewItemRequestRow[]>('/new-item-requests'),
+    queryKey: ["admin-stock", "new-item-requests"],
+    queryFn: () => apiClient.get<NewItemRequestRow[]>("/new-item-requests"),
   });
 }
 
 export function useSuppliers() {
   return useQuery({
-    queryKey: ['admin-stock', 'suppliers'],
-    queryFn: () => apiClient.get<SupplierOption[]>('/suppliers'),
+    queryKey: ["admin-stock", "suppliers"],
+    queryFn: () => apiClient.get<SupplierOption[]>("/suppliers"),
   });
 }
 
@@ -452,14 +616,17 @@ export function useRaiseNewItemRequest() {
       suggestedSupplierId?: string;
       indicativeCost?: string;
       indicativePrice?: string;
-    }) => apiClient.post('/new-item-requests', body),
-    ['admin-stock'],
+    }) => apiClient.post("/new-item-requests", body),
+    ["admin-stock"],
   );
 }
 
 export function useApproveNewItemRequest() {
   return useAdminMutation(
-    ({ id, ...body }: {
+    ({
+      id,
+      ...body
+    }: {
       id: string;
       name?: string;
       code?: string;
@@ -470,7 +637,7 @@ export function useApproveNewItemRequest() {
       decisionNote?: string;
       acknowledgeDuplicate?: boolean;
     }) => apiClient.patch(`/new-item-requests/${id}/approve`, body),
-    ['admin-stock'],
+    ["admin-stock"],
   );
 }
 
@@ -478,7 +645,7 @@ export function useRejectNewItemRequest() {
   return useAdminMutation(
     ({ id, ...body }: { id: string; decisionNote: string }) =>
       apiClient.patch(`/new-item-requests/${id}/reject`, body),
-    ['admin-stock'],
+    ["admin-stock"],
   );
 }
 
@@ -488,9 +655,11 @@ export function useRejectNewItemRequest() {
 
 export function usePayables(params: { asOf?: string }) {
   return useQuery({
-    queryKey: ['admin-finance', 'payables', params],
+    queryKey: ["admin-finance", "payables", params],
     queryFn: () =>
-      apiClient.get<PayablesSummary>(`/finance/payables${params.asOf ? `?asOf=${params.asOf}` : ''}`),
+      apiClient.get<PayablesSummary>(
+        `/finance/payables${params.asOf ? `?asOf=${params.asOf}` : ""}`,
+      ),
   });
 }
 
@@ -515,11 +684,12 @@ export function useImportClaims() {
       fileName?: string;
       note?: string;
       commit?: boolean;
-    }) => apiClient.post<ClaimImportResult>('/panel-workspace/import/claims', body),
+    }) =>
+      apiClient.post<ClaimImportResult>("/panel-workspace/import/claims", body),
     onSuccess: (result) => {
       if (!result.dryRun) {
-        queryClient.invalidateQueries({ queryKey: ['admin-panel'] });
-        queryClient.invalidateQueries({ queryKey: ['admin-finance'] });
+        queryClient.invalidateQueries({ queryKey: ["admin-panel"] });
+        queryClient.invalidateQueries({ queryKey: ["admin-finance"] });
       }
     },
   });
@@ -527,47 +697,59 @@ export function useImportClaims() {
 
 export function useClaimImportBatches(panelClinicId?: string) {
   return useQuery({
-    queryKey: ['admin-panel', 'import-batches', panelClinicId ?? null],
+    queryKey: ["admin-panel", "import-batches", panelClinicId ?? null],
     queryFn: () =>
       apiClient.get<ClaimImportBatchRow[]>(
-        `/panel-workspace/import/batches${panelClinicId ? `?panelClinicId=${panelClinicId}` : ''}`,
+        `/panel-workspace/import/batches${panelClinicId ? `?panelClinicId=${panelClinicId}` : ""}`,
       ),
   });
 }
 
-export function usePanelMoney(params: { from?: string; to?: string; panelClinicId?: string }) {
+export function usePanelMoney(params: {
+  from?: string;
+  to?: string;
+  panelClinicId?: string;
+}) {
   return useQuery({
-    queryKey: ['admin-finance', 'panel-money', params],
+    queryKey: ["admin-finance", "panel-money", params],
     queryFn: () => {
       const query = new URLSearchParams();
-      if (params.from) query.set('from', params.from);
-      if (params.to) query.set('to', params.to);
-      if (params.panelClinicId) query.set('panelClinicId', params.panelClinicId);
+      if (params.from) query.set("from", params.from);
+      if (params.to) query.set("to", params.to);
+      if (params.panelClinicId)
+        query.set("panelClinicId", params.panelClinicId);
       const suffix = query.toString();
-      return apiClient.get<PanelMoneyPosition>(`/finance/panel-money${suffix ? `?${suffix}` : ''}`);
+      return apiClient.get<PanelMoneyPosition>(
+        `/finance/panel-money${suffix ? `?${suffix}` : ""}`,
+      );
     },
   });
 }
 
-export function usePayableInvoices(params: { supplierId?: string; asOf?: string }) {
+export function usePayableInvoices(params: {
+  supplierId?: string;
+  asOf?: string;
+}) {
   return useQuery({
-    queryKey: ['admin-finance', 'payable-invoices', params],
+    queryKey: ["admin-finance", "payable-invoices", params],
     queryFn: () => {
       const query = new URLSearchParams();
-      if (params.supplierId) query.set('supplierId', params.supplierId);
-      if (params.asOf) query.set('asOf', params.asOf);
+      if (params.supplierId) query.set("supplierId", params.supplierId);
+      if (params.asOf) query.set("asOf", params.asOf);
       const suffix = query.toString();
-      return apiClient.get<PayableInvoiceRow[]>(`/finance/payables/invoices${suffix ? `?${suffix}` : ''}`);
+      return apiClient.get<PayableInvoiceRow[]>(
+        `/finance/payables/invoices${suffix ? `?${suffix}` : ""}`,
+      );
     },
   });
 }
 
 export function useSupplierPayments(params: { supplierId?: string }) {
   return useQuery({
-    queryKey: ['admin-finance', 'supplier-payments', params],
+    queryKey: ["admin-finance", "supplier-payments", params],
     queryFn: () =>
       apiClient.get<SupplierPaymentRow[]>(
-        `/finance/payables/payments${params.supplierId ? `?supplierId=${params.supplierId}` : ''}`,
+        `/finance/payables/payments${params.supplierId ? `?supplierId=${params.supplierId}` : ""}`,
       ),
   });
 }
@@ -583,16 +765,24 @@ export function useRecordSupplierInvoice() {
       goodsReceivedNoteId?: string;
       documentUrl?: string;
       notes?: string;
-    }) => apiClient.post('/finance/payables/invoices', body),
-    ['admin-finance'],
+    }) => apiClient.post("/finance/payables/invoices", body),
+    ["admin-finance"],
   );
 }
 
 export function useUpdateSupplierInvoice() {
   return useAdminMutation(
-    ({ id, ...body }: { id: string; status?: string; disputeReason?: string; dueDate?: string; notes?: string }) =>
-      apiClient.patch(`/finance/payables/invoices/${id}`, body),
-    ['admin-finance'],
+    ({
+      id,
+      ...body
+    }: {
+      id: string;
+      status?: string;
+      disputeReason?: string;
+      dueDate?: string;
+      notes?: string;
+    }) => apiClient.patch(`/finance/payables/invoices/${id}`, body),
+    ["admin-finance"],
   );
 }
 
@@ -605,58 +795,89 @@ export function useRecordSupplierPayment() {
       method?: string;
       reference?: string;
       allocations: { supplierInvoiceId: string; amount: string }[];
-    }) => apiClient.post('/finance/payables/payments', body),
-    ['admin-finance'],
+    }) => apiClient.post("/finance/payables/payments", body),
+    ["admin-finance"],
   );
 }
 
 export function useUpdateSupplierTerms() {
   return useAdminMutation(
-    ({ id, ...body }: {
+    ({
+      id,
+      ...body
+    }: {
       id: string;
       paymentTermDays?: number;
       creditLimitAmount?: string;
       deliverySlaDays?: number;
     }) => apiClient.patch(`/finance/payables/suppliers/${id}/terms`, body),
-    ['admin-finance', 'admin-stock'],
+    ["admin-finance", "admin-stock"],
   );
 }
 
 export function useMarkBatchSubmitted() {
   return useAdminMutation(
-    ({ batchId, ...body }: { batchId: string; submissionMethod: string; submissionReference?: string }) =>
+    ({
+      batchId,
+      ...body
+    }: {
+      batchId: string;
+      submissionMethod: string;
+      submissionReference?: string;
+    }) =>
       apiClient.patch(`/panel-workspace/batches/${batchId}/submitted`, body),
-    ['admin-panel'],
+    ["admin-panel"],
   );
 }
 
 export function useAdjudicateClaim() {
   return useAdminMutation(
-    ({ claimLineId, ...body }: {
+    ({
+      claimLineId,
+      ...body
+    }: {
       claimLineId: string;
       approvedAmount: string;
       rejectedAmount?: string;
       rejectionReason?: string;
       rejectionCategory?: string;
       panelClaimNo?: string;
-    }) => apiClient.patch(`/panel-workspace/claims/${claimLineId}/adjudicate`, body),
-    ['admin-panel'],
+    }) =>
+      apiClient.patch(
+        `/panel-workspace/claims/${claimLineId}/adjudicate`,
+        body,
+      ),
+    ["admin-panel"],
   );
 }
 
 export function useResubmitClaim() {
   return useAdminMutation(
-    ({ claimLineId, ...body }: { claimLineId: string; reason: string; claimedAmount?: string }) =>
+    ({
+      claimLineId,
+      ...body
+    }: {
+      claimLineId: string;
+      reason: string;
+      claimedAmount?: string;
+    }) =>
       apiClient.post(`/panel-workspace/claims/${claimLineId}/resubmit`, body),
-    ['admin-panel'],
+    ["admin-panel"],
   );
 }
 
 export function useWriteOffClaim() {
   return useAdminMutation(
-    ({ claimLineId, ...body }: { claimLineId: string; reason: string; amount?: string }) =>
+    ({
+      claimLineId,
+      ...body
+    }: {
+      claimLineId: string;
+      reason: string;
+      amount?: string;
+    }) =>
       apiClient.patch(`/panel-workspace/claims/${claimLineId}/write-off`, body),
-    ['admin-panel'],
+    ["admin-panel"],
   );
 }
 
@@ -669,8 +890,8 @@ export function useRecordRemittance() {
       withheldAmount?: string;
       remittanceRef?: string;
       allocations: { claimLineId: string; amount: string }[];
-    }) => apiClient.post('/panel-workspace/remittances', body),
-    ['admin-panel'],
+    }) => apiClient.post("/panel-workspace/remittances", body),
+    ["admin-panel"],
   );
 }
 
@@ -680,15 +901,21 @@ export function useRecordRemittance() {
 
 export function useWorkforceToday(clinicId?: string) {
   return useQuery({
-    queryKey: ['admin-hr', 'today', clinicId],
-    queryFn: () => apiClient.get<WorkforceToday>(`/workforce/today${qs({ clinicId })}`),
+    queryKey: ["admin-hr", "today", clinicId],
+    queryFn: () =>
+      apiClient.get<WorkforceToday>(`/workforce/today${qs({ clinicId })}`),
   });
 }
 
-export function useEmployees(params: { clinicId?: string; status?: string; search?: string }) {
+export function useEmployees(params: {
+  clinicId?: string;
+  status?: string;
+  search?: string;
+}) {
   return useQuery({
-    queryKey: ['admin-hr', 'employees', params],
-    queryFn: () => apiClient.get<EmployeeRow[]>(`/workforce/employees${qs(params)}`),
+    queryKey: ["admin-hr", "employees", params],
+    queryFn: () =>
+      apiClient.get<EmployeeRow[]>(`/workforce/employees${qs(params)}`),
   });
 }
 
@@ -699,8 +926,9 @@ export function useEmployees(params: { clinicId?: string; status?: string; searc
  */
 export function useDeleteEmployee() {
   return useAdminMutation(
-    ({ staffId, reason }: { staffId: string; reason?: string }) => apiClient.delete(`/workforce/employees/${staffId}`, { reason }),
-    ['admin-hr'],
+    ({ staffId, reason }: { staffId: string; reason?: string }) =>
+      apiClient.delete(`/workforce/employees/${staffId}`, { reason }),
+    ["admin-hr"],
   );
 }
 
@@ -708,33 +936,46 @@ export function useUpsertEmployee() {
   return useAdminMutation(
     ({ staffId, ...body }: { staffId: string } & Record<string, unknown>) =>
       apiClient.post(`/workforce/employees/${staffId}`, body),
-    ['admin-hr'],
+    ["admin-hr"],
   );
 }
 
 /** The clinic's own job titles, picked from and added to on the employee form. */
 export function useJobTitles() {
   return useQuery({
-    queryKey: ['admin-hr', 'job-titles'],
-    queryFn: () => apiClient.get<JobTitleRow[]>('/workforce/job-titles'),
+    queryKey: ["admin-hr", "job-titles"],
+    queryFn: () => apiClient.get<JobTitleRow[]>("/workforce/job-titles"),
   });
 }
 
 export function useCreateJobTitle() {
-  return useAdminMutation((body: { name: string }) => apiClient.post<JobTitleRow>('/workforce/job-titles', body), ['admin-hr']);
+  return useAdminMutation(
+    (body: { name: string }) =>
+      apiClient.post<JobTitleRow>("/workforce/job-titles", body),
+    ["admin-hr"],
+  );
 }
 
 export function useUpdateJobTitle() {
   return useAdminMutation(
-    ({ id, ...body }: { id: string; name?: string; active?: boolean }) => apiClient.patch<JobTitleRow>(`/workforce/job-titles/${id}`, body),
-    ['admin-hr'],
+    ({ id, ...body }: { id: string; name?: string; active?: boolean }) =>
+      apiClient.patch<JobTitleRow>(`/workforce/job-titles/${id}`, body),
+    ["admin-hr"],
   );
 }
 
-export function useTimesheet(params: { from: string; to: string; clinicId?: string; staffId?: string }) {
+export function useTimesheet(params: {
+  from: string;
+  to: string;
+  clinicId?: string;
+  staffId?: string;
+}) {
   return useQuery({
-    queryKey: ['admin-hr', 'timesheet', params],
-    queryFn: () => apiClient.get<TimesheetReport>(`/workforce/attendance/timesheet${qs(params)}`),
+    queryKey: ["admin-hr", "timesheet", params],
+    queryFn: () =>
+      apiClient.get<TimesheetReport>(
+        `/workforce/attendance/timesheet${qs(params)}`,
+      ),
     enabled: Boolean(params.from && params.to),
   });
 }
@@ -747,21 +988,26 @@ export function useCorrectAttendance() {
     }: {
       id: string;
       /** The whole day, punch by punch — what moved, what was marked wrong, what was added. */
-      punches?: { id?: string; at?: string; kind?: 'IN' | 'OUT'; wrong?: boolean }[];
+      punches?: {
+        id?: string;
+        at?: string;
+        kind?: "IN" | "OUT";
+        wrong?: boolean;
+      }[];
       /** The older two-field form: the day's two ends. Still accepted. */
       clockInAt?: string;
       clockOutAt?: string;
       status?: string;
       reason: string;
     }) => apiClient.patch(`/workforce/attendance/${id}/correct`, body),
-    ['admin-hr'],
+    ["admin-hr"],
   );
 }
 
 /** What staff have asked to have put right, and the decision on each. */
 export function useCorrectionRequests(clinicId?: string) {
   return useQuery({
-    queryKey: ['admin-hr', 'corrections', clinicId],
+    queryKey: ["admin-hr", "corrections", clinicId],
     queryFn: () =>
       apiClient.get<
         {
@@ -790,8 +1036,11 @@ export function useCorrectionRequests(clinicId?: string) {
 export function useDecideCorrection() {
   return useAdminMutation(
     ({ id, approve, note }: { id: string; approve: boolean; note?: string }) =>
-      apiClient.post(`/workforce/attendance/corrections/${id}/decide`, { approve, note }),
-    ['admin-hr'],
+      apiClient.post(`/workforce/attendance/corrections/${id}/decide`, {
+        approve,
+        note,
+      }),
+    ["admin-hr"],
   );
 }
 
@@ -802,130 +1051,206 @@ export function useDecideCorrection() {
  */
 export function useClockStaff() {
   return useAdminMutation(
-    (body: { staffId: string; clinicId?: string; at?: string }) => apiClient.post('/workforce/attendance/clock', body),
-    ['admin-hr'],
+    (body: { staffId: string; clinicId?: string; at?: string }) =>
+      apiClient.post("/workforce/attendance/clock", body),
+    ["admin-hr"],
   );
 }
 
 export function useApproveOvertime() {
   return useAdminMutation(
     ({ id, minutes }: { id: string; minutes?: number }) =>
-      apiClient.patch(`/workforce/attendance/${id}/approve-overtime`, { minutes }),
-    ['admin-hr'],
+      apiClient.patch(`/workforce/attendance/${id}/approve-overtime`, {
+        minutes,
+      }),
+    ["admin-hr"],
   );
 }
 
 export function usePayrollRuns(params: { clinicId?: string; year?: number }) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-runs', params],
-    queryFn: () => apiClient.get<PayrollRunRow[]>(`/workforce/payroll/runs${qs(params)}`),
+    queryKey: ["admin-hr", "payroll-runs", params],
+    queryFn: () =>
+      apiClient.get<PayrollRunRow[]>(`/workforce/payroll/runs${qs(params)}`),
   });
 }
 
 export function usePayrollRun(id: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-run', id],
-    queryFn: () => apiClient.get<PayrollRunDetail>(`/workforce/payroll/runs/${id}`),
+    queryKey: ["admin-hr", "payroll-run", id],
+    queryFn: () =>
+      apiClient.get<PayrollRunDetail>(`/workforce/payroll/runs/${id}`),
     enabled: Boolean(id),
   });
 }
 
 export function useCreatePayrollRun() {
   return useAdminMutation(
-    (body: { period: string; clinicId?: string; notes?: string }) => apiClient.post('/workforce/payroll/runs', body),
-    ['admin-hr'],
+    (body: { period: string; clinicId?: string; notes?: string }) =>
+      apiClient.post("/workforce/payroll/runs", body),
+    ["admin-hr"],
   );
 }
 
 export function useCalculatePayroll() {
-  return useAdminMutation((id: string) => apiClient.patch(`/workforce/payroll/runs/${id}/calculate`, {}), ['admin-hr']);
+  return useAdminMutation(
+    (id: string) =>
+      apiClient.patch(`/workforce/payroll/runs/${id}/calculate`, {}),
+    ["admin-hr"],
+  );
 }
 
 /** Throw an unapproved run away. The server refuses an approved or paid one. */
 export function useDiscardPayrollRun() {
   return useAdminMutation(
-    ({ id, reason }: { id: string; reason?: string }) => apiClient.delete(`/workforce/payroll/runs/${id}`, { reason }),
-    ['admin-hr'],
+    ({ id, reason }: { id: string; reason?: string }) =>
+      apiClient.delete(`/workforce/payroll/runs/${id}`, { reason }),
+    ["admin-hr"],
   );
 }
 
 export function useApprovePayroll() {
   return useAdminMutation(
-    ({ id, acknowledgeStatutoryGap }: { id: string; acknowledgeStatutoryGap?: boolean }) =>
-      apiClient.patch(`/workforce/payroll/runs/${id}/approve`, { acknowledgeStatutoryGap }),
-    ['admin-hr'],
+    ({
+      id,
+      acknowledgeStatutoryGap,
+    }: {
+      id: string;
+      acknowledgeStatutoryGap?: boolean;
+    }) =>
+      apiClient.patch(`/workforce/payroll/runs/${id}/approve`, {
+        acknowledgeStatutoryGap,
+      }),
+    ["admin-hr"],
   );
+}
+
+export function useStatutoryFiling(runId: string | undefined) {
+  return useQuery({
+    queryKey: ["admin-hr", "statutory-filing", runId],
+    queryFn: () =>
+      apiClient.get<StatutoryFiling>(`/workforce/payroll/runs/${runId}/filing`),
+    enabled: Boolean(runId),
+    retry: false,
+  });
+}
+
+export function useRecordAgencyFiling(runId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      agency: string;
+      submittedDate: string;
+      reference: string;
+      note?: string;
+    }) =>
+      apiClient.post<StatutoryFiling>(
+        `/workforce/payroll/runs/${runId}/filing/${body.agency.toLowerCase()}/record-submission`,
+        {
+          submittedDate: body.submittedDate,
+          reference: body.reference,
+          note: body.note,
+        },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["admin-hr", "statutory-filing", runId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["admin-hr", "statutory-outputs", runId],
+      });
+    },
+  });
 }
 
 export function useStatutoryRates(period?: string) {
   return useQuery({
-    queryKey: ['admin-hr', 'statutory-rates', period ?? ''],
-    queryFn: () => apiClient.get<StatutoryRates>(`/workforce/payroll/statutory-rates${period ? `?period=${period}` : ''}`),
+    queryKey: ["admin-hr", "statutory-rates", period ?? ""],
+    queryFn: () =>
+      apiClient.get<StatutoryRates>(
+        `/workforce/payroll/statutory-rates${period ? `?period=${period}` : ""}`,
+      ),
   });
 }
 
 /** A named person here looked at the tables today. Kept apart from the
     registry's own verification, which it does not move. */
 export function useMarkStatutoryChecked() {
-  return useAdminMutation(() => apiClient.post<StatutoryCheck>('/workforce/payroll/statutory-check', {}), ['admin-hr']);
+  return useAdminMutation(
+    () =>
+      apiClient.post<StatutoryCheck>("/workforce/payroll/statutory-check", {}),
+    ["admin-hr"],
+  );
 }
 
 /** The clinic's pay-rule sets — proration, overtime, unpaid leave bases. */
 export function usePayrollPolicies() {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-policies'],
-    queryFn: () => apiClient.get<PayrollPoliciesResponse>('/workforce/payroll-policies'),
+    queryKey: ["admin-hr", "payroll-policies"],
+    queryFn: () =>
+      apiClient.get<PayrollPoliciesResponse>("/workforce/payroll-policies"),
   });
 }
 
 export function useUpsertPayrollPolicy() {
   return useAdminMutation(
-    (body: Record<string, unknown>) => apiClient.post<PayrollPolicyRow>('/workforce/payroll-policies', body),
-    ['admin-hr'],
+    (body: Record<string, unknown>) =>
+      apiClient.post<PayrollPolicyRow>("/workforce/payroll-policies", body),
+    ["admin-hr"],
   );
 }
 
 /** Delete a rule set nobody uses; the server refuses one that prices somebody or that a payslip names. */
 export function useDeletePayrollPolicy() {
   return useAdminMutation(
-    ({ id, reason }: { id: string; reason?: string }) => apiClient.delete(`/workforce/payroll-policies/${id}`, { reason }),
-    ['admin-hr'],
+    ({ id, reason }: { id: string; reason?: string }) =>
+      apiClient.delete(`/workforce/payroll-policies/${id}`, { reason }),
+    ["admin-hr"],
   );
 }
 
 export function useStatutoryRuleSets() {
   return useQuery({
-    queryKey: ['admin-hr', 'statutory'],
-    queryFn: () => apiClient.get<StatutoryRuleSetRow[]>('/workforce/payroll/statutory-rules'),
+    queryKey: ["admin-hr", "statutory"],
+    queryFn: () =>
+      apiClient.get<StatutoryRuleSetRow[]>(
+        "/workforce/payroll/statutory-rules",
+      ),
   });
 }
 
 export function useIncentiveRuns(params: { clinicId?: string; year?: number }) {
   return useQuery({
-    queryKey: ['admin-hr', 'incentive-runs', params],
-    queryFn: () => apiClient.get<IncentiveRunRow[]>(`/workforce/incentives/runs${qs(params)}`),
+    queryKey: ["admin-hr", "incentive-runs", params],
+    queryFn: () =>
+      apiClient.get<IncentiveRunRow[]>(
+        `/workforce/incentives/runs${qs(params)}`,
+      ),
   });
 }
 
 export function useIncentiveRun(id: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'incentive-run', id],
-    queryFn: () => apiClient.get<IncentiveRunDetail>(`/workforce/incentives/runs/${id}`),
+    queryKey: ["admin-hr", "incentive-run", id],
+    queryFn: () =>
+      apiClient.get<IncentiveRunDetail>(`/workforce/incentives/runs/${id}`),
     enabled: Boolean(id),
   });
 }
 
 export function useCalculateIncentives() {
   return useAdminMutation(
-    (body: { period: string; clinicId?: string }) => apiClient.post('/workforce/incentives/calculate', body),
-    ['admin-hr'],
+    (body: { period: string; clinicId?: string }) =>
+      apiClient.post("/workforce/incentives/calculate", body),
+    ["admin-hr"],
   );
 }
 
 export function useIncentiveRules() {
   return useQuery({
-    queryKey: ['admin-hr', 'incentive-rules'],
-    queryFn: () => apiClient.get<Record<string, unknown>[]>('/workforce/incentives/rules'),
+    queryKey: ["admin-hr", "incentive-rules"],
+    queryFn: () =>
+      apiClient.get<Record<string, unknown>[]>("/workforce/incentives/rules"),
   });
 }
 
@@ -933,62 +1258,92 @@ export function useIncentiveRules() {
 // OPERATIONS
 // ---------------------------------------------------------------------------
 
-export function useOperationsOverview(params: { clinicId?: string; preset?: string; from?: string; to?: string }) {
+export function useOperationsOverview(params: {
+  clinicId?: string;
+  preset?: string;
+  from?: string;
+  to?: string;
+}) {
   return useQuery({
-    queryKey: ['admin-ops', 'overview', params],
-    queryFn: () => apiClient.get<OperationsOverview>(`/operations/overview${qs(params)}`),
+    queryKey: ["admin-ops", "overview", params],
+    queryFn: () =>
+      apiClient.get<OperationsOverview>(`/operations/overview${qs(params)}`),
   });
 }
 
-export function useSegmentPl(params: { from: string; to: string; clinicId?: string }) {
+export function useSegmentPl(params: {
+  from: string;
+  to: string;
+  clinicId?: string;
+}) {
   return useQuery({
-    queryKey: ['admin-ops', 'segment-pl', params],
-    queryFn: () => apiClient.get<SegmentPl>(`/operations/segments/profit-and-loss${qs(params)}`),
+    queryKey: ["admin-ops", "segment-pl", params],
+    queryFn: () =>
+      apiClient.get<SegmentPl>(
+        `/operations/segments/profit-and-loss${qs(params)}`,
+      ),
     enabled: Boolean(params.from && params.to),
   });
 }
 
 export function useSegments() {
   return useQuery({
-    queryKey: ['admin-ops', 'segments'],
-    queryFn: () => apiClient.get<Record<string, unknown>[]>('/operations/segments'),
+    queryKey: ["admin-ops", "segments"],
+    queryFn: () =>
+      apiClient.get<Record<string, unknown>[]>("/operations/segments"),
   });
 }
 
 export function useProgrammes() {
   return useQuery({
-    queryKey: ['admin-ops', 'programmes'],
-    queryFn: () => apiClient.get<ProgrammeRow[]>('/operations/programmes'),
+    queryKey: ["admin-ops", "programmes"],
+    queryFn: () => apiClient.get<ProgrammeRow[]>("/operations/programmes"),
   });
 }
 
-export function useProgrammeDashboard(id: string | undefined, params: { from: string; to: string; clinicId?: string }) {
+export function useProgrammeDashboard(
+  id: string | undefined,
+  params: { from: string; to: string; clinicId?: string },
+) {
   return useQuery({
-    queryKey: ['admin-ops', 'programme-dashboard', id, params],
-    queryFn: () => apiClient.get<ProgrammeDashboard>(`/operations/programmes/${id}/dashboard${qs(params)}`),
+    queryKey: ["admin-ops", "programme-dashboard", id, params],
+    queryFn: () =>
+      apiClient.get<ProgrammeDashboard>(
+        `/operations/programmes/${id}/dashboard${qs(params)}`,
+      ),
     enabled: Boolean(id && params.from && params.to),
   });
 }
 
-export function useMarketingAudience(params: Record<string, string | number | undefined>, enabled: boolean) {
+export function useMarketingAudience(
+  params: Record<string, string | number | undefined>,
+  enabled: boolean,
+) {
   return useQuery({
-    queryKey: ['admin-ops', 'audience', params],
-    queryFn: () => apiClient.get<MarketingAudienceResult>(`/operations/marketing/audience${qs(params)}`),
+    queryKey: ["admin-ops", "audience", params],
+    queryFn: () =>
+      apiClient.get<MarketingAudienceResult>(
+        `/operations/marketing/audience${qs(params)}`,
+      ),
     enabled,
   });
 }
 
 export function useMarketingTemplates() {
   return useQuery({
-    queryKey: ['admin-ops', 'templates'],
-    queryFn: () => apiClient.get<MarketingTemplateRow[]>('/operations/marketing/templates'),
+    queryKey: ["admin-ops", "templates"],
+    queryFn: () =>
+      apiClient.get<MarketingTemplateRow[]>("/operations/marketing/templates"),
   });
 }
 
 export function useMarketingHistory(params: { from?: string; to?: string }) {
   return useQuery({
-    queryKey: ['admin-ops', 'marketing-history', params],
-    queryFn: () => apiClient.get<MarketingHistory>(`/operations/marketing/history${qs(params)}`),
+    queryKey: ["admin-ops", "marketing-history", params],
+    queryFn: () =>
+      apiClient.get<MarketingHistory>(
+        `/operations/marketing/history${qs(params)}`,
+      ),
   });
 }
 
@@ -996,24 +1351,34 @@ export function useMarketingHistory(params: { from?: string; to?: string }) {
 // PROFITABILITY & BENEFITS
 // ---------------------------------------------------------------------------
 
-export function useProfitability(params: { from: string; to: string; clinicId?: string; kind?: string }) {
+export function useProfitability(params: {
+  from: string;
+  to: string;
+  clinicId?: string;
+  kind?: string;
+}) {
   return useQuery({
-    queryKey: ['admin-finance', 'profitability', params],
-    queryFn: () => apiClient.get<ProfitabilityReport>(`/finance/profitability${qs(params)}`),
+    queryKey: ["admin-finance", "profitability", params],
+    queryFn: () =>
+      apiClient.get<ProfitabilityReport>(`/finance/profitability${qs(params)}`),
   });
 }
 
 export function useStaffBenefits(params: { year?: number; clinicId?: string }) {
   return useQuery({
-    queryKey: ['admin-hr', 'benefits', params],
-    queryFn: () => apiClient.get<StaffBenefitReport>(`/workforce/benefits${qs(params)}`),
+    queryKey: ["admin-hr", "benefits", params],
+    queryFn: () =>
+      apiClient.get<StaffBenefitReport>(`/workforce/benefits${qs(params)}`),
   });
 }
 
 export function useEmployeeRecord(staffId: string | undefined, year?: number) {
   return useQuery({
-    queryKey: ['admin-hr', 'employee-record', staffId, year],
-    queryFn: () => apiClient.get<EmployeeRecord>(`/workforce/employees/${staffId}/record${qs({ year })}`),
+    queryKey: ["admin-hr", "employee-record", staffId, year],
+    queryFn: () =>
+      apiClient.get<EmployeeRecord>(
+        `/workforce/employees/${staffId}/record${qs({ year })}`,
+      ),
     enabled: Boolean(staffId),
   });
 }
@@ -1029,17 +1394,35 @@ export function useEmployeeRecord(staffId: string | undefined, year?: number) {
 export function usePrepareDispatch() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: { templateId: string; patientIds: string[]; clinicId?: string; audienceName?: string }) =>
-      apiClient.post<PreparedDispatchResult>('/operations/marketing/prepare', body),
-    onSuccess: () => client.invalidateQueries({ queryKey: ['admin-ops', 'marketing-history'] }),
+    mutationFn: (body: {
+      templateId: string;
+      patientIds: string[];
+      clinicId?: string;
+      audienceName?: string;
+    }) =>
+      apiClient.post<PreparedDispatchResult>(
+        "/operations/marketing/prepare",
+        body,
+      ),
+    onSuccess: () =>
+      client.invalidateQueries({
+        queryKey: ["admin-ops", "marketing-history"],
+      }),
   });
 }
 
 export function useMarkDispatchOpened() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (dispatchId: string) => apiClient.patch(`/operations/marketing/dispatches/${dispatchId}/opened`, {}),
-    onSuccess: () => client.invalidateQueries({ queryKey: ['admin-ops', 'marketing-history'] }),
+    mutationFn: (dispatchId: string) =>
+      apiClient.patch(
+        `/operations/marketing/dispatches/${dispatchId}/opened`,
+        {},
+      ),
+    onSuccess: () =>
+      client.invalidateQueries({
+        queryKey: ["admin-ops", "marketing-history"],
+      }),
   });
 }
 
@@ -1054,45 +1437,65 @@ export function useMarkDispatchOpened() {
  */
 export function useEmployeeIntake() {
   return useAdminMutation(
-    (body: { rows: EmployeeIntakeRowDto[]; commit?: boolean }) => apiClient.post<EmployeeIntakeResult>('/workforce/employees/intake', body),
-    ['admin-hr', 'admin-employees'],
+    (body: { rows: EmployeeIntakeRowDto[]; commit?: boolean }) =>
+      apiClient.post<EmployeeIntakeResult>("/workforce/employees/intake", body),
+    ["admin-hr", "admin-employees"],
   );
 }
 
 export function useLegalEmployers(clinicId?: string) {
   return useQuery({
-    queryKey: ['admin-hr', 'legal-employers', clinicId ?? ''],
-    queryFn: () => apiClient.get<LegalEmployerRow[]>(`/workforce/legal-employers${qs({ clinicId })}`),
+    queryKey: ["admin-hr", "legal-employers", clinicId ?? ""],
+    queryFn: () =>
+      apiClient.get<LegalEmployerRow[]>(
+        `/workforce/legal-employers${qs({ clinicId })}`,
+      ),
   });
 }
 
 export function useUpsertLegalEmployer() {
   return useAdminMutation(
-    (body: Record<string, unknown>) => apiClient.post('/workforce/legal-employers', body),
-    ['admin-hr'],
+    (body: Record<string, unknown>) =>
+      apiClient.post("/workforce/legal-employers", body),
+    ["admin-hr"],
   );
 }
 
 export function useAssignEmployer() {
   return useAdminMutation(
-    ({ staffId, legalEmployerId, reason }: { staffId: string; legalEmployerId: string | null; reason?: string }) =>
-      apiClient.patch(`/workforce/employees/${staffId}/legal-employer`, { legalEmployerId, ...(reason ? { reason } : {}) }),
-    ['admin-hr'],
+    ({
+      staffId,
+      legalEmployerId,
+      reason,
+    }: {
+      staffId: string;
+      legalEmployerId: string | null;
+      reason?: string;
+    }) =>
+      apiClient.patch(`/workforce/employees/${staffId}/legal-employer`, {
+        legalEmployerId,
+        ...(reason ? { reason } : {}),
+      }),
+    ["admin-hr"],
   );
 }
 
 export function useRecurringItems(staffId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'recurring-items', staffId],
-    queryFn: () => apiClient.get<RecurringItemRow[]>(`/workforce/employees/${staffId}/recurring-items`),
+    queryKey: ["admin-hr", "recurring-items", staffId],
+    queryFn: () =>
+      apiClient.get<RecurringItemRow[]>(
+        `/workforce/employees/${staffId}/recurring-items`,
+      ),
     enabled: Boolean(staffId),
   });
 }
 
 export function useRecurringItemChoices() {
   return useQuery({
-    queryKey: ['admin-hr', 'recurring-item-choices'],
-    queryFn: () => apiClient.get<RecurringItemChoice[]>('/workforce/recurring-item-choices'),
+    queryKey: ["admin-hr", "recurring-item-choices"],
+    queryFn: () =>
+      apiClient.get<RecurringItemChoice[]>("/workforce/recurring-item-choices"),
   });
 }
 
@@ -1100,22 +1503,32 @@ export function useCreateRecurringItem() {
   return useAdminMutation(
     ({ staffId, ...body }: { staffId: string } & Record<string, unknown>) =>
       apiClient.post(`/workforce/employees/${staffId}/recurring-items`, body),
-    ['admin-hr'],
+    ["admin-hr"],
   );
 }
 
 export function useUpdateRecurringItem() {
   return useAdminMutation(
-    ({ staffId, id, ...body }: { staffId: string; id: string } & Record<string, unknown>) =>
-      apiClient.patch(`/workforce/employees/${staffId}/recurring-items/${id}`, body),
-    ['admin-hr'],
+    ({
+      staffId,
+      id,
+      ...body
+    }: { staffId: string; id: string } & Record<string, unknown>) =>
+      apiClient.patch(
+        `/workforce/employees/${staffId}/recurring-items/${id}`,
+        body,
+      ),
+    ["admin-hr"],
   );
 }
 
 export function useSalaryHistory(staffId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'salary-history', staffId],
-    queryFn: () => apiClient.get<SalaryHistoryRow[]>(`/workforce/employees/${staffId}/salary`),
+    queryKey: ["admin-hr", "salary-history", staffId],
+    queryFn: () =>
+      apiClient.get<SalaryHistoryRow[]>(
+        `/workforce/employees/${staffId}/salary`,
+      ),
     enabled: Boolean(staffId),
   });
 }
@@ -1124,14 +1537,14 @@ export function useRecordSalary() {
   return useAdminMutation(
     ({ staffId, ...body }: { staffId: string } & Record<string, unknown>) =>
       apiClient.post(`/workforce/employees/${staffId}/salary`, body),
-    ['admin-hr'],
+    ["admin-hr"],
   );
 }
 
 export function usePayComponents() {
   return useQuery({
-    queryKey: ['admin-hr', 'pay-components'],
-    queryFn: () => apiClient.get<PayComponentList>('/workforce/pay-components'),
+    queryKey: ["admin-hr", "pay-components"],
+    queryFn: () => apiClient.get<PayComponentList>("/workforce/pay-components"),
   });
 }
 
@@ -1145,8 +1558,11 @@ export function usePayComponents() {
  */
 export function usePayComponentHistory(code: string | null) {
   return useQuery({
-    queryKey: ['admin-hr', 'pay-components', code, 'history'],
-    queryFn: () => apiClient.get<PayComponentHistory>(`/workforce/pay-components/${code}/history`),
+    queryKey: ["admin-hr", "pay-components", code, "history"],
+    queryFn: () =>
+      apiClient.get<PayComponentHistory>(
+        `/workforce/pay-components/${code}/history`,
+      ),
     enabled: code !== null,
   });
 }
@@ -1158,38 +1574,56 @@ export function usePayComponentHistory(code: string | null) {
  */
 export function useUpsertPayComponent() {
   return useAdminMutation(
-    (body: Record<string, unknown>) => apiClient.post<PayComponentRow>('/workforce/pay-components', body),
-    ['admin-hr'],
+    (body: Record<string, unknown>) =>
+      apiClient.post<PayComponentRow>("/workforce/pay-components", body),
+    ["admin-hr"],
   );
 }
 
 export function useSeedPayComponents() {
-  return useAdminMutation(() => apiClient.post('/workforce/pay-components/seed', {}), ['admin-hr']);
+  return useAdminMutation(
+    () => apiClient.post("/workforce/pay-components/seed", {}),
+    ["admin-hr"],
+  );
 }
 
-export function usePayrollInputs(params: { period: string; staffId?: string; clinicId?: string }) {
+export function usePayrollInputs(params: {
+  period: string;
+  staffId?: string;
+  clinicId?: string;
+}) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-inputs', params],
-    queryFn: () => apiClient.get<PayrollInputRow[]>(`/workforce/payroll/inputs${qs(params)}`),
+    queryKey: ["admin-hr", "payroll-inputs", params],
+    queryFn: () =>
+      apiClient.get<PayrollInputRow[]>(
+        `/workforce/payroll/inputs${qs(params)}`,
+      ),
     enabled: Boolean(params.period),
   });
 }
 
 export function useUpsertPayrollInput() {
   return useAdminMutation(
-    (body: Record<string, unknown>) => apiClient.post('/workforce/payroll/inputs', body),
-    ['admin-hr'],
+    (body: Record<string, unknown>) =>
+      apiClient.post("/workforce/payroll/inputs", body),
+    ["admin-hr"],
   );
 }
 
 export function useDeletePayrollInput() {
-  return useAdminMutation((id: string) => apiClient.delete(`/workforce/payroll/inputs/${id}`), ['admin-hr']);
+  return useAdminMutation(
+    (id: string) => apiClient.delete(`/workforce/payroll/inputs/${id}`),
+    ["admin-hr"],
+  );
 }
 
 export function usePayrollExceptions(runId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-exceptions', runId],
-    queryFn: () => apiClient.get<PayrollExceptionList>(`/workforce/payroll/runs/${runId}/exceptions`),
+    queryKey: ["admin-hr", "payroll-exceptions", runId],
+    queryFn: () =>
+      apiClient.get<PayrollExceptionList>(
+        `/workforce/payroll/runs/${runId}/exceptions`,
+      ),
     enabled: Boolean(runId),
   });
 }
@@ -1197,32 +1631,43 @@ export function usePayrollExceptions(runId: string | undefined) {
 export function useOverrideException() {
   return useAdminMutation(
     ({ id, reason }: { id: string; reason: string }) =>
-      apiClient.patch(`/workforce/payroll/exceptions/${id}/override`, { reason }),
-    ['admin-hr'],
+      apiClient.patch(`/workforce/payroll/exceptions/${id}/override`, {
+        reason,
+      }),
+    ["admin-hr"],
   );
 }
 
 /** The year so far for one person — approved months and the opening import, summed by the server. */
 export function useEmployeeYtd(staffId: string | undefined, taxYear: number) {
   return useQuery({
-    queryKey: ['admin-hr', 'employee-ytd', staffId, taxYear],
-    queryFn: () => apiClient.get<EmployeeYtd>(`/workforce/payroll/employees/${staffId}/ytd?taxYear=${taxYear}`),
+    queryKey: ["admin-hr", "employee-ytd", staffId, taxYear],
+    queryFn: () =>
+      apiClient.get<EmployeeYtd>(
+        `/workforce/payroll/employees/${staffId}/ytd?taxYear=${taxYear}`,
+      ),
     enabled: Boolean(staffId),
   });
 }
 
 export function usePayrollVariance(runId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-variance', runId],
-    queryFn: () => apiClient.get<PayrollVarianceReport>(`/workforce/payroll/runs/${runId}/variance`),
+    queryKey: ["admin-hr", "payroll-variance", runId],
+    queryFn: () =>
+      apiClient.get<PayrollVarianceReport>(
+        `/workforce/payroll/runs/${runId}/variance`,
+      ),
     enabled: Boolean(runId),
   });
 }
 
 export function usePayrollSnapshots(runId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-snapshots', runId],
-    queryFn: () => apiClient.get<PayrollSnapshotRow[]>(`/workforce/payroll/runs/${runId}/snapshots`),
+    queryKey: ["admin-hr", "payroll-snapshots", runId],
+    queryFn: () =>
+      apiClient.get<PayrollSnapshotRow[]>(
+        `/workforce/payroll/runs/${runId}/snapshots`,
+      ),
     enabled: Boolean(runId),
   });
 }
@@ -1234,8 +1679,11 @@ export function usePayrollSnapshots(runId: string | undefined) {
  */
 export function useCandidateDiff(runId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-candidate-diff', runId],
-    queryFn: () => apiClient.get<PayrollCandidateDiff>(`/workforce/payroll/runs/${runId}/candidate-diff`),
+    queryKey: ["admin-hr", "payroll-candidate-diff", runId],
+    queryFn: () =>
+      apiClient.get<PayrollCandidateDiff>(
+        `/workforce/payroll/runs/${runId}/candidate-diff`,
+      ),
     enabled: Boolean(runId),
   });
 }
@@ -1244,7 +1692,7 @@ export function useReopenPayroll() {
   return useAdminMutation(
     ({ id, reason }: { id: string; reason: string }) =>
       apiClient.patch(`/workforce/payroll/runs/${id}/reopen`, { reason }),
-    ['admin-hr'],
+    ["admin-hr"],
   );
 }
 
@@ -1256,17 +1704,26 @@ export function useReopenPayroll() {
 // than being numbers typed into a payroll run.
 // ===========================================================================
 
-export function useStaffClaims(params: { staffId?: string; status?: string; period?: string; clinicId?: string } = {}) {
+export function useStaffClaims(
+  params: {
+    staffId?: string;
+    status?: string;
+    period?: string;
+    clinicId?: string;
+  } = {},
+) {
   return useQuery({
-    queryKey: ['admin-hr', 'staff-claims', params],
-    queryFn: () => apiClient.get<StaffClaimRow[]>(`/workforce/claims${qs(params)}`),
+    queryKey: ["admin-hr", "staff-claims", params],
+    queryFn: () =>
+      apiClient.get<StaffClaimRow[]>(`/workforce/claims${qs(params)}`),
   });
 }
 
 export function useStaffClaimHistory(id: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'staff-claim-history', id],
-    queryFn: () => apiClient.get<StaffClaimEventRow[]>(`/workforce/claims/${id}/history`),
+    queryKey: ["admin-hr", "staff-claim-history", id],
+    queryFn: () =>
+      apiClient.get<StaffClaimEventRow[]>(`/workforce/claims/${id}/history`),
     enabled: Boolean(id),
   });
 }
@@ -1285,23 +1742,34 @@ export interface CreateStaffClaimBody {
 
 export function useCreateStaffClaim() {
   return useAdminMutation(
-    (body: CreateStaffClaimBody) => apiClient.post<{ id: string; amountClaimed: string }>('/workforce/claims', body),
-    ['admin-hr'],
+    (body: CreateStaffClaimBody) =>
+      apiClient.post<{ id: string; amountClaimed: string }>(
+        "/workforce/claims",
+        body,
+      ),
+    ["admin-hr"],
   );
 }
 
 /** A receipt HR hands in for an employee, stored as that employee's own file. Returns its id and path. */
-export async function uploadStaffFileFor(staffId: string, file: Blob, fileName: string): Promise<{ id: string; path: string }> {
+export async function uploadStaffFileFor(
+  staffId: string,
+  file: Blob,
+  fileName: string,
+): Promise<{ id: string; path: string }> {
   const form = new FormData();
-  form.append('file', file, fileName);
-  return uploadFile<{ id: string; path: string }>(`/workforce/staff-files?kind=RECEIPT&staffId=${encodeURIComponent(staffId)}`, form);
+  form.append("file", file, fileName);
+  return uploadFile<{ id: string; path: string }>(
+    `/workforce/staff-files?kind=RECEIPT&staffId=${encodeURIComponent(staffId)}`,
+    form,
+  );
 }
 
 export function useDecideStaffClaim() {
   return useAdminMutation(
     ({ id, ...body }: { id: string } & Record<string, unknown>) =>
       apiClient.post(`/workforce/claims/${id}/decide`, body),
-    ['admin-hr'],
+    ["admin-hr"],
   );
 }
 
@@ -1309,29 +1777,48 @@ export function useSettleStaffClaim() {
   return useAdminMutation(
     ({ id, ...body }: { id: string } & Record<string, unknown>) =>
       apiClient.post(`/workforce/claims/${id}/settle`, body),
-    ['admin-hr'],
+    ["admin-hr"],
   );
 }
 
-export function useLocumSessions(params: { from?: string; to?: string; staffId?: string; status?: string; clinicId?: string } = {}) {
+export function useLocumSessions(
+  params: {
+    from?: string;
+    to?: string;
+    staffId?: string;
+    status?: string;
+    clinicId?: string;
+  } = {},
+) {
   return useQuery({
-    queryKey: ['admin-hr', 'locum-sessions', params],
-    queryFn: () => apiClient.get<LocumSessionRow[]>(`/workforce/locum/sessions${qs(params)}`),
+    queryKey: ["admin-hr", "locum-sessions", params],
+    queryFn: () =>
+      apiClient.get<LocumSessionRow[]>(
+        `/workforce/locum/sessions${qs(params)}`,
+      ),
   });
 }
 
-export function useLocumPayable(params: { from: string; to: string; clinicId?: string }) {
+export function useLocumPayable(params: {
+  from: string;
+  to: string;
+  clinicId?: string;
+}) {
   return useQuery({
-    queryKey: ['admin-hr', 'locum-payable', params],
-    queryFn: () => apiClient.get<LocumPayableSummary>(`/workforce/locum/payable${qs(params)}`),
+    queryKey: ["admin-hr", "locum-payable", params],
+    queryFn: () =>
+      apiClient.get<LocumPayableSummary>(
+        `/workforce/locum/payable${qs(params)}`,
+      ),
     enabled: Boolean(params.from && params.to),
   });
 }
 
 export function useRecordLocumSession() {
   return useAdminMutation(
-    (body: Record<string, unknown>) => apiClient.post('/workforce/locum/sessions', body),
-    ['admin-hr'],
+    (body: Record<string, unknown>) =>
+      apiClient.post("/workforce/locum/sessions", body),
+    ["admin-hr"],
   );
 }
 
@@ -1339,7 +1826,7 @@ export function useUpdateLocumSession() {
   return useAdminMutation(
     ({ id, ...body }: { id: string } & Record<string, unknown>) =>
       apiClient.patch(`/workforce/locum/sessions/${id}`, body),
-    ['admin-hr'],
+    ["admin-hr"],
   );
 }
 
@@ -1347,7 +1834,7 @@ export function useApproveLocumSession() {
   return useAdminMutation(
     ({ id, ...body }: { id: string } & Record<string, unknown>) =>
       apiClient.post(`/workforce/locum/sessions/${id}/approve`, body),
-    ['admin-hr'],
+    ["admin-hr"],
   );
 }
 
@@ -1355,7 +1842,7 @@ export function useSettleLocumSession() {
   return useAdminMutation(
     ({ id, ...body }: { id: string } & Record<string, unknown>) =>
       apiClient.post(`/workforce/locum/sessions/${id}/settle`, body),
-    ['admin-hr'],
+    ["admin-hr"],
   );
 }
 
@@ -1366,8 +1853,11 @@ export function useSettleLocumSession() {
  */
 export function useSalaryParity(period: string) {
   return useQuery({
-    queryKey: ['admin-hr', 'salary-parity', period],
-    queryFn: () => apiClient.get<SalaryParityReport>(`/workforce/salary/parity${qs({ period })}`),
+    queryKey: ["admin-hr", "salary-parity", period],
+    queryFn: () =>
+      apiClient.get<SalaryParityReport>(
+        `/workforce/salary/parity${qs({ period })}`,
+      ),
     enabled: Boolean(period),
   });
 }
@@ -1377,10 +1867,13 @@ export function useSalaryParity(period: string) {
  * September" is the state a clinic most often opens this page in, and a hook
  * that needs a run id cannot describe it.
  */
-export function usePayrollHome(params: { period?: string; clinicId?: string } = {}) {
+export function usePayrollHome(
+  params: { period?: string; clinicId?: string } = {},
+) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-home', params],
-    queryFn: () => apiClient.get<PayrollHome>(`/workforce/payroll/home${qs(params)}`),
+    queryKey: ["admin-hr", "payroll-home", params],
+    queryFn: () =>
+      apiClient.get<PayrollHome>(`/workforce/payroll/home${qs(params)}`),
   });
 }
 
@@ -1390,19 +1883,24 @@ export function usePayrollHome(params: { period?: string; clinicId?: string } = 
  */
 export function usePayslips(runId: string | undefined, enabled = true) {
   return useQuery({
-    queryKey: ['admin-hr', 'payslips', runId],
-    queryFn: () => apiClient.get<PayslipList>(`/workforce/payroll/runs/${runId}/payslips`),
+    queryKey: ["admin-hr", "payslips", runId],
+    queryFn: () =>
+      apiClient.get<PayslipList>(`/workforce/payroll/runs/${runId}/payslips`),
     enabled: Boolean(runId) && enabled,
     retry: false,
   });
 }
 
-export function usePayslip(runId: string | undefined, staffId: string | undefined, version?: number) {
+export function usePayslip(
+  runId: string | undefined,
+  staffId: string | undefined,
+  version?: number,
+) {
   return useQuery({
-    queryKey: ['admin-hr', 'payslip', runId, staffId, version ?? 'latest'],
+    queryKey: ["admin-hr", "payslip", runId, staffId, version ?? "latest"],
     queryFn: () =>
       apiClient.get<PayslipDoc>(
-        `/workforce/payroll/runs/${runId}/payslips/${staffId}${version ? `?version=${version}` : ''}`,
+        `/workforce/payroll/runs/${runId}/payslips/${staffId}${version ? `?version=${version}` : ""}`,
       ),
     enabled: Boolean(runId && staffId),
     retry: false,
@@ -1410,35 +1908,51 @@ export function usePayslip(runId: string | undefined, staffId: string | undefine
 }
 
 /** The PDF leaves through the audited server route, never assembled client-side. */
-export function payslipPdfPath(runId: string, staffId: string, version?: number): string {
-  return `/workforce/payroll/runs/${runId}/payslips/${staffId}/pdf${version ? `?version=${version}` : ''}`;
+export function payslipPdfPath(
+  runId: string,
+  staffId: string,
+  version?: number,
+): string {
+  return `/workforce/payroll/runs/${runId}/payslips/${staffId}/pdf${version ? `?version=${version}` : ""}`;
 }
 
 /** Payment state of a run. Read needs payroll view; preparing needs export.bank. */
 export function usePaymentStatus(runId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'payment', runId],
-    queryFn: () => apiClient.get<PaymentStatus>(`/workforce/payroll/runs/${runId}/payment`),
+    queryKey: ["admin-hr", "payment", runId],
+    queryFn: () =>
+      apiClient.get<PaymentStatus>(`/workforce/payroll/runs/${runId}/payment`),
     enabled: Boolean(runId),
   });
 }
 
 export function usePreparePayment() {
   return useAdminMutation(
-    (runId: string) => apiClient.post<PaymentStatus>(`/workforce/payroll/runs/${runId}/payment/prepare`),
-    ['admin-hr'],
+    (runId: string) =>
+      apiClient.post<PaymentStatus>(
+        `/workforce/payroll/runs/${runId}/payment/prepare`,
+      ),
+    ["admin-hr"],
   );
 }
 
 export function useRecordPaymentPaid() {
   return useAdminMutation(
-    (input: { runId: string; paymentDate: string; reference: string; note?: string }) =>
-      apiClient.post<PaymentStatus>(`/workforce/payroll/runs/${input.runId}/payment/record-paid`, {
-        paymentDate: input.paymentDate,
-        reference: input.reference,
-        note: input.note,
-      }),
-    ['admin-hr'],
+    (input: {
+      runId: string;
+      paymentDate: string;
+      reference: string;
+      note?: string;
+    }) =>
+      apiClient.post<PaymentStatus>(
+        `/workforce/payroll/runs/${input.runId}/payment/record-paid`,
+        {
+          paymentDate: input.paymentDate,
+          reference: input.reference,
+          note: input.note,
+        },
+      ),
+    ["admin-hr"],
   );
 }
 
@@ -1446,10 +1960,15 @@ export function useRecordPaymentPaid() {
  * WHO CAN BE PAID, BEFORE A RUN EXISTS. Per-employee checklists from the same
  * builder the employee record uses, plus the employers' filing readiness.
  */
-export function usePayrollReadiness(params: { period?: string; clinicId?: string } = {}) {
+export function usePayrollReadiness(
+  params: { period?: string; clinicId?: string } = {},
+) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-readiness', params],
-    queryFn: () => apiClient.get<PayrollReadiness>(`/workforce/payroll/readiness${qs(params)}`),
+    queryKey: ["admin-hr", "payroll-readiness", params],
+    queryFn: () =>
+      apiClient.get<PayrollReadiness>(
+        `/workforce/payroll/readiness${qs(params)}`,
+      ),
   });
 }
 
@@ -1459,47 +1978,67 @@ export function usePayrollReadiness(params: { period?: string; clinicId?: string
 
 export function usePayrollReportCatalogue() {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-reports'],
-    queryFn: () => apiClient.get<PayrollReportCatalogue>('/workforce/payroll/reports'),
+    queryKey: ["admin-hr", "payroll-reports"],
+    queryFn: () =>
+      apiClient.get<PayrollReportCatalogue>("/workforce/payroll/reports"),
   });
 }
 
 export function usePayrollRegisterReport(runId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-report', 'register', runId],
-    queryFn: () => apiClient.get<PayrollRegisterReport>(`/workforce/payroll/runs/${runId}/reports/register`),
+    queryKey: ["admin-hr", "payroll-report", "register", runId],
+    queryFn: () =>
+      apiClient.get<PayrollRegisterReport>(
+        `/workforce/payroll/runs/${runId}/reports/register`,
+      ),
     enabled: Boolean(runId),
   });
 }
 
 export function usePayrollEmployerCostReport(runId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-report', 'employer-cost', runId],
-    queryFn: () => apiClient.get<PayrollEmployerCostReport>(`/workforce/payroll/runs/${runId}/reports/employer-cost`),
+    queryKey: ["admin-hr", "payroll-report", "employer-cost", runId],
+    queryFn: () =>
+      apiClient.get<PayrollEmployerCostReport>(
+        `/workforce/payroll/runs/${runId}/reports/employer-cost`,
+      ),
     enabled: Boolean(runId),
   });
 }
 
 export function usePayrollStatutoryReport(runId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-report', 'statutory', runId],
-    queryFn: () => apiClient.get<PayrollStatutoryReport>(`/workforce/payroll/runs/${runId}/reports/statutory`),
+    queryKey: ["admin-hr", "payroll-report", "statutory", runId],
+    queryFn: () =>
+      apiClient.get<PayrollStatutoryReport>(
+        `/workforce/payroll/runs/${runId}/reports/statutory`,
+      ),
     enabled: Boolean(runId),
   });
 }
 
 export function usePayrollMonthComparisonReport(runId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-report', 'variance', runId],
-    queryFn: () => apiClient.get<PayrollMonthComparisonReport>(`/workforce/payroll/runs/${runId}/reports/variance`),
+    queryKey: ["admin-hr", "payroll-report", "variance", runId],
+    queryFn: () =>
+      apiClient.get<PayrollMonthComparisonReport>(
+        `/workforce/payroll/runs/${runId}/reports/variance`,
+      ),
     enabled: Boolean(runId),
   });
 }
 
-export function usePayrollClaimsReport(params: { from: string; to: string; clinicId?: string }) {
+export function usePayrollClaimsReport(params: {
+  from: string;
+  to: string;
+  clinicId?: string;
+}) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-report', 'claims', params],
-    queryFn: () => apiClient.get<PayrollClaimsReport>(`/workforce/payroll/reports/claims${qs(params)}`),
+    queryKey: ["admin-hr", "payroll-report", "claims", params],
+    queryFn: () =>
+      apiClient.get<PayrollClaimsReport>(
+        `/workforce/payroll/reports/claims${qs(params)}`,
+      ),
   });
 }
 
@@ -1509,18 +2048,31 @@ export function usePayrollClaimsReport(params: { from: string; to: string; clini
  */
 export function useRecordEmployerHrd() {
   return useAdminMutation(
-    ({ legalEmployerId, ...body }: { legalEmployerId: string; effectiveFrom: string; hrdRegistration: string; reason?: string }) =>
-      apiClient.post(`/workforce/legal-employers/${legalEmployerId}/statutory-profile`, body),
-    ['admin-hr'],
+    ({
+      legalEmployerId,
+      ...body
+    }: {
+      legalEmployerId: string;
+      effectiveFrom: string;
+      hrdRegistration: string;
+      reason?: string;
+    }) =>
+      apiClient.post(
+        `/workforce/legal-employers/${legalEmployerId}/statutory-profile`,
+        body,
+      ),
+    ["admin-hr"],
   );
 }
 
 /** Every dated version of an employee's statutory standing, newest first. */
 export function useStatutoryClassifications(staffId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'statutory-classifications', staffId],
+    queryKey: ["admin-hr", "statutory-classifications", staffId],
     queryFn: () =>
-      apiClient.get<StatutoryClassificationVersion[]>(`/workforce/employees/${staffId}/statutory-classification`),
+      apiClient.get<StatutoryClassificationVersion[]>(
+        `/workforce/employees/${staffId}/statutory-classification`,
+      ),
     enabled: Boolean(staffId),
   });
 }
@@ -1528,34 +2080,62 @@ export function useStatutoryClassifications(staffId: string | undefined) {
 /** Remove a version recorded in error. The server refuses one an approved month reads. */
 export function useDeleteStatutoryClassification() {
   return useAdminMutation(
-    ({ staffId, id, reason }: { staffId: string; id: string; reason?: string }) =>
-      apiClient.delete(`/workforce/employees/${staffId}/statutory-classification/${id}`, { reason }),
-    ['admin-hr'],
+    ({
+      staffId,
+      id,
+      reason,
+    }: {
+      staffId: string;
+      id: string;
+      reason?: string;
+    }) =>
+      apiClient.delete(
+        `/workforce/employees/${staffId}/statutory-classification/${id}`,
+        { reason },
+      ),
+    ["admin-hr"],
   );
 }
 
 export function useRecordStatutoryClassification() {
   return useAdminMutation(
-    ({ staffId, ...body }: RecordStatutoryClassificationBody & { staffId: string }) =>
-      apiClient.post(`/workforce/employees/${staffId}/statutory-classification`, body),
-    ['admin-hr'],
+    ({
+      staffId,
+      ...body
+    }: RecordStatutoryClassificationBody & { staffId: string }) =>
+      apiClient.post(
+        `/workforce/employees/${staffId}/statutory-classification`,
+        body,
+      ),
+    ["admin-hr"],
   );
 }
 
 export function useImportYtdOpening() {
   return useAdminMutation(
-    (body: { legalEmployerId: string; source: string; note?: string; months: YtdOpeningMonthBody[] }) =>
-      apiClient.post<{ employees: number; months: number; source: string }>('/workforce/payroll/ytd-opening', body),
-    ['admin-hr'],
+    (body: {
+      legalEmployerId: string;
+      source: string;
+      note?: string;
+      months: YtdOpeningMonthBody[];
+    }) =>
+      apiClient.post<{ employees: number; months: number; source: string }>(
+        "/workforce/payroll/ytd-opening",
+        body,
+      ),
+    ["admin-hr"],
   );
 }
 
-export function usePayrollHistoryReport(staffId: string | undefined, year?: number) {
+export function usePayrollHistoryReport(
+  staffId: string | undefined,
+  year?: number,
+) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-report', 'history', staffId, year],
+    queryKey: ["admin-hr", "payroll-report", "history", staffId, year],
     queryFn: () =>
       apiClient.get<PayrollHistoryReport>(
-        `/workforce/payroll/reports/history?staffId=${staffId}${year ? `&year=${year}` : ''}`,
+        `/workforce/payroll/reports/history?staffId=${staffId}${year ? `&year=${year}` : ""}`,
       ),
     enabled: Boolean(staffId),
   });
@@ -1563,55 +2143,80 @@ export function usePayrollHistoryReport(staffId: string | undefined, year?: numb
 
 export function usePayrollPcbSummaryReport(runId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-report', 'pcb', runId],
-    queryFn: () => apiClient.get<PayrollPcbSummaryReport>(`/workforce/payroll/runs/${runId}/reports/pcb`),
+    queryKey: ["admin-hr", "payroll-report", "pcb", runId],
+    queryFn: () =>
+      apiClient.get<PayrollPcbSummaryReport>(
+        `/workforce/payroll/runs/${runId}/reports/pcb`,
+      ),
     enabled: Boolean(runId),
   });
 }
 
-export function usePayrollYtdReport(params: { year: number; legalEmployerId?: string; clinicId?: string }) {
+export function usePayrollYtdReport(params: {
+  year: number;
+  legalEmployerId?: string;
+  clinicId?: string;
+}) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-report', 'ytd', params],
-    queryFn: () => apiClient.get<PayrollYtdReport>(`/workforce/payroll/reports/ytd${qs(params)}`),
+    queryKey: ["admin-hr", "payroll-report", "ytd", params],
+    queryFn: () =>
+      apiClient.get<PayrollYtdReport>(
+        `/workforce/payroll/reports/ytd${qs(params)}`,
+      ),
   });
 }
 
 export function usePayrollOvertimeReport(runId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-report', 'overtime', runId],
-    queryFn: () => apiClient.get<PayrollOvertimeReport>(`/workforce/payroll/runs/${runId}/reports/overtime`),
+    queryKey: ["admin-hr", "payroll-report", "overtime", runId],
+    queryFn: () =>
+      apiClient.get<PayrollOvertimeReport>(
+        `/workforce/payroll/runs/${runId}/reports/overtime`,
+      ),
     enabled: Boolean(runId),
   });
 }
 
 export function usePayrollUnpaidLeaveReport(runId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-report', 'unpaid-leave', runId],
-    queryFn: () => apiClient.get<PayrollUnpaidLeaveReport>(`/workforce/payroll/runs/${runId}/reports/unpaid-leave`),
+    queryKey: ["admin-hr", "payroll-report", "unpaid-leave", runId],
+    queryFn: () =>
+      apiClient.get<PayrollUnpaidLeaveReport>(
+        `/workforce/payroll/runs/${runId}/reports/unpaid-leave`,
+      ),
     enabled: Boolean(runId),
   });
 }
 
 export function usePayrollIncentivesReport(runId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-report', 'incentives', runId],
-    queryFn: () => apiClient.get<PayrollIncentivesReport>(`/workforce/payroll/runs/${runId}/reports/incentives`),
+    queryKey: ["admin-hr", "payroll-report", "incentives", runId],
+    queryFn: () =>
+      apiClient.get<PayrollIncentivesReport>(
+        `/workforce/payroll/runs/${runId}/reports/incentives`,
+      ),
     enabled: Boolean(runId),
   });
 }
 
 export function usePayrollExceptionsReport(runId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-report', 'exceptions-report', runId],
-    queryFn: () => apiClient.get<PayrollExceptionsReport>(`/workforce/payroll/runs/${runId}/reports/exceptions`),
+    queryKey: ["admin-hr", "payroll-report", "exceptions-report", runId],
+    queryFn: () =>
+      apiClient.get<PayrollExceptionsReport>(
+        `/workforce/payroll/runs/${runId}/reports/exceptions`,
+      ),
     enabled: Boolean(runId),
   });
 }
 
 export function usePayrollPaymentStatusReport(runId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-report', 'payment-status', runId],
-    queryFn: () => apiClient.get<PayrollPaymentStatusReport>(`/workforce/payroll/runs/${runId}/reports/payment-status`),
+    queryKey: ["admin-hr", "payroll-report", "payment-status", runId],
+    queryFn: () =>
+      apiClient.get<PayrollPaymentStatusReport>(
+        `/workforce/payroll/runs/${runId}/reports/payment-status`,
+      ),
     enabled: Boolean(runId),
   });
 }
@@ -1623,8 +2228,11 @@ export function usePayrollPaymentStatusReport(runId: string | undefined) {
  */
 export function usePayrollApprovalPolicy() {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-approval-policy'],
-    queryFn: () => apiClient.get<PayrollApprovalPolicy>('/workforce/payroll/approval-policy'),
+    queryKey: ["admin-hr", "payroll-approval-policy"],
+    queryFn: () =>
+      apiClient.get<PayrollApprovalPolicy>(
+        "/workforce/payroll/approval-policy",
+      ),
   });
 }
 
@@ -1632,10 +2240,17 @@ export function useSetPayrollApprovalPolicy() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: { mode?: string; allowOwnerSelfApproval?: boolean }) =>
-      apiClient.put<PayrollApprovalPolicy>('/workforce/payroll/approval-policy', body),
+      apiClient.put<PayrollApprovalPolicy>(
+        "/workforce/payroll/approval-policy",
+        body,
+      ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-hr', 'payroll-approval-policy'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-hr', 'payroll-journey'] });
+      queryClient.invalidateQueries({
+        queryKey: ["admin-hr", "payroll-approval-policy"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["admin-hr", "payroll-journey"],
+      });
     },
   });
 }
@@ -1643,8 +2258,9 @@ export function useSetPayrollApprovalPolicy() {
 /** The six steps of one run, from one read, so no two steps can disagree. */
 export function usePayrollJourney(runId: string | undefined) {
   return useQuery({
-    queryKey: ['admin-hr', 'payroll-journey', runId],
-    queryFn: () => apiClient.get<PayrollJourney>(`/workforce/payroll/runs/${runId}/journey`),
+    queryKey: ["admin-hr", "payroll-journey", runId],
+    queryFn: () =>
+      apiClient.get<PayrollJourney>(`/workforce/payroll/runs/${runId}/journey`),
     enabled: Boolean(runId),
   });
 }
@@ -1652,41 +2268,54 @@ export function usePayrollJourney(runId: string | undefined) {
 /** What "late" means here, and where that answer came from. */
 export function useAttendancePolicy(clinicId?: string) {
   return useQuery({
-    queryKey: ['admin-hr', 'attendance-policy', clinicId ?? 'group'],
+    queryKey: ["admin-hr", "attendance-policy", clinicId ?? "group"],
     queryFn: () =>
       apiClient.get<EffectiveAttendancePolicy>(
-        `/workforce/attendance/policy${clinicId ? `?clinicId=${clinicId}` : ''}`,
+        `/workforce/attendance/policy${clinicId ? `?clinicId=${clinicId}` : ""}`,
       ),
   });
 }
 
 export function useClaimPolicy() {
   return useQuery({
-    queryKey: ['admin-hr', 'claim-policy'],
-    queryFn: () => apiClient.get<ClaimPolicy>('/workforce/claim-policy'),
+    queryKey: ["admin-hr", "claim-policy"],
+    queryFn: () => apiClient.get<ClaimPolicy>("/workforce/claim-policy"),
   });
 }
 
 export function useSaveClaimPolicy() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { mileageRatePerKm?: string; receiptRequired?: boolean; reason?: string }) =>
-      apiClient.put<ClaimPolicy>('/workforce/claim-policy', body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-hr', 'claim-policy'] }),
+    mutationFn: (body: {
+      mileageRatePerKm?: string;
+      receiptRequired?: boolean;
+      reason?: string;
+    }) => apiClient.put<ClaimPolicy>("/workforce/claim-policy", body),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["admin-hr", "claim-policy"] }),
   });
 }
 
 export function useSaveAttendancePolicy() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: Partial<AttendancePolicy> & { clinicId?: string; reason?: string }) =>
-      apiClient.post<EffectiveAttendancePolicy>('/workforce/attendance/policy', body),
+    mutationFn: (
+      body: Partial<AttendancePolicy> & { clinicId?: string; reason?: string },
+    ) =>
+      apiClient.post<EffectiveAttendancePolicy>(
+        "/workforce/attendance/policy",
+        body,
+      ),
     onSuccess: () => {
       // The timesheet is JUDGED by this, so it must not keep showing yesterday's
       // verdict under today's rule.
-      queryClient.invalidateQueries({ queryKey: ['admin-hr', 'attendance-policy'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-hr', 'timesheet'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-hr', 'workforce-today'] });
+      queryClient.invalidateQueries({
+        queryKey: ["admin-hr", "attendance-policy"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["admin-hr", "timesheet"] });
+      queryClient.invalidateQueries({
+        queryKey: ["admin-hr", "workforce-today"],
+      });
     },
   });
 }
@@ -1705,9 +2334,11 @@ export function useSaveAttendancePolicy() {
  * computes each row through the same function `GET leave/balances/:staffId`
  * uses, so a figure here cannot disagree with the one on somebody's record.
  */
-export function useLeaveBalances(params: { clinicId?: string; year?: number } = {}) {
+export function useLeaveBalances(
+  params: { clinicId?: string; year?: number } = {},
+) {
   return useQuery({
-    queryKey: ['admin-hr', 'leave-balances', params],
+    queryKey: ["admin-hr", "leave-balances", params],
     queryFn: () =>
       apiClient.get<{
         year: number;
@@ -1754,14 +2385,23 @@ export interface LeavePolicyRow {
   notes: string | null;
   employees: number;
   payUntakenLeaveOnExit: boolean;
-  notPaying: { reason: string | null; at: string | null; by: string | null } | null;
-  entitlements: { leaveType: string; daysPerYear: number; paid: boolean; requiresAttachment: boolean }[];
+  notPaying: {
+    reason: string | null;
+    at: string | null;
+    by: string | null;
+  } | null;
+  entitlements: {
+    leaveType: string;
+    daysPerYear: number;
+    paid: boolean;
+    requiresAttachment: boolean;
+  }[];
 }
 
 export function useLeavePolicies() {
   return useQuery({
-    queryKey: ['admin-hr', 'leave-policies'],
-    queryFn: () => apiClient.get<LeavePolicyRow[]>('/workforce/leave/policies'),
+    queryKey: ["admin-hr", "leave-policies"],
+    queryFn: () => apiClient.get<LeavePolicyRow[]>("/workforce/leave/policies"),
   });
 }
 
@@ -1778,12 +2418,16 @@ export function useSaveLeavePolicy() {
       payUntakenLeaveOnExit?: boolean;
       notPayingAcknowledged?: boolean;
       notPayingReason?: string;
-    }) => apiClient.post<{ id: string }>('/workforce/leave/policies', body),
+    }) => apiClient.post<{ id: string }>("/workforce/leave/policies", body),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-hr', 'leave-policies'] });
+      queryClient.invalidateQueries({
+        queryKey: ["admin-hr", "leave-policies"],
+      });
       // Balances are computed from the entitlement this policy names, so a
       // stale list would show the old figure beside the new rule.
-      queryClient.invalidateQueries({ queryKey: ['admin-hr', 'leave-balances'] });
+      queryClient.invalidateQueries({
+        queryKey: ["admin-hr", "leave-balances"],
+      });
     },
   });
 }

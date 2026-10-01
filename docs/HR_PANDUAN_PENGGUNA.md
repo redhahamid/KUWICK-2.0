@@ -884,6 +884,21 @@ PCB, huruf spesifikasi — P, M, R, B, n, K2, pelepasan — dengan angka bulan
 itu. Dibekukan bersama payslip semasa dikira; baris yang dibekukan sebelum
 ciri ini wujud tidak menunjukkannya.
 
+**Pembantu pemfailan statutori (Batch 8).** Selepas bulan diluluskan, pautan
+**Statutory filing helper** pada tahap *Pay* (juga dari *Reports → Government
+reports*) membuka satu halaman untuk setiap agensi — **KWSP**, **PERKESO**
+(SOCSO, EIS dan LINDUNG 24 JAM dalam satu duduk), **LHDN** (PCB) dan **HRD
+Corp** (hanya jika berdaftar). Setiap agensi menunjukkan, mengikut urutan
+portal: **siapa perlu ditambah** sebelum mengunci angka dan **siapa perlu
+dibuang** selepas pemfailan (dari tarikh mula/tarikh akhir pekerja dan
+perbandingan dengan bulan lepas yang diluluskan), **senarai** mengikut nama
+dengan IC, nombor keahlian dan amaun (untuk PERKESO, tiga skim ditunjukkan
+sebelah-menyebelah), dan **jumlah untuk dibayar**. Butang **Mark as
+submitted** merekod tarikh dan rujukan portal untuk agensi itu — satu rekod
+untuk ketiga-tiga skim PERKESO — dan hanya sekali. Kuwick tidak menjana fail
+muat naik dan tidak memfailkan apa-apa: angka dikunci dari rekod yang
+diluluskan, pemfailan dibuat oleh orang di portal agensi.
+
 ### 3.6 Reports
 
 **Bila dibuka.** Selepas satu bulan diluluskan, bila akauntan minta sesuatu,

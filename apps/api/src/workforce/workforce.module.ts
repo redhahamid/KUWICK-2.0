@@ -28,6 +28,7 @@ import { PayrollReadinessService } from './payroll-readiness.service';
 import { PayrollPayslipService } from './payroll-payslip.service';
 import { PayrollPaymentService } from './payroll-payment.service';
 import { PayrollStatutoryOutputService } from './payroll-statutory-output.service';
+import { PayrollFilingService } from './payroll-filing.service';
 import { PayrollTaxService } from './payroll-tax.service';
 import { PayrollReportService } from './payroll-report.service';
 import { PayrollFinanceService } from './payroll-finance.service';
@@ -75,6 +76,7 @@ import { PayrollFinanceService } from './payroll-finance.service';
     PayrollPayslipService,
     PayrollPaymentService,
     PayrollStatutoryOutputService,
+    PayrollFilingService,
     PayrollTaxService,
     PayrollReportService,
     PayrollFinanceService,
@@ -105,6 +107,7 @@ import { PayrollFinanceService } from './payroll-finance.service';
     PayrollPayslipService,
     PayrollPaymentService,
     PayrollStatutoryOutputService,
+    PayrollFilingService,
     PayrollTaxService,
     PayrollReportService,
     PayrollFinanceService,

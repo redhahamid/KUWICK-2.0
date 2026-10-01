@@ -414,6 +414,13 @@ export function PayrollReportsPage() {
         <PanelHead
           title="Government reports"
           sub="Prepared from the approved month and reconciled here. Kuwick never files anything: you upload at the authority's own portal and record what it issued."
+          actions={
+            approved && selectedRun ? (
+              <Link to={`/admin/hr/payroll/${selectedRun}/filing`} className="hr-btn hr-btn--sm">
+                Filing helper, per agency
+              </Link>
+            ) : null
+          }
         />
         {!approved ? (
           <div className="hr-notice hr-notice--attn">

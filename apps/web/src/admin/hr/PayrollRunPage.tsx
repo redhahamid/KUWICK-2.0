@@ -896,8 +896,12 @@ function PayStep({ data, runId }: { data: PayrollJourney; runId: string }) {
       <PayslipsPanel runId={runId} />
       <PaymentPanel runId={runId} />
       <StatutoryOutputsPanel runId={runId} />
-      <PanelHead rule title="The rest of this month" sub="The two documents the month produces, already set to this run." />
+      <PanelHead rule title="The rest of this month" sub="The filing helper and the two documents the month produces, already set to this run." />
       <div className="kw-outputLinks" style={{ padding: '12px 0 0' }}>
+        <Link to={`/admin/hr/payroll/${runId}/filing`} className="kw-outputLink">
+          <strong>Statutory filing helper</strong>
+          <span>KWSP, PERKESO, LHDN and HRD Corp: who to add or remove, the list in portal order, the total to pay, and “mark as submitted”.</span>
+        </Link>
         <Link to={`/admin/hr/reports?report=PAYROLL_REGISTER&run=${runId}`} className="kw-outputLink">
           <strong>Payroll register</strong>
           <span>Every employee, every component. Exports to CSV.</span>

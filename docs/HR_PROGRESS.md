@@ -6,6 +6,80 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 8 — 1 Oktober 2026 — pembantu pemfailan statutori (versi kecil)
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+master Batch 7 (`85d57b4`). Komit: komit yang menambah bahagian ini (hash
+dalam laporan akhir). **Migrasi: tiada** — rekod "submitted" menggunakan
+jadual `payroll_statutory_submissions` yang sedia ada (satu baris setiap
+skim), jadi laporan dan kontrak kewangan yang membacanya tidak berubah.
+
+### Apa yang berubah
+
+- **`GET /workforce/payroll/runs/:id/filing`** `[D]`: bulan yang diluluskan
+  (snapshot disahkan) disusun semula **mengikut agensi** — KWSP (EPF),
+  PERKESO (SOCSO + EIS + LINDUNG 24 JAM), LHDN (PCB), HRD Corp (levi; tidak
+  berkenaan jika majikan tidak berdaftar). Setiap agensi: baris pekerja
+  mengikut **nama** dengan IC, no. keahlian, bahagian setiap skim dan jumlah;
+  **joiners** (tarikh mula dalam bulan itu, atau tiada dalam run bulan lepas
+  yang diluluskan untuk majikan + cawangan yang sama) dan **leavers** (tarikh
+  akhir dalam bulan itu, atau ada dalam run bulan lepas tetapi tiada bulan
+  ini); jumlah pekerja / majikan / untuk dibayar (null jika ada baris tidak
+  dikira — sama peraturan dengan senarai sedia ada); keadaan pemfailan
+  (`NOT_RECORDED` / `PARTIAL` / `RECORDED` / `NOT_APPLICABLE`). Kebenaran
+  sama dengan senarai: `hr.payroll.export.statutory`; audit
+  `payrollStatutory.filingViewed`.
+- **`POST .../filing/:agency/record-submission`** `[D]`: satu tarikh + satu
+  rujukan ditulis pada **setiap skim** agensi itu (PERKESO = 3 baris),
+  dalam satu transaksi; ditolak (409) jika mana-mana skim agensi itu sudah
+  direkod, atau agensi tidak berkenaan. Audit
+  `payrollStatutory.filingRecorded`.
+- **Halaman `/admin/hr/payroll/:id/filing`** (Slate) `[D]`: tab agensi; kad
+  jumlah (pekerja dalam senarai, bahagian pekerja, bahagian majikan, jumlah
+  untuk dibayar + nama portal); panel *This month at the portal* (*Add before
+  keying* / *Remove after filing* dengan sebab); jadual mengikut urutan
+  portal; **Mark as submitted** membuka laci tarikh + rujukan + nota.
+  Pautan dari tahap *Pay* run dan dari *Reports → Government reports*.
+- **Tiada penjanaan fail** — seperti yang diminta; senarai CSV sedia ada
+  setiap skim kekal.
+- Ujian: `statutory-filing.e2e-spec.ts` (Feb + Mac untuk 4 pekerja demo:
+  mula dalam bulan, akhir dalam bulan, berhenti bulan lepas; PERKESO 3 baris
+  sekali sahaja; HRD tidak berkenaan; 403 tanpa kebenaran),
+  `statutoryFiling.test.tsx` (4 ujian halaman).
+
+### Uji di staging (ikut urutan)
+
+1. **Payroll → bulan yang diluluskan → tahap Pay → Statutory filing helper.**
+   Tab **KWSP**: senarai mengikut nama, IC dan no. KWSP di sebelah, jumlah
+   *Total to pay* sama dengan jumlah EPF pada senarai lama.
+2. Tab **PERKESO**: tiga lajur skim setiap pekerja (SOCSO, EIS, SKBBK) dan
+   satu jumlah; panel *This month at the portal* menamakan sesiapa yang baru
+   mula atau berhenti bulan itu (demo: tiada → "Nobody joined/left").
+3. Tekan **Mark as submitted** pada KWSP, isi tarikh + rujukan → cip
+   *Submitted [tarikh]* dan rujukan tertera; butang hilang. Buka semula
+   halaman — kekal.
+4. Tab **HRD**: jika syarikat tidak berdaftar dengan HRD Corp → *Nothing to
+   file*.
+5. *Reports → Government reports* → butang **Filing helper, per agency**
+   membuka halaman yang sama untuk bulan yang dipilih.
+
+### Keputusan terbuka / yang saya pilih bagi pihak anda
+
+- `[A]` **"Urutan mesra portal"** saya tafsirkan sebagai lajur *nama, IC,
+  no. keahlian, amaun* dan baris **A–Z mengikut nama**. Kalau portal tertentu
+  mahu mengikut no. keahlian, itu satu baris `sort`.
+- `[A]` Nama portal (i-Akaun (Majikan), ASSIST Portal, e-PCB Plus, e-TRiS)
+  ialah label sahaja; tiada pautan ke portal.
+- `[A]` **Satu rekod setiap agensi** ditulis sebagai satu baris setiap skim
+  (bukan model baharu) supaya tiada migrasi dan laporan sedia ada terus
+  membaca per skim; "PARTIAL" muncul hanya jika seseorang merekod skim demi
+  skim melalui panel lama.
+- `[A]` Joiners/leavers dibandingkan dengan run **REGULAR** bulan lepas
+  untuk majikan dan cawangan yang sama; run "All branches" dibandingkan
+  dengan run "All branches".
+
+---
+
 ## Batch 7 — 1 Oktober 2026 — polish visual: biru Kuwick, fon dan ikon aplikasi utama
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas

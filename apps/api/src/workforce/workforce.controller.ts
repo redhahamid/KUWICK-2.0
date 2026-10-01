@@ -53,6 +53,7 @@ import { PayrollReadinessService } from './payroll-readiness.service';
 import { PayrollPayslipService } from './payroll-payslip.service';
 import { PayrollPaymentService } from './payroll-payment.service';
 import { PayrollStatutoryOutputService } from './payroll-statutory-output.service';
+import { PayrollFilingService } from './payroll-filing.service';
 import { PayrollTaxService } from './payroll-tax.service';
 import { renderPayslipPdf } from './payroll-payslip-pdf';
 import { PayrollReportService } from './payroll-report.service';
@@ -100,6 +101,7 @@ export class WorkforceController {
     private readonly payslipService: PayrollPayslipService,
     private readonly payments: PayrollPaymentService,
     private readonly statutoryOutputs_: PayrollStatutoryOutputService,
+    private readonly filing: PayrollFilingService,
     private readonly tax: PayrollTaxService,
     private readonly reports: PayrollReportService,
     private readonly financeContract: PayrollFinanceService,
@@ -1042,6 +1044,23 @@ export class WorkforceController {
     @Body() body: { submittedDate: string; reference: string; note?: string },
   ) {
     return this.statutoryOutputs_.recordSubmission(id, scheme, body);
+  }
+
+  // --- Statutory filing helper — the same month, per agency, for the portal --
+
+  @Get('payroll/runs/:id/filing')
+  statutoryFiling(@Param('id') id: string) {
+    return this.filing.view(id);
+  }
+
+  /** "Submitted" for one agency: the same date and reference on every scheme it covers. */
+  @Post('payroll/runs/:id/filing/:agency/record-submission')
+  recordAgencyFiling(
+    @Param('id') id: string,
+    @Param('agency') agency: string,
+    @Body() body: { submittedDate: string; reference: string; note?: string },
+  ) {
+    return this.filing.recordSubmission(id, agency, body);
   }
 
   // --- Payslips, from the approved snapshot and nowhere else ----------------

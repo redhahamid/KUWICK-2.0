@@ -10,8 +10,16 @@
 
 // --- Finance ---------------------------------------------------------------
 
-export type PaymentTender = 'CASH' | 'CARD' | 'QR' | 'EWALLET' | 'BANK_TRANSFER' | 'CHEQUE' | 'PANEL' | 'OTHER';
-export type PaymentKind = 'PAYMENT' | 'REFUND';
+export type PaymentTender =
+  | "CASH"
+  | "CARD"
+  | "QR"
+  | "EWALLET"
+  | "BANK_TRANSFER"
+  | "CHEQUE"
+  | "PANEL"
+  | "OTHER";
+export type PaymentKind = "PAYMENT" | "REFUND";
 
 export interface PaymentRow {
   id: string;
@@ -51,10 +59,22 @@ export interface InvoicePosition {
 export interface DayEndView {
   clinicId: string;
   businessDate: string;
-  status: 'OPEN' | 'COUNTED' | 'CLOSED';
+  status: "OPEN" | "COUNTED" | "CLOSED";
   frozen: boolean;
-  expected: { cash: number; card: number; qr: number; other: number; total: number };
-  counted: { cash: number | null; card: number | null; qr: number | null; other: number | null; total: number | null };
+  expected: {
+    cash: number;
+    card: number;
+    qr: number;
+    other: number;
+    total: number;
+  };
+  counted: {
+    cash: number | null;
+    card: number | null;
+    qr: number | null;
+    other: number | null;
+    total: number | null;
+  };
   variance: number | null;
   varianceReason: string | null;
   refunds: number;
@@ -108,7 +128,12 @@ export interface ReceivablesReport {
   aging: { current: number; d31_60: number; d61_90: number; d90_plus: number };
   /** How many invoices sit in each bucket — the amount is what gets chased,
    *  the count is what decides whether the bucket is clean. */
-  agingCounts: { current: number; d31_60: number; d61_90: number; d90_plus: number };
+  agingCounts: {
+    current: number;
+    d31_60: number;
+    d61_90: number;
+    d90_plus: number;
+  };
   rows: {
     invoiceId: string;
     invoiceNumber: string;
@@ -161,7 +186,7 @@ export interface PaymentReport {
 export interface CreditNoteRow {
   id: string;
   creditNoteNumber: string;
-  status: 'DRAFT' | 'ISSUED' | 'VOID';
+  status: "DRAFT" | "ISSUED" | "VOID";
   reason: string;
   subtotalAmount: number;
   taxAmount: number;
@@ -175,7 +200,13 @@ export interface CreditNoteRow {
   invoiceTotal: number | null;
   patientName: string | null;
   visitNumber: string | null;
-  lines: { id: string; description: string; quantity: number; amount: number; taxAmount: number }[];
+  lines: {
+    id: string;
+    description: string;
+    quantity: number;
+    amount: number;
+    taxAmount: number;
+  }[];
 }
 
 export interface TaxReport {
@@ -190,18 +221,36 @@ export interface TaxReport {
     notClassified: number;
     lineCount: number;
   };
-  byCode: { code: string; name: string; base: number; tax: number; lines: number }[];
-  byInvoice: { invoiceId: string; invoiceNumber: string; date: string; patient: string | null; base: number; tax: number }[];
+  byCode: {
+    code: string;
+    name: string;
+    base: number;
+    tax: number;
+    lines: number;
+  }[];
+  byInvoice: {
+    invoiceId: string;
+    invoiceNumber: string;
+    date: string;
+    patient: string | null;
+    base: number;
+    tax: number;
+  }[];
 }
 
 export interface TaxCode {
   id: string;
   code: string;
   name: string;
-  treatment: 'STANDARD_RATED' | 'ZERO_RATED' | 'EXEMPT';
+  treatment: "STANDARD_RATED" | "ZERO_RATED" | "EXEMPT";
   active: boolean;
   currentRate: number | null;
-  rates: { id: string; ratePercent: number; effectiveFrom: string; effectiveTo: string | null }[];
+  rates: {
+    id: string;
+    ratePercent: number;
+    effectiveFrom: string;
+    effectiveTo: string | null;
+  }[];
 }
 
 // --- Stock -----------------------------------------------------------------
@@ -228,14 +277,31 @@ export interface StockValuation {
   potentialValueNote: string;
   itemsValued: number;
   itemsWithoutCost: number;
-  byCategory: { category: string; costValue: number; potentialSelfPayValue: number; items: number; units: number }[];
-  byClinic: { clinicId: string; clinicName: string; costValue: number; potentialSelfPayValue: number; items: number }[];
+  byCategory: {
+    category: string;
+    costValue: number;
+    potentialSelfPayValue: number;
+    items: number;
+    units: number;
+  }[];
+  byClinic: {
+    clinicId: string;
+    clinicName: string;
+    costValue: number;
+    potentialSelfPayValue: number;
+    items: number;
+  }[];
 }
 
 export interface StockTransferRow {
   id: string;
   transferNumber: string;
-  status: 'DRAFT' | 'SENT' | 'RECEIVED' | 'RECEIVED_WITH_DISCREPANCY' | 'CANCELLED';
+  status:
+    | "DRAFT"
+    | "SENT"
+    | "RECEIVED"
+    | "RECEIVED_WITH_DISCREPANCY"
+    | "CANCELLED";
   fromClinicId: string;
   toClinicId: string;
   fromClinicName: string;
@@ -272,7 +338,7 @@ export interface StockTakeRow {
   id: string;
   takeNumber: string;
   name: string;
-  status: 'DRAFT' | 'COUNTING' | 'IN_REVIEW' | 'POSTED' | 'CANCELLED';
+  status: "DRAFT" | "COUNTING" | "IN_REVIEW" | "POSTED" | "CANCELLED";
   location: string | null;
   clinicId: string;
   clinicName: string;
@@ -288,7 +354,12 @@ export interface StockTakeRow {
   countedCount: number;
   completionPercent: number;
   varianceCount: number;
-  counters: { staffId: string; name: string; location: string | null; completedAt: string | null }[];
+  counters: {
+    staffId: string;
+    name: string;
+    location: string | null;
+    completedAt: string | null;
+  }[];
 }
 
 export interface StockTakeDetail extends StockTakeRow {
@@ -337,20 +408,20 @@ export interface StockMovementRow {
 // --- Panel -----------------------------------------------------------------
 
 export type PanelClaimStatus =
-  | 'READY'
-  | 'NEEDS_INFORMATION'
-  | 'BATCHED'
-  | 'SUBMITTED'
-  | 'ACKNOWLEDGED'
-  | 'APPROVED'
-  | 'PARTIALLY_APPROVED'
-  | 'REJECTED'
-  | 'RESUBMISSION_REQUIRED'
-  | 'RESUBMITTED'
-  | 'PAID'
-  | 'PARTIALLY_PAID'
-  | 'WRITTEN_OFF'
-  | 'CLOSED';
+  | "READY"
+  | "NEEDS_INFORMATION"
+  | "BATCHED"
+  | "SUBMITTED"
+  | "ACKNOWLEDGED"
+  | "APPROVED"
+  | "PARTIALLY_APPROVED"
+  | "REJECTED"
+  | "RESUBMISSION_REQUIRED"
+  | "RESUBMITTED"
+  | "PAID"
+  | "PARTIALLY_PAID"
+  | "WRITTEN_OFF"
+  | "CLOSED";
 
 export interface SubmissionQueueRow {
   claimLineId: string;
@@ -405,7 +476,11 @@ export interface PanelReconciliation {
     uncategorisedRejections: number;
   };
   /** What the money was refused FOR, by amount. */
-  rejectionReasons: { category: ClaimRejectionCategory; claims: number; amount: number }[];
+  rejectionReasons: {
+    category: ClaimRejectionCategory;
+    claims: number;
+    amount: number;
+  }[];
   reconciles: boolean;
   aging: { current: number; d31_60: number; d61_90: number; d90_plus: number };
   byPanel: {
@@ -448,23 +523,24 @@ export interface PanelAwaitingPaymentRow {
 
 /** Why a panel refused to pay, as a countable fact beside the free text. */
 export type ClaimRejectionCategory =
-  | 'PATIENT_LIMIT_EXHAUSTED'
-  | 'ITEM_NOT_COVERED'
-  | 'PARTIALLY_COVERED'
-  | 'BENEFIT_SUBLIMIT'
-  | 'AUTHORISATION_PENDING'
-  | 'DOCUMENTATION_INCOMPLETE'
-  | 'OTHER';
+  | "PATIENT_LIMIT_EXHAUSTED"
+  | "ITEM_NOT_COVERED"
+  | "PARTIALLY_COVERED"
+  | "BENEFIT_SUBLIMIT"
+  | "AUTHORISATION_PENDING"
+  | "DOCUMENTATION_INCOMPLETE"
+  | "OTHER";
 
-export const REJECTION_CATEGORY_LABEL: Record<ClaimRejectionCategory, string> = {
-  PATIENT_LIMIT_EXHAUSTED: 'Member limit exhausted',
-  ITEM_NOT_COVERED: 'Item not covered',
-  PARTIALLY_COVERED: 'Covered only in part',
-  BENEFIT_SUBLIMIT: 'Benefit sub-limit',
-  AUTHORISATION_PENDING: 'Authorisation pending',
-  DOCUMENTATION_INCOMPLETE: 'Documentation incomplete',
-  OTHER: 'Other',
-};
+export const REJECTION_CATEGORY_LABEL: Record<ClaimRejectionCategory, string> =
+  {
+    PATIENT_LIMIT_EXHAUSTED: "Member limit exhausted",
+    ITEM_NOT_COVERED: "Item not covered",
+    PARTIALLY_COVERED: "Covered only in part",
+    BENEFIT_SUBLIMIT: "Benefit sub-limit",
+    AUTHORISATION_PENDING: "Authorisation pending",
+    DOCUMENTATION_INCOMPLETE: "Documentation incomplete",
+    OTHER: "Other",
+  };
 
 export interface PanelWorkQueueRow {
   claimLineId: string;
@@ -538,24 +614,25 @@ export interface PanelWorkQueueRow {
  * `docs/PANEL_FEE_DIRECTION_CORRECTION.md`.
  */
 export type PanelFeeTreatment =
-  | 'WITHHELD_FROM_CLAIM'
-  | 'ADDED_TO_RECEIVABLE'
-  | 'NO_FEE'
-  | 'UNCONFIGURED';
+  | "WITHHELD_FROM_CLAIM"
+  | "ADDED_TO_RECEIVABLE"
+  | "NO_FEE"
+  | "UNCONFIGURED";
 
 export const FEE_TREATMENT_LABEL: Record<PanelFeeTreatment, string> = {
-  WITHHELD_FROM_CLAIM: 'Withheld from payment',
-  ADDED_TO_RECEIVABLE: 'Added to the bill',
-  NO_FEE: 'No fee',
-  UNCONFIGURED: 'Not established',
+  WITHHELD_FROM_CLAIM: "Withheld from payment",
+  ADDED_TO_RECEIVABLE: "Added to the bill",
+  NO_FEE: "No fee",
+  UNCONFIGURED: "Not established",
 };
 
 export const FEE_TREATMENT_HINT: Record<PanelFeeTreatment, string> = {
-  WITHHELD_FROM_CLAIM: 'We bill the claim and bank claim − fee. The panel keeps its fee out of the payment.',
-  ADDED_TO_RECEIVABLE: 'We bill claim + fee and expect all of it back.',
-  NO_FEE: 'This panel charges nothing, so there is no sign to get wrong.',
+  WITHHELD_FROM_CLAIM:
+    "We bill the claim and bank claim − fee. The panel keeps its fee out of the payment.",
+  ADDED_TO_RECEIVABLE: "We bill claim + fee and expect all of it back.",
+  NO_FEE: "This panel charges nothing, so there is no sign to get wrong.",
   UNCONFIGURED:
-    'Nobody has established the rule. The fee is applied in neither direction and every receivable on this panel excludes it.',
+    "Nobody has established the rule. The fee is applied in neither direction and every receivable on this panel excludes it.",
 };
 
 export interface PanelConfigRow {
@@ -572,8 +649,8 @@ export interface PanelConfigRow {
   claimNumberFormat: string | null;
   paymentTermDays: number | null;
   paymentTermMaxDays: number | null;
-  paymentTermUnit: 'CALENDAR_DAYS' | 'WORKING_DAYS' | null;
-  paymentTermAnchor: 'SERVICE_DATE' | 'SUBMISSION_DATE' | 'INVOICE_DATE' | null;
+  paymentTermUnit: "CALENDAR_DAYS" | "WORKING_DAYS" | null;
+  paymentTermAnchor: "SERVICE_DATE" | "SUBMISSION_DATE" | "INVOICE_DATE" | null;
   paymentTermVariesByPayer: boolean;
   resubmissionWindowDays: number | null;
   feeTreatment: PanelFeeTreatment;
@@ -625,9 +702,19 @@ export interface WorkforceToday {
   completed: number;
   late: number;
   onLeave: { staffId: string; name: string; leaveType: string }[];
-  scheduled: { staffId: string; name: string; startAt: string; endAt: string }[];
+  scheduled: {
+    staffId: string;
+    name: string;
+    startAt: string;
+    endAt: string;
+  }[];
   /** Rostered, not on leave, and no punch yet — the gap a manager walks in with. */
-  notClockedIn: { staffId: string; name: string; dueAt: string; overdue: boolean }[];
+  notClockedIn: {
+    staffId: string;
+    name: string;
+    dueAt: string;
+    overdue: boolean;
+  }[];
   /** Who is covering what today, by the same five-way split the roster uses. */
   coverage: Record<string, number>;
   pendingLeaveApprovals: number;
@@ -702,7 +789,7 @@ export interface TimesheetReport {
       corrected: boolean;
       correctionReason: string | null;
       /** Piece 3g: how the punch was made, and what it carried. */
-      source: 'PORTAL' | 'QR' | 'DEVICE' | 'MANUAL';
+      source: "PORTAL" | "QR" | "DEVICE" | "MANUAL";
       proofUrl: string | null;
       clockOutProofUrl: string | null;
       outsideClinic: boolean;
@@ -723,8 +810,8 @@ export interface TimesheetReport {
 export interface AttendancePunchRow {
   id: string;
   at: string;
-  kind: 'IN' | 'OUT';
-  source: 'PORTAL' | 'QR' | 'DEVICE' | 'MANUAL';
+  kind: "IN" | "OUT";
+  source: "PORTAL" | "QR" | "DEVICE" | "MANUAL";
   proofUrl: string | null;
   outsideClinic: boolean;
   distanceMetres: number | null;
@@ -741,8 +828,8 @@ export interface PayrollRunRow {
   period: string;
   clinicId: string | null;
   clinicName: string;
-  status: 'DRAFT' | 'CALCULATED' | 'APPROVED' | 'PAID' | 'CANCELLED';
-  statutoryStatus: 'CONFIGURED' | 'NOT_CONFIGURED' | 'PROVISIONAL';
+  status: "DRAFT" | "CALCULATED" | "APPROVED" | "PAID" | "CANCELLED";
+  statutoryStatus: "CONFIGURED" | "NOT_CONFIGURED" | "PROVISIONAL";
   grossTotal: number;
   deductionTotal: number;
   netTotal: number;
@@ -770,9 +857,17 @@ export interface PayslipEmployeeSnapshot {
   department?: string | null;
   employmentType?: string | null;
   bankName?: string | null;
-  statutoryApplicability?: { epf?: boolean; socso?: boolean; eis?: boolean; pcb?: boolean };
+  statutoryApplicability?: {
+    epf?: boolean;
+    socso?: boolean;
+    eis?: boolean;
+    pcb?: boolean;
+  };
   /** The dated standing the line was computed on, frozen with it. */
-  statutoryClassification?: { lindungParticipation?: string | null } & Record<string, unknown>;
+  statutoryClassification?: { lindungParticipation?: string | null } & Record<
+    string,
+    unknown
+  >;
 }
 
 export interface PayrollRunDetail {
@@ -780,7 +875,7 @@ export interface PayrollRunDetail {
   period: string;
   clinicName: string;
   status: string;
-  statutoryStatus: 'CONFIGURED' | 'NOT_CONFIGURED' | 'PROVISIONAL';
+  statutoryStatus: "CONFIGURED" | "NOT_CONFIGURED" | "PROVISIONAL";
   statutoryNotice: string | null;
   grossTotal: number;
   deductionTotal: number;
@@ -827,7 +922,15 @@ export interface PayrollRunDetail {
     overtimeHours: number | null;
     breakdown: unknown;
   }[];
-  adjustments: { id: string; staffName: string; description: string; amount: number; reason: string; by: string; at: string }[];
+  adjustments: {
+    id: string;
+    staffName: string;
+    description: string;
+    amount: number;
+    reason: string;
+    by: string;
+    at: string;
+  }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -888,7 +991,7 @@ export interface PayslipDoc {
     socsoEmployerNo: string | null;
     lhdnEmployerNo: string | null;
     addressLines: string[];
-    detailsAsAt: 'CURRENT';
+    detailsAsAt: "CURRENT";
   };
   employee: {
     staffId: string;
@@ -903,7 +1006,7 @@ export interface PayslipDoc {
     taxNumber: string | null;
     /** NRIC or passport, as on the record today. */
     identifier?: { type: string; value: string } | null;
-    identifiersAsAt: 'CURRENT';
+    identifiersAsAt: "CURRENT";
   };
   /** The two signatures on the slip: who prepared the month, who approved it. */
   preparedBy?: { name: string; position: string | null; at: string } | null;
@@ -911,14 +1014,26 @@ export interface PayslipDoc {
   paidAt?: string | null;
   netInWords?: string;
   hrdLevyCents?: number | null;
-  attendance: { workedDays: number | null; unpaidDays: number | null; overtimeHours: number | null } | null;
+  attendance: {
+    workedDays: number | null;
+    unpaidDays: number | null;
+    overtimeHours: number | null;
+  } | null;
   itemised: boolean;
   earnings: { code: string; label: string; amountCents: number }[] | null;
   wageReductions: { code: string; label: string; amountCents: number }[] | null;
-  otherDeductionLines: { code: string; label: string; amountCents: number }[] | null;
-  overtimeDetail: { label: string; hours: number; hourlyRate: number; total: number }[] | null;
+  otherDeductionLines:
+    | { code: string; label: string; amountCents: number }[]
+    | null;
+  overtimeDetail:
+    | { label: string; hours: number; hourlyRate: number; total: number }[]
+    | null;
   statutoryDeductions: PayslipStatutoryRow[];
-  employerContributions: { key: string; label: string; amountCents: number | null }[];
+  employerContributions: {
+    key: string;
+    label: string;
+    amountCents: number | null;
+  }[];
   figures: {
     salaryBasis: string | null;
     salaryAmountCents: number;
@@ -944,7 +1059,12 @@ export interface PayslipDoc {
     taxResidence: string | null;
     effectiveFrom: string | null;
   } | null;
-  schedules: { scheme: string; scheduleId: string | null; verification: string | null; document: string | null }[];
+  schedules: {
+    scheme: string;
+    scheduleId: string | null;
+    verification: string | null;
+    document: string | null;
+  }[];
   ytd: {
     months: number;
     importedMonths: number;
@@ -981,7 +1101,7 @@ export interface PaymentStatus {
   batch: {
     id: string;
     version: number;
-    status: 'GENERATED' | 'DOWNLOADED' | 'RECORDED_PAID' | 'SUPERSEDED';
+    status: "GENERATED" | "DOWNLOADED" | "RECORDED_PAID" | "SUPERSEDED";
     snapshotVersion: number;
     totalCents: number;
     includedCount: number;
@@ -1036,7 +1156,7 @@ export interface StatutoryRuleSetRow {
   hasSocso: boolean;
   hasEis: boolean;
   hasPcb: boolean;
-  status: 'CONFIGURED' | 'NOT_CONFIGURED' | 'PROVISIONAL';
+  status: "CONFIGURED" | "NOT_CONFIGURED" | "PROVISIONAL";
 }
 
 // --- Operations ------------------------------------------------------------
@@ -1060,7 +1180,13 @@ export interface OperationsOverview {
   byDay: { date: string; visits: number; revenue: number }[];
   byHour: { hour: number; visits: number }[];
   doctorProductivityNote: string;
-  byDoctor: { staffId: string; name: string; visits: number; billedUnderDoctor: number; averageBillPerVisit: number }[];
+  byDoctor: {
+    staffId: string;
+    name: string;
+    visits: number;
+    billedUnderDoctor: number;
+    averageBillPerVisit: number;
+  }[];
 }
 
 export interface SegmentPl {
@@ -1119,16 +1245,34 @@ export interface ProgrammeDashboard {
     unitsDispensed: number;
     byItem: { itemId: string; name: string; quantity: number }[];
   };
-  financials: { revenue: number; directCost: number; grossProfit: number; basis: string };
+  financials: {
+    revenue: number;
+    directCost: number;
+    grossProfit: number;
+    basis: string;
+  };
   unavailableMeasures: { measure: string; reason: string }[];
-  patients: { patientId: string; name: string; gender: string | null; enrolledAt: string; lastVisitAt: string | null }[];
+  patients: {
+    patientId: string;
+    name: string;
+    gender: string | null;
+    enrolledAt: string;
+    lastVisitAt: string | null;
+  }[];
 }
 
 export interface MarketingAudienceResult {
   count: number;
   capability: string;
   truncated: boolean;
-  patients: { patientId: string; name: string; phone: string | null; gender: string | null; age: number | null; lastVisitAt: string | null }[];
+  patients: {
+    patientId: string;
+    name: string;
+    phone: string | null;
+    gender: string | null;
+    age: number | null;
+    lastVisitAt: string | null;
+  }[];
 }
 
 export interface MarketingTemplateRow {
@@ -1148,7 +1292,7 @@ export interface MarketingHistory {
     patientName: string;
     templateName: string | null;
     audienceName: string | null;
-    status: 'PREPARED' | 'OPENED';
+    status: "PREPARED" | "OPENED";
     openedAt: string | null;
     preparedBy: string;
     body: string;
@@ -1157,7 +1301,7 @@ export interface MarketingHistory {
 
 // --- Profitability -----------------------------------------------------------
 
-export type ProfitabilityKind = 'DRUG' | 'SERVICE';
+export type ProfitabilityKind = "DRUG" | "SERVICE";
 
 export interface ProfitabilityRow {
   kind: ProfitabilityKind;
@@ -1244,7 +1388,7 @@ export interface EmployeeRecord {
   staffId: string;
   year: number;
   /** EMPLOYEE or CONTRACTOR — what statutory treatment turns on. */
-  engagement: 'EMPLOYEE' | 'CONTRACTOR';
+  engagement: "EMPLOYEE" | "CONTRACTOR";
   /** NULL for a contractor: they are not on payroll, so it does not apply. */
   payrollReadiness: {
     items: PayrollReadinessItem[];
@@ -1329,7 +1473,7 @@ export interface EmployeeRecord {
   /** False means "you may not read pay", which is not "there is no pay". */
   payVisible: boolean;
   pay: {
-    payBasis: 'MONTHLY' | 'HOURLY' | null;
+    payBasis: "MONTHLY" | "HOURLY" | null;
     basicSalary: number | null;
     hourlyRate: number | null;
     bankName: string | null;
@@ -1348,7 +1492,7 @@ export interface EmployeeRecord {
      * version covered the whole month; anything else means payroll would
      * refuse, and the values below read as unknown rather than as answers.
      */
-    classificationState: 'RESOLVED' | 'NONE_ON_RECORD' | 'CHANGED_MID_PERIOD';
+    classificationState: "RESOLVED" | "NONE_ON_RECORD" | "CHANGED_MID_PERIOD";
     classificationNote: string;
     classificationEffectiveFrom: string | null;
     epfMembership: string | null;
@@ -1369,7 +1513,11 @@ export interface EmployeeRecord {
     pcbApplicable: boolean;
     note: string;
   };
-  leavePolicy: { id: string; name: string; annualLeaveDays: number | null } | null;
+  leavePolicy: {
+    id: string;
+    name: string;
+    annualLeaveDays: number | null;
+  } | null;
   attendance: {
     daysRecorded: number;
     daysWorked: number;
@@ -1429,7 +1577,6 @@ export interface PreparedDispatchResult {
   notice: string;
   messages: PreparedMessage[];
 }
-
 
 // ---------------------------------------------------------------------------
 // ACCOUNTS PAYABLE — what the clinic owes its suppliers.
@@ -1502,12 +1649,12 @@ export interface PayableInvoiceRow {
   paid: number;
   outstanding: number;
   overpaid: number;
-  status: 'OPEN' | 'PAID' | 'DISPUTED' | 'CANCELLED';
+  status: "OPEN" | "PAID" | "DISPUTED" | "CANCELLED";
   disputeReason: string | null;
   settled: boolean;
   overdue: boolean;
   daysUntilDue: number | null;
-  ageBucket: 'NOT_DUE' | 'D1_30' | 'D31_60' | 'D61_90' | 'D90_PLUS' | null;
+  ageBucket: "NOT_DUE" | "D1_30" | "D31_60" | "D61_90" | "D90_PLUS" | null;
   goodsReceivedNoteId: string | null;
   purchaseOrderId: string | null;
   receivedAt: string | null;
@@ -1532,9 +1679,12 @@ export interface SupplierPaymentRow {
   reference: string | null;
   notes: string | null;
   recordedBy: string;
-  settled: { supplierInvoiceId: string; invoiceNumber: string; amount: number }[];
+  settled: {
+    supplierInvoiceId: string;
+    invoiceNumber: string;
+    amount: number;
+  }[];
 }
-
 
 // ---------------------------------------------------------------------------
 // NEW ITEM REQUESTS — asking for something the catalogue does not have yet.
@@ -1550,9 +1700,14 @@ export interface NewItemRequestRow {
   packSizeNote: string | null;
   indicativeCost: number | null;
   indicativePrice: number | null;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  status: "PENDING" | "APPROVED" | "REJECTED";
   /** What the catalogue check found, if anything. A prompt, never an automatic merge. */
-  possibleDuplicate: { itemId: string; name: string; code: string | null; active: boolean } | null;
+  possibleDuplicate: {
+    itemId: string;
+    name: string;
+    code: string | null;
+    active: boolean;
+  } | null;
   decisionNote: string | null;
   decidedBy: string | null;
   decidedAt: string | null;
@@ -1580,25 +1735,29 @@ export interface SupplierOption {
 // See apps/api/src/finance/panel-money.ts.
 // ---------------------------------------------------------------------------
 
-export type PanelBillingState = 'CLAIMED' | 'UNCLAIMED' | 'UNDER_CLAIMED' | 'OVER_CLAIMED';
+export type PanelBillingState =
+  | "CLAIMED"
+  | "UNCLAIMED"
+  | "UNDER_CLAIMED"
+  | "OVER_CLAIMED";
 
 export type FeeEvidenceState =
-  | 'TAKEN'
-  | 'NOT_TAKEN'
-  | 'OVERPAID'
-  | 'PENDING'
-  | 'NOT_PAID'
-  | 'INCONCLUSIVE'
-  | 'NOT_APPLICABLE';
+  | "TAKEN"
+  | "NOT_TAKEN"
+  | "OVERPAID"
+  | "PENDING"
+  | "NOT_PAID"
+  | "INCONCLUSIVE"
+  | "NOT_APPLICABLE";
 
 export const FEE_EVIDENCE_LABELS: Record<FeeEvidenceState, string> = {
-  TAKEN: 'Fee taken as configured',
-  NOT_TAKEN: 'Fee NOT taken',
-  OVERPAID: 'Paid above the claim',
-  PENDING: 'Still owed',
-  NOT_PAID: 'Closed without payment',
-  INCONCLUSIVE: 'Cannot be attributed',
-  NOT_APPLICABLE: 'No withheld fee',
+  TAKEN: "Fee taken as configured",
+  NOT_TAKEN: "Fee NOT taken",
+  OVERPAID: "Paid above the claim",
+  PENDING: "Still owed",
+  NOT_PAID: "Closed without payment",
+  INCONCLUSIVE: "Cannot be attributed",
+  NOT_APPLICABLE: "No withheld fee",
 };
 
 export interface PanelMoneyUnclaimedRow {
@@ -1670,7 +1829,12 @@ export interface PanelMoneyPosition {
     claimedRate: number | null;
     /** Claims imported from the previous system: in neither `billed` nor `claimed`. */
     importedClaims: number;
-    aging: { current: number; d31_60: number; d61_90: number; d90_plus: number };
+    aging: {
+      current: number;
+      d31_60: number;
+      d61_90: number;
+      d90_plus: number;
+    };
   };
   feeCost: {
     borne: number;
@@ -1776,7 +1940,11 @@ export interface LegalEmployerRow {
   legacyHrdCategory: string | null;
   legacyHrdLevyRate: number | null;
   /** The HRD Corp class in force today, and the Act's rate for it. */
-  hrdRegistration: 'MANDATORY_SECTION_14' | 'OPTIONAL_SECTION_15' | 'NOT_REGISTERED' | null;
+  hrdRegistration:
+    | "MANDATORY_SECTION_14"
+    | "OPTIONAL_SECTION_15"
+    | "NOT_REGISTERED"
+    | null;
   hrdLevyRatePercent: number | null;
   /** From when the class in force today applies (ISO date); a payroll month before it gets no levy. */
   hrdEffectiveFrom: string | null;
@@ -1800,7 +1968,7 @@ export interface LegalEmployerRow {
 
 export interface SalaryHistoryRow {
   id: string;
-  basis: 'MONTHLY' | 'DAILY' | 'HOURLY';
+  basis: "MONTHLY" | "DAILY" | "HOURLY";
   amount: string;
   effectiveFrom: string;
   effectiveTo: string | null;
@@ -1817,7 +1985,7 @@ export interface PayComponentRow {
   id: string;
   code: string;
   name: string;
-  type: 'ADDITION' | 'DEDUCTION' | 'OVERTIME';
+  type: "ADDITION" | "DEDUCTION" | "OVERTIME";
   category: string;
   includeIn: string;
   pcbLiable: boolean;
@@ -1837,7 +2005,7 @@ export interface PayComponentRow {
   /** Layout, not treatment: a new month starts with last month's hand-keyed amount. */
   carryForward: boolean;
   /** Who the item is for: everybody, or the employees named below. */
-  appliesTo: 'EVERYONE' | 'SELECTED';
+  appliesTo: "EVERYONE" | "SELECTED";
   appliesToStaffIds: string[];
   appliesToStaff: { staffId: string; fullName: string; active: boolean }[];
   /** A person keys this item, so it can be for named people; the derived ones are for whoever the records say. */
@@ -1904,13 +2072,13 @@ export interface PayrollInputRow {
   /** The item's name from Payroll items, for a row whose label is empty. */
   itemName: string;
   /** Which cell of the register counts this row, by the run's own rule. */
-  bucket: 'OTHER_INCOME' | 'OWN_COLUMN' | 'DEDUCTION' | 'UNKNOWN';
+  bucket: "OTHER_INCOME" | "OWN_COLUMN" | "DEDUCTION" | "UNKNOWN";
   column: string;
   /** Where the row came from, as a sentence, and the screen that corrects it. */
   origin: string;
   sourceLink: string | null;
   amount: string;
-  kind: 'RECURRING' | 'ADDITIONAL';
+  kind: "RECURRING" | "ADDITIONAL";
   source: string;
   sourceRecordId: string | null;
   earnedPeriod: string | null;
@@ -1925,7 +2093,7 @@ export interface PayrollInputRow {
 
 export interface PayrollExceptionRow {
   id: string;
-  severity: 'BLOCKING' | 'WARNING' | 'INFO';
+  severity: "BLOCKING" | "WARNING" | "INFO";
   code: string;
   staffId: string | null;
   staffName: string | null;
@@ -1963,7 +2131,13 @@ export interface PayrollExceptionList {
 export interface EmployeeYtd {
   staffId: string;
   taxYear: number;
-  months: { month: number; grossCents: number; pcbCents: number; epfEmployeeCents: number; source?: string }[];
+  months: {
+    month: number;
+    grossCents: number;
+    pcbCents: number;
+    epfEmployeeCents: number;
+    source?: string;
+  }[];
   total: {
     grossCents: number;
     additionalRemunerationCents: number;
@@ -1983,14 +2157,20 @@ export interface PayrollVarianceRow {
   currentNetCents: number | null;
   deltaCents: number | null;
   percent: number | null;
-  status: 'NEW' | 'LEFT' | 'UNCHANGED' | 'MOVED' | 'MATERIAL';
+  status: "NEW" | "LEFT" | "UNCHANGED" | "MOVED" | "MATERIAL";
 }
 
 export interface PayrollVarianceReport {
   hasPrevious: boolean;
   previousPeriod: string;
   rows: PayrollVarianceRow[];
-  totals: { field: string; previous: number; current: number; deltaCents: number; percent: number | null }[];
+  totals: {
+    field: string;
+    previous: number;
+    current: number;
+    deltaCents: number;
+    percent: number | null;
+  }[];
   headcountPrevious: number;
   headcountCurrent: number;
   joiners: number;
@@ -2011,10 +2191,22 @@ export interface PayrollCandidateDiff {
   snapshotHash?: string;
   candidateHash?: string;
   diff?: {
-    changed: { staffId: string; name: string; field: string; before: number | null; after: number | null; deltaCents: number | null }[];
+    changed: {
+      staffId: string;
+      name: string;
+      field: string;
+      before: number | null;
+      after: number | null;
+      deltaCents: number | null;
+    }[];
     added: { staffId: string; name: string }[];
     removed: { staffId: string; name: string }[];
-    totals: { field: string; before: number; after: number; deltaCents: number }[];
+    totals: {
+      field: string;
+      before: number;
+      after: number;
+      deltaCents: number;
+    }[];
     identical: boolean;
   };
 }
@@ -2033,7 +2225,7 @@ export interface PayrollSnapshotRow {
    * is intact but does not add up; `UNVERIFIABLE_SCHEMA` means it was written
    * before the payload carried enough to re-check the arithmetic.
    */
-  verdict: 'VERIFIED' | 'TAMPERED' | 'INCONSISTENT' | 'UNVERIFIABLE_SCHEMA';
+  verdict: "VERIFIED" | "TAMPERED" | "INCONSISTENT" | "UNVERIFIABLE_SCHEMA";
   verificationNote: string;
   schemaVersion: number;
   totals: {
@@ -2049,9 +2241,14 @@ export interface PayrollSnapshotRow {
 // STAGE 2.5 — CROSS-MODULE PAYROLL INTEGRATION
 // ===========================================================================
 
-export type PaymentRoute = 'PAYROLL' | 'FINANCE';
-export type PayoutStatus = 'PENDING' | 'IN_PAYROLL' | 'PAID' | 'VOID';
-export type StaffClaimStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+export type PaymentRoute = "PAYROLL" | "FINANCE";
+export type PayoutStatus = "PENDING" | "IN_PAYROLL" | "PAID" | "VOID";
+export type StaffClaimStatus =
+  | "DRAFT"
+  | "SUBMITTED"
+  | "APPROVED"
+  | "REJECTED"
+  | "CANCELLED";
 
 export interface StaffClaimRow {
   id: string;
@@ -2079,7 +2276,13 @@ export interface StaffClaimRow {
   /** Piece 3g: the journey and the rate it was priced at, when it was a mileage claim. */
   distanceKm: string | null;
   mileageRate: string | null;
-  attachments: { id: string; fileName: string; mimeType: string; fileSize: number; filePath: string }[];
+  attachments: {
+    id: string;
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
+    filePath: string;
+  }[];
   /** Where this claim is being paid from, said in words. */
   routeExplanation: string;
 }
@@ -2106,7 +2309,7 @@ export interface LocumSessionRow {
   hourlyRate: string | null;
   sessionFee: string | null;
   computedFee: string | null;
-  status: 'PLANNED' | 'COMPLETED' | 'APPROVED' | 'CANCELLED';
+  status: "PLANNED" | "COMPLETED" | "APPROVED" | "CANCELLED";
   approvedAmount: string | null;
   approvedBy: string | null;
   approvedAt: string | null;
@@ -2120,7 +2323,7 @@ export interface LocumSessionRow {
 export interface LocumPayableSummary {
   from: string;
   to: string;
-  route: 'FINANCE';
+  route: "FINANCE";
   people: {
     staffId: string;
     name: string;
@@ -2135,8 +2338,13 @@ export interface LocumPayableSummary {
 }
 
 export type ParityVerdict =
-  | 'MATCH' | 'LEGACY_ONLY' | 'CANONICAL_ONLY' | 'AMOUNT_DIFFERS'
-  | 'CHANGED_MID_PERIOD' | 'BASIS_UNSUPPORTED' | 'NEITHER';
+  | "MATCH"
+  | "LEGACY_ONLY"
+  | "CANONICAL_ONLY"
+  | "AMOUNT_DIFFERS"
+  | "CHANGED_MID_PERIOD"
+  | "BASIS_UNSUPPORTED"
+  | "NEITHER";
 
 export interface SalaryParityReport {
   period: string;
@@ -2158,7 +2366,13 @@ export interface SalaryParityReport {
 }
 
 /** BY_BRANCH: the scope spans branches and each has its own run — the page lists them. */
-export type PayrollHomeState = 'NOT_STARTED' | 'STARTED' | 'READY_TO_REVIEW' | 'APPROVED' | 'PAID' | 'BY_BRANCH';
+export type PayrollHomeState =
+  | "NOT_STARTED"
+  | "STARTED"
+  | "READY_TO_REVIEW"
+  | "APPROVED"
+  | "PAID"
+  | "BY_BRANCH";
 
 // ---------------------------------------------------------------------------
 // PAYROLL READINESS — who can be paid, before a run exists. Built by the same
@@ -2170,7 +2384,7 @@ export interface PayrollReadinessItem {
   key: string;
   label: string;
   /** BLOCKING mirrors the run's own exceptions; ADVISORY is real but non-gating. */
-  severity: 'BLOCKING' | 'ADVISORY';
+  severity: "BLOCKING" | "ADVISORY";
   done: boolean;
   detail: string;
   /** The query string that opens the tab and panel where this is put right, e.g. `?tab=statutory&focus=standing`. */
@@ -2224,7 +2438,7 @@ export interface PayrollHome {
    * safety banner reads when nothing has been started, so a fully covered
    * month is not painted "not production-ready" for being unopened.
    */
-  periodStatutoryStatus: 'CONFIGURED' | 'PROVISIONAL' | 'NOT_CONFIGURED';
+  periodStatutoryStatus: "CONFIGURED" | "PROVISIONAL" | "NOT_CONFIGURED";
   run: {
     id: string;
     clinicId: string | null;
@@ -2298,7 +2512,7 @@ export interface PayrollJourneyColumn {
   name: string;
   carryForward: boolean;
   /** Everybody has a cell, or only the employees the item names. */
-  appliesTo?: 'EVERYONE' | 'SELECTED';
+  appliesTo?: "EVERYONE" | "SELECTED";
 }
 
 /**
@@ -2357,7 +2571,7 @@ export interface PayrollJourney {
       position: string | null;
       employerName: string | null;
       startDate: string | null;
-      state: 'READY' | 'NEEDS_ATTENTION' | 'NEEDS_SETUP';
+      state: "READY" | "NEEDS_ATTENTION" | "NEEDS_SETUP";
       reason: string | null;
       includedInRun: boolean;
     }[];
@@ -2372,7 +2586,12 @@ export interface PayrollJourney {
       unapprovedOvertimeHours: number;
       missingPunchDays: number;
       unpaidLeaveDays: number;
-      unpaidLeaveRequests: { id: string; from: string; to: string; approvedBy: string | null }[];
+      unpaidLeaveRequests: {
+        id: string;
+        from: string;
+        to: string;
+        approvedBy: string | null;
+      }[];
       paidLeaveDays: number;
     }[];
     totalDaysWorked: number;
@@ -2393,7 +2612,7 @@ export interface PayrollJourney {
        * red status beside every name from these; `fixLink` opens the remedy
        * for the most serious thing wrong, not the first one found.
        */
-      state: 'READY' | 'NEEDS_ATTENTION' | 'NEEDS_SETUP';
+      state: "READY" | "NEEDS_ATTENTION" | "NEEDS_SETUP";
       reason: string | null;
       blockers: number;
       warnings: number;
@@ -2559,11 +2778,16 @@ export interface PayrollJourney {
   review: {
     gate: PayrollExceptionGate;
     /** This branch's run for the month before, or null on its first month on record. */
-    previousRun: { runId: string; period: string; periodLabel: string; status: string } | null;
+    previousRun: {
+      runId: string;
+      period: string;
+      periodLabel: string;
+      status: string;
+    } | null;
     attention: {
       id: string;
       code: string;
-      severity: 'BLOCKING' | 'WARNING' | 'INFO';
+      severity: "BLOCKING" | "WARNING" | "INFO";
       staffId: string | null;
       name: string | null;
       what: string;
@@ -2589,7 +2813,12 @@ export interface PayrollApprovalState {
   /** The rule in one sentence, in the owner's words. */
   rule: string;
   required: number;
-  given: { name: string; at: string; sequence: number; wasOwnSelfApproval: boolean }[];
+  given: {
+    name: string;
+    at: string;
+    sequence: number;
+    wasOwnSelfApproval: boolean;
+  }[];
   youMayApprove: boolean;
   /** Why not — a different sentence from "this run has problems". */
   whyNot: string | null;
@@ -2616,13 +2845,18 @@ export interface PayrollReportHeader {
 }
 
 export interface PayrollReportCatalogue {
-  available: { key: string; title: string; description: string; scope: 'RUN' | 'DATE_RANGE' | 'EMPLOYEE' | 'YEAR' }[];
+  available: {
+    key: string;
+    title: string;
+    description: string;
+    scope: "RUN" | "DATE_RANGE" | "EMPLOYEE" | "YEAR";
+  }[];
   /** Named absences carrying a reason, not a "coming soon". */
   notAvailableYet: { key: string; title: string; why: string }[];
 }
 
 export interface PayrollRegisterReport extends PayrollReportHeader {
-  report: 'PAYROLL_REGISTER';
+  report: "PAYROLL_REGISTER";
   rows: {
     staffId: string;
     name: string;
@@ -2677,14 +2911,14 @@ export interface PayrollCostBucket {
 }
 
 export interface PayrollEmployerCostReport extends PayrollReportHeader {
-  report: 'EMPLOYER_COST';
+  report: "EMPLOYER_COST";
   byBranch: PayrollCostBucket[];
   byLegalEmployer: PayrollCostBucket[];
   total: { gross: string; employerCost: string; employees: number };
 }
 
 export interface PayrollStatutoryReport extends PayrollReportHeader {
-  report: 'STATUTORY_TOTALS';
+  report: "STATUTORY_TOTALS";
   notASubmission: string;
   byEmployer: {
     employerId: string;
@@ -2703,13 +2937,13 @@ export interface PayrollStatutoryReport extends PayrollReportHeader {
 }
 
 export interface PayrollMonthComparisonReport extends PayrollReportHeader {
-  report: 'VARIANCE';
+  report: "VARIANCE";
   comparedWith: { runId: string; period: string; periodLabel: string } | null;
   note: string | null;
   rows: {
     staffId: string;
     name: string;
-    state: 'BOTH' | 'JOINED' | 'LEFT';
+    state: "BOTH" | "JOINED" | "LEFT";
     current: string | null;
     previous: string | null;
     movement: string;
@@ -2725,7 +2959,7 @@ export interface PayrollMonthComparisonReport extends PayrollReportHeader {
 }
 
 export interface PayrollClaimsReport {
-  report: 'CLAIMS';
+  report: "CLAIMS";
   period: { from: string; to: string };
   periodMeans: string;
   rows: {
@@ -2756,7 +2990,7 @@ export interface PayrollClaimsReport {
 }
 
 export interface PayrollHistoryReport {
-  report: 'PAYROLL_HISTORY';
+  report: "PAYROLL_HISTORY";
   staffId: string;
   name: string;
   year: number | null;
@@ -2790,7 +3024,7 @@ export interface PayrollHistoryReport {
 }
 
 export interface PayrollPcbSummaryReport extends PayrollReportHeader {
-  report: 'PCB_SUMMARY';
+  report: "PCB_SUMMARY";
   rows: {
     staffId: string;
     name: string;
@@ -2798,10 +3032,14 @@ export interface PayrollPcbSummaryReport extends PayrollReportHeader {
     taxNumber: string | null;
     pcb: string | null;
     /** From the calculation's own marker — never inferred from the prose. */
-    source: 'CALCULATED' | 'ENTERED' | null;
+    source: "CALCULATED" | "ENTERED" | null;
     note: string | null;
     zakatViaPayroll: string;
-    tp1: { deductions: string; zakatSelfPaid: string; receivedDate: string | null } | null;
+    tp1: {
+      deductions: string;
+      zakatSelfPaid: string;
+      receivedDate: string | null;
+    } | null;
     drill: string;
   }[];
   totals: {
@@ -2817,7 +3055,7 @@ export interface PayrollPcbSummaryReport extends PayrollReportHeader {
 }
 
 export interface PayrollYtdReport {
-  report: 'YTD';
+  report: "YTD";
   taxYear: number;
   legalEmployerId: string | null;
   rows: {
@@ -2870,7 +3108,7 @@ export interface PayrollYtdReport {
 }
 
 export interface PayrollOvertimeReport extends PayrollReportHeader {
-  report: 'OVERTIME';
+  report: "OVERTIME";
   orp: { overtimeDays: number; hoursPerDay: number; meaning: string };
   rows: {
     staffId: string;
@@ -2893,7 +3131,7 @@ export interface PayrollOvertimeReport extends PayrollReportHeader {
 }
 
 export interface PayrollUnpaidLeaveReport extends PayrollReportHeader {
-  report: 'UNPAID_LEAVE';
+  report: "UNPAID_LEAVE";
   divisor: { unpaidLeaveDays: number; meaning: string };
   rows: {
     staffId: string;
@@ -2909,7 +3147,7 @@ export interface PayrollUnpaidLeaveReport extends PayrollReportHeader {
 }
 
 export interface PayrollIncentivesReport extends PayrollReportHeader {
-  report: 'INCENTIVES';
+  report: "INCENTIVES";
   rows: {
     staffId: string;
     name: string;
@@ -2922,12 +3160,17 @@ export interface PayrollIncentivesReport extends PayrollReportHeader {
     earnedPeriod: string | null;
     drill: string;
   }[];
-  totals: { entries: number; employees: number; incentives: string; bonus: string };
+  totals: {
+    entries: number;
+    employees: number;
+    incentives: string;
+    bonus: string;
+  };
   note: string;
 }
 
 export interface PayrollExceptionsReport extends PayrollReportHeader {
-  report: 'EXCEPTIONS';
+  report: "EXCEPTIONS";
   rows: {
     id: string;
     severity: string;
@@ -2955,7 +3198,7 @@ export interface PayrollExceptionsReport extends PayrollReportHeader {
 }
 
 export interface PayrollPaymentStatusReport extends PayrollReportHeader {
-  report: 'PAYMENT_STATUS';
+  report: "PAYMENT_STATUS";
   runPaidAt: string | null;
   current: {
     batchId: string;
@@ -2984,7 +3227,13 @@ export interface PayrollPaymentStatusReport extends PayrollReportHeader {
       exclusionReason: string | null;
     }[];
   } | null;
-  supersededBatches: { batchId: string; version: number; status: string; total: string; preparedAt: string }[];
+  supersededBatches: {
+    batchId: string;
+    version: number;
+    status: string;
+    total: string;
+    preparedAt: string;
+  }[];
   note: string | null;
 }
 
@@ -3071,7 +3320,7 @@ export interface YtdOpeningMonthBody {
 
 /** Who is allowed to approve payroll in this clinic. Payroll settings. */
 export interface PayrollApprovalPolicy {
-  mode: 'STANDARD' | 'MAKER_CHECKER' | 'DUAL_APPROVAL';
+  mode: "STANDARD" | "MAKER_CHECKER" | "DUAL_APPROVAL";
   /** When the rule was last changed; absent on the built-in default. */
   updatedAt?: string;
   allowOwnerSelfApproval: boolean;
@@ -3113,7 +3362,7 @@ export interface ClaimPolicy {
 export interface EffectiveAttendancePolicy {
   clinicId: string | null;
   policy: AttendancePolicy;
-  source: 'CLINIC' | 'GROUP_DEFAULT' | 'KUWICK_DEFAULT';
+  source: "CLINIC" | "GROUP_DEFAULT" | "KUWICK_DEFAULT";
   defaults: AttendancePolicy;
   hasOwnPolicy: boolean;
   hasGroupDefault: boolean;
@@ -3151,7 +3400,7 @@ export interface StatutoryRates {
     schedule: StatutoryScheduleStamp | null;
     tableCeilingCents: number;
     parts: {
-      part: 'A' | 'C' | 'E' | 'F';
+      part: "A" | "C" | "E" | "F";
       appliesTo: string;
       employeePercent: number;
       employerPercent: number;
@@ -3175,10 +3424,22 @@ export interface StatutoryRates {
   eis: {
     schedule: StatutoryScheduleStamp | null;
     wageCeilingCents: number;
-    bands: { fromCents: number; toCents: number | null; employerCents: number; employeeCents: number }[];
+    bands: {
+      fromCents: number;
+      toCents: number | null;
+      employerCents: number;
+      employeeCents: number;
+    }[];
   };
-  pcb: { schedule: StatutoryScheduleStamp | null; nonResidentRatePercent: number };
-  hrd: { schedule: StatutoryScheduleStamp | null; mandatoryPercent: number; optionalPercent: number };
+  pcb: {
+    schedule: StatutoryScheduleStamp | null;
+    nonResidentRatePercent: number;
+  };
+  hrd: {
+    schedule: StatutoryScheduleStamp | null;
+    mandatoryPercent: number;
+    optionalPercent: number;
+  };
   registryHash: string;
   wageCeilingLabel: string;
   check: StatutoryCheck | null;
@@ -3186,7 +3447,10 @@ export interface StatutoryRates {
   period?: string;
   resolvedOn?: string;
   /** Which edition answers for each scheme on that day. */
-  editions?: Record<'EPF' | 'SOCSO' | 'EIS' | 'LINDUNG' | 'PCB' | 'HRD_LEVY', StatutoryEditionSource>;
+  editions?: Record<
+    "EPF" | "SOCSO" | "EIS" | "LINDUNG" | "PCB" | "HRD_LEVY",
+    StatutoryEditionSource
+  >;
   /** Every platform-added edition, in force or not yet. */
   versions?: StatutoryTableVersionRow[];
   /** The tables themselves, band by band, as resolved for the month. */
@@ -3195,7 +3459,7 @@ export interface StatutoryRates {
 
 export interface StatutoryEditionSource {
   scheme: string;
-  origin: 'BUILT_IN' | 'PLATFORM';
+  origin: "BUILT_IN" | "PLATFORM";
   id: string;
   document: string;
   year: number | null;
@@ -3218,17 +3482,33 @@ export interface StatutoryTables {
   epf: {
     ceilingCents: number;
     parts: {
-      part: 'A' | 'C' | 'E' | 'F';
+      part: "A" | "C" | "E" | "F";
       appliesTo: string;
       aboveCeiling: { employerPercent: number; employeePercent: number };
       bands: [number, number, number, number][];
     }[];
   };
-  socso: { ceilingCents: number; bands: [number, number | null, number, number, number, number, number][] };
-  eis: { ceilingCents: number; bands: [number, number | null, number, number][] };
-  lindung: { effectiveFrom: string; phaseRatesPercent: { PHASE_1: number; PHASE_2: number; PHASE_3: number } };
+  socso: {
+    ceilingCents: number;
+    bands: [number, number | null, number, number, number, number, number][];
+  };
+  eis: {
+    ceilingCents: number;
+    bands: [number, number | null, number, number][];
+  };
+  lindung: {
+    effectiveFrom: string;
+    phaseRatesPercent: { PHASE_1: number; PHASE_2: number; PHASE_3: number };
+  };
   pcb: {
-    table1: { fromCents: number; toCents: number | null; mCents: number; ratePercent: number; bCategory13Cents: number; bCategory2Cents: number }[];
+    table1: {
+      fromCents: number;
+      toCents: number | null;
+      mCents: number;
+      ratePercent: number;
+      bCategory13Cents: number;
+      bCategory2Cents: number;
+    }[];
     individualCents: number;
     spouseCents: number;
     perChildCents: number;
@@ -3242,7 +3522,7 @@ export interface StatutoryTables {
 }
 
 /** One of the clinic's pay-rule sets ("How pay is worked out"). */
-export type OvertimeMode = 'STATUTORY' | 'CLINIC_RATE';
+export type OvertimeMode = "STATUTORY" | "CLINIC_RATE";
 
 /** Mode B's amounts, ringgit strings; null where the rule set fixes none. */
 export interface ClinicRateFields {
@@ -3270,11 +3550,27 @@ export interface MultiplierInForce {
  */
 export interface BelowActStanding {
   /** Multipliers under their own Act floor, whoever they happen to price. */
-  multipliers: { field: string; label: string; chosen: number; act: number; provision: string; sentence: string }[];
+  multipliers: {
+    field: string;
+    label: string;
+    chosen: number;
+    act: number;
+    provision: string;
+    sentence: string;
+  }[];
   /** Employees within the First Schedule a clinic RM rate pays under the Act. */
-  rates: { staffId: string; name: string; wages: string; shortfalls: string[] }[];
+  rates: {
+    staffId: string;
+    name: string;
+    wages: string;
+    shortfalls: string[];
+  }[];
   /** Who said this was deliberate, when, and why. Null until somebody does. */
-  acknowledgement: { at: string; by: string | null; reason: string | null } | null;
+  acknowledgement: {
+    at: string;
+    by: string | null;
+    reason: string | null;
+  } | null;
 }
 
 export interface PayrollPolicyRow {
@@ -3286,7 +3582,7 @@ export interface PayrollPolicyRow {
    * How the rest of the year is estimated for monthly tax — the MTD method's
    * Y2, which LHDN leaves to the employer.
    */
-  pcbProjectionBasis: 'CURRENT_MONTH' | 'BASIC_ONLY' | 'CONTRACTUAL_MONTHLY';
+  pcbProjectionBasis: "CURRENT_MONTH" | "BASIC_ONLY" | "CONTRACTUAL_MONTHLY";
   /**
    * The only proration basis left, and the only one the Act does not answer.
    * Recorded, not applied: the final settlement is not built.
@@ -3330,7 +3626,15 @@ export interface PayrollPolicyRow {
    * The Act's floor, checked in advance for a clinic-rate rule set: how many
    * employees within the First Schedule it prices, and who it would underpay.
    */
-  floor: { assessed: number; below: { staffId: string; name: string; wages: string; shortfalls: string[] }[] } | null;
+  floor: {
+    assessed: number;
+    below: {
+      staffId: string;
+      name: string;
+      wages: string;
+      shortfalls: string[];
+    }[];
+  } | null;
   updatedAt: string;
 }
 
@@ -3345,23 +3649,28 @@ export interface RecurringItemRow {
   id: string;
   componentCode: string;
   componentName: string;
-  direction: 'ADDITION' | 'DEDUCTION' | null;
+  direction: "ADDITION" | "DEDUCTION" | null;
   label: string | null;
   amount: string;
   effectiveFrom: string;
   effectiveTo: string | null;
-  status: 'ACTIVE' | 'UPCOMING' | 'ENDED';
+  status: "ACTIVE" | "UPCOMING" | "ENDED";
   note: string | null;
   recordedBy: string;
   recordedAt: string;
   /** The component's statutory treatment, read from the catalogue. */
-  treatment: { epf: boolean; socso: boolean; pcb: boolean; active: boolean } | null;
+  treatment: {
+    epf: boolean;
+    socso: boolean;
+    pcb: boolean;
+    active: boolean;
+  } | null;
 }
 
 export interface RecurringItemChoice {
   code: string;
   name: string;
-  direction: 'ADDITION' | 'DEDUCTION';
+  direction: "ADDITION" | "DEDUCTION";
   treatment: { epf: boolean; socso: boolean; pcb: boolean };
 }
 
@@ -3441,7 +3750,7 @@ export interface EmployeeIntakeRowResult {
   /** On a committed row: the person. */
   staffId?: string;
   /** A committed row that stopped part way: the person exists; this write refused. */
-  failedAt?: 'employee' | 'employer' | 'salary' | 'standing';
+  failedAt?: "employee" | "employer" | "salary" | "standing";
   error?: string;
 }
 
@@ -3452,4 +3761,76 @@ export interface EmployeeIntakeResult {
   clean: boolean;
   created: number;
   results: EmployeeIntakeRowResult[];
+}
+
+// ---- Statutory filing helper -------------------------------------------------
+export interface FilingRow {
+  staffId: string;
+  name: string;
+  identifier: string | null;
+  membershipNo: string | null;
+  parts: Record<
+    string,
+    { employeeCents: number | null; employerCents: number | null }
+  >;
+  employeeCents: number | null;
+  employerCents: number | null;
+  totalCents: number | null;
+  note: string | null;
+  basisNote: string | null;
+}
+
+export interface FilingMove {
+  staffId: string;
+  name: string;
+  identifier: string | null;
+  membershipNo: string | null;
+  reason: string;
+}
+
+export interface FilingAgencyBlock {
+  agency: string;
+  label: string;
+  portal: string;
+  schemes: string[];
+  applicable: boolean;
+  note: string | null;
+  rows: FilingRow[];
+  joiners: FilingMove[];
+  leavers: FilingMove[];
+  notComputed: number;
+  employeeTotalCents: number | null;
+  employerTotalCents: number | null;
+  totalCents: number | null;
+  submission: {
+    state: "NOT_APPLICABLE" | "NOT_RECORDED" | "PARTIAL" | "RECORDED";
+    submittedDate: string | null;
+    reference: string | null;
+    recordedBy: string | null;
+    recordedAt: string | null;
+    perScheme: {
+      scheme: string;
+      recorded: boolean;
+      reference: string | null;
+    }[];
+  };
+}
+
+export interface StatutoryFiling {
+  runId: string;
+  period: string;
+  periodLabel: string;
+  employerName: string | null;
+  employerIdentity: {
+    registrationNo: string | null;
+    epfEmployerNo: string | null;
+    socsoEmployerNo: string | null;
+    lhdnEmployerNo: string | null;
+    hrdRegistrationNo: string | null;
+    detailsAsAt: "CURRENT";
+  };
+  snapshotVersion: number;
+  previousMonth: string | null;
+  notASubmission: string;
+  agencies: FilingAgencyBlock[];
 }
