@@ -6,12 +6,13 @@
  * cannot reach anything else.
  *
  * WHY SCOPED RATHER THAN GLOBAL. `design-system/tokens.ts` is the one source
- * for the whole product: it feeds antd's theme AND generates the `--kw-*`
- * properties in `index.css`, and its palette is navy. Slate is a different
- * palette. Repainting the tokens would repaint Operation, Stock, Panel and
- * Finance along with HR, which this piece of work is explicitly not allowed to
- * do — so the Slate values live under `.kw-hrSlate` and nowhere else, and a
- * unit guard fails the build if any file outside `admin/hr/` reaches for them.
+ * for the whole product: it feeds antd's theme AND the `--kw-*` properties in
+ * `index.css`. The Slate kit's own names (`--hr-*`) live under `.kw-hrSlate`
+ * and nowhere else, and a unit guard fails the build if any file outside
+ * `admin/hr/` reaches for them. Since the KW2 polish the chrome values are
+ * READ from the brand tokens (`--kw-brand-navy`, `--kw-brand-blue`, the
+ * product's font) rather than declared here, so the module looks like the
+ * rest of Kuwick without the rest of Kuwick depending on it.
  *
  * Every class here is prefixed `hr-`, except the three the browser specs use
  * to find a rail entry. Those keep their existing names deliberately: the test
@@ -31,14 +32,18 @@
   --hr-ink: #0f1a1e;
   --hr-ink2: #4b5a63;
   --hr-ink3: #8b979f;
-  --hr-slate: #16302b;
-  --hr-slate2: #1e3e37;
-  --hr-slate-txt: #b9cfc8;
-  --hr-slate-dim: #7fa59a;
-  /* Teal is ACTION. Gold is NEEDS A PERSON. Red BLOCKS payroll. Green is
+  /* The chrome is the product's brand chrome: the logo's deep navy for the
+     sidebar and the header, its royal blue for every action — the same
+     tokens the top band reads, so the module no longer has a colour of
+     its own. The names below are the kit's; only the values moved. */
+  --hr-slate: var(--kw-brand-navy);
+  --hr-slate2: var(--kw-brand-navy-raised);
+  --hr-slate-txt: var(--kw-on-navy);
+  --hr-slate-dim: var(--kw-on-navy-dim);
+  /* Blue is ACTION. Gold is NEEDS A PERSON. Red BLOCKS payroll. Green is
      DONE. Grey is from a record, or worked out. Nothing here is decoration. */
-  --hr-teal: #0f8f7a;
-  --hr-teal-soft: #e0f4ef;
+  --hr-action: var(--kw-brand-blue);
+  --hr-action-soft: var(--kw-brand-blue-soft);
   --hr-gold: #b7791f;
   --hr-gold-soft: #fbf1dc;
   --hr-red: #c2362e;
@@ -56,7 +61,7 @@
   height: 100%;
   background: var(--hr-canvas);
   color: var(--hr-ink);
-  font: 14px/1.5 Inter, system-ui, sans-serif;
+  font: 14px/1.5 var(--kw-font);
   /* Tabular figures everywhere: a column of money that does not line up is a
      column somebody adds by eye. */
   font-feature-settings: 'tnum' 1, 'cv11' 1;
@@ -65,7 +70,7 @@
 .kw-hrSlate h1,
 .kw-hrSlate h2,
 .kw-hrSlate h3 {
-  font-family: 'Inter Tight', Inter, sans-serif;
+  font-family: var(--kw-font);
   margin: 0;
 }
 
@@ -117,7 +122,7 @@
 .kw-hrSlate .kw-hubRail__item.is-active {
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
-  box-shadow: inset 3px 0 0 var(--hr-teal);
+  box-shadow: inset 3px 0 0 var(--hr-action);
 }
 .kw-hrSlate .kw-hubRail__item svg {
   width: 17px;
@@ -281,18 +286,18 @@
   border-color: var(--hr-ink3);
 }
 .hr-btn--primary {
-  background: var(--hr-teal);
-  border-color: var(--hr-teal);
+  background: var(--hr-action);
+  border-color: var(--hr-action);
   color: #fff;
 }
 .hr-btn--primary:hover {
-  border-color: var(--hr-teal);
+  border-color: var(--hr-action);
   filter: brightness(1.06);
 }
 .hr-btn--ghost {
   border-color: transparent;
   background: transparent;
-  color: var(--hr-teal);
+  color: var(--hr-action);
 }
 .hr-btn--sm {
   padding: 5px 11px;
@@ -419,7 +424,7 @@
   stroke-linejoin: round;
 }
 .hr-stat__value {
-  font-family: 'Inter Tight', Inter, sans-serif;
+  font-family: var(--kw-font);
   font-size: 24px;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -432,7 +437,7 @@
   color: var(--hr-red);
 }
 .hr-stat__value--teal {
-  color: var(--hr-teal);
+  color: var(--hr-action);
 }
 .hr-stat__sub {
   font-size: 12px;
@@ -477,11 +482,11 @@
 }
 .hr-step.is-current {
   color: var(--hr-ink);
-  background: var(--hr-teal-soft);
+  background: var(--hr-action-soft);
 }
 .hr-step.is-current .hr-step__mark {
-  background: var(--hr-teal);
-  border-color: var(--hr-teal);
+  background: var(--hr-action);
+  border-color: var(--hr-action);
   color: #fff;
 }
 .hr-step.is-done {
@@ -689,7 +694,7 @@
   font-weight: 700;
   font-size: 12px;
   color: var(--hr-ink);
-  font-family: 'Inter Tight', Inter, sans-serif;
+  font-family: var(--kw-font);
 }
 .hr-progress b {
   color: var(--hr-ink);
@@ -864,7 +869,7 @@
   color: #fff;
 }
 .kw-hrSlateHeader .ant-avatar {
-  background: var(--hr-teal) !important;
+  background: var(--hr-action) !important;
 }
 .kw-hrSlateHeader .hr-modules {
   min-width: 0;
@@ -892,7 +897,7 @@
   color: #fff;
 }
 .kw-hrSlateHeader .hr-modules .ant-tabs-ink-bar {
-  background: var(--hr-teal);
+  background: var(--hr-action);
   height: 2px;
 }
 
@@ -962,8 +967,8 @@
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: var(--hr-teal-soft);
-  color: var(--hr-teal);
+  background: var(--hr-action-soft);
+  color: var(--hr-action);
   display: grid;
   place-items: center;
   font-size: 11px;
@@ -987,7 +992,7 @@ a.hr-who .hr-who__name {
   color: var(--hr-ink);
 }
 a.hr-who:hover .hr-who__name {
-  color: var(--hr-teal);
+  color: var(--hr-action);
 }
 
 /* A larger avatar for a record's head. */
@@ -1127,7 +1132,7 @@ a.hr-who:hover .hr-who__name {
   margin-bottom: 10px;
 }
 .hr-crumb a {
-  color: var(--hr-teal);
+  color: var(--hr-action);
   text-decoration: none;
   font-weight: 500;
 }
@@ -1135,7 +1140,7 @@ a.hr-who:hover .hr-who__name {
   text-decoration: underline;
 }
 .hr-link {
-  color: var(--hr-teal);
+  color: var(--hr-action);
   text-decoration: none;
   font-weight: 500;
 }
@@ -1261,7 +1266,7 @@ a.hr-who:hover .hr-who__name {
 }
 .hr-tabs button.is-active {
   color: var(--hr-ink);
-  border-color: var(--hr-teal);
+  border-color: var(--hr-action);
 }
 .hr-tabs__n {
   margin-left: 6px;
@@ -1284,7 +1289,7 @@ a.hr-who:hover .hr-who__name {
   border-bottom: 0;
 }
 .hr-choice--on {
-  background: var(--hr-teal-soft);
+  background: var(--hr-action-soft);
 }
 .hr-choice__title {
   font-weight: 600;
@@ -1387,7 +1392,7 @@ a.hr-who:hover .hr-who__name {
   background: var(--hr-line2);
 }
 .kw-hrSlate .ant-switch.ant-switch-checked {
-  background: var(--hr-teal);
+  background: var(--hr-action);
 }
 
 @media (max-width: 991px) {
@@ -1456,12 +1461,12 @@ a.hr-who:hover .hr-who__name {
   color: inherit;
   text-align: right;
   cursor: pointer;
-  text-decoration: underline dotted var(--hr-teal);
+  text-decoration: underline dotted var(--hr-action);
   text-underline-offset: 3px;
 }
 .hr-grid .hr-cellBtn:hover,
 .hr-grid .hr-cellBtn:focus-visible {
-  color: var(--hr-teal);
+  color: var(--hr-action);
   outline: none;
 }
 .kw-payCard__items {
@@ -1469,7 +1474,7 @@ a.hr-who:hover .hr-who__name {
   border: 0;
   padding: 0;
   font: inherit;
-  color: var(--hr-teal);
+  color: var(--hr-action);
   cursor: pointer;
   text-decoration: underline dotted;
   text-underline-offset: 3px;
@@ -1505,8 +1510,8 @@ a.hr-who:hover .hr-who__name {
 }
 .hr-grid .hr-cellInput:focus {
   outline: none;
-  border-color: var(--hr-teal);
-  box-shadow: 0 0 0 3px var(--hr-teal-soft);
+  border-color: var(--hr-action);
+  box-shadow: 0 0 0 3px var(--hr-action-soft);
 }
 .hr-grid .hr-cellInput.is-dirty {
   border-color: var(--hr-gold);
@@ -1550,7 +1555,7 @@ a.hr-who:hover .hr-who__name {
   font-weight: 600;
 }
 .hr-grid td.hr-net {
-  color: var(--hr-teal);
+  color: var(--hr-action);
   font-weight: 600;
 }
 .hr-grid tr.is-editing td {
@@ -1693,14 +1698,14 @@ a.hr-who:hover .hr-who__name {
 }
 .hr-inp {
   width: 88px;
-  border: 1px solid var(--hr-teal);
+  border: 1px solid var(--hr-action);
   border-radius: 6px;
   padding: 3px 5px;
   text-align: right;
   font: inherit;
   font-variant-numeric: tabular-nums;
   background: #fff;
-  box-shadow: 0 0 0 3px var(--hr-teal-soft);
+  box-shadow: 0 0 0 3px var(--hr-action-soft);
 }
 .hr-inp--sm {
   width: 60px;
@@ -1729,12 +1734,12 @@ a.hr-who:hover .hr-who__name {
 }
 .hr-legend i.is-input {
   background: #fff;
-  border-color: var(--hr-teal);
-  box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 3px var(--hr-teal-soft);
+  border-color: var(--hr-action);
+  box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 3px var(--hr-action-soft);
 }
 .hr-legend i.is-editing {
   background: #f4fbf9;
-  border-color: var(--hr-teal);
+  border-color: var(--hr-action);
 }
 .hr-fixLink {
   color: var(--hr-red);
@@ -1836,8 +1841,8 @@ a.hr-who:hover .hr-who__name {
 }
 .hr-src {
   font-size: 11px;
-  color: var(--hr-teal);
-  background: var(--hr-teal-soft);
+  color: var(--hr-action);
+  background: var(--hr-action-soft);
   border-radius: 4px;
   padding: 1px 6px;
   font-weight: 600;
@@ -1861,11 +1866,11 @@ a.hr-who:hover .hr-who__name {
   align-items: center;
 }
 .hr-netBox__big {
-  font-family: 'Inter Tight', Inter, sans-serif;
+  font-family: var(--kw-font);
   font-size: 32px;
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: var(--hr-teal);
+  color: var(--hr-action);
 }
 .hr-netBox__l {
   font-size: 13px;
@@ -1920,7 +1925,7 @@ a.hr-who:hover .hr-who__name {
   justify-content: flex-start;
 }
 .hr-crumb__back {
-  color: var(--hr-teal);
+  color: var(--hr-action);
   text-decoration: none;
   font-weight: 500;
 }
@@ -1935,7 +1940,7 @@ a.hr-who:hover .hr-who__name {
   min-height: 100vh;
   background: var(--hr-canvas);
   color: var(--hr-ink);
-  font: 14px/1.5 Inter, system-ui, sans-serif;
+  font: 14px/1.5 var(--kw-font);
   font-feature-settings: 'tnum' 1, 'cv11' 1;
 }
 .hr-top {
@@ -1948,7 +1953,7 @@ a.hr-who:hover .hr-who__name {
   gap: 18px;
 }
 .hr-top__logo {
-  font-family: 'Inter Tight', Inter, sans-serif;
+  font-family: var(--kw-font);
   font-weight: 700;
   letter-spacing: 0.06em;
   font-size: 15px;
@@ -1983,7 +1988,7 @@ a.hr-who:hover .hr-who__name {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: var(--hr-teal);
+  background: var(--hr-action);
   color: #fff;
   display: grid;
   place-items: center;
@@ -2066,8 +2071,8 @@ a.hr-who:hover .hr-who__name {
 }
 .hr-f:focus {
   outline: none;
-  border-color: var(--hr-teal);
-  box-shadow: 0 0 0 3px var(--hr-teal-soft);
+  border-color: var(--hr-action);
+  box-shadow: 0 0 0 3px var(--hr-action-soft);
 }
 .hr-f--auto,
 .hr-f:disabled {
@@ -2141,7 +2146,7 @@ textarea.hr-f {
 .hr-preview {
   margin-top: 16px;
   padding: 12px 14px;
-  background: var(--hr-teal-soft);
+  background: var(--hr-action-soft);
   border-radius: 10px;
   font-size: 13px;
   display: flex;
@@ -2185,7 +2190,7 @@ textarea.hr-f {
   background: var(--hr-line2);
 }
 .hr-tl__row.is-on::before {
-  background: var(--hr-teal);
+  background: var(--hr-action);
 }
 .hr-tl__row b,
 .hr-tl__row a {
@@ -2201,7 +2206,7 @@ textarea.hr-f {
 .hr-bar i {
   display: block;
   height: 100%;
-  background: var(--hr-teal);
+  background: var(--hr-action);
 }
 .hr-quick {
   padding: 14px 22px;
@@ -2369,7 +2374,7 @@ textarea.hr-f {
   color: var(--hr-ink3);
 }
 .hr-teal {
-  color: var(--hr-teal);
+  color: var(--hr-action);
   font-weight: 600;
 }
 .hr-gold {
@@ -2414,7 +2419,7 @@ textarea.hr-f {
   margin: 16px 0 2px;
 }
 .hr-tl__row.is-done::before {
-  background: var(--hr-teal);
+  background: var(--hr-action);
 }
 .hr-tl__row b {
   color: var(--hr-ink);
@@ -2475,7 +2480,7 @@ textarea.hr-f {
   background: #fafbfb;
 }
 .hr-cal__cell.is-away {
-  background: var(--hr-teal-soft);
+  background: var(--hr-action-soft);
 }
 /* Hatched: a request nobody has decided is not yet an absence. */
 .hr-cal__cell.is-waiting {
@@ -2484,7 +2489,7 @@ textarea.hr-f {
 .hr-cal__mark {
   font-size: 10.5px;
   font-weight: 700;
-  color: var(--hr-teal);
+  color: var(--hr-action);
 }
 .hr-cal__cell.is-waiting .hr-cal__mark {
   color: var(--hr-gold);
@@ -2518,7 +2523,7 @@ textarea.hr-f {
   border: 0;
   padding: 0;
   font: inherit;
-  color: var(--hr-teal);
+  color: var(--hr-action);
   cursor: pointer;
 }
 .hr-linkButton:hover {
@@ -2581,7 +2586,7 @@ textarea.hr-f {
   border-radius: 6px;
 }
 .hr-proofBtn:focus-visible {
-  outline: 2px solid var(--hr-teal);
+  outline: 2px solid var(--hr-action);
   outline-offset: 2px;
 }
 
@@ -2714,7 +2719,7 @@ textarea.hr-f {
   padding: 0;
   font: inherit;
   font-size: 12px;
-  color: var(--hr-teal);
+  color: var(--hr-action);
   text-decoration: underline;
   cursor: pointer;
 }
@@ -2784,11 +2789,11 @@ textarea.hr-f {
 }
 .hr-chipLink:hover .hr-chip,
 .hr-chipLink:focus-visible .hr-chip {
-  outline: 2px solid var(--hr-teal);
+  outline: 2px solid var(--hr-action);
   outline-offset: 1px;
 }
 [data-focus].is-focused {
-  outline: 2px solid var(--hr-teal);
+  outline: 2px solid var(--hr-action);
   outline-offset: 6px;
   border-radius: 10px;
   transition: outline-color 1.2s ease;
@@ -2922,5 +2927,58 @@ textarea.hr-f {
   }
   .hr-workings__row dt {
     font-size: 12px;
+  }
+}
+
+/* ── KW2 polish: brand band, product icons, narrow screens ───────────────── */
+/* The band's underline: the logo's two blues as one hairline under the
+   header, so the HR shell starts where the top band ends. */
+.kw-hrSlate::before {
+  content: '';
+  display: block;
+  flex: none;
+  height: 3px;
+  background: linear-gradient(90deg, var(--kw-brand-navy), var(--kw-brand-blue) 55%, var(--kw-brand-blue-soft));
+}
+/* The product's icons are filled glyphs; the stroke rules above were written
+   for the traced outlines and would hollow them out. */
+.kw-hrSlate .anticon,
+.kw-hrSlateHeader .anticon {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+.kw-hrSlate .anticon svg,
+.kw-hrSlateHeader .anticon svg {
+  fill: currentColor;
+  stroke: none;
+}
+/* A two-column page on a phone: the columns stacked already, but a grid
+   child's minimum is its content unless told otherwise, so the payslip
+   panel ran past the screen edge. */
+.hr-two > * {
+  min-width: 0;
+}
+/* The rates grid's last column is text (which group a scheme applies to);
+   let it wrap rather than push the panel wider than its card. */
+.hr-rate {
+  grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 0.9fr);
+}
+.hr-rate > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* The fourth column is prose ("60+, or after cat 1 exhausted"), set with the
+   numeric class for its alignment; a figure never wraps, a sentence may. */
+.hr-rate > div:nth-child(4n) {
+  white-space: normal;
+}
+@media (max-width: 640px) {
+  .hr-slip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .hr-slip > div:first-child {
+    border-right: 0;
+    border-bottom: 1px solid var(--hr-line);
   }
 }

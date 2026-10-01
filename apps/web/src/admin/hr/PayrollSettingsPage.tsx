@@ -498,7 +498,7 @@ export function PayrollSettingsPage() {
                     checked={on}
                     disabled={setApproval.isPending}
                     onChange={() => choose({ mode: choice.value })}
-                    style={{ marginTop: 4, accentColor: 'var(--hr-teal)' }}
+                    style={{ marginTop: 4, accentColor: 'var(--hr-action)' }}
                   />
                   <span>
                     <span className="hr-choice__title">{choice.title}</span>
@@ -804,7 +804,7 @@ export function PayrollSettingsPage() {
                     value={choice.value}
                     checked={on}
                     onChange={() => setMode(choice.value)}
-                    style={{ marginTop: 4, accentColor: 'var(--hr-teal)' }}
+                    style={{ marginTop: 4, accentColor: 'var(--hr-action)' }}
                   />
                   <span>
                     <span className="hr-choice__title">{choice.title}</span>

@@ -1,12 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from "vitest";
 // Node environment (the suite default), so `import.meta.url` is a real file
 // URL and the stylesheets can be read from disk. Same suppression as
 // clinical/attachmentsSingleMount.test.ts: the app tsconfig deliberately has
 // no node types.
 // @ts-expect-error — node builtin without @types/node in the browser tsconfig
-import { readFileSync } from 'node:fs';
+import { readFileSync } from "node:fs";
 // @ts-expect-error — node builtin without @types/node in the browser tsconfig
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath } from "node:url";
 
 /**
  * SLATE CANNOT REACH THE OTHER FOUR MODULES.
@@ -26,26 +26,34 @@ import { fileURLToPath } from 'node:url';
  * written that way asserts nothing at all — which is how this file first
  * passed while proving none of it.
  */
-const read = (relative: string): string => readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf-8');
+const read = (relative: string): string =>
+  readFileSync(fileURLToPath(new URL(relative, import.meta.url)), "utf-8");
 
-const slateCss = read('./slate.css');
-const indexCss = read('../../../index.css');
-const tokensSource = read('../../../design-system/tokens.ts');
+const slateCss = read("./slate.css");
+const indexCss = read("../../../index.css");
+const tokensSource = read("../../../design-system/tokens.ts");
 
-/** Slate's own colours, as written in `docs/design/hr-slate/kit.css`. */
-const SLATE_HEXES = ['#16302b', '#1e3e37', '#0f8f7a', '#b9cfc8', '#b7791f', '#c2362e', '#1e7f45'];
+/**
+ * Slate's own colours — the ones that stay HR-only after the KW2 polish:
+ * gold (needs a person), red (blocks payroll), green (done). The chrome
+ * (sidebar, header, actions) is no longer a Slate colour at all: it reads
+ * the product's brand tokens, which the test below checks separately.
+ */
+const SLATE_HEXES = ["#b7791f", "#c2362e", "#1e7f45"];
+/** The brand chrome, as `design-system/tokens.ts` declares it. */
+const BRAND_HEXES = ["#101632", "#2557e8"];
 
 /** Comments name the other modules deliberately; a selector check must not read them as selectors. */
 const rules = (css: string) =>
   css
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .split('}')
-    .map((block) => block.split('{')[0].trim())
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("}")
+    .map((block) => block.split("{")[0].trim())
     .filter(Boolean);
 
-const SOURCES = import.meta.glob('../../../**/*.{ts,tsx}', {
-  query: '?raw',
-  import: 'default',
+const SOURCES = import.meta.glob("../../../**/*.{ts,tsx}", {
+  query: "?raw",
+  import: "default",
   eager: true,
 }) as Record<string, string>;
 
@@ -59,60 +67,84 @@ const SOURCES = import.meta.glob('../../../**/*.{ts,tsx}', {
  * portal (`src/me`), which the portal mockups draw on the same Slate kit.
  * Everywhere else keeps the product-wide palette.
  */
-const insideHr = (file: string) => !file.startsWith('../../') || file.startsWith('../../../me/');
+const insideHr = (file: string) =>
+  !file.startsWith("../../") || file.startsWith("../../../me/");
 
-describe('the Slate kit', () => {
-  it('was actually read, so the rest of this file means something', () => {
+describe("the Slate kit", () => {
+  it("was actually read, so the rest of this file means something", () => {
     expect(slateCss.length).toBeGreaterThan(2000);
     expect(indexCss.length).toBeGreaterThan(2000);
     expect(tokensSource.length).toBeGreaterThan(500);
   });
 
-  it('declares its palette only on HR scopes, never on :root', () => {
+  it("declares its palette only on HR scopes, never on :root", () => {
     // USES are everywhere and are fine; DECLARATIONS are the leak. Strip the
     // `var(--hr-…)` reads first, and whatever `--hr-` survives is a definition.
     const leaked = slateCss
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/var\(--hr-[a-z0-9-]+\)/g, '')
-      .split('}')
-      .filter((block) => block.includes('--hr-'))
-      .map((block) => block.split('{')[0].trim())
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/var\(--hr-[a-z0-9-]+\)/g, "")
+      .split("}")
+      .filter((block) => block.includes("--hr-"))
+      .map((block) => block.split("{")[0].trim())
       .filter((selector) => !/\.kw-hrSlate(Header)?/.test(selector));
     expect(leaked).toEqual([]);
-    expect(rules(slateCss)).not.toContain(':root');
+    expect(rules(slateCss)).not.toContain(":root");
   });
 
-  it('is not reachable from any file outside the HR module', () => {
+  it("is not reachable from any file outside the HR module", () => {
     const outsiders = Object.entries(SOURCES)
       .filter(([file]) => !insideHr(file))
-      .filter(([, source]) => source.includes('--hr-') || source.includes('ui/slate.css'))
+      .filter(
+        ([, source]) =>
+          source.includes("--hr-") || source.includes("ui/slate.css"),
+      )
       .map(([file]) => file);
     expect(outsiders).toEqual([]);
   });
 
-  it('left the product-wide palette alone', () => {
+  it("left the product-wide palette alone", () => {
     // If a Slate colour has found its way into the global tokens or the global
     // stylesheet, the other four modules have been repainted.
     const found = SLATE_HEXES.filter(
-      (hex) => tokensSource.toLowerCase().includes(hex) || indexCss.toLowerCase().includes(hex),
+      (hex) =>
+        tokensSource.toLowerCase().includes(hex) ||
+        indexCss.toLowerCase().includes(hex),
     );
     expect(found).toEqual([]);
   });
 
-  it('scopes the app header by CLASS, because the header is not inside HR', () => {
+  it("reads the brand chrome from the product tokens rather than restating it", () => {
+    // The sidebar and the actions are navy and royal blue because the whole
+    // product is; typing the hex here would be a second place for it to drift.
+    for (const hex of BRAND_HEXES) {
+      expect(slateCss.toLowerCase()).not.toContain(hex);
+      expect(tokensSource.toLowerCase()).toContain(hex);
+    }
+    expect(slateCss).toContain("var(--kw-brand-navy)");
+    expect(slateCss).toContain("var(--kw-brand-blue)");
+    expect(slateCss).toContain("var(--kw-font)");
+    // And no face of its own: the module types in the product's stack.
+    expect(slateCss).not.toMatch(/Inter/);
+  });
+
+  it("scopes the app header by CLASS, because the header is not inside HR", () => {
     // The one thing Slate touches outside its own subtree is the product
     // header, which is a sibling. It gets a class on HR routes and nothing
     // else — no global selector, no element rule.
-    expect(slateCss).toContain('.kw-app-header.kw-hrSlateHeader');
+    expect(slateCss).toContain(".kw-app-header.kw-hrSlateHeader");
     const headerRules = rules(slateCss).filter(
-      (selector) => selector.includes('kw-app-header') || selector.includes('ant-'),
+      (selector) =>
+        selector.includes("kw-app-header") || selector.includes("ant-"),
     );
     expect(headerRules.length).toBeGreaterThan(3);
     // Scoped by one of HR's own classes — the shell, the header variant, or
     // an `hr-` component — never bare. `.hr-table .ant-table` is fine;
     // `.ant-table` alone would restyle every module's tables.
     for (const selector of headerRules) {
-      expect({ selector, scoped: /(kw-hrSlate(Header)?|\.hr-[a-z])/.test(selector) }).toEqual({ selector, scoped: true });
+      expect({
+        selector,
+        scoped: /(kw-hrSlate(Header)?|\.hr-[a-z])/.test(selector),
+      }).toEqual({ selector, scoped: true });
     }
   });
 });

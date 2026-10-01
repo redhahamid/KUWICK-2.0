@@ -61,6 +61,19 @@
   --kw-surface-3: #eef2f6;
   --kw-border-strong: #d0d5dd;
 
+  /* KW2 brand chrome — the logo's two blues. `design-system/tokens.ts`
+     holds the same values (brandNavy, brandBlue, …); this is their CSS form,
+     read by the top band and by the HR shell. */
+  --kw-brand-navy: #101632;
+  --kw-brand-navy-raised: #182048;
+  --kw-brand-blue: #2557e8;
+  --kw-brand-blue-hover: #1e48c4;
+  --kw-brand-blue-soft: #e8eefc;
+  --kw-on-navy: #c9d1ee;
+  --kw-on-navy-dim: #7e89b8;
+  /* The product's type stack (tokens.ts `fontFamily`). */
+  --kw-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
   /* Spacing scale — 4 / 8 / 12 / 16 / 24, nothing between. */
   --kw-s1: 4px;
   --kw-s2: 8px;
@@ -3006,7 +3019,7 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
    Routes are untouched. This is colour, spacing and two extra items.
    ========================================================================= */
 .kw-app-header-navy {
-  background: #101632;
+  background: var(--kw-brand-navy);
   border-bottom: none;
 }
 
@@ -3036,7 +3049,7 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 }
 
 .kw-app-header-navy .ant-menu-item-selected::after {
-  border-bottom: 2px solid #2557e8 !important;
+  border-bottom: 2px solid var(--kw-brand-blue) !important;
   opacity: 1 !important;
 }
 
@@ -3222,7 +3235,7 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
-  color: var(--kw-blue, #2557e8);
+  color: var(--kw-brand-blue);
 }
 
 .kw-iv-more:hover {

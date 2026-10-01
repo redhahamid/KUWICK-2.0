@@ -6,6 +6,77 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 7 — 1 Oktober 2026 — polish visual: biru Kuwick, fon dan ikon aplikasi utama
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+master Batch 6 (`a651408`). Komit: komit yang menambah bahagian ini (hash
+dalam laporan akhir). **Migrasi: tiada.** Visual sahaja — tiada tingkah laku
+berubah, tiada angka berubah.
+
+### Apa yang berubah
+
+- **Satu tempat untuk token jenama** `[D]`: `apps/web/src/design-system/
+  tokens.ts` kini memegang `brandNavy #101632` (biru tua logo — warna bar
+  atas sedia ada), `brandNavyRaised`, `brandBlue #2557e8` (biru diraja logo
+  — garis aktif tab bar atas sedia ada), `brandBlueHover/Soft`, `onNavy/
+  onNavyDim` dan `fontFamily`; `index.css` membawa bentuk CSS-nya
+  (`--kw-brand-*`, `--kw-font`). Bar atas aplikasi utama kini membaca token
+  itu dan bukan hex yang ditaip (output sama).
+- **Modul HR membaca token itu** `[D]`: palet `.kw-hrSlate` (`--hr-slate`,
+  `--hr-slate2`, `--hr-slate-txt`, `--hr-slate-dim`) menunjuk ke
+  `--kw-brand-navy/raised/on-navy`; warna tindakan `--hr-teal` dinamakan
+  semula `--hr-action` = `--kw-brand-blue` (39 tapak guna + 10 lembut +
+  3 gaya sebaris). Hijau gelap tiada lagi di mana-mana dalam HR; gold
+  (perlu orang), merah (sekat) dan hijau (selesai) kekal sebagai warna
+  status HR sahaja.
+- **Bar kecerunan biru di bawah header** `[A]`: saya tidak menjumpai bar
+  kecerunan dalam kod aplikasi utama (hanya warna bar `#101632` dan garis
+  aktif `#2557e8`); saya menambah satu garis 3px (navy → biru diraja →
+  biru lembut) di atas shell HR, di bawah header. Kalau bar yang anda
+  maksudkan ialah elemen lain, beritahu saya di mana dan saya guna semula.
+- **Fon sama dengan aplikasi utama** `[D]`: HR dan portal pekerja kini
+  menggunakan stack fon tema antd (`-apple-system, Segoe UI, Roboto…`);
+  Inter / Inter Tight dibuang dari `slate.css` dan pautan Google Fonts
+  dibuang dari `index.html` (hanya HR yang memintanya).
+- **Ikon sama dengan aplikasi utama** `[D]`: 21 ikon HR (`ui/icons.tsx`)
+  kini ikon `@ant-design/icons` dengan nama komponen yang sama; peraturan
+  CSS `stroke/fill` untuk glyph lama ditindih untuk `.anticon`.
+- **Portal pekerja** `[D]`: `colorPrimary`/`colorLink` dari `#0F8F7A` ke
+  `colors.brandBlue`; fon tema yang sama.
+- **390px** `[D]`: halaman payslip pekerja tidak lagi melimpah ke kanan
+  (`.hr-two > * { min-width: 0 }`, `.hr-slip` satu lajur ≤640px); jadual
+  kadar SOCSO membalut lajur "Applies" dan tidak lagi dipotong pada desktop.
+- Guard `slateIsolation.test.tsx`: warna HR-sahaja = gold/merah/hijau;
+  ujian baharu memastikan `slate.css` membaca `--kw-brand-*` dan `--kw-font`
+  dan tidak menaip semula hex jenama atau Inter `[D]`.
+- Tangkapan skrin 390px dan desktop (sebelum/selepas) dalam laporan akhir.
+
+### Uji di staging (ikut urutan)
+
+1. Buka **HR** — sidebar dan header biru tua (sama dengan bar atas aplikasi
+   utama), item aktif dan butang biru diraja, garis nipis biru di bawah
+   header; tiada hijau gelap di mana-mana.
+2. Tab **Operation / Stock / HR / Finance** pada bar atas — garis bawah tab
+   aktif biru diraja, warna sama dalam dan luar HR.
+3. **Fon dan ikon**: HR kelihatan sama "jenis huruf" dengan Finance; ikon
+   sidebar (Employees, Payroll, Attendance…) ialah ikon yang sama set dengan
+   modul lain.
+4. Telefon (390px): **Payroll → bulan → mana-mana pekerja** — payslip tidak
+   dipotong di kanan; **Settings → Statutory rates** — kad SOCSO tidak
+   dipotong.
+5. **My Kuwick** (portal pekerja) — butang dan pautan biru, bukan teal.
+
+### Keputusan terbuka / yang saya pilih bagi pihak anda
+
+- `[A]` Bar kecerunan: ditambah seperti di atas kerana tiada dalam kod.
+- `[A]` `--hr-teal` → `--hr-action` (nama sahaja; nilai = biru jenama).
+- `[A]` Warna status HR (gold/merah/hijau) dikekalkan — ia makna, bukan
+  jenama.
+- `[A]` Pautan Google Fonts dibuang; kalau ada skrin lain yang mahu Inter,
+  pulangkan satu baris dalam `index.html`.
+
+---
+
 ## Batch 6 — 1 Oktober 2026 — jadual statutori beredisi dan kiraan payslip (a, b)
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas

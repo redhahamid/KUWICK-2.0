@@ -427,7 +427,7 @@ export function PayrollEmployeePage() {
                 </div>
                 <div>
                   <div className="hr-emp__l">Total cost to clinic</div>
-                  <div className="hr-emp__v" style={{ color: 'var(--hr-teal)' }}>
+                  <div className="hr-emp__v" style={{ color: 'var(--hr-action)' }}>
                     {rm(row.employerCost)}
                   </div>
                 </div>

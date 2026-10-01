@@ -1,5 +1,5 @@
-import type { ThemeConfig } from 'antd';
-import { colors } from './tokens';
+import type { ThemeConfig } from "antd";
+import { colors, fontFamily } from "./tokens";
 
 /**
  * The Ant Design theme, fed from the Kuwick tokens.
@@ -24,7 +24,7 @@ export const kuwickTheme: ThemeConfig = {
     colorTextSecondary: colors.textSecondary,
     colorBorder: colors.border,
     borderRadius: 8,
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    fontFamily,
   },
   components: {
     // A clinical surface reads better with a little more air than antd's

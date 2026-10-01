@@ -1,4 +1,4 @@
-import type { StatusTone } from '@kuwick/shared';
+import type { StatusTone } from "@kuwick/shared";
 
 /**
  * Design tokens — see docs/UI_DESIGN_SYSTEM.md.
@@ -31,39 +31,54 @@ import type { StatusTone } from '@kuwick/shared';
 export const colors = {
   // --- Brand ---------------------------------------------------------------
   /** Primary action, identity. */
-  primary: '#184a6b',
-  primaryHover: '#123a55',
+  primary: "#184a6b",
+  primaryHover: "#123a55",
   /** The CLINICAL accent: selected state, positive clinical status. Never
    *  decoration, and never a second primary. */
-  teal: '#0f766e',
-  tealHover: '#0b5f59',
+  teal: "#0f766e",
+  tealHover: "#0b5f59",
+
+  // --- Brand chrome (KW2) --------------------------------------------------
+  /** The logo's deep navy: the top band, and any chrome surface that carries
+   *  the identity (the HR shell's sidebar reads it too). */
+  brandNavy: "#101632",
+  /** The navy one step raised, for a panel that sits on the band. */
+  brandNavyRaised: "#182048",
+  /** The logo's royal blue: the active underline in the top band, and the
+   *  HR module's action colour. */
+  brandBlue: "#2557e8",
+  brandBlueHover: "#1e48c4",
+  brandBlueSoft: "#e8eefc",
+  /** Text on the navy band: full, and dimmed. */
+  onNavy: "#c9d1ee",
+  onNavyDim: "#7e89b8",
 
   // --- Semantic (foreground) ----------------------------------------------
-  success: '#166534',
+  success: "#166534",
   /** In progress / awaiting action. */
-  active: '#1d4ed8',
+  active: "#1d4ed8",
   /** Review required, low stock, documentation pending. */
-  attention: '#92400e',
-  warning: '#92400e',
+  attention: "#92400e",
+  warning: "#92400e",
   /** Blocking, unsafe, out of stock, failed. */
-  error: '#b42318',
+  error: "#b42318",
   /** Not applicable, not chargeable, inactive. */
-  neutral: '#475467',
+  neutral: "#475467",
 
   // --- Semantic (background) ----------------------------------------------
-  successBg: '#dcfce7',
-  activeBg: '#dbeafe',
-  attentionBg: '#fef3c7',
-  warningBg: '#fef3c7',
-  errorBg: '#fee4e2',
-  neutralBg: '#f2f4f7',
+  successBg: "#dcfce7",
+  activeBg: "#dbeafe",
+  attentionBg: "#fef3c7",
+  warningBg: "#fef3c7",
+  errorBg: "#fee4e2",
+  neutralBg: "#f2f4f7",
   /** In the building: waiting, checked in, in consultation. The clinical
    *  teal worn softly — the state a receptionist scans the room for. */
-  clinical: '#0f766e',
-  clinicalBg: '#eaf5f6',
+  clinical: "#0f766e",
+  clinicalBg: "#eaf5f6",
   /** Asked-for but not yet real: requests, planned leave. */
-  planned: '#6941c6',
-  plannedBg: '#f4ebff',
+  planned: "#6941c6",
+  plannedBg: "#f4ebff",
 
   // --- Semantic (base hue, for antd's own derivation) ----------------------
   /**
@@ -81,20 +96,28 @@ export const colors = {
    * pair above, where the contrast has actually been chosen rather than
    * calculated.
    */
-  successBase: '#16a34a',
-  warningBase: '#d97706',
-  attentionBase: '#d97706',
-  errorBase: '#dc2626',
+  successBase: "#16a34a",
+  warningBase: "#d97706",
+  attentionBase: "#d97706",
+  errorBase: "#dc2626",
 
   // --- Surfaces ------------------------------------------------------------
-  pageBg: '#f4f7fa',
-  card: '#ffffff',
-  railBg: '#f8fafc',
-  border: '#dce4ea',
-  text: '#17212b',
-  textSecondary: '#667085',
-  textMuted: '#98a2b3',
+  pageBg: "#f4f7fa",
+  card: "#ffffff",
+  railBg: "#f8fafc",
+  border: "#dce4ea",
+  text: "#17212b",
+  textSecondary: "#667085",
+  textMuted: "#98a2b3",
 } as const;
+
+/**
+ * The product's type stack: the platform's own UI face. Declared once so the
+ * antd theme and any module that sets `font-family` by hand read the same
+ * list. `index.css` carries it as `--kw-font` for stylesheets.
+ */
+export const fontFamily =
+  '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 
 /** 4 / 8 / 12 / 16 / 24 / 32 / 48 — nothing between. */
 export const spacing = {

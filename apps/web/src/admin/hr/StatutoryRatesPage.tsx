@@ -12,7 +12,11 @@ import {
 } from "../hooks/useAdmin";
 import { Drawer, HrPage, Panel, PanelHead, StatusChip } from "./ui";
 import { Table } from "./ui/Table";
-import { EpfScheduleTable, PcbParametersView, editionLine } from "./StatutoryTablesView";
+import {
+  EpfScheduleTable,
+  PcbParametersView,
+  editionLine,
+} from "./StatutoryTablesView";
 
 /**
  * STATUTORY RATES — what Kuwick deducts and what the clinic pays on top.
@@ -55,7 +59,9 @@ export function StatutoryRatesPage() {
   });
   const mark = useMarkStatutoryChecked();
   const mayCheck = useCan("hr.payroll.approve");
-  const [showBands, setShowBands] = useState<"SOCSO" | "EIS" | "EPF" | "PCB" | null>(null);
+  const [showBands, setShowBands] = useState<
+    "SOCSO" | "EIS" | "EPF" | "PCB" | null
+  >(null);
   const [epfPart, setEpfPart] = useState<"A" | "C" | "E" | "F">("A");
   const [wageSearch, setWageSearch] = useState("");
 
@@ -108,6 +114,7 @@ export function StatutoryRatesPage() {
             value={dayjs(`${period}-01`)}
             onChange={(value) => value && setPeriod(value.format("YYYY-MM"))}
             format="MMM YYYY"
+            style={{ width: 132 }}
           />
           {check ? (
             <StatusChip tone={check.current ? "done" : "attn"}>
@@ -136,7 +143,12 @@ export function StatutoryRatesPage() {
     >
       <div className="hr-grid2">
         <Panel>
-          <PanelHead title="EPF (KWSP)" sub={editionLine(data?.editions?.EPF) ?? inForce(data?.epf.schedule)} />
+          <PanelHead
+            title="EPF (KWSP)"
+            sub={
+              editionLine(data?.editions?.EPF) ?? inForce(data?.epf.schedule)
+            }
+          />
           <div className="hr-rate">
             <div className="hr-rate__h">Employee group</div>
             <div className="hr-rate__h hr-rate__num">Employee</div>
@@ -310,7 +322,10 @@ export function StatutoryRatesPage() {
         </Panel>
 
         <Panel>
-          <PanelHead title="HRD Corp levy" sub={editionLine(data?.editions?.HRD_LEVY) ?? "Optional"} />
+          <PanelHead
+            title="HRD Corp levy"
+            sub={editionLine(data?.editions?.HRD_LEVY) ?? "Optional"}
+          />
           {employerRows.length === 0 ? (
             <div className="hr-panelNote">
               No legal employer is recorded yet.
@@ -394,7 +409,10 @@ export function StatutoryRatesPage() {
             columns={[
               { title: "Scheme", render: (_: unknown, row) => row.scheme },
               { title: "Year", render: (_: unknown, row) => String(row.year) },
-              { title: "In force from", render: (_: unknown, row) => row.inForceFrom },
+              {
+                title: "In force from",
+                render: (_: unknown, row) => row.inForceFrom,
+              },
               {
                 title: "Source document",
                 render: (_: unknown, row) =>
