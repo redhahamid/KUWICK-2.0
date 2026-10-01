@@ -770,6 +770,9 @@ async function reset() {
     // P1. Payment lines point at their batch, the batch and the submissions at
     // the run — all three before `payroll_runs`.
     'payroll_payment_lines', 'payroll_payment_batches', 'payroll_statutory_submissions',
+    // Batch 5. An acknowledgement points at the tenant and the staff member
+    // who gave it, so it goes before `staff`; nothing points at it.
+    'payroll_warning_acknowledgements',
     // Stage 2.5. Claims point AT payroll inputs, so the claim's children and
     // the claims themselves go before the inputs — otherwise the second run of
     // this seed fails on `staff_claims.payroll_input_entry_id`, and only then.
