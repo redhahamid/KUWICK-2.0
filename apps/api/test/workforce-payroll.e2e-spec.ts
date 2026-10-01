@@ -146,8 +146,8 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         // s.59 rest day. Passing null exercises the blocking path.
         ...(opts.restDayOfWeek === null ? {} : { restDayOfWeek: opts.restDayOfWeek ?? 0 }),
         ...(opts.overtimeContractPolicy ? { overtimeContractPolicy: opts.overtimeContractPolicy } : {}),
-        // LINDUNG 24 JAM. Passing null exercises the blocking path; it is not
-        // a default, and it is never inferred from anything else here.
+        // LINDUNG 24 JAM. Passing null leaves the field blank, which the run
+        // reads as enrolled; it is never inferred from anything else here.
         ...(opts.lindungParticipation === null
           ? {}
           : { lindungParticipation: opts.lindungParticipation ?? 'NOT_PARTICIPATING' }),
@@ -1558,11 +1558,11 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       expect(line.breakdown.statutoryNotes.lindung).toMatch(/remitted by the employer/i);
     });
 
-    it('BLOCKS when nobody has recorded whether the employee is in LINDUNG', async () => {
-      // "Declined" and "nobody asked" are different answers, and only one is a
-      // fact. Paying nil for the second is cheap for the clinic and wrong for
-      // a foreign worker.
-      await makeEmployee('Unrecorded Lindung', '6000.00', { lindungParticipation: null });
+    it('treats an unrecorded participation as enrolled, deducts it, and does not block the month', async () => {
+      // PERKESO enrols every employee unless they opt out through its own
+      // form, so "nobody asked" is the default answer: in. The run used to
+      // refuse the month on a blank; the owner decided otherwise.
+      const staffId = await makeEmployee('Unrecorded Lindung', '6000.00', { lindungParticipation: null });
       const run = await request(app.getHttpServer())
         .post('/workforce/payroll/runs')
         .set('Authorization', bearer)
@@ -1573,12 +1573,13 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         .set('Authorization', bearer)
         .expect(200);
       const exceptions = calculated.body.exceptions as { name: string; issue: string }[];
-      expect(exceptions.some((row) => /not recorded whether this employee is in LINDUNG/i.test(row.issue))).toBe(true);
-      await request(app.getHttpServer())
-        .patch(`/workforce/payroll/runs/${run.body.id}/approve`)
+      expect(exceptions.some((row) => /LINDUNG/i.test(row.issue))).toBe(false);
+      const detail = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${run.body.id}`)
         .set('Authorization', bearer)
-        .send({ acknowledgeStatutoryGap: true })
-        .expect(400);
+        .expect(200);
+      const line = detail.body.lines.find((row: { staffId: string }) => row.staffId === staffId);
+      expect(line.lindungEmployee).toBe(44.65);
     });
 
     it('LOCKS an approved run — the database refuses to change a payslip line', async () => {

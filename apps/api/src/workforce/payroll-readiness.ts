@@ -189,12 +189,10 @@ export function buildPayrollReadiness(facts: ReadinessFacts): ReadinessResult {
       // Monthly tax cannot be worked out without both, and neither
       // can be inferred: residence chooses between a flat 30% and
       // the progressive table, category chooses the deductions.
-      // LINDUNG 24 JAM: voluntary for locals, mandatory for
-      // foreign workers, and not readable off anything else.
-      // A scheme that has not commenced asks no question: before 1 June 2026
-      // an unrecorded participation is not a gap, and the run does not treat
-      // it as one either.
-      const lindungUnknown = (facts.lindungInForce ?? true) && !standing.lindungParticipation;
+      // LINDUNG 24 JAM asks nothing here: PERKESO enrols every employee
+      // unless they opt out through its own form, so a blank participation
+      // is enrolled, and the run deducts it. The owner's decision, 1 October
+      // 2026, replacing the old "cannot be guessed either way".
       const taxProfileUnknown =
         standing.pcbApplicable && (!standing.taxResidence || !standing.pcbCategory) && facts.pcbInputAmountCents === null;
       const applies = [
@@ -205,8 +203,8 @@ export function buildPayrollReadiness(facts: ReadinessFacts): ReadinessResult {
       /*
        * SEVERITY FOLLOWS THE RUN, because this page's own header promises
        * "blocking items are the ones the run itself will refuse on". An
-       * unknown Part, tax profile or LINDUNG answer stops the CALCULATION,
-       * so those are BLOCKING. A missing membership NUMBER stops nothing the
+       * unknown Part or tax profile stops the CALCULATION, so those are
+       * BLOCKING. A missing membership NUMBER stops nothing the
        * run does — it stops the FILING being addressed, exactly like the
        * employer's own missing SOCSO code, which the section above calls
        * out as gating the filings and not the calculation. Marking it
@@ -214,24 +212,22 @@ export function buildPayrollReadiness(facts: ReadinessFacts): ReadinessResult {
        * calculated and approved — two answers to one question, from the
        * screen built to prevent that.
        */
-      const calculationBlocked = partUnknown || taxProfileUnknown || lindungUnknown;
+      const calculationBlocked = partUnknown || taxProfileUnknown;
       return {
         key: 'statutory',
         link: '?tab=statutory&focus=standing',
         label: 'EPF, SOCSO and EIS',
         severity: (calculationBlocked ? 'BLOCKING' : 'ADVISORY') as ReadinessSeverity,
         done: missing.length === 0 && !calculationBlocked,
-        detail: lindungUnknown
-          ? 'Their LINDUNG 24 JAM participation is not recorded. The scheme is voluntary for local employees and mandatory for foreign workers, and the contribution comes out of their pay — so it cannot be guessed either way.'
-          : taxProfileUnknown
-            ? 'Their tax residence or MTD category is not recorded. Monthly tax is a flat 30% for a non-resident and a table for everybody else, and the category decides which deductions apply, so neither can be guessed.'
-            : partUnknown
-              ? 'Their EPF membership — Malaysian citizen, permanent resident or non-citizen — is not recorded. The Third Schedule has a different Part for each, so no EPF contribution can be worked out until it is.'
-              : missing.length > 0
-                ? `No ${missing.join(' or ')} membership number is on file, so nothing could be filed for them under ${missing.length === 1 ? 'that scheme' : 'those schemes'}.`
-                : applies.length === 0
-                  ? 'None of the three applies to this person.'
-                  : `${applies.join(', ')} apply, and the membership numbers are on file.`,
+        detail: taxProfileUnknown
+          ? 'Their tax residence or MTD category is not recorded. Monthly tax is a flat 30% for a non-resident and a table for everybody else, and the category decides which deductions apply, so neither can be guessed.'
+          : partUnknown
+            ? 'Their EPF membership — Malaysian citizen, permanent resident or non-citizen — is not recorded. The Third Schedule has a different Part for each, so no EPF contribution can be worked out until it is.'
+            : missing.length > 0
+              ? `No ${missing.join(' or ')} membership number is on file, so nothing could be filed for them under ${missing.length === 1 ? 'that scheme' : 'those schemes'}.`
+              : applies.length === 0
+                ? 'None of the three applies to this person.'
+                : `${applies.join(', ')} apply, and the membership numbers are on file.`,
       };
     })(),
     {

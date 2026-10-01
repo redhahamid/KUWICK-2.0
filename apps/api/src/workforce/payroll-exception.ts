@@ -411,17 +411,6 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'put this employee on a rule set that is at or above it.',
     deepLink: () => '/admin/hr/settings/payroll',
   },
-  /*
-   * LINDUNG 24 JAM with no participation recorded.
-   *
-   * BLOCKING, and the reason is the distinction the scheme itself turns on:
-   * "declined" and "nobody asked" are different answers, and only the first is
-   * a fact. Paying nil for the second is a guess that happens to be cheap for
-   * the clinic and wrong for a foreign worker, for whom it is mandatory.
-   *
-   * Never inferred. Foreign-worker status is a PERKESO classification, not EPF
-   * membership, tax residence or a nationality typed into a text box.
-   */
   /**
    * THE EMPLOYER'S OWN STANDING, unrecorded. Run-level (no staffId): the levy
    * is 1% or 0.5% of every leviable wage in the month, so the gap belongs to
@@ -534,18 +523,6 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'Set the change to take effect from the first day of a month — the recorded date can be corrected on the ' +
       'legal employer’s statutory profile — then recalculate.',
     deepLink: () => '/admin/hr/employers',
-  },
-  LINDUNG_PARTICIPATION_UNRECORDED: {
-    code: 'LINDUNG_PARTICIPATION_UNRECORDED',
-    severity: 'BLOCKING',
-    overridable: false,
-    cause: () => 'It is not recorded whether this employee is in LINDUNG 24 JAM.',
-    consequence:
-      'The Non-Employment Injury Scheme is voluntary for local employees and mandatory for foreign workers, and ' +
-      'the contribution is borne by the employee. Without knowing which they are, the deduction cannot be worked out.',
-    remediation:
-      'Record their LINDUNG 24 JAM participation on the employee record — foreign worker, opted in, or not participating.',
-    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=statutory&focus=standing`,
   },
   /**
    * NOTHING SAYS WHAT THIS PERSON'S STATUTORY STANDING WAS THAT MONTH.

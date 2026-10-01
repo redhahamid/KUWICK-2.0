@@ -33,8 +33,8 @@ import { RELATIONSHIPS } from './ui/reasons';
  * THE POINT OF STAGE 3 IS THAT THE PERSON COMES OUT PAYABLE. "As payroll-ready
  * as the supplied information permits", in the brief's words. What payroll
  * actually refuses a month for is an employing company, a salary, a rest day,
- * a date of birth, the EPF membership and, from June 2026, a LINDUNG answer;
- * the tax profile is what stops monthly tax being worked out. The first
+ * a date of birth and the EPF membership; the tax profile is what stops
+ * monthly tax being worked out, and a blank LINDUNG answer is enrolled. The first
  * month's UAT found the form asked for none of the first three, so every hire
  * was held up on facts the form could have taken. It asks for all of them now,
  * and the readiness list on the last stage mirrors the run's own blockers.

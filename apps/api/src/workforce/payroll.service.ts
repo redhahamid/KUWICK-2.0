@@ -69,7 +69,6 @@ import { describeProration, proratedBasicCents, prorationFor } from './proration
 import { classifyDay, describePricedDay, priceOvertime } from './overtime-pricing';
 import { clinicRatesOf, multipliersOf, pcbProjectionOf, resolvePayrollPolicy } from './payroll-policy-resolution';
 import { workforceCategoryOf } from './workforce-category';
-import { LINDUNG_EFFECTIVE_FROM } from '../statutory/lindung-24-jam';
 import { CatalogueRow, ResolvedComponent, catalogueFor, checkOrdinaryRateBase } from './component-liability';
 import {
   FIRST_SCHEDULE_WAGE_CEILING_CENTS,
@@ -1426,14 +1425,11 @@ export class PayrollService {
           raise('NO_REST_DAY', employee);
         }
 
-        // LINDUNG 24 JAM. Voluntary for locals, mandatory for foreign workers,
-        // and neither answer is readable off any other field — so an employee
-        // with nothing recorded is an open question rather than a nil.
-        // Raised only once the scheme is in force, so historical runs are not
-        // blocked by a rule that did not exist for them.
-        if (!classification.lindungParticipation && statutoryResolutionDay >= LINDUNG_EFFECTIVE_FROM) {
-          raise('LINDUNG_PARTICIPATION_UNRECORDED', employee);
-        }
+        // LINDUNG 24 JAM raises nothing for a blank participation: PERKESO
+        // enrols everybody unless they opt out through its own form, so the
+        // engine treats blank as enrolled and deducts it (owner's decision,
+        // 1 October 2026). Only a wage no band covers is still unknown, and
+        // the fail-safe below names that.
 
         // NO EMPLOYING COMPANY, NO FILING. EPF, SOCSO, EIS and PCB are all
         // submitted BY an entity, so an employee attached to none of them
@@ -2004,13 +2000,11 @@ export class PayrollService {
         // period" is a property of the run, carried by `statutoryStatus` and
         // gated by the acknowledge-the-gap flow on approval; repeating it once
         // per employee per scheme buried the real exceptions under noise.
-        // LINDUNG rides in the same fail-safe. Its usual null — participation
-        // unrecorded while the scheme is in force — is already named by the
-        // more specific LINDUNG_PARTICIPATION_UNRECORDED above, so that case
-        // is skipped here rather than raised twice for the same person. Any
-        // OTHER null (a wage no band covers, a future regression) still
-        // blocks: before this, a null LINDUNG raised nothing, and a run
-        // could be approved with the withholding silently left out of net.
+        // LINDUNG rides in the same fail-safe. A blank participation is
+        // enrolled and computes, so the only null left is a wage no band
+        // covers or a future regression, and that still blocks: before this,
+        // a null LINDUNG raised nothing, and a run could be approved with the
+        // withholding silently left out of net.
         for (const [scheme, contribution] of [
           ['EPF', payslip.statutory.epf],
           ['SOCSO', payslip.statutory.socso],
@@ -2019,7 +2013,6 @@ export class PayrollService {
         ] as const) {
           if (contribution.employeeCents !== null && contribution.employerCents !== null) continue;
           if (statutoryStatus === 'NOT_CONFIGURED') continue;
-          if (scheme === 'LINDUNG' && !classification.lindungParticipation) continue;
           exceptions.push({
             ...buildException('STATUTORY_UNKNOWN', employee.staffId, {
               staffId: employee.staffId,

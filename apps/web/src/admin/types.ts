@@ -815,7 +815,7 @@ export interface PayrollRunDetail {
     socsoEmployer: number | null;
     eisEmployee: number | null;
     eisEmployer: number | null;
-    /** SKBBK. Employee-borne, withheld from pay; null = participation unknown. */
+    /** SKBBK. Employee-borne, withheld from pay; null = a wage no band covers (a blank participation is enrolled). */
     lindungEmployee: number | null;
     /** HRD Corp levy — employer cost, never a deduction; null = not workable-out. */
     hrdLevy: number | null;

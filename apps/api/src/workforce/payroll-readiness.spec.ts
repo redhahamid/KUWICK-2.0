@@ -164,15 +164,18 @@ describe('the opening-balance advisory arises only where the question does', () 
 });
 
 describe('the statutory standing item', () => {
-  it('blocks on unrecorded LINDUNG participation, in words that say why', () => {
+  it('asks nothing about LINDUNG participation: blank is enrolled, and the run deducts it', () => {
+    // PERKESO enrols every employee unless they opt out through its own form,
+    // so an unrecorded participation is the default answer, not a gap. The
+    // owner's decision, 1 October 2026.
     const result = buildPayrollReadiness({
       ...COMPLETE,
       standing: { ...COMPLETE.standing, lindungParticipation: null },
     });
     const statutory = result.items.find((item) => item.key === 'statutory')!;
-    expect(statutory.done).toBe(false);
-    expect(statutory.detail).toContain('LINDUNG 24 JAM');
-    expect(result.ready).toBe(false);
+    expect(statutory.done).toBe(true);
+    expect(statutory.severity).toBe('ADVISORY');
+    expect(result.ready).toBe(true);
   });
 
   it('does not demand a membership number for a scheme that does not apply', () => {
@@ -200,7 +203,7 @@ describe('severity follows the run — this page promises blocking means the run
     expect(result.ready).toBe(true); // ready to PAY; the note travels with them
   });
 
-  it('an unknown Part, tax profile or LINDUNG answer stays BLOCKING — those stop the calculation', () => {
+  it('an unknown Part or tax profile stays BLOCKING — those stop the calculation', () => {
     const result = buildPayrollReadiness({
       ...COMPLETE,
       standing: { ...COMPLETE.standing, epfMembership: null },

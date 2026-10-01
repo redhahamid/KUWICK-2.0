@@ -177,12 +177,12 @@ nothing is marked verified on their strength.
 | **Authority / document** | D11 — current PERKESO guidance, read with D6's Act 4 rate table |
 | **Effective** | **1 June 2026.** Nothing is due for any earlier period |
 | **Who bears it** | The **employee**. There is **no employer share**; the employer remits it on the employee's behalf, which is not the same as paying it |
-| **Participation** | **Voluntary** for local employees. **Mandatory** for foreign workers. Recorded per employee and never inferred |
+| **Participation** | **Automatic** for every employee unless they opt out through PERKESO's own form; **mandatory** for foreign workers. Recorded per employee and never inferred; a blank record is enrolled (owner's decision, 1 October 2026) |
 | **Rate** | Phase 1 **0.75%**, applied from D6's printed band column, which converges on 0.744% of the band ceiling |
 | **Ceiling** | RM6,000, as Act 4 |
 | **Implementation** | `statutory/lindung-24-jam.ts` — `lindungContribution`; a separate scheme, not an Act 4 column |
 | **Test** | `lindung-24-jam.spec.ts` — 21 tests covering commencement boundary, participation, employee-borne, band vectors, ceiling and the Act 4 reconciliation; end to end in `workforce-payroll.e2e-spec.ts` |
-| **Expected** | RM6,000: RM44.65 employee, RM0.00 employer. Not participating: RM0.00. Before 1 June 2026: RM0.00 whatever the classification. Unrecorded: **blocks** |
+| **Expected** | RM6,000: RM44.65 employee, RM0.00 employer. Not participating: RM0.00. Before 1 June 2026: RM0.00 whatever the classification. Unrecorded: **enrolled**, deducted like ENROLLED |
 | **Status** | **`OFFICIAL_SOURCE_VERIFIED`** — no official worked example is published, so it stops short of test-vector verification |
 
 #### AUTHORITY CONFLICT, AND HOW IT WAS RESOLVED

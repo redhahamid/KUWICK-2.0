@@ -555,10 +555,12 @@ statusnya yang berubah.
 | Titik Bank kosong | Tiada akaun bank | Buka rekod, tab **Bank** |
 | **Records incomplete** tinggi | Tarikh lahir, nombor KWSP atau PERKESO hilang | Angka itu memberitahu yang mana paling kerap hilang |
 
-**Add employee** kini bertanya di peringkat *Pay & Statutory* tiga perkara
+**Add employee** kini bertanya di peringkat *Pay & Statutory* dua perkara
 yang gaji enggan berjalan tanpanya: **Employed by** (syarikat yang menggaji
-— dipilih sendiri jika hanya ada satu), **Rest day**, dan **LINDUNG 24 JAM
-(SKBBK)** (lalai *Enrolled*), serta **Overtime above the Act limit** untuk
+— dipilih sendiri jika hanya ada satu) dan **Rest day**; juga **LINDUNG 24
+JAM (SKBBK)** (lalai *Enrolled* — dibiarkan kosong pun dikira *Enrolled*,
+PERKESO mendaftar semua pekerja kecuali yang keluar melalui borangnya; gaji
+tidak dihalang kerananya), serta **Overtime above the Act limit** untuk
 gaji melebihi siling Jadual Pertama. Semuanya direkodkan bertarikh dari
 tarikh mula kerja. Senarai *Payroll readiness* pada peringkat *Review*
 menyenaraikan tepat perkara yang run gaji akan halang, dalam susunannya.
