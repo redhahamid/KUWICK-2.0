@@ -62,6 +62,8 @@ export class UpsertPayrollPolicyDto {
   @IsOptional() @Matches(MONEY, { message: MONEY_MESSAGE }) clinicOvertimeHourly?: string | null;
   /** RM per public holiday worked, whatever the hours. */
   @IsOptional() @Matches(MONEY, { message: MONEY_MESSAGE }) clinicPublicHolidayShift?: string | null;
+  /** RM per FESTIVE public holiday worked. Blank means the public holiday shift. */
+  @IsOptional() @Matches(MONEY, { message: MONEY_MESSAGE }) clinicFestiveHolidayShift?: string | null;
   /** RM per rest day worked beyond half the normal hours. */
   @IsOptional() @Matches(MONEY, { message: MONEY_MESSAGE }) clinicRestDayShift?: string | null;
   /** RM per session: a rest day or holiday worked for at most half the normal hours. */
@@ -84,6 +86,8 @@ export class UpsertPayrollPolicyDto {
   @IsOptional() @IsNumber() @Min(0.01) @Max(10) overtimeMultiplier?: number | null;
   @IsOptional() @IsNumber() @Min(0.01) @Max(10) restDayMultiplier?: number | null;
   @IsOptional() @IsNumber() @Min(0.01) @Max(10) publicHolidayMultiplier?: number | null;
+  /** The hours on a FESTIVE public holiday. Blank means the public holiday multiplier. */
+  @IsOptional() @IsNumber() @Min(0.01) @Max(10) festiveHolidayMultiplier?: number | null;
 
   /*
    * PAYING BELOW THE ACT IS A DECISION, AND A DECISION HAS AN AUTHOR.

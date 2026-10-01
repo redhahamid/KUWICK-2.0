@@ -391,10 +391,15 @@ describe('the branch on the attendance board and the HR reads beside it (e2e)', 
       const created = await request(server()).post('/public-holidays').set('Authorization', owner).send({ date: '2026-12-25', name: 'Christmas' }).expect(201);
       // The same date twice is a conflict, not a 500.
       await request(server()).post('/public-holidays').set('Authorization', owner).send({ date: '2026-12-25', name: 'Christmas again' }).expect(409);
+      // Ordinary until somebody says festive, and saying so is the owner's too.
+      expect(created.body.kind).toBe('ORDINARY');
+      await request(server()).patch(`/public-holidays/${created.body.id}`).set('Authorization', managerA).send({ kind: 'FESTIVE' }).expect(403);
+      const marked = await request(server()).patch(`/public-holidays/${created.body.id}`).set('Authorization', owner).send({ kind: 'FESTIVE' }).expect(200);
+      expect(marked.body).toMatchObject({ kind: 'FESTIVE', name: 'Christmas' });
       await request(server()).delete(`/public-holidays/${created.body.id}`).set('Authorization', managerA).expect(403);
       await request(server()).delete(`/public-holidays/${created.body.id}`).set('Authorization', owner).expect(204);
-      const audit = await row((tx) => tx.auditLog.findMany({ where: { action: { in: ['publicHoliday.created', 'publicHoliday.deleted'] } } }));
-      expect(audit.map((entry) => entry.action).sort()).toEqual(['publicHoliday.created', 'publicHoliday.deleted']);
+      const audit = await row((tx) => tx.auditLog.findMany({ where: { action: { in: ['publicHoliday.created', 'publicHoliday.updated', 'publicHoliday.deleted'] } } }));
+      expect(audit.map((entry) => entry.action).sort()).toEqual(['publicHoliday.created', 'publicHoliday.deleted', 'publicHoliday.updated']);
     });
   });
 

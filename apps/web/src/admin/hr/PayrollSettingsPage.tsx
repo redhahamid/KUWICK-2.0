@@ -86,8 +86,9 @@ const rm = (value: string) => `RM${Number(value).toLocaleString('en-MY', { minim
 const multiplierLine = (row: PayrollPolicyRow) => {
   const set = row.multipliers;
   if (!set) return 'Employment Act: 1.5× · rest day 2.0× · public holiday 3.0×';
-  const own = set.overtime.set || set.restDay.set || set.publicHoliday.set;
-  const figures = `${set.overtime.used}× · rest day ${set.restDay.used}× · public holiday ${set.publicHoliday.used}×`;
+  const own = set.overtime.set || set.restDay.set || set.publicHoliday.set || set.festiveHoliday?.set;
+  const festive = set.festiveHoliday?.set ? ` · festive holiday ${set.festiveHoliday.used}×` : '';
+  const figures = `${set.overtime.used}× · rest day ${set.restDay.used}× · public holiday ${set.publicHoliday.used}×${festive}`;
   return own ? `Clinic multipliers: ${figures}` : `Employment Act: ${figures}`;
 };
 
@@ -96,6 +97,7 @@ const pricingLine = (row: PayrollPolicyRow) => {
   const parts = [
     row.clinicRates.overtimeHourly ? `${rm(row.clinicRates.overtimeHourly)} an hour` : null,
     row.clinicRates.publicHolidayShift ? `${rm(row.clinicRates.publicHolidayShift)} a public holiday shift` : null,
+    row.clinicRates.festiveHolidayShift ? `${rm(row.clinicRates.festiveHolidayShift)} a festive holiday shift` : null,
     row.clinicRates.restDayShift ? `${rm(row.clinicRates.restDayShift)} a rest day shift` : null,
     row.clinicRates.session ? `${rm(row.clinicRates.session)} a session` : null,
   ].filter((part): part is string => part !== null);
@@ -175,6 +177,13 @@ const MULTIPLIERS = [
     what: 'an hour beyond normal hours on a public holiday',
     provision: 'Section 60D(3)(aa)',
   },
+  {
+    field: 'ruleset-festive-multiplier',
+    label: 'Festive holiday',
+    act: 3,
+    what: 'an hour beyond normal hours on a festive public holiday',
+    provision: 'Section 60D(3)(aa)',
+  },
 ] as const;
 
 /** The one sentence a below-Act figure gets, wherever it is shown. */
@@ -212,6 +221,7 @@ export function PayrollSettingsPage() {
   const [mode, setMode] = useState<OvertimeMode>('STATUTORY');
   const [hourly, setHourly] = useState('');
   const [holiday, setHoliday] = useState('');
+  const [festive, setFestive] = useState('');
   const [restDay, setRestDay] = useState('');
   const [session, setSession] = useState('');
   // THE ORDINARY-RATE DIVISORS. Held as strings so a half-typed field is not
@@ -225,6 +235,7 @@ export function PayrollSettingsPage() {
     'ruleset-ot-multiplier': '',
     'ruleset-restday-multiplier': '',
     'ruleset-holiday-multiplier': '',
+    'ruleset-festive-multiplier': '',
   });
   const setMultiplier = (field: MultiplierField, value: string) =>
     setMultipliers((current) => ({ ...current, [field]: value }));
@@ -264,6 +275,7 @@ export function PayrollSettingsPage() {
     setMode(row.overtimeMode);
     setHourly(row.clinicRates?.overtimeHourly ?? '');
     setHoliday(row.clinicRates?.publicHolidayShift ?? '');
+    setFestive(row.clinicRates?.festiveHolidayShift ?? '');
     setRestDay(row.clinicRates?.restDayShift ?? '');
     setSession(row.clinicRates?.session ?? '');
     setOtDays(String(row.overtime.days ?? 26));
@@ -275,6 +287,7 @@ export function PayrollSettingsPage() {
       'ruleset-ot-multiplier': row.multipliers?.overtime.set ? String(row.multipliers.overtime.used) : '',
       'ruleset-restday-multiplier': row.multipliers?.restDay.set ? String(row.multipliers.restDay.used) : '',
       'ruleset-holiday-multiplier': row.multipliers?.publicHoliday.set ? String(row.multipliers.publicHoliday.used) : '',
+      'ruleset-festive-multiplier': row.multipliers?.festiveHoliday?.set ? String(row.multipliers.festiveHoliday.used) : '',
     });
     // An acknowledgement already on file covers the figures it was given for,
     // so reopening a rule set to rename it does not demand the whole
@@ -288,7 +301,13 @@ export function PayrollSettingsPage() {
 
   const clean = (value: string) => value.trim().replace(/^RM\s*/i, '').replace(/,/g, '');
   const save = () => {
-    const amounts = { clinicOvertimeHourly: clean(hourly), clinicPublicHolidayShift: clean(holiday), clinicRestDayShift: clean(restDay), clinicSessionRate: clean(session) };
+    const amounts = {
+      clinicOvertimeHourly: clean(hourly),
+      clinicPublicHolidayShift: clean(holiday),
+      clinicFestiveHolidayShift: clean(festive),
+      clinicRestDayShift: clean(restDay),
+      clinicSessionRate: clean(session),
+    };
     if (name.trim().length < 2) {
       refuse('ruleset-name', 'Give the rule set a name.');
       return;
@@ -405,6 +424,7 @@ export function PayrollSettingsPage() {
         overtimeMultiplier: chosen['ruleset-ot-multiplier'],
         restDayMultiplier: chosen['ruleset-restday-multiplier'],
         publicHolidayMultiplier: chosen['ruleset-holiday-multiplier'],
+        festiveHolidayMultiplier: chosen['ruleset-festive-multiplier'],
         ...(belowAct.length > 0 ? { belowActAcknowledged: true, belowActReason: belowActWhy.trim() } : {}),
         ...(mode === 'CLINIC_RATE'
           ? Object.fromEntries(Object.entries(amounts).map(([key, value]) => [key, value === '' ? null : value]))
@@ -864,9 +884,10 @@ export function PayrollSettingsPage() {
             </div>
             <div className="hr-form__help">
               Left blank, each is the Employment Act’s own figure — {MULTIPLIERS.map((m) => `${m.act}×`).join(', ')} in that
-              order. These price the extra HOURS. The day itself on a rest day or public holiday is priced in days of the
-              ordinary rate by the Act — a public holiday worked is two days’ wages however few hours were done — and is
-              not set here.
+              order; a festive holiday left blank follows the public holiday figure. These price the extra HOURS. The day
+              itself on a rest day or public holiday is priced in days of the ordinary rate by the Act — a public holiday
+              worked is two days’ wages however few hours were done — and is not set here. A festive holiday is one marked
+              so under Public holidays.
             </div>
             {/*
               * THE CHOICE, BEFORE IT IS MADE.
@@ -937,6 +958,13 @@ export function PayrollSettingsPage() {
                   <label htmlFor="ruleset-session">Per session</label>
                   <Input id="ruleset-session" prefix="RM" inputMode="decimal" value={session} onChange={(e) => setSession(e.target.value)} placeholder="Blank: shift rate" />
                 </div>
+              </div>
+              <div className="hr-form__row">
+                <div>
+                  <label htmlFor="ruleset-festive">Per festive holiday shift</label>
+                  <Input id="ruleset-festive" prefix="RM" inputMode="decimal" value={festive} onChange={(e) => setFestive(e.target.value)} placeholder="Blank: public holiday shift" />
+                </div>
+                <div />
               </div>
               <div className="hr-form__help">
                 A session is a rest day or public holiday worked for at most half the normal hours. For an employee on RM4,000 the Act’s figures are{' '}

@@ -1234,12 +1234,21 @@ model LeaveRequestAttachment {
 // holiday/after-hours surcharge engine (D-030) once that's scoped — the
 // calendar itself isn't blocked on that decision, only the surcharge rule
 // is.
+/// What kind of public holiday a date is. Every holiday is ORDINARY until the
+/// clinic marks it FESTIVE (Hari Raya, say); a rule set may then price the
+/// festive day above an ordinary one, never below.
+enum PublicHolidayKind {
+  ORDINARY
+  FESTIVE
+}
+
 model PublicHoliday {
-  id        String   @id @default(uuid())
-  tenantId  String   @map("tenant_id")
-  date      DateTime @db.Date
+  id        String            @id @default(uuid())
+  tenantId  String            @map("tenant_id")
+  date      DateTime          @db.Date
   name      String
-  createdAt DateTime @default(now()) @map("created_at")
+  kind      PublicHolidayKind @default(ORDINARY)
+  createdAt DateTime          @default(now()) @map("created_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
@@ -8312,6 +8321,8 @@ model PayrollPolicy {
   clinicOvertimeHourly     Decimal?     @map("clinic_overtime_hourly") @db.Decimal(12, 2)
   /// RM per public holiday worked, whatever the hours.
   clinicPublicHolidayShift Decimal?     @map("clinic_public_holiday_shift") @db.Decimal(12, 2)
+  /// RM per FESTIVE public holiday worked. Blank means the public holiday shift.
+  clinicFestiveHolidayShift Decimal?    @map("clinic_festive_holiday_shift") @db.Decimal(12, 2)
   /// RM per rest day worked beyond half the normal hours.
   clinicRestDayShift       Decimal?     @map("clinic_rest_day_shift") @db.Decimal(12, 2)
   /// RM per session: a rest day or public holiday worked for at most half the normal hours.
@@ -8336,6 +8347,8 @@ model PayrollPolicy {
   overtimeMultiplier        Decimal?    @map("overtime_multiplier") @db.Decimal(4, 2)
   restDayMultiplier         Decimal?    @map("rest_day_multiplier") @db.Decimal(4, 2)
   publicHolidayMultiplier   Decimal?    @map("public_holiday_multiplier") @db.Decimal(4, 2)
+  /// The hours beyond normal hours on a FESTIVE public holiday. Blank means the public holiday multiplier.
+  festiveHolidayMultiplier  Decimal?    @map("festive_holiday_multiplier") @db.Decimal(4, 2)
 
   /// A CLINIC THAT CHOSE TO PAY BELOW THE ACT, AND SAID SO.
   ///

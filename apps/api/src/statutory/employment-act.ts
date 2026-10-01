@@ -193,12 +193,20 @@ export interface OvertimeMultipliers {
   readonly normalDay: number;
   readonly restDayExcess: number;
   readonly publicHolidayExcess: number;
+  /**
+   * A FESTIVE public holiday — one the clinic marked so on its calendar. The
+   * Act knows one kind of public holiday, so the floor is the same 3×; a
+   * clinic that pays more for Hari Raya says so here. Absent means the public
+   * holiday figure, whatever that is.
+   */
+  readonly festiveHolidayExcess?: number;
 }
 
 export const ACT_OVERTIME_MULTIPLIERS: OvertimeMultipliers = {
   normalDay: OVERTIME_MULTIPLIERS.NORMAL_DAY,
   restDayExcess: OVERTIME_MULTIPLIERS.REST_DAY_EXCESS,
   publicHolidayExcess: OVERTIME_MULTIPLIERS.PUBLIC_HOLIDAY_EXCESS,
+  festiveHolidayExcess: OVERTIME_MULTIPLIERS.PUBLIC_HOLIDAY_EXCESS,
 };
 
 /**
@@ -235,6 +243,14 @@ export const OVERTIME_MULTIPLIER_FLOORS = [
     act: OVERTIME_MULTIPLIERS.PUBLIC_HOLIDAY_EXCESS,
     label: 'Public holiday',
     what: 'an hour beyond normal hours on a public holiday',
+    provision: 'Employment Act 1955, s.60D(3)(aa)',
+  },
+  {
+    field: 'festiveHolidayMultiplier',
+    key: 'festiveHolidayExcess',
+    act: OVERTIME_MULTIPLIERS.PUBLIC_HOLIDAY_EXCESS,
+    label: 'Festive holiday',
+    what: 'an hour beyond normal hours on a festive public holiday',
     provision: 'Employment Act 1955, s.60D(3)(aa)',
   },
 ] as const satisfies readonly {

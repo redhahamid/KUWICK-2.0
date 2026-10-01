@@ -725,14 +725,15 @@ export class PayrollService {
       const orpBaseProblem = checkOrdinaryRateBase(catalogue);
       if (orpBaseProblem) throw new BadRequestException(orpBaseProblem);
 
-      const publicHolidayDates = new Set(
-        (
-          await tx.publicHoliday.findMany({
-            where: { date: { gte: period, lt: periodEnd } },
-            select: { date: true },
-          })
-        ).map((row) => row.date.toISOString().slice(0, 10)),
-      );
+      // Every holiday in the month, and which of them the clinic marked
+      // festive: a festive day is a public holiday the rule set may price
+      // above an ordinary one, never below.
+      const holidays = await tx.publicHoliday.findMany({
+        where: { date: { gte: period, lt: periodEnd } },
+        select: { date: true, kind: true },
+      });
+      const publicHolidayDates = new Set(holidays.map((row) => row.date.toISOString().slice(0, 10)));
+      const festiveHolidayDates = new Set(holidays.filter((row) => row.kind === 'FESTIVE').map((row) => row.date.toISOString().slice(0, 10)));
 
       // The ordinary rate of pay, frozen onto the run. One divisor: unpaid
       // leave is priced on the month's actual days by s.18A, never on a
@@ -1546,7 +1547,7 @@ export class PayrollService {
             overtimeMinutes: row.overtimeMinutes,
             overtimeApproved: row.overtimeApproved,
           })),
-          (date) => classifyDay(date, { publicHolidayDates, restDayOfWeek: classification.restDayOfWeek }),
+          (date) => classifyDay(date, { publicHolidayDates, festiveHolidayDates, restDayOfWeek: classification.restDayOfWeek }),
           {
             basis: 'MONTHLY',
             scope,
@@ -2229,6 +2230,8 @@ export class PayrollService {
                       overtimeHourly: clinicRates.overtimeHourlyCents === null ? null : fromCents(clinicRates.overtimeHourlyCents),
                       publicHolidayShift:
                         clinicRates.publicHolidayShiftCents === null ? null : fromCents(clinicRates.publicHolidayShiftCents),
+                      festiveHolidayShift:
+                        clinicRates.festiveHolidayShiftCents == null ? null : fromCents(clinicRates.festiveHolidayShiftCents),
                       restDayShift: clinicRates.restDayShiftCents === null ? null : fromCents(clinicRates.restDayShiftCents),
                       session: clinicRates.sessionCents === null ? null : fromCents(clinicRates.sessionCents),
                     }
@@ -2247,7 +2250,9 @@ export class PayrollService {
                       ? 'normal day'
                       : row.dayType === 'REST_DAY'
                         ? 'rest day'
-                        : 'public holiday'
+                        : row.dayType === 'FESTIVE_HOLIDAY'
+                          ? 'festive holiday'
+                          : 'public holiday'
                   }`,
                   hours: Math.round(row.excessHours * 100) / 100,
                   ordinaryRateDays: row.ordinaryRateDays,

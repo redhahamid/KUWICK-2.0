@@ -1,22 +1,24 @@
 import { useState } from 'react';
-import { App, DatePicker, Form, Input, Popconfirm } from 'antd';
+import { App, DatePicker, Form, Input, Popconfirm, Radio } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { Link } from 'react-router-dom';
-import { Drawer, HrPage, IconButton, Panel } from './ui';
+import { Drawer, HrPage, IconButton, Panel, StatusChip } from './ui';
 import { Table } from './ui/Table';
 import { IconClose } from './ui/icons';
 import {
   useCreatePublicHoliday,
   useDeletePublicHoliday,
   usePublicHolidays,
+  useUpdatePublicHoliday,
 } from '../../hr/hooks/usePublicHolidays';
-import type { CreatePublicHolidayDto, PublicHoliday } from '../../hr/types';
+import type { CreatePublicHolidayDto, PublicHoliday, PublicHolidayKind } from '../../hr/types';
 import { ApiError } from '../../core/api-client';
 import { useCan } from '../../core/hooks/useCan';
 
 interface HolidayFormValues {
   date: Dayjs;
   name: string;
+  kind: PublicHolidayKind;
 }
 
 /**
@@ -33,6 +35,7 @@ export function PublicHolidaysPage() {
   const { message } = App.useApp();
   const { data: holidays, isLoading } = usePublicHolidays();
   const createHoliday = useCreatePublicHoliday();
+  const updateHoliday = useUpdatePublicHoliday();
   const deleteHoliday = useDeletePublicHoliday();
   // One calendar for every branch, so writing it is the owner's: the server refuses anybody else.
   const mayWrite = useCan('settings.manage');
@@ -40,7 +43,7 @@ export function PublicHolidaysPage() {
   const [form] = Form.useForm<HolidayFormValues>();
 
   const handleSubmit = async (values: HolidayFormValues) => {
-    const dto: CreatePublicHolidayDto = { date: values.date.format('YYYY-MM-DD'), name: values.name };
+    const dto: CreatePublicHolidayDto = { date: values.date.format('YYYY-MM-DD'), name: values.name, kind: values.kind ?? 'ORDINARY' };
     try {
       await createHoliday.mutateAsync(dto);
       message.success('Public holiday added');
@@ -54,6 +57,16 @@ export function PublicHolidaysPage() {
   const thisYear = dayjs().year();
   const count = (holidays ?? []).filter((row) => dayjs(row.date).year() === thisYear).length;
 
+  /** Festive or ordinary, after the fact: the payroll rule set may price a festive day apart. */
+  const setKind = async (row: PublicHoliday, kind: PublicHolidayKind) => {
+    try {
+      await updateHoliday.mutateAsync({ id: row.id, kind });
+      message.success(kind === 'FESTIVE' ? `${row.name} is a festive holiday.` : `${row.name} is an ordinary public holiday.`);
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : 'Failed to change the holiday');
+    }
+  };
+
   return (
     <HrPage
       crumb={
@@ -62,7 +75,7 @@ export function PublicHolidaysPage() {
         </>
       }
       title="Public holidays"
-      sub="The days the clinic is closed, which attendance and leave both read."
+      sub="The days the clinic is closed, which attendance, leave and payroll all read. A festive holiday is one the payroll rule set may price apart from an ordinary one."
       actions={
         mayWrite ? (
           <button type="button" className="hr-btn hr-btn--primary" onClick={() => setOpen(true)}>
@@ -98,6 +111,27 @@ export function PublicHolidaysPage() {
             },
             { title: 'Name', dataIndex: 'name', render: (value: string) => <span className="hr-strong">{value}</span> },
             {
+              title: 'Type',
+              dataIndex: 'kind',
+              width: 220,
+              render: (kind: PublicHolidayKind, row: PublicHoliday) => (
+                <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                  {kind === 'FESTIVE' ? <StatusChip tone="info">Festive</StatusChip> : <span className="hr-faint">Ordinary</span>}
+                  {mayWrite ? (
+                    <button
+                      type="button"
+                      className="hr-linkButton"
+                      disabled={updateHoliday.isPending}
+                      aria-label={kind === 'FESTIVE' ? `Mark ${row.name} ordinary` : `Mark ${row.name} festive`}
+                      onClick={() => setKind(row, kind === 'FESTIVE' ? 'ORDINARY' : 'FESTIVE')}
+                    >
+                      {kind === 'FESTIVE' ? 'Mark ordinary' : 'Mark festive'}
+                    </button>
+                  ) : null}
+                </span>
+              ),
+            },
+            {
               title: '',
               width: 60,
               render: (_: unknown, row: PublicHoliday) =>
@@ -130,12 +164,24 @@ export function PublicHolidaysPage() {
           </>
         }
       >
-        <Form form={form} layout="vertical" onFinish={handleSubmit}>
+        <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ kind: 'ORDINARY' }}>
           <Form.Item name="date" label="Date" rules={[{ required: true }]}>
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="name" label="Holiday name" rules={[{ required: true }]}>
             <Input placeholder="e.g. Merdeka Day" />
+          </Form.Item>
+          <Form.Item
+            name="kind"
+            label="Type"
+            extra="A festive holiday (Hari Raya, say) can carry its own figures on the payroll rule set, above an ordinary public holiday’s. Left as ordinary, nothing changes."
+          >
+            <Radio.Group
+              options={[
+                { value: 'ORDINARY', label: 'Ordinary public holiday' },
+                { value: 'FESTIVE', label: 'Festive' },
+              ]}
+            />
           </Form.Item>
         </Form>
       </Drawer>

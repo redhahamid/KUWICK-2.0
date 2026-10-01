@@ -275,6 +275,24 @@ describe('the clinic’s own overtime multipliers (e2e)', () => {
     expect((await overtimeInput(clerkId))?.amount).toBe('45.00');
   });
 
+  it('prices a festive holiday at the clinic’s own figure, and an ordinary one at the public holiday’s', async () => {
+    // Two holidays in August: one the clinic marked festive, one ordinary.
+    await http().post('/public-holidays').set('Authorization', bearer).send({ date: '2026-08-13', name: 'Festive day (demo)', kind: 'FESTIVE' }).expect(201);
+    await http().post('/public-holidays').set('Authorization', bearer).send({ date: '2026-08-31', name: 'Hari Kebangsaan' }).expect(201);
+    await ruleSet({ name: 'Festive at four', isDefault: true, overtimeHoursPerDay: 8, festiveHolidayMultiplier: 4 }).expect(201);
+    await worked(clerkId, '2026-08-13', 600, 120);
+    await worked(clerkId, '2026-08-31', 600, 120);
+    await calculate();
+
+    const rows = (
+      await http().get(`/workforce/payroll/inputs?period=2026-08&staffId=${clerkId}`).set('Authorization', bearer).expect(200)
+    ).body as { label: string | null; amount: string }[];
+    // The day is the Act's two days' wages (RM240) either way; the hours beyond
+    // normal hours are 2 × RM15 × 4 on the festive day and × 3 on the ordinary one.
+    expect(rows.find((row) => row.label === 'Festive holiday pay')?.amount).toBe('360.00');
+    expect(rows.find((row) => row.label === 'Public holiday pay')?.amount).toBe('330.00');
+  });
+
   it('says on the rule set list whose multipliers are in force', async () => {
     await ruleSet({ name: 'Two times', isDefault: true, overtimeHoursPerDay: 8, overtimeMultiplier: 2 }).expect(201);
     await ruleSet({ name: 'Doctors', workforceCategory: 'DOCTOR', overtimeHoursPerDay: 8 }).expect(201);
@@ -288,6 +306,8 @@ describe('the clinic’s own overtime multipliers (e2e)', () => {
     // what it did not change.
     expect(raised.multipliers.restDay).toEqual({ used: 2, act: 2, set: false });
     expect(raised.multipliers.publicHoliday).toEqual({ used: 3, act: 3, set: false });
+    // A festive day follows the public holiday figure until the clinic sets its own.
+    expect(raised.multipliers.festiveHoliday).toEqual({ used: 3, act: 3, set: false });
 
     const untouched = rows.find((row) => row.name === 'Doctors')!;
     expect(untouched.multipliers.overtime).toEqual({ used: 1.5, act: 1.5, set: false });

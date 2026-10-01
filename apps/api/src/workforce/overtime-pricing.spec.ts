@@ -52,6 +52,52 @@ describe('which kind of day it was', () => {
     const context = { publicHolidayDates: new Set(['2026-08-16']), restDayOfWeek: 0 };
     expect(classifyDay(SUNDAY, context)).toBe('PUBLIC_HOLIDAY');
   });
+
+  it('knows a festive holiday from an ordinary one, and only from the calendar', () => {
+    // Hari Raya is whatever the clinic marked festive, never a guess from the name.
+    const context = { publicHolidayDates: new Set(['2026-08-12', '2026-08-16']), festiveHolidayDates: new Set(['2026-08-12']), restDayOfWeek: 0 };
+    expect(classifyDay(WEDNESDAY, context)).toBe('FESTIVE_HOLIDAY');
+    expect(classifyDay(SUNDAY, context)).toBe('PUBLIC_HOLIDAY');
+  });
+});
+
+/*
+ * A FESTIVE HOLIDAY IS A PUBLIC HOLIDAY THE CLINIC MARKED. The Act knows one
+ * kind, so the day is the same two days' wages and the floor on the hours is
+ * the same 3×; what the marker buys is a figure of the clinic's own for it,
+ * above the ordinary public holiday's, never below.
+ */
+describe('a festive public holiday', () => {
+  const worked = day({ workedMinutes: 600, overtimeMinutes: 120, overtimeApproved: true });
+
+  it('is priced as a public holiday by the Act, with the festive multiplier on the hours', () => {
+    const priced = priceDay(worked, 'FESTIVE_HOLIDAY', { ...ctx, multipliers: { normalDay: 1.5, restDayExcess: 2, publicHolidayExcess: 3, festiveHolidayExcess: 4 } });
+    expect(priced.ordinaryRateDays).toBe(2);
+    expect(priced.dayPayCents).toBe(24000);
+    expect(priced.excessPayCents).toBe(12000); // 2h × RM15 × 4
+    expect(priced.totalCents).toBe(36000);
+    expect(describePricedDay(priced)).toMatch(/worked a festive holiday/);
+  });
+
+  it('falls back to the public holiday multiplier when no festive one is set', () => {
+    const priced = priceDay(worked, 'FESTIVE_HOLIDAY', { ...ctx, multipliers: { normalDay: 1.5, restDayExcess: 2, publicHolidayExcess: 3.5 } });
+    expect(priced.excessPayCents).toBe(10500); // 2h × RM15 × 3.5
+  });
+
+  it('is paid at the festive shift in clinic-rate mode, or the public holiday shift without one', () => {
+    const rates = { ruleSet: 'Doctors', overtimeHourlyCents: null, publicHolidayShiftCents: 50000, festiveHolidayShiftCents: 80000, restDayShiftCents: 30000, sessionCents: null };
+    const festive = priceDay(day({ workedMinutes: 480 }), 'FESTIVE_HOLIDAY', { ...ctx, clinicRates: rates });
+    expect(festive.totalCents).toBe(80000);
+    expect(festive.provision).toMatch(/RM800\.00 per festive holiday shift/);
+    const plain = priceDay(day({ workedMinutes: 480 }), 'FESTIVE_HOLIDAY', { ...ctx, clinicRates: { ...rates, festiveHolidayShiftCents: null } });
+    expect(plain.totalCents).toBe(50000);
+  });
+
+  it('counts as a public holiday worked, on its own payslip line', () => {
+    const month = priceOvertime([worked], () => 'FESTIVE_HOLIDAY', ctx);
+    expect(month.publicHolidaysWorked).toBe(1);
+    expect(dayTypeLabel('FESTIVE_HOLIDAY')).toBe('Festive holiday pay');
+  });
 });
 
 describe('a normal working day', () => {

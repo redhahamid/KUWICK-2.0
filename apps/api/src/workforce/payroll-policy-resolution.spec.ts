@@ -65,6 +65,7 @@ describe('the clinic rates of a rule set', () => {
       ruleSet: 'Doctors',
       overtimeHourlyCents: null,
       publicHolidayShiftCents: 50000,
+      festiveHolidayShiftCents: null,
       restDayShiftCents: null,
       sessionCents: null,
     });

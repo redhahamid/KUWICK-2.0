@@ -31,12 +31,16 @@ export interface ResolvablePolicy {
   readonly overtimeMode: 'STATUTORY' | 'CLINIC_RATE';
   readonly clinicOvertimeHourly: MoneyLike | null;
   readonly clinicPublicHolidayShift: MoneyLike | null;
+  /** Absent as well as null means the public holiday shift. */
+  readonly clinicFestiveHolidayShift?: MoneyLike | null;
   readonly clinicRestDayShift: MoneyLike | null;
   readonly clinicSessionRate: MoneyLike | null;
   /** Absent as well as null means the Act's — a caller that predates these need not restate them. */
   readonly overtimeMultiplier?: MoneyLike | null;
   readonly restDayMultiplier?: MoneyLike | null;
   readonly publicHolidayMultiplier?: MoneyLike | null;
+  /** The hours on a festive public holiday. Absent as well as null means the public holiday multiplier. */
+  readonly festiveHolidayMultiplier?: MoneyLike | null;
   /** How the rest of the year is estimated for monthly tax. Absent means Y1. */
   readonly pcbProjectionBasis?: 'CURRENT_MONTH' | 'BASIC_ONLY' | 'CONTRACTUAL_MONTHLY' | null;
 }
@@ -90,10 +94,13 @@ export function multipliersOf(policy: ResolvablePolicy | null): OvertimeMultipli
     return Number.isFinite(chosen) && chosen > 0 ? chosen : act;
   };
   if (!policy) return ACT_OVERTIME_MULTIPLIERS;
+  const publicHolidayExcess = pick(policy.publicHolidayMultiplier, ACT_OVERTIME_MULTIPLIERS.publicHolidayExcess);
   return {
     normalDay: pick(policy.overtimeMultiplier, ACT_OVERTIME_MULTIPLIERS.normalDay),
     restDayExcess: pick(policy.restDayMultiplier, ACT_OVERTIME_MULTIPLIERS.restDayExcess),
-    publicHolidayExcess: pick(policy.publicHolidayMultiplier, ACT_OVERTIME_MULTIPLIERS.publicHolidayExcess),
+    publicHolidayExcess,
+    // A festive day left blank is priced as the public holiday the clinic set, not as the Act's.
+    festiveHolidayExcess: pick(policy.festiveHolidayMultiplier, publicHolidayExcess),
   };
 }
 
@@ -104,6 +111,7 @@ export function clinicRatesOf(policy: ResolvablePolicy | null): ClinicRates | nu
     ruleSet: policy.name,
     overtimeHourlyCents: cents(policy.clinicOvertimeHourly),
     publicHolidayShiftCents: cents(policy.clinicPublicHolidayShift),
+    festiveHolidayShiftCents: cents(policy.clinicFestiveHolidayShift ?? null),
     restDayShiftCents: cents(policy.clinicRestDayShift),
     sessionCents: cents(policy.clinicSessionRate),
   };

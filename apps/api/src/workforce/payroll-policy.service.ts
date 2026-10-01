@@ -182,6 +182,12 @@ export class PayrollPolicyService {
                 act: ACT_OVERTIME_MULTIPLIERS.publicHolidayExcess,
                 set: row.publicHolidayMultiplier !== null,
               },
+              // Blank follows the public holiday figure, so "used" is that figure until the clinic sets its own.
+              festiveHoliday: {
+                used: used.festiveHolidayExcess ?? used.publicHolidayExcess,
+                act: ACT_OVERTIME_MULTIPLIERS.publicHolidayExcess,
+                set: row.festiveHolidayMultiplier !== null,
+              },
             };
           })(),
           /*
@@ -230,6 +236,7 @@ export class PayrollPolicyService {
             ? {
                 overtimeHourly: rates.overtimeHourlyCents === null ? null : formatCents(rates.overtimeHourlyCents),
                 publicHolidayShift: rates.publicHolidayShiftCents === null ? null : formatCents(rates.publicHolidayShiftCents),
+                festiveHolidayShift: rates.festiveHolidayShiftCents == null ? null : formatCents(rates.festiveHolidayShiftCents),
                 restDayShift: rates.restDayShiftCents === null ? null : formatCents(rates.restDayShiftCents),
                 session: rates.sessionCents === null ? null : formatCents(rates.sessionCents),
               }
@@ -417,12 +424,13 @@ export class PayrollPolicyService {
       const rates = {
         clinicOvertimeHourly: clinic ? (dto.clinicOvertimeHourly ?? null) : null,
         clinicPublicHolidayShift: clinic ? (dto.clinicPublicHolidayShift ?? null) : null,
+        clinicFestiveHolidayShift: clinic ? (dto.clinicFestiveHolidayShift ?? null) : null,
         clinicRestDayShift: clinic ? (dto.clinicRestDayShift ?? null) : null,
         clinicSessionRate: clinic ? (dto.clinicSessionRate ?? null) : null,
       };
       if (clinic && Object.values(rates).every((value) => value === null)) {
         throw new BadRequestException(
-          'A clinic-rate rule set needs at least one amount: per overtime hour, per public holiday shift, per rest day shift or per session.',
+          'A clinic-rate rule set needs at least one amount: per overtime hour, per public holiday shift, per festive holiday shift, per rest day shift or per session.',
         );
       }
       for (const [key, value] of Object.entries(rates)) {
@@ -495,6 +503,7 @@ export class PayrollPolicyService {
             ruleSet: dto.name,
             overtimeHourlyCents: rates.clinicOvertimeHourly === null ? null : toCents(rates.clinicOvertimeHourly),
             publicHolidayShiftCents: rates.clinicPublicHolidayShift === null ? null : toCents(rates.clinicPublicHolidayShift),
+            festiveHolidayShiftCents: rates.clinicFestiveHolidayShift === null ? null : toCents(rates.clinicFestiveHolidayShift),
             restDayShiftCents: rates.clinicRestDayShift === null ? null : toCents(rates.clinicRestDayShift),
             sessionCents: rates.clinicSessionRate === null ? null : toCents(rates.clinicSessionRate),
           },

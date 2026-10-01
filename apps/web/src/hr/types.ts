@@ -93,15 +93,25 @@ export interface DecideLeaveRequestDto {
   rejectReason?: string;
 }
 
+export type PublicHolidayKind = 'ORDINARY' | 'FESTIVE';
+
 export interface PublicHoliday {
   id: string;
   date: string;
   name: string;
+  /** ORDINARY unless the clinic marked it festive; a rule set may price a festive day apart. */
+  kind: PublicHolidayKind;
 }
 
 export interface CreatePublicHolidayDto {
   date: string;
   name: string;
+  kind?: PublicHolidayKind;
+}
+
+export interface UpdatePublicHolidayDto {
+  name?: string;
+  kind?: PublicHolidayKind;
 }
 
 // Attendance is a read-only derived report over Visit.checkInAt/checkOutAt

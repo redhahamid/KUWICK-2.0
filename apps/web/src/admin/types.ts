@@ -3166,6 +3166,8 @@ export type OvertimeMode = 'STATUTORY' | 'CLINIC_RATE';
 export interface ClinicRateFields {
   overtimeHourly: string | null;
   publicHolidayShift: string | null;
+  /** RM per festive public holiday worked; null means the public holiday shift. */
+  festiveHolidayShift: string | null;
   restDayShift: string | null;
   session: string | null;
 }
@@ -3220,6 +3222,8 @@ export interface PayrollPolicyRow {
     overtime: MultiplierInForce;
     restDay: MultiplierInForce;
     publicHoliday: MultiplierInForce;
+    /** A festive public holiday; follows the public holiday figure until the clinic sets its own. */
+    festiveHoliday: MultiplierInForce;
   };
   /**
    * Covered employees the First Schedule reaches today — who a minimum

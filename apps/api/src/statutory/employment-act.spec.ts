@@ -239,8 +239,10 @@ describe('a multiplier the clinic chose', () => {
       ['overtimeMultiplier', 1.5],
       ['restDayMultiplier', 2],
       ['publicHolidayMultiplier', 3],
+      // A festive public holiday is a public holiday to the Act: the same floor.
+      ['festiveHolidayMultiplier', 3],
     ]);
-    expect(ACT_OVERTIME_MULTIPLIERS).toEqual({ normalDay: 1.5, restDayExcess: 2, publicHolidayExcess: 3 });
+    expect(ACT_OVERTIME_MULTIPLIERS).toEqual({ normalDay: 1.5, restDayExcess: 2, publicHolidayExcess: 3, festiveHolidayExcess: 3 });
   });
 });
 

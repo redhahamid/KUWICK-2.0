@@ -71,7 +71,17 @@ import {
  * set, so the clinic fixes the rate rather than underpaying by policy.
  */
 
-export type DayType = 'NORMAL_DAY' | 'REST_DAY' | 'PUBLIC_HOLIDAY';
+/**
+ * A FESTIVE_HOLIDAY is a public holiday the clinic marked festive on its
+ * calendar: the Act prices it as a public holiday, and the rule set may hold
+ * its own figures for it, never under the public holiday's.
+ */
+export type DayType = 'NORMAL_DAY' | 'REST_DAY' | 'PUBLIC_HOLIDAY' | 'FESTIVE_HOLIDAY';
+
+/** Both kinds of public holiday, for the arithmetic that does not care which. */
+export function isPublicHoliday(dayType: DayType): boolean {
+  return dayType === 'PUBLIC_HOLIDAY' || dayType === 'FESTIVE_HOLIDAY';
+}
 
 export interface WorkedDay {
   readonly attendanceId: string;
@@ -89,6 +99,8 @@ export interface ClinicRates {
   readonly overtimeHourlyCents: number | null;
   /** RM per public holiday worked, whatever the hours. */
   readonly publicHolidayShiftCents: number | null;
+  /** RM per FESTIVE public holiday worked. Absent or null means the public holiday shift. */
+  readonly festiveHolidayShiftCents?: number | null;
   /** RM per rest day worked beyond half the normal hours. */
   readonly restDayShiftCents: number | null;
   /** RM per session: a rest day or holiday worked for at most half the normal hours. */
@@ -197,8 +209,14 @@ const rm = (cents: number) => `RM${(cents / 100).toLocaleString('en-MY', { minim
  */
 export function classifyDay(
   date: Date,
-  context: { readonly publicHolidayDates: ReadonlySet<string>; readonly restDayOfWeek: number | null },
+  context: {
+    readonly publicHolidayDates: ReadonlySet<string>;
+    /** The holidays the clinic marked festive; a subset of the public holidays. Absent means none. */
+    readonly festiveHolidayDates?: ReadonlySet<string>;
+    readonly restDayOfWeek: number | null;
+  },
 ): DayType {
+  if (context.festiveHolidayDates?.has(iso(date))) return 'FESTIVE_HOLIDAY';
   if (context.publicHolidayDates.has(iso(date))) return 'PUBLIC_HOLIDAY';
   if (context.restDayOfWeek !== null && date.getUTCDay() === context.restDayOfWeek) return 'REST_DAY';
   return 'NORMAL_DAY';
@@ -290,10 +308,9 @@ function priceDayByTheAct(day: WorkedDay, dayType: DayType, context: PricingCont
     };
   }
 
-  const dayRate =
-    dayType === 'PUBLIC_HOLIDAY'
-      ? publicHolidayEntitlement()
-      : restDayEntitlement(context.basis, workedHours, context.normalHoursPerDay);
+  const dayRate = isPublicHoliday(dayType)
+    ? publicHolidayEntitlement()
+    : restDayEntitlement(context.basis, workedHours, context.normalHoursPerDay);
 
   // Hours beyond normal hours, from what was actually worked — a rest day has
   // no "normal hours" to exceed by roster, so the excess is measured against
@@ -305,7 +322,12 @@ function priceDayByTheAct(day: WorkedDay, dayType: DayType, context: PricingCont
   // itself under s.60(3)(b) or s.60D(3)(a)(i) — two days' wages for a public
   // holiday worked, however few hours — and the clinic does not set it. The
   // multiplier below applies only to the hours BEYOND normal hours.
-  const multiplier = dayType === 'PUBLIC_HOLIDAY' ? chosen.publicHolidayExcess : chosen.restDayExcess;
+  const multiplier =
+    dayType === 'FESTIVE_HOLIDAY'
+      ? (chosen.festiveHolidayExcess ?? chosen.publicHolidayExcess)
+      : dayType === 'PUBLIC_HOLIDAY'
+        ? chosen.publicHolidayExcess
+        : chosen.restDayExcess;
   const dayPayCents = Math.round(dayRate.ordinaryRateDays * context.dailyOrpCents);
   const excessPayCents = Math.round(excessHours * context.hourlyOrpCents * multiplier);
 
@@ -384,7 +406,12 @@ function priceDayAtClinicRate(day: WorkedDay, dayType: DayType, context: Pricing
   }
 
   const isSession = workedHours <= context.normalHoursPerDay / 2;
-  const shiftCents = dayType === 'PUBLIC_HOLIDAY' ? rates.publicHolidayShiftCents : rates.restDayShiftCents;
+  const shiftCents =
+    dayType === 'FESTIVE_HOLIDAY'
+      ? (rates.festiveHolidayShiftCents ?? rates.publicHolidayShiftCents)
+      : dayType === 'PUBLIC_HOLIDAY'
+        ? rates.publicHolidayShiftCents
+        : rates.restDayShiftCents;
   const paidAsSession = isSession && rates.sessionCents !== null;
   const dayPayCents = paidAsSession ? rates.sessionCents : shiftCents;
   if (dayPayCents === null) return null;
@@ -392,7 +419,7 @@ function priceDayAtClinicRate(day: WorkedDay, dayType: DayType, context: Pricing
   const excessWorked = Math.max(0, workedHours - context.normalHoursPerDay);
   const excessHours = day.overtimeApproved && rates.overtimeHourlyCents !== null ? excessWorked : 0;
   const excessPayCents = rates.overtimeHourlyCents === null ? 0 : Math.round(excessHours * rates.overtimeHourlyCents);
-  const what = dayType === 'PUBLIC_HOLIDAY' ? 'public holiday' : 'rest day';
+  const what = dayType === 'FESTIVE_HOLIDAY' ? 'festive holiday' : dayType === 'PUBLIC_HOLIDAY' ? 'public holiday' : 'rest day';
   return {
     ...shared,
     ordinaryRateDays: 0,
@@ -491,15 +518,29 @@ export function priceOvertime(
       .filter((day) => day.dayType === 'NORMAL_DAY')
       .reduce((sum, day) => sum + day.excessHours, 0),
     restDaysWorked: priced.filter((day) => day.dayType === 'REST_DAY' && day.totalCents > 0).length,
-    publicHolidaysWorked: priced.filter((day) => day.dayType === 'PUBLIC_HOLIDAY' && day.totalCents > 0).length,
+    publicHolidaysWorked: priced.filter((day) => isPublicHoliday(day.dayType) && day.totalCents > 0).length,
     unapprovedExcessHours: priced.reduce((sum, day) => sum + day.unapprovedExcessHours, 0),
     belowStatutoryFloor: priced.filter((day) => day.belowStatutoryFloor),
   };
 }
 
 /** The payslip line a priced day belongs on. */
-export function dayTypeLabel(dayType: DayType): 'Overtime' | 'Rest day pay' | 'Public holiday pay' {
-  return dayType === 'NORMAL_DAY' ? 'Overtime' : dayType === 'REST_DAY' ? 'Rest day pay' : 'Public holiday pay';
+export function dayTypeLabel(dayType: DayType): 'Overtime' | 'Rest day pay' | 'Public holiday pay' | 'Festive holiday pay' {
+  switch (dayType) {
+    case 'NORMAL_DAY':
+      return 'Overtime';
+    case 'REST_DAY':
+      return 'Rest day pay';
+    case 'FESTIVE_HOLIDAY':
+      return 'Festive holiday pay';
+    default:
+      return 'Public holiday pay';
+  }
+}
+
+/** "rest day", "public holiday" or "festive holiday", for a sentence about the day. */
+function dayWord(dayType: DayType): string {
+  return dayType === 'REST_DAY' ? 'rest day' : dayType === 'FESTIVE_HOLIDAY' ? 'festive holiday' : 'public holiday';
 }
 
 /** One line of plain English naming what was paid and under which section, or which rule set. */
@@ -521,12 +562,12 @@ export function describePricedDay(day: PricedDay): string {
     if (day.dayType === 'NORMAL_DAY') {
       return `${when}: ${day.excessHours.toFixed(2)}h overtime (${day.provision}).`;
     }
-    return `${when}: worked a ${day.dayType === 'REST_DAY' ? 'rest day' : 'public holiday'} (${day.provision}).`;
+    return `${when}: worked a ${dayWord(day.dayType)} (${day.provision}).`;
   }
   if (day.dayType === 'NORMAL_DAY') {
     return `${when}: ${day.excessHours.toFixed(2)}h overtime at ${day.excessMultiplier}× (${day.provision}).`;
   }
-  const label = day.dayType === 'REST_DAY' ? 'rest day' : 'public holiday';
+  const label = dayWord(day.dayType);
   const excess =
     day.excessHours > 0 ? ` plus ${day.excessHours.toFixed(2)}h beyond normal hours at ${day.excessMultiplier}×` : '';
   return `${when}: worked a ${label} — ${day.ordinaryRateDays} day${day.ordinaryRateDays === 1 ? '' : 's'} at the ordinary rate${excess} (${day.provision}).`;
@@ -544,7 +585,7 @@ export function describePricedDay(day: PricedDay): string {
  * can price.
  */
 export interface ClinicRateShortfall {
-  readonly rate: 'OVERTIME_HOURLY' | 'PUBLIC_HOLIDAY_SHIFT' | 'REST_DAY_SHIFT' | 'SESSION';
+  readonly rate: 'OVERTIME_HOURLY' | 'PUBLIC_HOLIDAY_SHIFT' | 'FESTIVE_HOLIDAY_SHIFT' | 'REST_DAY_SHIFT' | 'SESSION';
   readonly clinicCents: number;
   readonly actCents: number;
   readonly sentence: string;
@@ -565,6 +606,7 @@ export function clinicRateShortfalls(
   };
   hold('OVERTIME_HOURLY', rates.overtimeHourlyCents, Math.round(hourly * OVERTIME_MULTIPLIERS.NORMAL_DAY), 'An hour of overtime');
   hold('PUBLIC_HOLIDAY_SHIFT', rates.publicHolidayShiftCents, Math.round(2 * daily), 'A public holiday shift');
+  hold('FESTIVE_HOLIDAY_SHIFT', rates.festiveHolidayShiftCents ?? null, Math.round(2 * daily), 'A festive holiday shift');
   hold('REST_DAY_SHIFT', rates.restDayShiftCents, Math.round(daily), 'A rest day shift');
   hold('SESSION', rates.sessionCents, Math.round(2 * daily), 'A session on a public holiday');
   return out;
