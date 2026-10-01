@@ -109,6 +109,11 @@ hanya menyentuh bulan gaji dari tarikh itu: bulan yang sudah *Approved* atau
 menunjukkan **—** pada *HRD levy* dengan sebabnya (lihat 3.5). Syarikat tanpa
 kelas HRD disenaraikan *missing* di bawah **Could it file?**.
 
+**Satu cawangan dipilih** pada pemilih cawangan: syarikat yang **tiada
+pekerja aktif** di cawangan itu dilipat di bawah satu baris *Show other
+employers (no staff here) · N* — tekan untuk membukanya (barisnya dipudarkan).
+Di bawah *All branches* semua syarikat disenaraikan seperti biasa.
+
 ### 2.2 Payroll items
 
 **Apa gunanya.** Senarai perkara yang klinik boleh bayar atau potong — gaji
@@ -142,6 +147,17 @@ ia tidak mengubah layanan berkanun — hanya cara item itu duduk pada grid gaji:
 |---|---|---|
 | **Own column** | Item itu dapat lajur sendiri pada grid gaji, antara *Basic* dan *Other income*, dan ditaip terus dalam petak | Fi pengarah, locum, insentif — item yang hampir semua orang ada setiap bulan |
 | **Carry forward** | Bulan baharu bermula dengan jumlah bulan lepas bagi setiap pekerja, bertanda *Carried* sehingga diubah atau dikosongkan. Baris yang *earned in* bulan sebelumnya dibawa dengan bulan *earned in* dianjak satu (baris Januari *earned in* Disember menjadi baris Februari *earned in* Januari); bayaran lewat sekali sahaja (bulan *earned in* lain) tidak dibawa | Fi BOD, locum dan OT yang dibayar sebulan tertunggak |
+
+**Applies to** pada baris yang sama menetapkan **untuk siapa** item itu:
+*Everyone*, atau *Selected employees only* — senarai kotak semak nama (dengan
+carian) yang disimpan terus tanpa tarikh atau sebab. Hanya orang dalam senarai
+mendapat petak lajur item itu (orang lain nampak sengkang **—** dengan
+penjelasan bila tetikus di atasnya), hanya mereka ditawarkan item itu dalam
+laci *Other income*, pelayan menolak baris untuk orang lain dengan menamakan
+orangnya, dan *Carry forward* menyalin untuk mereka sahaja. Baris yang sudah
+ditaip untuk orang lain sebelum senarai ditetapkan tetap dibayar — dalam
+*Other income*, di mana laci juga mengiranya. Item terbitan (OT, tuntutan,
+PCB) tiada senarai: ia terpakai kepada sesiapa yang rekod katakan.
 
 Kedua-duanya hanya untuk item yang ditaip tangan — bukan gaji pokok, lebih
 masa, cuti tanpa gaji, tuntutan atau PCB, yang sudah ada lajur sendiri — dan
@@ -206,6 +222,12 @@ pernah dinamakan pada mana-mana baris slip gaji boleh dipadam: butang
 **Delete** muncul di sebelah **Edit** pada baris begitu sahaja, dengan sebab
 pilihan. Selain itu pelayan menolak dan menyatakan sebabnya — bulan yang
 pernah diharga oleh rule set itu mengekalkan namanya.
+
+**Festive holiday** ialah multiplier keempat: untuk jam melebihi jam biasa
+pada cuti umum yang ditanda *Festive* dalam §2.6. Kosong = ikut angka *Public
+holiday* (angka klinik jika ditetapkan, jika tidak 3× Akta). Lantai Akta sama
+3×, kerana Akta hanya kenal satu jenis cuti umum. Dalam mod kadar klinik, **Per
+festive holiday shift** kosong = ikut *Per public holiday shift*.
 
 ### Kalau klinik anda bayar LEBIH daripada Akta
 
@@ -446,8 +468,20 @@ hari ini dan perjalanan semalam tetap pada kadar lama. Itu disengajakan.
 **Apa gunanya.** Hari klinik tutup. Attendance dan Leave kedua-duanya baca
 senarai ini.
 
-Tekan **+ Add holiday**, isi **Date** dan **Holiday name** (contoh:
-`Merdeka Day`).
+Tekan **+ Add holiday**, isi **Date**, **Holiday name** (contoh:
+`Merdeka Day`) dan **Type**: *Ordinary public holiday* atau *Festive*
+(Hari Raya, misalnya). Jenis boleh ditukar kemudian dari baris senarai
+(**Mark festive** / **Mark ordinary**); setiap tukaran meninggalkan baris
+audit. Enjin gaji membaca **jenis** dari kalendar, bukan dari nama cuti —
+kadar tidak boleh bergantung pada ejaan.
+
+Apa yang jenis *Festive* beli: pada **rule set** (§2.3) ada **Festive
+holiday** multiplier untuk jam melebihi jam biasa, dan dalam mod kadar klinik
+**Per festive holiday shift**. Kedua-duanya kosong = ikut angka cuti umum,
+jadi tiada apa berubah sehingga anda menanda satu hari dan menetapkan angka.
+Hari itu sendiri kekal **dua hari gaji** mengikut Akta (s.60D(3)(a)(i)) dan
+tidak boleh ditetapkan. Payslip menunjukkan baris sendiri *Festive holiday
+pay*, dan baris harian run berbunyi *festive holiday*.
 
 **Kalau senarai kosong** anda akan nampak notis: *No holidays are recorded for
 [tahun]. Until they are, no day this year is treated as a closure — a public
@@ -554,6 +588,23 @@ statusnya yang berubah.
 | **No record** pada lajur Type | Orang ini ada akaun tapi tiada rekod pekerjaan | Klik baris itu — laci lengkapkan rekod akan terbuka |
 | Titik Bank kosong | Tiada akaun bank | Buka rekod, tab **Bank** |
 | **Records incomplete** tinggi | Tarikh lahir, nombor KWSP atau PERKESO hilang | Angka itu memberitahu yang mana paling kerap hilang |
+
+**Rekod pekerja, selepas Batch 3.** *Job* pada borang kini dilabel **Account
+role** (apa yang boleh dibuka dalam Kuwick, dan kumpulan gaji); **Job title**
+ialah senarai jawatan klinik sendiri — pilih dari senarai atau tekan *Add a
+job title* untuk menambah di situ juga. Senarai bermula dari jawatan yang
+sudah ditaip pada rekod sedia ada, dan diurus dari butang **Job titles** di
+halaman *Employees* (tukar nama mengikut ke semua rekod; *Retire* mengekalkan
+jawatan pada yang memegangnya). **Days a week** (5, 5½, 6) direkod dan
+dipaparkan di *Working days* bersama hari rehat — pembahagi 26 kekal milik
+rule set. **Rest day** boleh dijawab *Varies week to week*: bulan gaji
+berjalan, dan run menyebut (baris INFO) bahawa ia tidak dapat mengesan hari
+rehat yang dikerjakan — bayaran hari rehat ditaip tangan jika ada. **Passport
+number** diminta untuk bukan warganegara yang dokumennya IC (disimpan untuk
+pemfailan, tidak dipaparkan semula). Alamat dipecah: *Street address*,
+*Postcode*, *City or town*, *State*. IC Malaysia yang sah mengisi **Date of
+birth** dan **Gender** sendiri; kedua-duanya masih boleh ditaip ganti. Setiap
+placeholder yang kelihatan seperti data sebenar kini berawalan *e.g.*
 
 **Add employee** kini bertanya di peringkat *Pay & Statutory* dua perkara
 yang gaji enggan berjalan tanpanya: **Employed by** (syarikat yang menggaji

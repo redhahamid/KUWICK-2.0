@@ -2793,3 +2793,8 @@ textarea.hr-f {
   border-radius: 10px;
   transition: outline-color 1.2s ease;
 }
+
+/* A row that is on file but not for the branch picked: present, and plainly secondary. */
+.hr-table__row--muted td {
+  opacity: 0.55;
+}

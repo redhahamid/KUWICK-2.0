@@ -58,6 +58,15 @@ export function LegalEmployersPage() {
   const mayRecordHrd = useCan('hr.employee.manage');
 
   const [open, setOpen] = useState(false);
+  /*
+   * ONE BRANCH PICKED: the companies with nobody active there fold away
+   * under one line, so the two that matter are not lost among six that do
+   * not. Under All branches every company is a company that matters.
+   */
+  const [showOthers, setShowOthers] = useState(false);
+  const allRows = employers.data ?? [];
+  const here = clinicId ? allRows.filter((row) => row.employeeCount > 0) : allRows;
+  const elsewhere = clinicId ? allRows.filter((row) => row.employeeCount === 0) : [];
   const [editing, setEditing] = useState<LegalEmployerRow | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -165,9 +174,10 @@ export function LegalEmployersPage() {
         <Table<LegalEmployerRow>
           rowKey="id"
           loading={employers.isLoading}
-          rows={employers.data ?? []}
-          emptyText="No legal employer is recorded."
-          emptyHint="Nothing can be filed or paid without one."
+          rows={showOthers ? [...here, ...elsewhere] : here}
+          rowClassName={(row) => (clinicId && row.employeeCount === 0 ? 'hr-table__row--muted' : '')}
+          emptyText={clinicId && elsewhere.length > 0 ? `No company has active staff at ${branchName ?? 'this branch'}.` : 'No legal employer is recorded.'}
+          emptyHint={clinicId && elsewhere.length > 0 ? 'The companies on file are under Other employers below.' : 'Nothing can be filed or paid without one.'}
           columns={[
             {
               title: 'Employer',
@@ -260,6 +270,13 @@ export function LegalEmployersPage() {
               : []),
           ]}
         />
+        {clinicId && elsewhere.length > 0 ? (
+          <div className="hr-panelNote">
+            <button type="button" className="hr-linkButton" aria-expanded={showOthers} onClick={() => setShowOthers((current) => !current)}>
+              {showOthers ? 'Hide' : 'Show'} other employers (no staff here) · {elsewhere.length}
+            </button>
+          </div>
+        ) : null}
       </Panel>
 
       {/*
