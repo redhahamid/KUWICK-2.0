@@ -219,6 +219,11 @@ export function EmployeesPage() {
               Job titles
             </button>
           ) : null}
+          {mayManage && view === 'employees' ? (
+            <button type="button" className="hr-btn" onClick={() => navigate('/admin/hr/employees/bulk')}>
+              Add several
+            </button>
+          ) : null}
           {mayManage ? (
             <button type="button" className="hr-btn hr-btn--primary" onClick={() => navigate('/admin/hr/employees/new')}>
               <IconPlus />

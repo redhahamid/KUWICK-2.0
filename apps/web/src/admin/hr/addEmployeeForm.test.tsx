@@ -66,7 +66,14 @@ async function personal() {
 }
 
 beforeEach(() => {
-  post.mockReset().mockResolvedValue({ staffId: 'staff-new' });
+  // The one intake call answers for the whole hire: clean, written, and who they now are.
+  post.mockReset().mockResolvedValue({
+    dryRun: false,
+    rowCount: 1,
+    clean: true,
+    created: 1,
+    results: [{ index: 0, problems: [], readiness: { blocking: [], advisory: [] }, staffId: 'staff-new' }],
+  });
   patch.mockReset().mockResolvedValue({});
 });
 
@@ -143,8 +150,8 @@ describe('nationality', () => {
     await waitFor(() => expect(current()).toContain('Review'));
     fireEvent.click(screen.getByRole('button', { name: 'Add employee' }));
     await waitFor(() => expect(post).toHaveBeenCalled());
-    expect(post.mock.calls[0][0]).toBe('/workforce/employees');
-    expect(post.mock.calls[0][1]).toMatchObject({ fullName: 'Demo Person', nationality: 'Malaysian' });
+    expect(post.mock.calls[0][0]).toBe('/workforce/employees/intake');
+    expect(post.mock.calls[0][1]).toMatchObject({ rows: [{ fullName: 'Demo Person', nationality: 'Malaysian' }], commit: true });
   });
 });
 
@@ -170,12 +177,14 @@ describe('what payroll blocks on', () => {
     expect(screen.getByText(/No tax residence or MTD category/)).toBeVisible();
 
     fireEvent.click(screen.getByRole('button', { name: 'Add employee' }));
-    await waitFor(() => expect(patch).toHaveBeenCalled());
-    expect(patch.mock.calls[0][0]).toBe('/workforce/employees/staff-new/legal-employer');
-    expect(patch.mock.calls[0][1]).toMatchObject({ legalEmployerId: 'emp-1' });
-    await waitFor(() => expect(post.mock.calls.some((call) => call[0] === '/workforce/employees/staff-new/statutory-classification')).toBe(true));
-    const standing = post.mock.calls.find((call) => call[0] === '/workforce/employees/staff-new/statutory-classification')!;
-    expect(standing[1]).toMatchObject({ effectiveFrom: '2026-01-01', epfMembership: 'MALAYSIAN_CITIZEN', restDayOfWeek: 0, lindungParticipation: 'ENROLLED' });
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    // One row, one call: the company and the standing travel with the person, dated from the start date.
+    expect(post.mock.calls[0][0]).toBe('/workforce/employees/intake');
+    expect(post.mock.calls[0][1]).toMatchObject({
+      rows: [{ legalEmployerId: 'emp-1', standing: { effectiveFrom: '2026-01-01', epfMembership: 'MALAYSIAN_CITIZEN', restDayOfWeek: 0, lindungParticipation: 'ENROLLED' } }],
+      commit: true,
+    });
+    expect(patch).not.toHaveBeenCalled();
   });
 
   it('names the employing company and the rest day as missing before the record is made', async () => {
@@ -265,10 +274,18 @@ describe('the employee record set', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Add employee' }));
     await waitFor(() => expect(post).toHaveBeenCalled());
-    const created = post.mock.calls.find((call) => call[0] === '/workforce/employees')!;
-    expect(created[1]).toMatchObject({ address: '12, Jalan Bangi Avenue 3', postcode: '43650', city: 'Bandar Baru Bangi', state: 'Selangor', workDaysPerWeek: 5.5 });
-    await waitFor(() => expect(post.mock.calls.some((call) => call[0] === '/workforce/employees/staff-new/statutory-classification')).toBe(true));
-    const standing = post.mock.calls.find((call) => call[0] === '/workforce/employees/staff-new/statutory-classification')!;
-    expect(standing[1]).toMatchObject({ restDayOfWeek: null, restDayVaries: true });
+    const created = post.mock.calls.find((call) => call[0] === '/workforce/employees/intake')!;
+    expect(created[1]).toMatchObject({
+      rows: [
+        {
+          address: '12, Jalan Bangi Avenue 3',
+          postcode: '43650',
+          city: 'Bandar Baru Bangi',
+          state: 'Selangor',
+          workDaysPerWeek: 5.5,
+          standing: { restDayOfWeek: null, restDayVaries: true },
+        },
+      ],
+    });
   });
 });

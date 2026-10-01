@@ -3307,3 +3307,83 @@ export interface JobTitleRow {
   /** People whose record points at this title, leavers included. */
   employeeCount: number;
 }
+
+/**
+ * ONE PERSON AS THE INTAKE READS THEM: what the single form sends, and what
+ * each row of the grid sends. Every field is optional on the wire; the server
+ * answers per row and per field with what is wrong or missing.
+ */
+export interface EmployeeIntakeRowDto {
+  fullName?: string;
+  role?: string;
+  clinicId?: string;
+  legalEmployerId?: string;
+  employeeNo?: string;
+  jobTitleId?: string;
+  department?: string;
+  employmentType?: string;
+  startDate?: string;
+  workDaysPerWeek?: number;
+  identifierType?: string;
+  identifierValue?: string;
+  passportNumber?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  nationality?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  postcode?: string;
+  city?: string;
+  state?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  emergencyContactRelation?: string;
+  medicalRegistrationNo?: string;
+  loginEmail?: string;
+  loginPassword?: string;
+  bankName?: string;
+  bankAccountNo?: string;
+  epfNumber?: string;
+  socsoNumber?: string;
+  taxNumber?: string;
+  salary?: { amount?: string; basis?: string; effectiveFrom?: string };
+  standing?: {
+    effectiveFrom?: string;
+    epfMembership?: string;
+    lindungParticipation?: string;
+    taxResidence?: string;
+    pcbCategory?: string;
+    qualifyingChildren?: number;
+    restDayOfWeek?: number | null;
+    restDayVaries?: boolean;
+    overtimeContractPolicy?: string;
+  };
+}
+
+export interface EmployeeIntakeProblem {
+  /** The field as the record endpoints name it: `fullName`, `salary.amount`, `standing.restDayOfWeek`. */
+  field: string;
+  message: string;
+}
+
+export interface EmployeeIntakeRowResult {
+  index: number;
+  problems: EmployeeIntakeProblem[];
+  /** What payroll will still refuse the month on, and what it will only mention. */
+  readiness: { blocking: string[]; advisory: string[] };
+  /** On a committed row: the person. */
+  staffId?: string;
+  /** A committed row that stopped part way: the person exists; this write refused. */
+  failedAt?: 'employee' | 'employer' | 'salary' | 'standing';
+  error?: string;
+}
+
+export interface EmployeeIntakeResult {
+  /** True when nothing was written: a check, or a batch with a problem in it. */
+  dryRun: boolean;
+  rowCount: number;
+  clean: boolean;
+  created: number;
+  results: EmployeeIntakeRowResult[];
+}

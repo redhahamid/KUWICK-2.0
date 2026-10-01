@@ -17,6 +17,7 @@ import { useJobTitles, useLegalEmployers } from '../hooks/useAdmin';
 import { JobTitlePicker } from './JobTitlePicker';
 import { MALAYSIAN_STATES } from './malaysianStates';
 import { RELATIONSHIPS } from './ui/reasons';
+import type { EmployeeIntakeResult, EmployeeIntakeRowDto, EmployeeIntakeRowResult } from '../types';
 
 /**
  * ADD EMPLOYEE — four stages, on a page of its own.
@@ -41,17 +42,21 @@ import { RELATIONSHIPS } from './ui/reasons';
  * was held up on facts the form could have taken. It asks for all of them now,
  * and the readiness list on the last stage mirrors the run's own blockers.
  *
- * FOUR WRITES, NOT ONE, and deliberately so. The employee is created through
- * the employment endpoint; the employing company through its own assignment;
- * the salary through the dated salary endpoint; the statutory position
- * (membership, tax, rest day, LINDUNG, overtime policy) through the dated
- * classification endpoint. Those refuse to be written on the employment
+ * FOUR WRITES, NOT ONE, and deliberately so — made on the server. The form
+ * sends one intake row to `POST /workforce/employees/intake`, the same place
+ * the grid for several people sends its rows, and the server writes the
+ * employee through the employment path; the employing company through its
+ * own assignment; the salary through the dated salary path; the statutory
+ * position (membership, tax, rest day, LINDUNG, overtime policy) through the
+ * dated classification path. Those refuse to be written on the employment
  * record — because a salary or a Third Schedule Part with no date is a figure
  * the payroll run would resolve differently from the profile, silently. This
  * form therefore ASKS for the date rather than inventing one, and each write
- * keeps its own audit row. The EPF contribution basis is not asked: with no
- * basis recorded the statutory assessment governs, which is the lawful
- * default, and payroll does not block on it.
+ * keeps its own audit row. Every row is checked before anything is written,
+ * so a refusal names its box here and its cell on the grid, in the same
+ * words. The EPF contribution basis is not asked: with no basis recorded the
+ * statutory assessment governs, which is the lawful default, and payroll
+ * does not block on it.
  */
 
 const ROLES = [
@@ -82,6 +87,108 @@ const STAGES = [
   { key: 'pay', label: 'Pay & Statutory' },
   { key: 'review', label: 'Review' },
 ];
+
+/** The server names a field as its endpoints know it; the form names its box. */
+const FORM_FIELD_OF: Record<string, string> = {
+  'salary.amount': 'salaryAmount',
+  'salary.basis': 'salaryBasis',
+  'salary.effectiveFrom': 'salaryEffectiveFrom',
+  'standing.effectiveFrom': 'startDate',
+  'standing.epfMembership': 'epfMembership',
+  'standing.taxResidence': 'taxResidence',
+  'standing.pcbCategory': 'pcbCategory',
+  'standing.restDayOfWeek': 'restDayOfWeek',
+  'standing.restDayVaries': 'restDayOfWeek',
+  'standing.lindungParticipation': 'lindungParticipation',
+  'standing.overtimeContractPolicy': 'overtimeContractPolicy',
+};
+const formFieldOf = (field: string): string => FORM_FIELD_OF[field] ?? field;
+
+/** Which stage holds each box, so a refusal opens the stage it is about. */
+const STAGE_OF_FIELD: Record<string, number> = {
+  fullName: 0, role: 0, identifierType: 0, identifierValue: 0, passportNumber: 0, dateOfBirth: 0, gender: 0, phone: 0, email: 0,
+  address: 0, postcode: 0, city: 0, state: 0, emergencyContactName: 0, emergencyContactPhone: 0, emergencyContactRelation: 0,
+  clinicId: 1, employeeNo: 1, jobTitleId: 1, workDaysPerWeek: 1, department: 1, employmentType: 1, startDate: 1,
+  medicalRegistrationNo: 1, loginEmail: 1, loginPassword: 1,
+  salaryAmount: 2, salaryBasis: 2, salaryEffectiveFrom: 2, bankName: 2, bankAccountNo: 2, legalEmployerId: 2, restDayOfWeek: 2,
+  lindungParticipation: 2, epfMembership: 2, pcbCategory: 2, taxResidence: 2, nationality: 2, epfNumber: 2, socsoNumber: 2,
+  taxNumber: 2, overtimeContractPolicy: 2,
+};
+
+const STEP_WORDS: Record<NonNullable<EmployeeIntakeRowResult['failedAt']>, string> = {
+  employee: 'record',
+  employer: 'employing company',
+  salary: 'salary',
+  standing: 'statutory position',
+};
+
+/**
+ * THE FORM'S VALUES AS ONE INTAKE ROW — the shape the grid sends for each
+ * person, so both are checked the same way on the server.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function intakeRowOf(values: Record<string, any>, fallbackClinicId: string | undefined): EmployeeIntakeRowDto {
+  const hasRestDay = values.restDayOfWeek !== undefined && values.restDayOfWeek !== null;
+  const standing: NonNullable<EmployeeIntakeRowDto['standing']> = {
+    ...(values.epfMembership ? { epfMembership: values.epfMembership } : {}),
+    ...(values.pcbCategory ? { pcbCategory: values.pcbCategory } : {}),
+    ...(values.taxResidence ? { taxResidence: values.taxResidence } : {}),
+    ...(values.lindungParticipation ? { lindungParticipation: values.lindungParticipation } : {}),
+    ...(hasRestDay
+      ? values.restDayOfWeek === 'VARIES'
+        ? { restDayOfWeek: null, restDayVaries: true }
+        : { restDayOfWeek: values.restDayOfWeek, restDayVaries: false }
+      : {}),
+    ...(values.overtimeContractPolicy ? { overtimeContractPolicy: values.overtimeContractPolicy } : {}),
+  };
+  // The standing is dated from the day they START, not from the salary's
+  // date: a salary "From" later than the start date used to leave the first
+  // month with no standing at all.
+  const standingFrom = (values.startDate ?? values.salaryEffectiveFrom)?.format('YYYY-MM-DD');
+  const salaryFrom = (values.salaryEffectiveFrom ?? values.startDate)?.format('YYYY-MM-DD');
+  return {
+    fullName: values.fullName,
+    role: values.role,
+    clinicId: values.clinicId ?? fallbackClinicId,
+    legalEmployerId: values.legalEmployerId || undefined,
+    employeeNo: values.employeeNo || undefined,
+    jobTitleId: values.jobTitleId || undefined,
+    workDaysPerWeek: values.workDaysPerWeek ?? undefined,
+    department: values.department || undefined,
+    employmentType: values.employmentType || undefined,
+    startDate: values.startDate ? values.startDate.format('YYYY-MM-DD') : undefined,
+    identifierType: values.identifierValue ? (values.identifierType ?? 'NRIC') : undefined,
+    identifierValue: values.identifierValue || undefined,
+    // A passport on file as the identity document is the passport; a non-citizen with an IC on file may add theirs beside it.
+    passportNumber: values.identifierType === 'PASSPORT' ? values.identifierValue || undefined : values.passportNumber || undefined,
+    dateOfBirth: values.dateOfBirth ? values.dateOfBirth.format('YYYY-MM-DD') : undefined,
+    gender: values.gender || undefined,
+    // A Malaysian citizen is Malaysian; the form asks nobody to say so twice.
+    nationality: values.epfMembership === 'MALAYSIAN_CITIZEN' ? 'Malaysian' : values.nationality || undefined,
+    phone: values.phone || undefined,
+    email: values.email || undefined,
+    address: values.address || undefined,
+    postcode: values.postcode || undefined,
+    city: values.city || undefined,
+    state: values.state || undefined,
+    emergencyContactName: values.emergencyContactName || undefined,
+    emergencyContactPhone: values.emergencyContactPhone || undefined,
+    emergencyContactRelation: values.emergencyContactRelation || undefined,
+    medicalRegistrationNo: values.medicalRegistrationNo || undefined,
+    loginEmail: values.wantsLogin ? values.loginEmail : undefined,
+    loginPassword: values.wantsLogin ? values.loginPassword : undefined,
+    bankName: values.bankName || undefined,
+    bankAccountNo: values.bankAccountNo || undefined,
+    // THE REFERENCE NUMBERS, which are not classifications. An EPF number is
+    // an identifier on a form; whether somebody contributes, and under which
+    // Part, is a dated position and goes in the standing.
+    epfNumber: values.epfNumber || undefined,
+    socsoNumber: values.socsoNumber || undefined,
+    taxNumber: values.taxNumber || undefined,
+    salary: values.salaryAmount ? { amount: String(values.salaryAmount), basis: values.salaryBasis ?? 'MONTHLY', effectiveFrom: salaryFrom } : undefined,
+    standing: Object.keys(standing).length > 0 ? { ...standing, effectiveFrom: standingFrom } : undefined,
+  };
+}
 
 export function AddEmployeePage() {
   const { message } = App.useApp();
@@ -167,133 +274,35 @@ export function AddEmployeePage() {
     const values = await form.validateFields().catch(() => null);
     if (!values) return;
     setSaving(true);
-    const notes: string[] = [];
     try {
-      const created = await apiClient.post('/workforce/employees', {
-        fullName: values.fullName,
-        role: values.role,
-        clinicId: values.clinicId ?? clinicId,
-        employeeNo: values.employeeNo || undefined,
-        jobTitleId: values.jobTitleId || undefined,
-        position: jobTitles.data?.find((row) => row.id === values.jobTitleId)?.name,
-        workDaysPerWeek: values.workDaysPerWeek ?? undefined,
-        department: values.department || undefined,
-        employmentType: values.employmentType || undefined,
-        startDate: values.startDate ? values.startDate.format('YYYY-MM-DD') : undefined,
-        identifierType: values.identifierValue ? (values.identifierType ?? 'NRIC') : undefined,
-        identifierValue: values.identifierValue || undefined,
-        // A passport on file as the identity document is the passport; a non-citizen with an IC on file may add theirs beside it.
-        passportNumber: values.identifierType === 'PASSPORT' ? values.identifierValue || undefined : values.passportNumber || undefined,
-        dateOfBirth: values.dateOfBirth ? values.dateOfBirth.format('YYYY-MM-DD') : undefined,
-        gender: values.gender || undefined,
-        // A Malaysian citizen is Malaysian; the form asks nobody to say so twice.
-        nationality: values.epfMembership === 'MALAYSIAN_CITIZEN' ? 'Malaysian' : values.nationality || undefined,
-        phone: values.phone || undefined,
-        email: values.email || undefined,
-        address: values.address || undefined,
-        postcode: values.postcode || undefined,
-        city: values.city || undefined,
-        state: values.state || undefined,
-        emergencyContactName: values.emergencyContactName || undefined,
-        emergencyContactPhone: values.emergencyContactPhone || undefined,
-        emergencyContactRelation: values.emergencyContactRelation || undefined,
-        medicalRegistrationNo: values.medicalRegistrationNo || undefined,
-        loginEmail: values.wantsLogin ? values.loginEmail : undefined,
-        loginPassword: values.wantsLogin ? values.loginPassword : undefined,
-        bankName: values.bankName || undefined,
-        bankAccountNo: values.bankAccountNo || undefined,
-        // THE REFERENCE NUMBERS, which are not classifications. An EPF number
-        // is an identifier on a form; whether somebody contributes, and under
-        // which Part, is a dated position and goes below.
-        epfNumber: values.epfNumber || undefined,
-        socsoNumber: values.socsoNumber || undefined,
-        taxNumber: values.taxNumber || undefined,
+      const result = await apiClient.post<EmployeeIntakeResult>('/workforce/employees/intake', {
+        rows: [intakeRowOf(values, clinicId)],
+        commit: true,
       });
-
-      const staffId = (created as { staffId?: string; id?: string }).staffId ?? (created as { id?: string }).id;
-      const salaryFrom = (values.salaryEffectiveFrom ?? values.startDate)?.format('YYYY-MM-DD');
-      // The standing is dated from the day they START, not from the salary's
-      // date: a salary "From" later than the start date used to leave the
-      // first month with no standing at all.
-      const standingFrom = (values.startDate ?? values.salaryEffectiveFrom)?.format('YYYY-MM-DD');
-
-      // THE EMPLOYING COMPANY, first: it is the one refusal the run cannot pass.
-      if (staffId && values.legalEmployerId) {
-        await apiClient
-          .patch(`/workforce/employees/${staffId}/legal-employer`, {
-            legalEmployerId: values.legalEmployerId,
-            reason: 'Recorded when the employee was added',
-          })
-          .catch((error: unknown) => {
-            notes.push(`employing company not recorded (${error instanceof ApiError ? error.message : 'unknown error'})`);
-          });
+      const outcome = result.results[0];
+      if (!result.clean || !outcome) {
+        // Each refusal under its own box, on the stage that has the box.
+        const problems = outcome?.problems ?? [];
+        form.setFields(problems.map((problem) => ({ name: formFieldOf(problem.field), errors: [problem.message] })));
+        const first = problems[0];
+        const where = first ? STAGE_OF_FIELD[formFieldOf(first.field)] : undefined;
+        if (where !== undefined) setStage(where);
+        message.error(first ? first.message : 'Could not add this person.');
+        return;
       }
-
-      if (staffId && values.salaryAmount) {
-        await apiClient
-          .post(`/workforce/employees/${staffId}/salary`, {
-            amount: String(values.salaryAmount),
-            basis: values.salaryBasis ?? 'MONTHLY',
-            effectiveFrom: salaryFrom,
-            reason: 'Recorded when the employee was added',
-          })
-          .catch((error: unknown) => {
-            notes.push(`salary not recorded (${error instanceof ApiError ? error.message : 'unknown error'})`);
-          });
-      }
-
-      /*
-       * THE STATUTORY POSITION, dated from the day they start.
-       *
-       * This is the one date the form can honestly supply: on their first day
-       * they are a citizen or they are not, and that is when the position
-       * begins to matter for payroll. A later change — permanent residence
-       * granted, a LINDUNG opt-in signed — closes this row and opens another
-       * with its own date, on the employee's page. Written whenever ANY part
-       * of the standing was given, not only the EPF membership: a rest day or
-       * a LINDUNG answer on its own is still a fact payroll needs.
-       */
-      const hasRestDay = values.restDayOfWeek !== undefined && values.restDayOfWeek !== null;
-      const standing = {
-        ...(values.epfMembership ? { epfMembership: values.epfMembership } : {}),
-        ...(values.pcbCategory ? { pcbCategory: values.pcbCategory } : {}),
-        ...(values.taxResidence ? { taxResidence: values.taxResidence } : {}),
-        ...(values.lindungParticipation ? { lindungParticipation: values.lindungParticipation } : {}),
-        ...(hasRestDay
-          ? values.restDayOfWeek === 'VARIES'
-            ? { restDayOfWeek: null, restDayVaries: true }
-            : { restDayOfWeek: values.restDayOfWeek, restDayVaries: false }
-          : {}),
-        ...(values.overtimeContractPolicy ? { overtimeContractPolicy: values.overtimeContractPolicy } : {}),
-      };
-      if (staffId && Object.keys(standing).length > 0) {
-        if (standingFrom) {
-          await apiClient
-            .post(`/workforce/employees/${staffId}/statutory-classification`, {
-              effectiveFrom: standingFrom,
-              ...standing,
-              reason: 'Recorded when the employee was added',
-            })
-            .catch((error: unknown) => {
-              notes.push(
-                `statutory position not recorded (${error instanceof ApiError ? error.message : 'unknown error'})`,
-              );
-            });
-        } else {
-          notes.push('the statutory position was not recorded (no start date to date it from)');
-        }
-      }
-
       await queryClient.invalidateQueries({ queryKey: ['admin-hr'] });
       await queryClient.invalidateQueries({ queryKey: ['admin-employees'] });
-      if (notes.length > 0) {
-        message.warning(`${values.fullName} was added, but ${notes.join(' and ')}. Finish it on their page.`);
+      if (outcome.failedAt) {
+        // The person exists; their page names what is still missing.
+        message.warning(
+          `${values.fullName} was added, but the ${STEP_WORDS[outcome.failedAt]} was not recorded (${outcome.error ?? 'unknown error'}). Finish it on their page.`,
+        );
       } else {
         message.success(`${values.fullName} added.`);
       }
       // Straight to the person just created, which is where whatever is still
       // missing is named — rather than back to a directory to find them again.
-      navigate(staffId ? `/admin/hr/employees/${staffId}` : '/admin/hr/employees');
+      navigate(outcome.staffId ? `/admin/hr/employees/${outcome.staffId}` : '/admin/hr/employees');
     } catch (error) {
       message.error(error instanceof ApiError ? error.message : 'Could not add this person.');
     } finally {

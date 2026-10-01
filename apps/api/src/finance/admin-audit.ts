@@ -91,6 +91,7 @@ export type AuditAction =
   | 'publicHoliday.updated'
   | 'publicHoliday.deleted'
   | 'employee.created'
+  | 'employee.intake'
   /// A record removed outright: a wrong entry, a duplicate, a hire who never
   /// turned up. Refused for anybody an approved run ever paid.
   | 'employee.deleted'

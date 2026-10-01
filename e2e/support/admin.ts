@@ -65,6 +65,7 @@ export const ADMIN_ROUTES = [
   // they absorbed still resolves — those redirects are asserted in
   // hr-navigation.spec.ts rather than here, so this walk tests SCREENS.
   { path: "/admin/hr/employees", module: "HR", heading: "Employees" },
+  { path: "/admin/hr/employees/bulk", module: "HR", heading: "Add several employees" },
   {
     path: "/admin/hr/settings/payroll-items",
     module: "HR",

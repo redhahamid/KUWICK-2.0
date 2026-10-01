@@ -13,6 +13,8 @@ import { IncentiveService } from './incentive.service';
 import { PayrollService } from './payroll.service';
 import { UpsertEmployeeDto } from './dto/upsert-employee.dto';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
+import { EmployeeIntakeDto } from './dto/employee-intake.dto';
+import { EmployeeIntakeService } from './employee-intake.service';
 import { ClockDto } from './dto/clock.dto';
 import { SaveAttendancePolicyDto } from './dto/save-attendance-policy.dto';
 import { DecideCorrectionDto } from './dto/decide-correction.dto';
@@ -74,6 +76,7 @@ import { ClaimPolicyService } from './claim-policy.service';
 export class WorkforceController {
   constructor(
     private readonly employees: EmployeeService,
+    private readonly intake: EmployeeIntakeService,
     private readonly jobTitles: JobTitleService,
     private readonly attendance: AttendanceRecordService,
     private readonly attendancePolicies: AttendancePolicyService,
@@ -139,6 +142,18 @@ export class WorkforceController {
   @Patch('job-titles/:id')
   updateJobTitle(@Param('id') id: string, @Body() dto: UpdateJobTitleDto) {
     return this.jobTitles.update(id, dto);
+  }
+
+  /**
+   * ONE OR MANY PEOPLE, CHECKED TOGETHER AND WRITTEN TOGETHER. The single
+   * form posts one row; the grid posts up to two hundred. `commit: false`
+   * checks and writes nothing; `commit: true` writes only a clean batch.
+   * Declared before the `employees/:staffId` routes so "intake" is never
+   * read as somebody's id.
+   */
+  @Post('employees/intake')
+  intakeEmployees(@Body() dto: EmployeeIntakeDto) {
+    return this.intake.intake(dto);
   }
 
   @Patch('employees/:staffId/legal-employer')

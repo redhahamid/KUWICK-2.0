@@ -103,6 +103,7 @@ import { PayrollRunPage } from './admin/hr/PayrollRunPage';
 import { PayrollEmployeePage } from './admin/hr/PayrollEmployeePage';
 import { EmployeeWorkspacePage } from './admin/hr/EmployeeWorkspacePage';
 import { AddEmployeePage } from './admin/hr/AddEmployeePage';
+import { BulkEmployeesPage } from './admin/hr/BulkEmployeesPage';
 import { FinanceOverviewPage } from './admin/finance/FinanceOverviewPage';
 import { DayEndClosingPage } from './admin/finance/DayEndClosingPage';
 import { PaymentsPage } from './admin/finance/PaymentsPage';
@@ -311,6 +312,7 @@ export function App() {
                 is the word in the URL. `/people` was the odd one out. */}
             <Route path="/admin/hr/employees" element={<EmployeesPage />} />
             <Route path="/admin/hr/employees/new" element={<AddEmployeePage />} />
+            <Route path="/admin/hr/employees/bulk" element={<BulkEmployeesPage />} />
             <Route path="/admin/hr/people" element={<Navigate to="/admin/hr/employees" replace />} />
             <Route path="/admin/hr/people/new" element={<Navigate to="/admin/hr/employees/new" replace />} />
             {/* One employee, addressable. The record used to live only in a

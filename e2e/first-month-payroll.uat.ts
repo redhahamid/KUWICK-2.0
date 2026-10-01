@@ -93,7 +93,17 @@ test('a new branch hires from 1 January and pays January', async ({ page, reques
     await pickDate(page, '#dateOfBirth', '8 Mar 1994');
     await page.getByRole('button', { name: 'Continue' }).click();
 
-    await page.locator('#position').fill(person.position);
+    // The job title comes from the clinic's own list: picked when it is there, added on the spot when not.
+    await page.locator('#jobTitleId').click();
+    const title = page.locator('.ant-select-item-option', { hasText: person.position });
+    if ((await title.count()) > 0) {
+      await title.first().click();
+    } else {
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'Add a job title' }).click();
+      await page.getByLabel('New job title').fill(person.position);
+      await page.getByRole('button', { name: 'Add', exact: true }).click();
+    }
     await pickDate(page, '#startDate', JOINED);
     await choose(page, '#clinicId', BRANCH);
     await page.getByRole('button', { name: 'Continue' }).click();

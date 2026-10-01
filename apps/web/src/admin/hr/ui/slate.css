@@ -2798,3 +2798,72 @@ textarea.hr-f {
 .hr-table__row--muted td {
   opacity: 0.55;
 }
+
+/* ── Add several employees (the intake grid) ──────────────────────────────── */
+.hr-intake {
+  overflow-x: auto;
+}
+.hr-intake table {
+  width: 100%;
+  min-width: 2200px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.hr-intake th {
+  text-align: left;
+  font-size: 12px;
+  color: var(--hr-ink3);
+  font-weight: 600;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--hr-line);
+  background: #fafbfb;
+  white-space: nowrap;
+}
+.hr-intake td {
+  padding: 6px 6px;
+  border-bottom: 1px solid var(--hr-line);
+  vertical-align: top;
+}
+.hr-intake .ant-select,
+.hr-intake .ant-picker,
+.hr-intake .ant-input {
+  width: 100%;
+  min-width: 130px;
+}
+.hr-intake__n {
+  color: var(--hr-ink3);
+  font-variant-numeric: tabular-nums;
+  padding-top: 10px;
+}
+.hr-intake__payroll {
+  min-width: 240px;
+  font-size: 12px;
+  padding-top: 9px;
+}
+.hr-intake__ready {
+  color: var(--hr-green);
+  font-weight: 600;
+}
+.hr-intake__fix {
+  color: var(--hr-red);
+}
+.hr-intake__unchecked {
+  color: var(--hr-ink3);
+}
+.hr-intake__blocking {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--hr-ink2);
+}
+.hr-intake__foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 22px;
+  border-top: 1px solid var(--hr-line);
+  flex-wrap: wrap;
+}
+.hr-intake__hint {
+  font-size: 12px;
+  color: var(--hr-ink3);
+}

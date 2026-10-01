@@ -6,6 +6,94 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 4 — 1 Oktober 2026 — tambah beberapa pekerja sekali gus
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+master Batch 3 (`7a0a0d5`). Komit: komit yang menambah bahagian ini (hash dalam laporan akhir). **Migrasi: tiada** —
+tiada jadual atau lajur baharu `[D]`.
+
+### Apa yang berubah
+
+- **Satu pintu masuk untuk pekerja baharu.** `POST /workforce/employees/intake`
+  menerima 1–200 baris. `commit: false` menyemak sahaja; `commit: true`
+  menulis **hanya jika setiap baris bersih**. Setiap baris disemak dengan DTO
+  yang sama seperti empat endpoint rekod (`CreateEmployeeDto`,
+  `RecordSalaryDto`, `RecordStatutoryClassificationDto`) ditambah apa yang
+  endpoint tunggal tidak nampak: IC tidak sah, tarikh lahir bercanggah
+  dengan IC, IC/nombor pekerja/e-mel login berganda dalam batch atau sudah
+  ada pada rekod, syarikat diarkib, jawatan di-*retire*, cawangan di luar
+  skop akaun. Masalah dinamakan pada `index` baris dan `field` sel `[D]`.
+- **Penulisan melalui laluan sedia ada**, seorang demi seorang: rekod
+  (`employees.create`), syarikat (`assignEmployee`), gaji bertarikh
+  (`salaries.record`), kedudukan statutori bertarikh (`standings.record`) —
+  jadi penolakan dan baris audit setiap pintu kekal; satu baris audit
+  `employee.intake` untuk kumpulan itu `[D]`.
+- **Kesediaan gaji** (`readiness.blocking` / `advisory`) dikira pada
+  pelayan untuk setiap baris dalam susunan run gaji menolaknya — senarai
+  yang dahulu disimpan tangan pada peringkat *Review* borang `[D]`.
+- **Grid** `/admin/hr/employees/bulk` (butang **Add several** di
+  *Employees*): lajur nama, *Account role*, cawangan, syarikat, tarikh
+  mula, dokumen, nombor IC/pasport, tarikh lahir, jantina, gaji bulanan, EPF
+  membership, tax residence, kategori PCB, hari rehat, LINDUNG. IC mengisi
+  tarikh lahir dan jantina (masih boleh ditaip ganti). **Check rows** dan
+  **Add N employees**; masalah di bawah selnya; lajur *Payroll* menyebut
+  *Ready for payroll* atau senarai yang run masih akan halang `[D]`.
+- **Templat CSV** (tajuk lajur yang sama + satu baris contoh yang diabaikan
+  semasa dibaca) dan **Upload CSV** — cawangan dan syarikat dengan nama;
+  perkataan biasa diterima (*Sunday*/*Ahad*, *Category 1*/*1*, *RM 2,500*,
+  *IC*/*Passport*, *Nurse* → front desk / clinical staff); sel yang tidak
+  dapat dibaca ditanda, lajur asing disebut, bukan dibuang senyap `[D]`.
+- **Borang Add employee** menghantar satu baris ke endpoint yang sama
+  (bukan lagi empat panggilan dari pelayar); penolakan diletak di bawah
+  kotaknya pada peringkat yang ada kotak itu `[D]`.
+- Keizinan: `hr.employee.manage` untuk masuk; sel gaji ditolak tanpa
+  `hr.payroll.view`; login ditolak tanpa `users.manage`; cawangan mengikut
+  skop akaun — sama seperti endpoint tunggal `[D]`.
+- Ujian: `nric.spec.ts` (pembacaan IC pelayan = pelayar), `employee-intake
+  .e2e-spec.ts` (4 ujian: semak tanpa tulis, batch ditolak keseluruhan,
+  batch bersih ditulis melalui empat pintu + audit, skop pengurus dan kerani
+  HR), `employeeIntake.test.ts`, `bulkEmployees.test.tsx`, borang tunggal
+  dikemas kini; laluan `/admin/hr/employees/bulk` dalam jalan Playwright
+  *Admin shell* `[D]`.
+
+### Uji di staging (ikut urutan)
+
+1. **Employees → Add several → Template (CSV).** Buka dalam Excel; baris
+   contoh ada. Ganti dengan dua pekerja demo: cawangan dan syarikat ditulis
+   dengan nama, IC `900101-14-5566` dan `850505-10-5571`, gaji 2500 dan
+   2800, *Malaysian citizen*, *Resident*, *Category 1*, *Sunday*. Simpan
+   sebagai CSV.
+2. **Upload CSV** → dua baris muncul (baris contoh templat tidak); tarikh
+   lahir dan jantina terisi dari IC. **Check rows** → kedua-dua *Ready for
+   payroll*.
+3. Tukar IC baris kedua kepada IC baris pertama → **Check rows** → *The same
+   IC is on another row of this batch* di bawah sel itu; **Add 2 employees**
+   enggan menulis (*Nothing was written*).
+4. Betulkan IC → **Add 2 employees** → mesej *2 employees added*; di
+   *Employees* kedua-duanya ada; rekod menunjukkan syarikat, gaji dan
+   kedudukan statutori bertarikh dari tarikh mula.
+5. **Add employee** (borang tunggal) masih berfungsi; cuba IC yang sama
+   dengan pekerja sedia ada → ralat *An employee with this IC is already on
+   record* di bawah kotak IC pada peringkat *Personal*.
+
+### Keputusan terbuka / yang saya pilih bagi pihak anda
+
+- `[A]` Grid membawa **Account role** dan **Start date** walaupun bukan
+  dalam senarai "lajur yang gaji halang": API menolak rekod tanpa role, dan
+  gaji serta kedudukan statutori tidak boleh ditarikhkan tanpa tarikh mula.
+- `[A]` Baris yang **berhenti separuh jalan** semasa menulis (contoh: rekod
+  dibuat, gaji ditolak oleh pelayan atas sebab yang semakan tidak jangka)
+  dilaporkan (`failedAt`, `error`) dan tidak di-*rollback* — sama seperti
+  borang tunggal sebelum ini; orang itu wujud dan rekodnya menyebut apa yang
+  kurang. Pilihan yang lebih selamat berbanding memadam separuh rekod.
+- `[A]` Had **200 baris** satu batch; **Excel `.xlsx` tidak dibaca** — templat
+  ialah CSV (Excel membukanya); simpan semula sebagai *CSV UTF-8*.
+- `[A]` Alamat dan hubungan kecemasan tidak di grid (ikut arahan); senarai
+  kesediaan pada *Review* borang tunggal kekal dikira di pelayar dengan
+  perkataan yang sama seperti pelayan (pelayan menyemak semula semasa simpan).
+
+---
+
 ## Batch 3 — 1 Oktober 2026
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas

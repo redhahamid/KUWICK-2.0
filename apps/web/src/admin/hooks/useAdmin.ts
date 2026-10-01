@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, uploadFile } from '../../core/api-client';
-import type { JobTitleRow } from '../types';
+import type { EmployeeIntakeResult, EmployeeIntakeRowDto, JobTitleRow } from '../types';
 import type {
   CreditNoteRow,
   DayEndView,
@@ -1046,6 +1046,18 @@ export function useMarkDispatchOpened() {
 // ===========================================================================
 // MALAYSIA PAYROLL — STAGE 1 + STAGE 2
 // ===========================================================================
+
+/**
+ * THE INTAKE: one or many people, checked together and written together.
+ * `commit: false` checks and writes nothing; `commit: true` writes only when
+ * every row is clean. The single form and the grid both post here.
+ */
+export function useEmployeeIntake() {
+  return useAdminMutation(
+    (body: { rows: EmployeeIntakeRowDto[]; commit?: boolean }) => apiClient.post<EmployeeIntakeResult>('/workforce/employees/intake', body),
+    ['admin-hr', 'admin-employees'],
+  );
+}
 
 export function useLegalEmployers(clinicId?: string) {
   return useQuery({

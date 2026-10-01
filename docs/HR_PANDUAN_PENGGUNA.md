@@ -572,6 +572,7 @@ Dua tab: **Employees** dan **Medical benefits**.
 | Butang | Apa jadi |
 |---|---|
 | **Add employee** | Borang pekerja baharu |
+| **Add several** | Grid untuk beberapa pekerja sekali gus, dengan templat CSV |
 | **Export** | Muat turun senarai sebagai fail CSV |
 | **Show: Active / Resigned / All** | Tapis senarai |
 | Klik nama | Buka rekod penuh: **Profile · Employment & salary · Statutory · Bank** |
@@ -617,6 +618,33 @@ tarikh mula kerja. Senarai *Payroll readiness* pada peringkat *Review*
 menyenaraikan tepat perkara yang run gaji akan halang, dalam susunannya.
 Asas caruman EPF tidak ditanya: tanpa rekod, penilaian statutori terpakai
 dan gaji tidak dihalang.
+
+**Add several — beberapa pekerja sekali gus (Batch 4).** Butang **Add
+several** di *Employees* membuka grid: satu baris seorang, dan hanya lajur
+yang gaji enggan berjalan tanpanya — nama, *Account role*, cawangan,
+syarikat, tarikh mula, dokumen dan nombor IC/pasport, tarikh lahir dan
+jantina (kosong = diisi dari IC), gaji bulanan, EPF membership, tax
+residence, kategori PCB, hari rehat, LINDUNG. Alamat dan hubungan kecemasan
+tidak ada di grid: lengkapkan pada rekod selepas itu (gaji tidak dihalang
+kerananya). **Template (CSV)** memuat turun helaian dengan tajuk lajur yang
+sama dan satu baris contoh; **Upload CSV** membaca helaian itu — cawangan
+dan syarikat ditulis dengan nama (*Contoh Central*, bukan ID), dan sel yang
+tidak dapat dibaca ditanda di bawah selnya dengan sel dibiarkan kosong untuk
+dipilih. **Check rows** menghantar semua baris ke pelayan tanpa menulis apa-
+apa: setiap masalah dinamakan pada baris dan sel (IC bukan 12 digit, IC yang
+sudah ada pada rekod lain atau pada baris lain, tarikh lahir yang tidak
+sepadan dengan IC, nombor pekerja berganda, syarikat yang diarkib, cawangan
+yang bukan milik akaun anda), dan lajur **Payroll** menyenaraikan apa yang
+run gaji masih akan halang (*No salary in force…*) walaupun baris itu bersih.
+**Add N employees** menulis **hanya jika setiap baris bersih** — satu baris
+salah, tiada seorang pun ditambah. Setiap orang ditulis melalui laluan yang
+sama seperti borang tunggal (rekod, syarikat, gaji bertarikh, kedudukan
+statutori bertarikh), dengan baris audit masing-masing dan satu baris audit
+untuk kumpulan itu. Borang **Add employee** tunggal pun kini menghantar satu
+baris ke laluan yang sama, jadi penolakan di borang dan di grid memakai
+perkataan yang sama. Kerani HR boleh menambah orang tetapi tidak boleh
+merekod gaji (sel gaji ditolak dengan sebab); pengurus cawangan hanya boleh
+menambah ke cawangannya.
 
 ### 3.2 Attendance
 
