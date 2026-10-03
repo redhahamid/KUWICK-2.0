@@ -6,6 +6,69 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 10 — 3 Oktober 2026 — pelepasan pasangan PCB (S) dibetulkan sebagai edisi baharu
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 9 (`052355c`). Komit: komit yang menambah bahagian ini (hash dalam
+laporan). **Migrasi: tiada** — edisi terbina dalam ialah kod.
+
+### Apa yang berubah
+
+- `[D]` **S = RM4,000** (`DEDUCTION_SPOUSE_CENTS`) dalam
+  `apps/api/src/statutory/pcb-2026.ts`; angka lama RM9,000 kekal di bawah
+  nama sendiri (`DEDUCTION_SPOUSE_CENTS_AS_FIRST_CODED`,
+  `PCB_PARAMS_2026_AS_FIRST_CODED`) supaya bulan yang dihargakan dengannya
+  boleh dihasilkan semula.
+- `[D]` **Registry:** edisi `PCB_MTD_2026` (D1) tamat pada 1 Oktober 2026;
+  edisi terbina dalam baharu `PCB_MTD_2026_S_CORRECTED` berkuat kuasa
+  1 Oktober 2026 dengan hash kandungannya sendiri (termasuk S), status
+  *OFFICIAL_SOURCE_VERIFIED* (Jadual 1 dan D masih menghasilkan semula
+  Exhibit 5; S dari senarai parameter spesifikasi — Exhibit 5 ialah kategori
+  3 dan tidak pernah menguji S).
+- `[D]` **Penyelesai edisi** (`editions.ts` → `builtInPcbParamsFor(on)`)
+  mengikut jadual registry: hari terakhir bulan sebelum Oktober 2026 →
+  parameter kod pertama; dari Oktober 2026 → parameter yang dibetulkan. Run
+  gaji sudah memutuskan edisi pada hari terakhir bulan, jadi tiada perubahan
+  lain dalam enjin.
+- `[D]` **Bulan yang diluluskan tidak berubah:** snapshot beku, dan bulan
+  sebelum Oktober 2026 yang dikira semula masih menggunakan edisi D1 lama.
+- `[D]` **Ujian:** `pcb-2026.spec.ts` — contoh kategori 2 dipinkan terhadap
+  formula dengan parameter spesifikasi ditulis terang (bulan pertama,
+  RM5,000, KWSP 11%: K2 RM313.63, P RM43,000.07, cukai tahun RM1,080.00, MTD
+  RM90.00; kod pertama RM65.00); `editions.spec.ts` — 30 Sep 2026 → edisi
+  lama, 1 Okt 2026 → edisi baharu, hanya S yang berbeza; `registry.spec.ts`
+  — status setiap edisi PCB.
+- Skrin: *Settings → Statutory rates* dan konsol platform *Statutory Tables*
+  menunjukkan kedua-dua edisi PCB mengikut bulan — tiada kod web berubah.
+
+### Uji di staging (ikut urutan)
+
+1. *Settings → Statutory rates*, pilih **Sep 2026**, buka **View Table 1
+   and the parameters**: *Spouse relief (category 2)* **RM9,000.00**; garis
+   edisi PCB ialah D1 yang lama.
+2. Pilih **Oct 2026**, buka laci yang sama: **RM4,000.00**; garis edisi
+   *… spouse deduction S = RM4,000 …*, *in force from 1 October 2026*.
+3. Konsol platform → *Statutory Tables*: dua baris terbina dalam untuk PCB
+   (2026-01-01 dan 2026-10-01).
+4. Payslip September yang diluluskan: angka PCB tidak berubah.
+5. Jika ada pekerja **kategori 2** (berkahwin, pasangan tidak bekerja):
+   kira Oktober — **How this was worked out** menunjukkan *Reliefs
+   (individual, spouse, …)* RM13,000.00 dan PCB lebih tinggi daripada
+   September pada gaji yang sama (formula menampung kekurangan Jan–Sep
+   melalui X). Contoh pin: RM5,000, KWSP 11%, bulan pertama → RM90.00.
+
+### Keputusan terbuka / yang saya pilih bagi pihak anda
+
+- `[A]` **Tarikh berkuat kuasa 1 Oktober 2026** = "bulan seterusnya yang
+  belum diluluskan" (hari ini 3 Oktober). Bulan sebelum Oktober yang masih
+  belum diluluskan (jika ada) tetap menggunakan S lama — kalau anda mahu
+  pembetulan itu juga, tarikh dalam `registry.ts` (`OCT_2026`) ialah satu
+  pemalar.
+- `[A]` Status edisi baharu *OFFICIAL_SOURCE_VERIFIED* (bukan *TEST_VECTOR*)
+  kerana tiada contoh rasmi yang menguji S; memenuhi bar kelulusan.
+
+---
+
 ## Batch 9 — 1 Oktober 2026 — laporan hala tuju (dokumen sahaja)
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas

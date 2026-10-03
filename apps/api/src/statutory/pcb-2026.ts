@@ -43,7 +43,7 @@
  */
 
 /** The employee's residence status decides which method applies at all. */
-export type ResidenceStatus = 'RESIDENT' | 'NON_RESIDENT';
+export type ResidenceStatus = "RESIDENT" | "NON_RESIDENT";
 
 /**
  * The specification's own three categories, which set D, S and C.
@@ -61,8 +61,22 @@ export const NON_RESIDENT_RATE_PERCENT = 30;
 /** Deduction for the individual (D). Exhibit 5: RM9,000.00. */
 export const DEDUCTION_INDIVIDUAL_CENTS = 900_000;
 
-/** Deduction for a husband or wife (S), for category 2. Exhibit 5: RM9,000.00. */
-export const DEDUCTION_SPOUSE_CENTS = 900_000;
+/**
+ * Deduction for a husband or wife (S), category 2 only. The specification's
+ * parameter list: RM4,000.00. Exhibit 5 is a category 3 employee, so the
+ * worked example never exercises S — which is how the first coding copied the
+ * individual figure into it and still reproduced the example to the sen.
+ */
+export const DEDUCTION_SPOUSE_CENTS = 400_000;
+
+/**
+ * What this engine deducted for S from January to September 2026: the
+ * individual figure, by mistake. Kept under its own name so a month priced on
+ * it can be reproduced and the edition that priced it keeps its hash.
+ * `PCB_PARAMS_2026_AS_FIRST_CODED` carries it; the registry decides which
+ * months it governs.
+ */
+export const DEDUCTION_SPOUSE_CENTS_AS_FIRST_CODED = 900_000;
 
 /** Deduction per qualifying child (Q). Exhibit 5 writes the term as 2000C. */
 export const DEDUCTION_PER_CHILD_CENTS = 200_000;
@@ -101,15 +115,78 @@ export interface PcbBand {
 }
 
 export const PCB_TABLE_1: readonly PcbBand[] = [
-  { fromCents: 500_100, toCents: 2_000_000, mCents: 500_000, ratePercent: 1, bCategory13Cents: -40_000, bCategory2Cents: -80_000 },
-  { fromCents: 2_000_100, toCents: 3_500_000, mCents: 2_000_000, ratePercent: 3, bCategory13Cents: -25_000, bCategory2Cents: -65_000 },
-  { fromCents: 3_500_100, toCents: 5_000_000, mCents: 3_500_000, ratePercent: 6, bCategory13Cents: 60_000, bCategory2Cents: 60_000 },
-  { fromCents: 5_000_100, toCents: 7_000_000, mCents: 5_000_000, ratePercent: 11, bCategory13Cents: 150_000, bCategory2Cents: 150_000 },
-  { fromCents: 7_000_100, toCents: 10_000_000, mCents: 7_000_000, ratePercent: 19, bCategory13Cents: 370_000, bCategory2Cents: 370_000 },
-  { fromCents: 10_000_100, toCents: 40_000_000, mCents: 10_000_000, ratePercent: 25, bCategory13Cents: 940_000, bCategory2Cents: 940_000 },
-  { fromCents: 40_000_100, toCents: 60_000_000, mCents: 40_000_000, ratePercent: 26, bCategory13Cents: 8_440_000, bCategory2Cents: 8_440_000 },
-  { fromCents: 60_000_100, toCents: 200_000_000, mCents: 60_000_000, ratePercent: 28, bCategory13Cents: 13_640_000, bCategory2Cents: 13_640_000 },
-  { fromCents: 200_000_100, toCents: null, mCents: 200_000_000, ratePercent: 30, bCategory13Cents: 52_840_000, bCategory2Cents: 52_840_000 },
+  {
+    fromCents: 500_100,
+    toCents: 2_000_000,
+    mCents: 500_000,
+    ratePercent: 1,
+    bCategory13Cents: -40_000,
+    bCategory2Cents: -80_000,
+  },
+  {
+    fromCents: 2_000_100,
+    toCents: 3_500_000,
+    mCents: 2_000_000,
+    ratePercent: 3,
+    bCategory13Cents: -25_000,
+    bCategory2Cents: -65_000,
+  },
+  {
+    fromCents: 3_500_100,
+    toCents: 5_000_000,
+    mCents: 3_500_000,
+    ratePercent: 6,
+    bCategory13Cents: 60_000,
+    bCategory2Cents: 60_000,
+  },
+  {
+    fromCents: 5_000_100,
+    toCents: 7_000_000,
+    mCents: 5_000_000,
+    ratePercent: 11,
+    bCategory13Cents: 150_000,
+    bCategory2Cents: 150_000,
+  },
+  {
+    fromCents: 7_000_100,
+    toCents: 10_000_000,
+    mCents: 7_000_000,
+    ratePercent: 19,
+    bCategory13Cents: 370_000,
+    bCategory2Cents: 370_000,
+  },
+  {
+    fromCents: 10_000_100,
+    toCents: 40_000_000,
+    mCents: 10_000_000,
+    ratePercent: 25,
+    bCategory13Cents: 940_000,
+    bCategory2Cents: 940_000,
+  },
+  {
+    fromCents: 40_000_100,
+    toCents: 60_000_000,
+    mCents: 40_000_000,
+    ratePercent: 26,
+    bCategory13Cents: 8_440_000,
+    bCategory2Cents: 8_440_000,
+  },
+  {
+    fromCents: 60_000_100,
+    toCents: 200_000_000,
+    mCents: 60_000_000,
+    ratePercent: 28,
+    bCategory13Cents: 13_640_000,
+    bCategory2Cents: 13_640_000,
+  },
+  {
+    fromCents: 200_000_100,
+    toCents: null,
+    mCents: 200_000_000,
+    ratePercent: 30,
+    bCategory13Cents: 52_840_000,
+    bCategory2Cents: 52_840_000,
+  },
 ] as const;
 
 /** Everything the formula needs for one employee in one month. All money in cents. */
@@ -168,8 +245,8 @@ export interface PcbInput {
  * right, which is worse than a refusal.
  */
 export type PcbOutcome =
-  | { readonly kind: 'COMPUTED'; readonly result: PcbResult }
-  | { readonly kind: 'UNSUPPORTED'; readonly reason: string };
+  | { readonly kind: "COMPUTED"; readonly result: PcbResult }
+  | { readonly kind: "UNSUPPORTED"; readonly reason: string };
 
 export interface PcbResult {
   /** What is actually deducted from this month's pay. */
@@ -228,16 +305,26 @@ export function roundUpToFiveCents(cents: number): number {
 /** Section E(3): below RM10 for the month, the employer deducts nothing. */
 export const MTD_MINIMUM_CENTS = 1_000;
 
-function applyMinimum(cents: number, params: PcbParams = BUILT_IN_PCB_PARAMS): number {
+function applyMinimum(
+  cents: number,
+  params: PcbParams = BUILT_IN_PCB_PARAMS,
+): number {
   return cents < params.minimumCents ? 0 : cents;
 }
 
 // ---------------------------------------------------------------------------
 
 /** Table 1 lookup. P at or below RM5,000 attracts no tax. */
-export function bandForP(pCents: number, params: PcbParams = BUILT_IN_PCB_PARAMS): PcbBand | null {
+export function bandForP(
+  pCents: number,
+  params: PcbParams = BUILT_IN_PCB_PARAMS,
+): PcbBand | null {
   for (const band of params.table1) {
-    if (pCents >= band.fromCents && (band.toCents === null || pCents <= band.toCents)) return band;
+    if (
+      pCents >= band.fromCents &&
+      (band.toCents === null || pCents <= band.toCents)
+    )
+      return band;
   }
   return null;
 }
@@ -252,12 +339,24 @@ function bValue(band: PcbBand, category: PcbCategory): number {
  * The specification sets S to zero outside category 2, and C to zero in
  * category 1, so those are enforced here rather than trusted to the caller.
  */
-export function reliefCents(input: PcbInput, params: PcbParams = BUILT_IN_PCB_PARAMS): number {
+export function reliefCents(
+  input: PcbInput,
+  params: PcbParams = BUILT_IN_PCB_PARAMS,
+): number {
   const spouse = input.category === 2 ? params.spouseCents : 0;
   const children = input.category === 1 ? 0 : input.qualifyingChildren;
   const disabledSelf = input.disabledSelf ? params.disabledSelfCents : 0;
-  const disabledSpouse = input.category === 2 && input.disabledSpouse ? params.disabledSpouseCents : 0;
-  return params.individualCents + spouse + disabledSelf + disabledSpouse + children * params.perChildCents;
+  const disabledSpouse =
+    input.category === 2 && input.disabledSpouse
+      ? params.disabledSpouseCents
+      : 0;
+  return (
+    params.individualCents +
+    spouse +
+    disabledSelf +
+    disabledSpouse +
+    children * params.perChildCents
+  );
 }
 
 /** DU — deduction for a disabled individual. */
@@ -295,15 +394,32 @@ export const BUILT_IN_PCB_PARAMS: PcbParams = {
 };
 
 /**
+ * The 2026 parameters as first coded, S included. Table 1 and every other
+ * figure are the same object; only S differs. Governs the months before the
+ * correction's in-force date (see the registry's PCB schedules).
+ */
+export const PCB_PARAMS_2026_AS_FIRST_CODED: PcbParams = {
+  ...BUILT_IN_PCB_PARAMS,
+  spouseCents: DEDUCTION_SPOUSE_CENTS_AS_FIRST_CODED,
+};
+
+/**
  * K2 — the estimated EPF for each remaining month.
  *
  * "[[Total qualifying amount per year – (K + K1 + Kt)] / n] or K1, whichever
  * is lower". Truncated to cents like every other intermediate value: Exhibit 5
  * takes 3,395/11 = 308.6363… to RM308.63, not RM308.64.
  */
-export function computeK2Cents(input: PcbInput, n: number, params: PcbParams = BUILT_IN_PCB_PARAMS): number {
+export function computeK2Cents(
+  input: PcbInput,
+  n: number,
+  params: PcbParams = BUILT_IN_PCB_PARAMS,
+): number {
   if (n <= 0) return 0;
-  const used = input.accumulatedEpfCents + input.epfOnNormalCents + input.epfOnAdditionalCents;
+  const used =
+    input.accumulatedEpfCents +
+    input.epfOnNormalCents +
+    input.epfOnAdditionalCents;
   const remaining = Math.max(0, params.epfReliefCapCents - used);
   const spread = truncateToCents(remaining / n);
   return Math.min(spread, input.epfOnNormalCents);
@@ -314,7 +430,11 @@ export function computeK2Cents(input: PcbInput, n: number, params: PcbParams = B
  * component is admitted only up to what the cap still allows, in the order the
  * formula states them.
  */
-function cappedNetCents(grossCents: number, epfCents: number, allowanceLeft: number): { net: number; used: number } {
+function cappedNetCents(
+  grossCents: number,
+  epfCents: number,
+  allowanceLeft: number,
+): { net: number; used: number } {
   const admitted = Math.min(epfCents, Math.max(0, allowanceLeft));
   return { net: grossCents - admitted, used: admitted };
 }
@@ -337,32 +457,58 @@ export function computeP(
 ): number {
   let allowanceLeft = params.epfReliefCapCents;
 
-  const prior = cappedNetCents(input.accumulatedGrossCents, input.accumulatedEpfCents, allowanceLeft);
+  const prior = cappedNetCents(
+    input.accumulatedGrossCents,
+    input.accumulatedEpfCents,
+    allowanceLeft,
+  );
   allowanceLeft -= prior.used;
 
-  const current = cappedNetCents(input.grossNormalCents, input.epfOnNormalCents, allowanceLeft);
+  const current = cappedNetCents(
+    input.grossNormalCents,
+    input.epfOnNormalCents,
+    allowanceLeft,
+  );
   allowanceLeft -= current.used;
 
   const additional = includeAdditional
-    ? cappedNetCents(input.grossAdditionalCents, input.epfOnAdditionalCents, allowanceLeft)
+    ? cappedNetCents(
+        input.grossAdditionalCents,
+        input.epfOnAdditionalCents,
+        allowanceLeft,
+      )
     : { net: 0, used: 0 };
   allowanceLeft -= additional.used;
 
-  const futureGross = input.estimatedFutureNormalCents ?? input.grossNormalCents;
-  const futureEpfPerMonth = Math.min(k2Cents, Math.max(0, allowanceLeft) / Math.max(1, n));
-  const future = n > 0 ? (futureGross - truncateToCents(futureEpfPerMonth)) * n : 0;
+  const futureGross =
+    input.estimatedFutureNormalCents ?? input.grossNormalCents;
+  const futureEpfPerMonth = Math.min(
+    k2Cents,
+    Math.max(0, allowanceLeft) / Math.max(1, n),
+  );
+  const future =
+    n > 0 ? (futureGross - truncateToCents(futureEpfPerMonth)) * n : 0;
 
   const income = prior.net + current.net + future + additional.net;
   const deductions =
-    reliefCents(input, params) + input.accumulatedDeductionsCents + input.deductionsThisMonthCents;
+    reliefCents(input, params) +
+    input.accumulatedDeductionsCents +
+    input.deductionsThisMonthCents;
   return income - deductions;
 }
 
 /** [(P − M) R + B], the year's tax before any month is apportioned. */
-export function yearTaxCents(pCents: number, category: PcbCategory, params: PcbParams = BUILT_IN_PCB_PARAMS): number {
+export function yearTaxCents(
+  pCents: number,
+  category: PcbCategory,
+  params: PcbParams = BUILT_IN_PCB_PARAMS,
+): number {
   const band = bandForP(pCents, params);
   if (!band) return 0;
-  return truncateToCents((pCents - band.mCents) * (band.ratePercent / 100)) + bValue(band, category);
+  return (
+    truncateToCents((pCents - band.mCents) * (band.ratePercent / 100)) +
+    bValue(band, category)
+  );
 }
 
 /**
@@ -372,27 +518,39 @@ export function yearTaxCents(pCents: number, category: PcbCategory, params: PcbP
  * special methods gets a refusal naming the method, because running the
  * ordinary formula for them would produce a confident wrong answer.
  */
-export function computePcb(input: PcbInput, special?: SpecialMethod, params: PcbParams = BUILT_IN_PCB_PARAMS): PcbOutcome {
-  if (special && special !== 'NONE') {
-    return { kind: 'UNSUPPORTED', reason: SPECIAL_METHOD_REASON[special] };
+export function computePcb(
+  input: PcbInput,
+  special?: SpecialMethod,
+  params: PcbParams = BUILT_IN_PCB_PARAMS,
+): PcbOutcome {
+  if (special && special !== "NONE") {
+    return { kind: "UNSUPPORTED", reason: SPECIAL_METHOD_REASON[special] };
   }
 
-  if (input.residence === 'NON_RESIDENT') {
+  if (input.residence === "NON_RESIDENT") {
     // Section D(a): 30% of remuneration, flat. No reliefs, no accumulation.
     const remuneration = input.grossNormalCents + input.grossAdditionalCents;
-    const raw = truncateToCents(remuneration * (params.nonResidentRatePercent / 100));
+    const raw = truncateToCents(
+      remuneration * (params.nonResidentRatePercent / 100),
+    );
     const mtd = applyMinimum(roundUpToFiveCents(raw), params);
     return {
-      kind: 'COMPUTED',
+      kind: "COMPUTED",
       result: {
         mtdCents: mtd,
         normalMtdCents: mtd,
         netNormalMtdCents: mtd,
         additionalMtdCents: 0,
-        zakatCarriedForwardCents: input.accumulatedZakatCents + input.zakatThisMonthCents,
+        zakatCarriedForwardCents:
+          input.accumulatedZakatCents + input.zakatThisMonthCents,
         working: {
-          pCents: 0, mCents: 0, ratePercent: params.nonResidentRatePercent, bCents: 0,
-          n: 0, k2Cents: 0, totalReliefCents: 0,
+          pCents: 0,
+          mCents: 0,
+          ratePercent: params.nonResidentRatePercent,
+          bCents: 0,
+          n: 0,
+          k2Cents: 0,
+          totalReliefCents: 0,
         },
       },
     };
@@ -414,7 +572,11 @@ export function computePcb(input: PcbInput, special?: SpecialMethod, params: Pcb
    * RM112.25 where the authority says RM106.20 — a wrong number that looks
    * entirely reasonable.
    */
-  const normalOnly: PcbInput = { ...input, grossAdditionalCents: 0, epfOnAdditionalCents: 0 };
+  const normalOnly: PcbInput = {
+    ...input,
+    grossAdditionalCents: 0,
+    epfOnAdditionalCents: 0,
+  };
   const k2 = computeK2Cents(normalOnly, n, params);
 
   // --- Step 1: the month's MTD on normal remuneration -----------------------
@@ -426,9 +588,13 @@ export function computePcb(input: PcbInput, special?: SpecialMethod, params: Pcb
 
   const yearTax = yearTaxCents(p, input.category, params);
   // The whole numerator is divided by n+1; see the note at the top of the file.
-  const numerator = yearTax - (input.accumulatedZakatCents + input.accumulatedMtdPaidCents);
+  const numerator =
+    yearTax - (input.accumulatedZakatCents + input.accumulatedMtdPaidCents);
   const normalRaw = truncateToCents(numerator / (n + 1));
-  const normalMtd = applyMinimum(roundUpToFiveCents(Math.max(0, normalRaw)), params);
+  const normalMtd = applyMinimum(
+    roundUpToFiveCents(Math.max(0, normalRaw)),
+    params,
+  );
 
   // Step 1[D]: net of this month's zakat. A negative result is nil, and the
   // unused zakat is carried forward in Z rather than lost.
@@ -438,14 +604,22 @@ export function computePcb(input: PcbInput, special?: SpecialMethod, params: Pcb
 
   if (input.grossAdditionalCents === 0) {
     return {
-      kind: 'COMPUTED',
+      kind: "COMPUTED",
       result: {
         mtdCents: netNormalMtd,
         normalMtdCents: normalMtd,
         netNormalMtdCents: netNormalMtd,
         additionalMtdCents: 0,
         zakatCarriedForwardCents: zakatCarried,
-        working: { pCents: p, mCents: m, ratePercent: rate, bCents: b, n, k2Cents: k2, totalReliefCents: reliefCents(input, params) },
+        working: {
+          pCents: p,
+          mCents: m,
+          ratePercent: rate,
+          bCents: b,
+          n,
+          k2Cents: k2,
+          totalReliefCents: reliefCents(input, params),
+        },
       },
     };
   }
@@ -463,12 +637,17 @@ export function computePcb(input: PcbInput, special?: SpecialMethod, params: Pcb
   const totalYearTax = yearTaxCents(pWithAdditional, input.category, params);
 
   // Step 4: the bonus's own MTD is the difference, plus zakat already paid.
-  const additionalRaw = truncateToCents(totalYearTax - yearMtd + input.accumulatedZakatCents);
-  const additionalMtd = applyMinimum(roundUpToFiveCents(Math.max(0, additionalRaw)), params);
+  const additionalRaw = truncateToCents(
+    totalYearTax - yearMtd + input.accumulatedZakatCents,
+  );
+  const additionalMtd = applyMinimum(
+    roundUpToFiveCents(Math.max(0, additionalRaw)),
+    params,
+  );
 
   // Step 5: what is deducted this month.
   return {
-    kind: 'COMPUTED',
+    kind: "COMPUTED",
     result: {
       mtdCents: netNormalMtd + additionalMtd,
       normalMtdCents: normalMtd,
@@ -476,7 +655,12 @@ export function computePcb(input: PcbInput, special?: SpecialMethod, params: Pcb
       additionalMtdCents: additionalMtd,
       zakatCarriedForwardCents: zakatCarried,
       working: {
-        pCents: p, mCents: m, ratePercent: rate, bCents: b, n, k2Cents: k2,
+        pCents: p,
+        mCents: m,
+        ratePercent: rate,
+        bCents: b,
+        n,
+        k2Cents: k2,
         totalReliefCents: reliefCents(input, params),
         pWithAdditionalCents: pWithAdditional,
         yearTaxCents: totalYearTax,
@@ -490,13 +674,15 @@ export function computePcb(input: PcbInput, special?: SpecialMethod, params: Pcb
  * The four methods the specification defines separately, each requiring its own
  * IRBM approval. None is implemented; each is refused by name.
  */
-export type SpecialMethod = 'NONE' | 'REP' | 'KNOWLEDGE_WORKER' | 'C_SUITE';
+export type SpecialMethod = "NONE" | "REP" | "KNOWLEDGE_WORKER" | "C_SUITE";
 
-export const SPECIAL_METHOD_REASON: Record<Exclude<SpecialMethod, 'NONE'>, string> = {
-  REP:
-    'This employee is under the Returning Expert Programme, which the specification taxes at a flat 15% under its own formula. Kuwick has not implemented it, so their monthly tax has to be entered by hand.',
+export const SPECIAL_METHOD_REASON: Record<
+  Exclude<SpecialMethod, "NONE">,
+  string
+> = {
+  REP: "This employee is under the Returning Expert Programme, which the specification taxes at a flat 15% under its own formula. Kuwick has not implemented it, so their monthly tax has to be entered by hand.",
   KNOWLEDGE_WORKER:
-    'This employee is a knowledge worker in a specified region, which the specification taxes under its own formula. Kuwick has not implemented it, so their monthly tax has to be entered by hand.',
+    "This employee is a knowledge worker in a specified region, which the specification taxes under its own formula. Kuwick has not implemented it, so their monthly tax has to be entered by hand.",
   C_SUITE:
-    'This employee is a resident non-citizen in a C-Suite position at an approved company, which the specification taxes under its own formula. Kuwick has not implemented it, so their monthly tax has to be entered by hand.',
+    "This employee is a resident non-citizen in a C-Suite position at an approved company, which the specification taxes under its own formula. Kuwick has not implemented it, so their monthly tax has to be entered by hand.",
 };

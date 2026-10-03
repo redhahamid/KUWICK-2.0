@@ -14,7 +14,12 @@ import {
   HRD_LEVY_RATE_OPTIONAL_PERCENT,
 } from "./hrd-levy";
 import { BUILT_IN_LINDUNG_TABLES, LindungTables } from "./lindung-24-jam";
-import { BUILT_IN_PCB_PARAMS, PcbBand, PcbParams } from "./pcb-2026";
+import {
+  BUILT_IN_PCB_PARAMS,
+  PCB_PARAMS_2026_AS_FIRST_CODED,
+  PcbBand,
+  PcbParams,
+} from "./pcb-2026";
 import { scheduleFor } from "./registry";
 import { SocsoBand } from "./socso-act4";
 
@@ -422,6 +427,21 @@ export function parseContent(scheme: string, content: unknown): ParseResult {
   }
 }
 
+/**
+ * THE BUILT-IN PCB PARAMETERS FOR A DATE. The 2026 specification was coded
+ * twice: first with the individual figure copied into S by mistake, then
+ * corrected. The registry says which edition governs a month; the figures
+ * follow its schedule id, so a month before the correction reproduces what it
+ * was approved on, and a month from October 2026 deducts what the
+ * specification says.
+ */
+export function builtInPcbParamsFor(on: Date): PcbParams {
+  const schedule = scheduleFor("PCB", on);
+  return schedule?.id === "PCB_MTD_2026"
+    ? PCB_PARAMS_2026_AS_FIRST_CODED
+    : BUILT_IN_PCB_PARAMS;
+}
+
 function builtInSource(scheme: EditionScheme, on: Date): EditionSource {
   const schedule = scheduleFor(scheme, on);
   return {
@@ -454,7 +474,7 @@ export function editionsFor(
     effectiveFrom: BUILT_IN_LINDUNG_TABLES.effectiveFrom,
     phaseRatesPercent: BUILT_IN_LINDUNG_TABLES.phaseRatesPercent,
   };
-  let pcb = BUILT_IN_PCB_PARAMS;
+  let pcb = builtInPcbParamsFor(on);
   let hrd = BUILT_IN_HRD_RATES;
   const sources = Object.fromEntries(
     EDITION_SCHEMES.map((scheme) => [scheme, builtInSource(scheme, on)]),

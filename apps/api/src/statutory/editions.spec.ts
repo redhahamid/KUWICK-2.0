@@ -7,7 +7,11 @@ import {
 import { EPF_PARTS, EPF_TABLE_CEILING_CENTS } from "./epf-third-schedule";
 import { EIS_BANDS, EIS_WAGE_CEILING_CENTS } from "./eis-act800";
 import { SOCSO_BANDS, SOCSO_WAGE_CEILING_CENTS } from "./socso-act4";
-import { PCB_TABLE_1 } from "./pcb-2026";
+import {
+  BUILT_IN_PCB_PARAMS,
+  PCB_PARAMS_2026_AS_FIRST_CODED,
+  PCB_TABLE_1,
+} from "./pcb-2026";
 import {
   eisContribution,
   epfContribution,
@@ -207,5 +211,36 @@ describe("statutory editions", () => {
       contentHashOf({ b: [1, 2], a: 1 }),
     );
     expect(contentHashOf({ a: 1 })).not.toBe(contentHashOf({ a: 2 }));
+  });
+});
+
+describe("the PCB spouse correction", () => {
+  it("prices a month before October 2026 on the first coding, under the edition that approved it", () => {
+    const september = editionsFor(new Date("2026-09-30T00:00:00.000Z"));
+    expect(september.pcb).toBe(PCB_PARAMS_2026_AS_FIRST_CODED);
+    expect(september.pcb.spouseCents).toBe(900_000);
+    expect(september.sources.PCB.id).toBe("PCB_MTD_2026");
+  });
+
+  it("prices October 2026 onwards on S = RM4,000, under its own edition with its own hash", () => {
+    const september = editionsFor(new Date("2026-09-30T00:00:00.000Z"));
+    const october = editionsFor(new Date("2026-10-01T00:00:00.000Z"));
+    expect(october.pcb).toBe(BUILT_IN_PCB_PARAMS);
+    expect(october.pcb.spouseCents).toBe(400_000);
+    expect(october.sources.PCB.id).toBe("PCB_MTD_2026_S_CORRECTED");
+    expect(october.sources.PCB.inForceFrom).toBe("2026-10-01");
+    expect(october.sources.PCB.contentHash).not.toBe(
+      september.sources.PCB.contentHash,
+    );
+    expect(BUILT_IN_EDITIONS.pcb.spouseCents).toBe(400_000);
+  });
+
+  it("changes nothing but S between the two editions", () => {
+    const { spouseCents: first, ...restFirst } = PCB_PARAMS_2026_AS_FIRST_CODED;
+    const { spouseCents: corrected, ...restCorrected } = BUILT_IN_PCB_PARAMS;
+    expect(first).toBe(900_000);
+    expect(corrected).toBe(400_000);
+    expect(restFirst).toEqual(restCorrected);
+    expect(BUILT_IN_PCB_PARAMS.table1).toBe(PCB_TABLE_1);
   });
 });
