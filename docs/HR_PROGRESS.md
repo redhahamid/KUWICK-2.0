@@ -6,6 +6,81 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 11 — 3 Oktober 2026 — pembetulan S berkuat kuasa dari 1 Januari 2026
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 10 (`6079be5`). Komit: komit yang menambah bahagian ini (hash dalam
+laporan). **Migrasi: tiada.**
+
+### Apa yang berubah
+
+- `[D]` **Tarikh kuat kuasa:** edisi `PCB_MTD_2026_S_CORRECTED` kini berkuat
+  kuasa **1 Januari 2026** (`registry.ts`, pemalar `JAN_2026`; `OCT_2026`
+  dibuang). Ia pembetulan kod, bukan perubahan undang-undang, jadi setiap
+  bulan yang belum diluluskan menggunakan S = RM4,000.
+- `[D]` **Edisi kod pertama `PCB_MTD_2026`** dikeluarkan daripada senarai
+  aktif dan disimpan dalam `SUPERSEDED_SCHEDULES` (id, hash `d2c8fca6b990daf8`
+  dan dokumen yang sama; tempoh kosong, tidak pernah dipilih oleh
+  `scheduleFor`). Snapshot bulan Jan–Sep 2026 yang diluluskan menamakan id
+  dan hash ini, jadi ia kekal dapat dikesan. `builtInPcbParamsFor` dibuang;
+  enjin membaca `BUILT_IN_PCB_PARAMS` untuk setiap tempoh.
+- `[D]` **Pagar kelulusan baharu** (`payroll.service.ts` →
+  `refuseStaleStatutoryStamp`): *Approve* ditolak (400) apabila cap statutori
+  yang disimpan semasa pengiraan tidak lagi sepadan dengan jadual yang
+  berkuat kuasa untuk tempoh itu (id atau hash edisi berbeza), dengan mesej
+  "… changed since this run was calculated (PCB: PCB_MTD_2026 is now
+  PCB_MTD_2026_S_CORRECTED). Recalculate …". Tanpa ini, run September yang
+  sudah dikira sebelum pembetulan boleh diluluskan dengan S = RM9,000. Run
+  tanpa cap (dikira sebelum cap wujud) tidak disentuh; skim yang tiada dalam
+  cap lama tidak dihakimi.
+- `[D]` **Ujian:** `editions.spec.ts` (empat tarikh 2026 → edisi
+  dibetulkan; kod pertama tidak pernah dipilih), `registry.spec.ts` (edisi
+  digantikan disimpan mengikut id dan hash, id tidak diguna semula),
+  `workforce-payroll.e2e-spec.ts` (run dengan cap lapuk ditolak, dikira
+  semula, diluluskan).
+- Skrin: tiada kod web berubah. Pemilih bulan pada *Statutory rates*
+  menunjukkan RM4,000.00 untuk mana-mana bulan 2026; konsol platform
+  menyenaraikan satu edisi PCB terbina dalam (2026-01-01). Tanda "sudah
+  disemak" klinik pada *Statutory rates* menjadi tidak semasa (hash registry
+  berubah) — semak semula dan tanda sekali lagi.
+- `[D]` **Seed UAT (`apps/api/prisma/seed-admin-uat.ts`):** rekod kehadiran
+  *dibetulkan* untuk staf kaunter pada hari −22 berlanggar dengan rekod lebih
+  masa 12 hb bulan gaji apabila seed dijalankan pada 3–6 hb (waktu Malaysia):
+  kunci unik (tenant, staf, tarikh) → seed mati dengan P2002. Kini rekod itu
+  berundur sehari apabila bertembung. Ditemui kerana gate 4 batch ini menyemai
+  semula dunia UAT pada 4 Oktober waktu Malaysia. Tiada ujian memaut hari itu.
+
+### Uji di staging (ikut urutan)
+
+1. *Settings → Statutory rates*, pilih **Jan 2026** dan kemudian **Sep 2026**,
+   buka **View Table 1 and the parameters**: kedua-duanya *Spouse relief
+   (category 2)* **RM4,000.00**, garis edisi *… spouse deduction S = RM4,000
+   …*, *in force from 1 January 2026*.
+2. Konsol platform → *Statutory Tables*: satu baris terbina dalam untuk PCB
+   (2026-01-01, edisi S dibetulkan).
+3. Payslip Jan–Sep yang diluluskan: angka PCB tidak berubah; **How this was
+   worked out** masih menamakan edisi D1 yang lama.
+4. Jika ada run yang **sudah dikira tetapi belum diluluskan** (dikira sebelum
+   pembetulan): *Approve* ditolak dengan mesej "changed since this run was
+   calculated … Recalculate"; tekan *Recalculate*, kemudian *Approve* lulus.
+5. Pekerja kategori 2 pada mana-mana bulan yang belum diluluskan: *Reliefs*
+   RM13,000.00 (contoh pin RM5,000, KWSP 11%, bulan pertama → PCB RM90.00).
+
+### Keputusan terbuka / yang saya pilih bagi pihak anda
+
+- `[A]` **Pagar cap lapuk** ditambah tanpa diminta, kerana tanpanya "setiap
+  bulan belum diluluskan guna S = RM4,000" tidak benar untuk run yang sudah
+  dikira. Ia menolak kelulusan hanya apabila id atau hash edisi berubah;
+  jalan keluar sentiasa *Recalculate*.
+- `[A]` Edisi kod pertama disimpan (bukan dipadam) supaya hash pada snapshot
+  Jan–Sep 2026 masih ada padanannya dalam kod; status
+  *OFFICIAL_SOURCE_VERIFIED* edisi dibetulkan kekal seperti Batch 10.
+- `[A]` Pembaikan seed di atas ialah infrastruktur ujian, bukan produk —
+  dimasukkan dalam batch ini kerana tanpanya gate 4 tidak boleh dijalankan
+  pada 3–6 hb mana-mana bulan.
+
+---
+
 ## Batch 10 — 3 Oktober 2026 — pelepasan pasangan PCB (S) dibetulkan sebagai edisi baharu
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
@@ -59,7 +134,8 @@ laporan). **Migrasi: tiada** — edisi terbina dalam ialah kod.
 
 ### Keputusan terbuka / yang saya pilih bagi pihak anda
 
-- `[A]` **Tarikh berkuat kuasa 1 Oktober 2026** = "bulan seterusnya yang
+- `[A]` **Tarikh berkuat kuasa 1 Oktober 2026** *(dibatalkan oleh Batch 11:
+  kini 1 Januari 2026)* = "bulan seterusnya yang
   belum diluluskan" (hari ini 3 Oktober). Bulan sebelum Oktober yang masih
   belum diluluskan (jika ada) tetap menggunakan S lama — kalau anda mahu
   pembetulan itu juga, tarikh dalam `registry.ts` (`OCT_2026`) ialah satu

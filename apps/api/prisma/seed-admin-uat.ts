@@ -2854,11 +2854,16 @@ async function seedWorkforce(ids: Ids) {
         scheduledStart: at(-21, 1), scheduledEnd: at(-21, 9),
       },
     });
+    // Twenty-two days back — unless that is the 12th of the payroll period,
+    // which the overtime record above already gives this person: on the 3rd
+    // to the 6th of a month (clinic time) the two coincided, (tenant, staff,
+    // workDate) is unique, and the seed died there. One day further back then.
+    const corrected = day(-22).getTime() === payrollPeriodDay(12).getTime() ? -23 : -22;
     await tx.attendanceRecord.create({
       data: {
-        tenantId: tenant.id, staffId: staff.counter, clinicId: central.id, workDate: day(-22),
-        clockInAt: at(-22, 1), clockOutAt: at(-22, 9), workedMinutes: 480, status: 'PRESENT',
-        originalClockInAt: at(-22, 3), correctedAt: at(-21, 2), correctedByStaffId: staff.owner,
+        tenantId: tenant.id, staffId: staff.counter, clinicId: central.id, workDate: day(corrected),
+        clockInAt: at(corrected, 1), clockOutAt: at(corrected, 9), workedMinutes: 480, status: 'PRESENT',
+        originalClockInAt: at(corrected, 3), correctedAt: at(corrected + 1, 2), correctedByStaffId: staff.owner,
         correctionReason: 'Badge reader was offline; CCTV confirms a 09:00 arrival',
       },
     });

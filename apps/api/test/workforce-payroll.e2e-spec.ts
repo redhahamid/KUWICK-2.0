@@ -754,6 +754,73 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       expect(epf.contentHash).toMatch(/^[0-9a-f]{16}$/);
     });
 
+    it('refuses to approve a run stamped with tables that no longer govern its period, until it is recalculated', async () => {
+      await makeEmployee('Salaried Three', '3000.00');
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+
+      // WHAT A CORRECTED TABLE LOOKS LIKE FROM THE RUN'S SIDE. The run was
+      // calculated and stamped; then the edition governing its period changed
+      // under it. The stamp is rewritten here to name the superseded PCB
+      // edition — exactly the state of a September 2026 run calculated before
+      // the spouse-deduction correction shipped.
+      const stampOf = async () => {
+        const row = await withTenantContext(prisma, tenantId, (tx) =>
+          tx.payrollRun.findUniqueOrThrow({ where: { id: run.body.id } }),
+        );
+        return {
+          status: row.status,
+          stamp: row.statutorySnapshot as {
+            schedules: { scheme: string; scheduleId: string | null; contentHash: string | null }[];
+          },
+        };
+      };
+      const before = await stampOf();
+      before.stamp.schedules = before.stamp.schedules.map((entry) =>
+        entry.scheme === 'PCB' ? { ...entry, scheduleId: 'PCB_MTD_2026', contentHash: '0000000000000000' } : entry,
+      );
+      await withTenantContext(prisma, tenantId, (tx) =>
+        tx.payrollRun.update({ where: { id: run.body.id }, data: { statutorySnapshot: before.stamp as never } }),
+      );
+
+      const refused = await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/approve`)
+        .set('Authorization', bearer)
+        .send({})
+        .expect(400);
+      expect(refused.body.message).toMatch(/changed since this run was calculated/);
+      expect(refused.body.message).toMatch(/PCB: PCB_MTD_2026 is now PCB_MTD_2026_S_CORRECTED/);
+      expect(refused.body.message).toMatch(/Recalculate/);
+      // Refused outright: no approval is recorded against the stale figures.
+      const approvals = await withTenantContext(prisma, tenantId, (tx) =>
+        tx.payrollRunApproval.findMany({ where: { payrollRunId: run.body.id } }),
+      );
+      expect(approvals).toHaveLength(0);
+
+      // RECALCULATING RE-STAMPS, and the same approval then goes through.
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/approve`)
+        .set('Authorization', bearer)
+        .send({})
+        .expect(200);
+      const after = await stampOf();
+      expect(after.status).toBe('APPROVED');
+      expect(after.stamp.schedules.find((entry) => entry.scheme === 'PCB')?.scheduleId).toBe(
+        'PCB_MTD_2026_S_CORRECTED',
+      );
+    });
+
     it('BLOCKS the run for an employee inside PCB, because this system does not calculate it', async () => {
       await makeEmployee('Taxed Employee', '5000.00', { pcbApplicable: true });
 

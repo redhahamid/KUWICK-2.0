@@ -546,16 +546,19 @@ Edisi baharu ditambah oleh pemilik Kuwick di konsol platform (*Statutory
 Tables*), dan terpakai dari tarikhnya untuk semua klinik — bulan yang sudah
 dibayar tidak berubah.
 
-**Pembetulan pelepasan pasangan PCB (Batch 10).** Formula MTD HASiL
+**Pembetulan pelepasan pasangan PCB (Batch 10 dan 11).** Formula MTD HASiL
 menetapkan D (individu) RM9,000 dan S (pasangan, kategori 2 sahaja)
 RM4,000. Kod pertama Kuwick tersilap menyalin angka individu ke dalam S.
 Pembetulan dibuat sebagai **edisi terbina dalam yang baharu, berkuat kuasa
-1 Oktober 2026**: pilih *Sep 2026* pada pemilih bulan dan laci PCB
-menunjukkan *Spouse relief (category 2)* RM9,000.00 di bawah edisi D1 yang
-lama; pilih *Oct 2026* dan ia RM4,000.00 di bawah edisi *… spouse deduction
-S = RM4,000*. Bulan yang sudah diluluskan tidak berubah; bulan dari Oktober
-2026 menolak PCB mengikut spesifikasi, dan formula sendiri menampung
-kekurangan Januari hingga September melalui X (MTD yang sudah dibayar).
+1 Januari 2026** — ia pembetulan kod, bukan perubahan undang-undang, jadi
+mana-mana bulan 2026 pada pemilih bulan menunjukkan *Spouse relief
+(category 2)* RM4,000.00 di bawah edisi *… spouse deduction S = RM4,000*.
+Bulan yang sudah diluluskan tidak berubah: snapshotnya beku dan masih
+menamakan edisi D1 yang lama. Bulan yang **sudah dikira tetapi belum
+diluluskan** mesti dikira semula — *Approve* menolak run yang jadualnya
+sudah berubah sejak pengiraan, dengan mesej yang menyuruh *Recalculate*.
+Formula sendiri menampung kekurangan bulan-bulan awal melalui X (MTD yang
+sudah dibayar).
 
 
 **Apa gunanya.** Menunjukkan kadar KWSP, PERKESO dan LHDN yang Kuwick guna.

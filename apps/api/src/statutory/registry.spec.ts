@@ -5,6 +5,7 @@ import {
   meetsApprovalBar,
   scheduleFor,
   stampFor,
+  SUPERSEDED_SCHEDULES,
 } from "./registry";
 
 /**
@@ -120,9 +121,10 @@ describe("what may drive an approved run", () => {
     expect(byScheme.HRD_LEVY).toBe("OFFICIAL_SOURCE_VERIFIED");
     expect(byScheme.EA_FIRST_SCHEDULE).toBe("OFFICIAL_SOURCE_VERIFIED");
     expect(byScheme.EMPLOYMENT_ACT).toBe("OFFICIAL_SOURCE_VERIFIED");
-    // PCB: the 2026 edition as first coded reproduces Exhibit 5. The correction
-    // of S (which Exhibit 5 never exercises) rests on the specification's
-    // parameter list, so it stops at source-verified, and says so.
+    // PCB: the corrected 2026 edition rests on the specification's parameter
+    // list for S, which Exhibit 5 (category 3) never exercises, so it stops
+    // at source-verified and says so. The edition as first coded reproduced
+    // Exhibit 5; it is superseded, not deleted — see the test below.
     const pcb = Object.fromEntries(
       STATUTORY_SCHEDULES.filter((s) => s.scheme === "PCB").map((s) => [
         s.id,
@@ -130,10 +132,33 @@ describe("what may drive an approved run", () => {
       ]),
     );
     expect(pcb).toEqual({
-      PCB_MTD_2026: "OFFICIAL_TEST_VECTOR_VERIFIED",
       PCB_MTD_2026_S_CORRECTED: "OFFICIAL_SOURCE_VERIFIED",
     });
     expect(byScheme.PCB).toBe("OFFICIAL_SOURCE_VERIFIED");
+  });
+
+  it("keeps a superseded edition by id and hash, out of force and never reused", () => {
+    // The 2026 PCB edition as first coded carried the individual figure in S.
+    // The months approved on it between January and September 2026 name its
+    // id and hash in their frozen snapshots, so it is kept — and it answers
+    // for no day: the corrected edition is in force from 1 January 2026.
+    const superseded = SUPERSEDED_SCHEDULES.find((s) => s.id === "PCB_MTD_2026");
+    expect(superseded).toBeDefined();
+    expect(superseded!.scheme).toBe("PCB");
+    expect(superseded!.verification).toBe("OFFICIAL_TEST_VECTOR_VERIFIED");
+    expect(superseded!.effectiveTo).toEqual(superseded!.effectiveFrom);
+    const live = scheduleFor("PCB", superseded!.effectiveFrom);
+    expect(live?.id).toBe("PCB_MTD_2026_S_CORRECTED");
+    expect(live?.effectiveFrom).toEqual(new Date("2026-01-01T00:00:00.000Z"));
+    // The hash those snapshots carry: Table 1, D and the non-resident rate,
+    // with S not yet among them. The correction did not move it.
+    expect(superseded!.contentHash).toBe("d2c8fca6b990daf8");
+    expect(superseded!.contentHash).not.toBe(live?.contentHash);
+    // An id is never reused for different content.
+    const liveIds = new Set(STATUTORY_SCHEDULES.map((s) => s.id));
+    for (const entry of SUPERSEDED_SCHEDULES) {
+      expect(liveIds.has(entry.id)).toBe(false);
+    }
   });
 });
 

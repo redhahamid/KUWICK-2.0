@@ -4,6 +4,7 @@ import {
   editionsFor,
   parseContent,
 } from "./editions";
+import { SUPERSEDED_SCHEDULES } from "./registry";
 import { EPF_PARTS, EPF_TABLE_CEILING_CENTS } from "./epf-third-schedule";
 import { EIS_BANDS, EIS_WAGE_CEILING_CENTS } from "./eis-act800";
 import { SOCSO_BANDS, SOCSO_WAGE_CEILING_CENTS } from "./socso-act4";
@@ -215,27 +216,30 @@ describe("statutory editions", () => {
 });
 
 describe("the PCB spouse correction", () => {
-  it("prices a month before October 2026 on the first coding, under the edition that approved it", () => {
-    const september = editionsFor(new Date("2026-09-30T00:00:00.000Z"));
-    expect(september.pcb).toBe(PCB_PARAMS_2026_AS_FIRST_CODED);
-    expect(september.pcb.spouseCents).toBe(900_000);
-    expect(september.sources.PCB.id).toBe("PCB_MTD_2026");
-  });
+  it.each(["2026-01-31", "2026-09-30", "2026-10-01", "2026-12-31"])(
+    "prices %s on S = RM4,000, under the corrected edition in force from 1 January 2026",
+    (day) => {
+      const editions = editionsFor(new Date(`${day}T00:00:00.000Z`));
+      expect(editions.pcb).toBe(BUILT_IN_PCB_PARAMS);
+      expect(editions.pcb.spouseCents).toBe(400_000);
+      expect(editions.sources.PCB.id).toBe("PCB_MTD_2026_S_CORRECTED");
+      expect(editions.sources.PCB.inForceFrom).toBe("2026-01-01");
+    },
+  );
 
-  it("prices October 2026 onwards on S = RM4,000, under its own edition with its own hash", () => {
-    const september = editionsFor(new Date("2026-09-30T00:00:00.000Z"));
-    const october = editionsFor(new Date("2026-10-01T00:00:00.000Z"));
-    expect(october.pcb).toBe(BUILT_IN_PCB_PARAMS);
-    expect(october.pcb.spouseCents).toBe(400_000);
-    expect(october.sources.PCB.id).toBe("PCB_MTD_2026_S_CORRECTED");
-    expect(october.sources.PCB.inForceFrom).toBe("2026-10-01");
-    expect(october.sources.PCB.contentHash).not.toBe(
-      september.sources.PCB.contentHash,
-    );
+  it("never resolves the first coding, whose id and hash only the months approved on it carry", () => {
     expect(BUILT_IN_EDITIONS.pcb.spouseCents).toBe(400_000);
+    const superseded = SUPERSEDED_SCHEDULES.find(
+      (schedule) => schedule.id === "PCB_MTD_2026",
+    );
+    expect(superseded).toBeDefined();
+    const september = editionsFor(new Date("2026-09-30T00:00:00.000Z"));
+    expect(september.sources.PCB.id).not.toBe(superseded!.id);
+    // The corrected edition's hash covers S; the superseded one's never did.
+    expect(september.sources.PCB.contentHash).not.toBe(superseded!.contentHash);
   });
 
-  it("changes nothing but S between the two editions", () => {
+  it("changes nothing but S between the two parameter sets", () => {
     const { spouseCents: first, ...restFirst } = PCB_PARAMS_2026_AS_FIRST_CODED;
     const { spouseCents: corrected, ...restCorrected } = BUILT_IN_PCB_PARAMS;
     expect(first).toBe(900_000);

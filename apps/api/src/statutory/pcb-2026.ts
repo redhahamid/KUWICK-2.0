@@ -70,11 +70,12 @@ export const DEDUCTION_INDIVIDUAL_CENTS = 900_000;
 export const DEDUCTION_SPOUSE_CENTS = 400_000;
 
 /**
- * What this engine deducted for S from January to September 2026: the
- * individual figure, by mistake. Kept under its own name so a month priced on
- * it can be reproduced and the edition that priced it keeps its hash.
- * `PCB_PARAMS_2026_AS_FIRST_CODED` carries it; the registry decides which
- * months it governs.
+ * What this engine deducted for S until 3 October 2026: the individual
+ * figure, by mistake. It governs no period now — the corrected edition is in
+ * force from 1 January 2026, and every month not yet approved is priced on
+ * it. Kept under its own name so what the months approved on it deducted can
+ * be reproduced in a test, beside the superseded edition's hash (PCB_MTD_2026
+ * in the registry's SUPERSEDED_SCHEDULES).
  */
 export const DEDUCTION_SPOUSE_CENTS_AS_FIRST_CODED = 900_000;
 
@@ -395,8 +396,9 @@ export const BUILT_IN_PCB_PARAMS: PcbParams = {
 
 /**
  * The 2026 parameters as first coded, S included. Table 1 and every other
- * figure are the same object; only S differs. Governs the months before the
- * correction's in-force date (see the registry's PCB schedules).
+ * figure are the same object; only S differs. Governs nothing: the engine
+ * reads BUILT_IN_PCB_PARAMS for every period, and this set exists so the
+ * figure a superseded month was approved on can be reproduced.
  */
 export const PCB_PARAMS_2026_AS_FIRST_CODED: PcbParams = {
   ...BUILT_IN_PCB_PARAMS,

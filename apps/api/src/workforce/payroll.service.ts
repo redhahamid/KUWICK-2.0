@@ -2690,8 +2690,9 @@ export class PayrollService {
   /**
    * Approve and LOCK.
    *
-   * Refuses three things: a run nobody calculated, a run with unresolved
-   * exceptions, and self-approval by the person who created it.
+   * Refuses four things: a run nobody calculated, a run with unresolved
+   * exceptions, self-approval by the person who created it, and a run whose
+   * figures came from statutory tables that no longer govern its period.
    */
   async approve(runId: string, acknowledgeStatutoryGap = false) {
     return withAdminTx(this.rawPrisma, 'hr.payroll.approve', async (tx, actor) => {
@@ -2727,6 +2728,15 @@ export class PayrollService {
       if (decision.outcome === 'REFUSE') {
         throw new ForbiddenException(decision.reason);
       }
+
+      // THE TABLES MUST STILL BE THE ONES IN FORCE FOR THE PERIOD. The run
+      // was stamped with the editions that priced it when it was calculated.
+      // When the registry or the platform's editions have changed for this
+      // period since — a built-in table corrected, a platform edition added
+      // for a date the period covers — the figures on screen came from tables
+      // that no longer govern the month, and approving would freeze them
+      // under a snapshot nothing re-prices. Only recalculation re-stamps.
+      await this.refuseStaleStatutoryStamp(tx, run);
 
       // THE APPROVAL GATE, from exception ROWS.
       //
@@ -2927,6 +2937,32 @@ export class PayrollService {
         },
       };
     });
+  }
+
+  /**
+   * Refuse approval when the schedules stamped on the run at calculation are
+   * no longer the ones in force for its period: a different edition, or the
+   * same edition with different figures (the hash). A scheme the old stamp
+   * never recorded is not judged — the list of stamped schemes has grown over
+   * time — and a run that carries no stamp at all is left to the other gates.
+   */
+  private async refuseStaleStatutoryStamp(tx: AdminTx, run: { period: Date; statutorySnapshot: unknown }) {
+    const stamped = (run.statutorySnapshot ?? null) as unknown as StatutoryStamp | null;
+    if (!stamped || !Array.isArray(stamped.schedules)) return;
+    // The same day the calculation resolves on: the last day inside the period.
+    const resolutionDay = new Date(monthEnd(run.period).getTime() - 86_400_000);
+    const editions = editionsFor(resolutionDay, await tx.statutoryTableVersion.findMany());
+    const current = stampFor(PAYSLIP_SCHEMES, resolutionDay, editions);
+    const changed = current.schedules.flatMap((now) => {
+      const was = stamped.schedules.find((entry) => entry.scheme === now.scheme);
+      if (!was || (was.scheduleId === now.scheduleId && was.contentHash === now.contentHash)) return [];
+      return [`${now.scheme}: ${was.scheduleId ?? 'none'} is now ${now.scheduleId ?? 'none'}`];
+    });
+    if (changed.length === 0) return;
+    throw new BadRequestException(
+      `The statutory tables for ${run.period.toISOString().slice(0, 7)} have changed since this run was calculated ` +
+        `(${changed.join('; ')}). Recalculate so the month is priced on the tables in force, then approve.`,
+    );
   }
 
   /**

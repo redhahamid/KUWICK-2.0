@@ -165,8 +165,6 @@ function hashOf(value: unknown): string {
 
 const OCT_2025 = new Date("2025-10-01T00:00:00.000Z");
 const JAN_2026 = new Date("2026-01-01T00:00:00.000Z");
-/** The PCB spouse-deduction correction takes force from the first month not approved anywhere. */
-const OCT_2026 = new Date("2026-10-01T00:00:00.000Z");
 /** Act A1760/2025 is the EPF amendment; Act 4's SKBBK columns came with it. */
 const SKBBK = new Date("2025-10-01T00:00:00.000Z");
 
@@ -220,28 +218,6 @@ export const STATUTORY_SCHEDULES: readonly StatutorySchedule[] = [
     contentHash: hashOf({ bands: EIS_BANDS, ceiling: EIS_WAGE_CEILING_CENTS }),
   },
   {
-    id: "PCB_MTD_2026",
-    scheme: "PCB",
-    authority: "HASiL",
-    document:
-      "D1 — Amendment to: Specification for MTD Calculations using Computerized Calculation for 2026",
-    section: "Computerised Calculation Method, Table 1",
-    effectiveFrom: JAN_2026,
-    // Ends where the corrected edition begins. Months approved on this
-    // edition keep it: the figures, the hash and the spouse deduction as
-    // first coded (RM9,000, the individual figure copied by mistake).
-    effectiveTo: OCT_2026,
-    commencesScheme: false,
-    verification: "OFFICIAL_TEST_VECTOR_VERIFIED",
-    evidence:
-      "Reproduces the specification’s own worked example (Exhibit 5) to the sen across all twelve months, including the two-step treatment of additional remuneration. Exhibit 5 is category 3 and never exercises S.",
-    contentHash: hashOf({
-      table1: PCB_TABLE_1,
-      individual: DEDUCTION_INDIVIDUAL_CENTS,
-      nonResident: NON_RESIDENT_RATE_PERCENT,
-    }),
-  },
-  {
     id: "PCB_MTD_2026_S_CORRECTED",
     scheme: "PCB",
     authority: "HASiL",
@@ -249,12 +225,16 @@ export const STATUTORY_SCHEDULES: readonly StatutorySchedule[] = [
       "D1 — Specification for MTD Calculations using Computerized Calculation for 2026, spouse deduction S = RM4,000 (correction of the first coding)",
     section:
       "Computerised Calculation Method, Table 1 and the parameter list (D, S, DU, SU, QC)",
-    effectiveFrom: OCT_2026,
+    // From the start of the year, not from the month the mistake was found:
+    // this corrects the coding, not the law, so every month not yet approved
+    // is priced on it. The months approved on the first coding keep their
+    // frozen snapshots, which name PCB_MTD_2026 — see SUPERSEDED_SCHEDULES.
+    effectiveFrom: JAN_2026,
     effectiveTo: null,
     commencesScheme: false,
     verification: "OFFICIAL_SOURCE_VERIFIED",
     evidence:
-      "The specification lists D = RM9,000 and S = RM4,000 (category 2 only); the first coding used the individual figure for S. Table 1 and D are unchanged and still reproduce Exhibit 5; a category 2 month is pinned against the formula in pcb-2026.spec.ts. In force from October 2026 so approved months keep the figures they were approved on.",
+      "The specification lists D = RM9,000 and S = RM4,000 (category 2 only); the first coding used the individual figure for S. Table 1 and D are unchanged and still reproduce Exhibit 5; a category 2 month is pinned against the formula in pcb-2026.spec.ts. In force from 1 January 2026: the correction of a coding error, not a change in the law, so every month not yet approved is priced on it, and a month approved on the first coding keeps its frozen snapshot.",
     contentHash: hashOf({
       table1: PCB_TABLE_1,
       individual: DEDUCTION_INDIVIDUAL_CENTS,
@@ -333,6 +313,43 @@ export const STATUTORY_SCHEDULES: readonly StatutorySchedule[] = [
     contentHash: hashOf({
       ceiling: FIRST_SCHEDULE_WAGE_CEILING_CENTS,
       from: FIRST_SCHEDULE_EFFECTIVE_FROM.toISOString(),
+    }),
+  },
+];
+
+/**
+ * EDITIONS THAT GOVERN NO PERIOD ANY MORE, kept by name and by hash.
+ *
+ * A run's stamp carries the id, the hash and the document of whatever priced
+ * it, so a month approved on one of these stays traceable without this list.
+ * The list exists for two other reasons: an id here is never reused for
+ * different content, and the figures behind a stamped hash can still be found
+ * in code. NOTHING RESOLVES FROM IT — `scheduleFor` reads STATUTORY_SCHEDULES
+ * alone — and nothing lists it as in force.
+ */
+export const SUPERSEDED_SCHEDULES: readonly StatutorySchedule[] = [
+  {
+    id: "PCB_MTD_2026",
+    scheme: "PCB",
+    authority: "HASiL",
+    document:
+      "D1 — Amendment to: Specification for MTD Calculations using Computerized Calculation for 2026",
+    section: "Computerised Calculation Method, Table 1",
+    effectiveFrom: JAN_2026,
+    // Superseded from the instant it began: PCB_MTD_2026_S_CORRECTED governs
+    // every 2026 month. This edition carried the spouse deduction as first
+    // coded (RM9,000, the individual figure copied by mistake). The months
+    // approved on it between January and September 2026 keep that figure in
+    // their frozen snapshots, and this id and hash are what those stamps name.
+    effectiveTo: JAN_2026,
+    commencesScheme: false,
+    verification: "OFFICIAL_TEST_VECTOR_VERIFIED",
+    evidence:
+      "Reproduces the specification’s own worked example (Exhibit 5) to the sen across all twelve months, including the two-step treatment of additional remuneration. Exhibit 5 is category 3 and never exercises S, which is how the first coding of S passed every official vector.",
+    contentHash: hashOf({
+      table1: PCB_TABLE_1,
+      individual: DEDUCTION_INDIVIDUAL_CENTS,
+      nonResident: NON_RESIDENT_RATE_PERCENT,
     }),
   },
 ];
