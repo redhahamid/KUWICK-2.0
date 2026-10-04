@@ -20,11 +20,11 @@
   --kw-teal-hover: #0b5f59;
 
   /* Surfaces */
-  --kw-page-bg: #f4f7fa;
+  --kw-page-bg: #f3f4f9;
   --kw-card: #ffffff;
   --kw-rail-bg: #f8fafc;
-  --kw-band-bg: #edf6fb;
-  --kw-band-border: #cfe3ef;
+  --kw-band-bg: #eef0fb;
+  --kw-band-border: #dadcf4;
   --kw-border: #dce4ea;
 
   /* Text */
@@ -80,6 +80,46 @@
   --kw-s3: 12px;
   --kw-s4: 16px;
   --kw-s6: 24px;
+
+  /* THE CANVAS PALETTE (tokens.ts `canvas` and `tileGradients`): the white
+     chrome, the lavender page, the indigo action, the soft chips and the
+     gradient tiles that the clinical workspace, the HR module and the portal
+     all read. Values are the tokens' own; nothing below is a second opinion. */
+  --kw-c-bg: #f3f4f9;
+  --kw-c-card: #ffffff;
+  --kw-c-card-border: rgba(16, 24, 40, 0.06);
+  --kw-c-line: #e7e8f0;
+  --kw-c-line-strong: #d6d8e4;
+  --kw-c-hover: #eef0f6;
+  --kw-c-ink: #15172b;
+  --kw-c-ink2: #5d6178;
+  --kw-c-ink3: #8b90a7;
+  --kw-c-indigo: #4f55e0;
+  --kw-c-indigo-hover: #4046c9;
+  --kw-c-indigo-soft: #e9eafc;
+  --kw-c-indigo-text: #3a40c2;
+  --kw-c-indigo-ring: rgba(79, 85, 224, 0.28);
+  --kw-c-green: #1f7a3f;
+  --kw-c-green-bg: #e3f5ea;
+  --kw-c-amber: #9a5b06;
+  --kw-c-amber-bg: #fff2dc;
+  --kw-c-red: #c0392b;
+  --kw-c-red-bg: #fde8e8;
+  --kw-c-blue: #2d5cb8;
+  --kw-c-blue-bg: #e4ecfb;
+  --kw-c-radius-card: 18px;
+  --kw-c-radius-control: 10px;
+  --kw-c-shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 28px -14px rgba(16, 24, 40, 0.18);
+  --kw-c-topbar: 60px;
+  --kw-c-tile-indigo: linear-gradient(135deg, #5b63f1, #8b6cf6);
+  --kw-c-tile-rose: linear-gradient(135deg, #f0506e, #f98aa0);
+  --kw-c-tile-amber: linear-gradient(135deg, #f0a020, #f7c85a);
+  --kw-c-tile-violet: linear-gradient(135deg, #8c5cf6, #b48cfb);
+  --kw-c-tile-teal: linear-gradient(135deg, #17b1a4, #4fd4c6);
+  --kw-c-tile-sky: linear-gradient(135deg, #2d9cf0, #64c1fb);
+  --kw-c-tile-green: linear-gradient(135deg, #2fb36b, #6ad495);
+  --kw-c-tile-slate: linear-gradient(135deg, #6b7280, #9ca3af);
+  --kw-c-tile-blue: linear-gradient(135deg, #3b6ff5, #6c95ff);
 }
 
 /* The clinical workspace sits on the page background, so white cards read as
@@ -99,8 +139,8 @@
 .kw-canvas-shell .ant-btn-primary:not(.ant-btn-background-ghost),
 .kw-completion-bar .ant-btn-primary:not(.ant-btn-background-ghost),
 .kw-last-visit .ant-btn-primary:not(.ant-btn-background-ghost) {
-  background: var(--kw-navy);
-  border-color: var(--kw-navy);
+  background: var(--kw-c-indigo);
+  border-color: var(--kw-c-indigo);
 }
 
 /* A ghost primary is an OUTLINE: navy text, navy border, no fill. */
@@ -108,23 +148,23 @@
 .kw-completion-bar .ant-btn-primary.ant-btn-background-ghost,
 .kw-last-visit .ant-btn-primary.ant-btn-background-ghost {
   background: transparent;
-  border-color: var(--kw-navy);
-  color: var(--kw-navy);
+  border-color: var(--kw-c-indigo);
+  color: var(--kw-c-indigo);
 }
 
 .kw-canvas-shell .ant-btn-primary.ant-btn-background-ghost:not(:disabled):hover,
 .kw-completion-bar .ant-btn-primary.ant-btn-background-ghost:not(:disabled):hover,
 .kw-last-visit .ant-btn-primary.ant-btn-background-ghost:not(:disabled):hover {
-  background: var(--kw-navy) !important;
-  border-color: var(--kw-navy) !important;
+  background: var(--kw-c-indigo) !important;
+  border-color: var(--kw-c-indigo) !important;
   color: #fff !important;
 }
 
 .kw-canvas-shell .ant-btn-primary:not(.ant-btn-background-ghost):not(:disabled):hover,
 .kw-completion-bar .ant-btn-primary:not(.ant-btn-background-ghost):not(:disabled):hover,
 .kw-last-visit .ant-btn-primary:not(.ant-btn-background-ghost):not(:disabled):hover {
-  background: var(--kw-navy-hover) !important;
-  border-color: var(--kw-navy-hover) !important;
+  background: var(--kw-c-indigo-hover) !important;
+  border-color: var(--kw-c-indigo-hover) !important;
 }
 
 /* Status chips. Each one is rendered WITH its word — the class only supplies
@@ -666,10 +706,10 @@ body.kw-note-focus .kw-editor-min .ProseMirror {
   align-items: center;
   flex-wrap: wrap;
   gap: 4px 10px;
-  padding: 6px 8px;
+  padding: 6px 10px;
   margin-bottom: 6px;
-  background: #fafafa;
-  border-radius: 6px;
+  background: #f6f7fb;
+  border-radius: 12px;
 }
 
 /* G4.5d3c-3c1 — the saved vitals summary is the RESTING state, so it has to
@@ -1146,9 +1186,12 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
    No collapsed state, no toggle, and no internal scrollbar: a long list
    truncates to "View all N" and the page grows. */
 .kw-rail-panel {
-  border: 1px solid var(--kw-border);
-  border-radius: 8px;
-  background: #fff;
+  border: 1px solid var(--kw-c-card-border);
+  border-radius: 14px;
+  background: var(--kw-c-card);
+  box-shadow: var(--kw-c-shadow-card);
+  /* The rail's vertical budget is measured (canvas-viewport.spec.ts): the
+     padding the compaction settled on stays, and only the face changes. */
   padding: 8px 10px;
 }
 
@@ -1161,8 +1204,9 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 .kw-rail-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  /* The tile, then the title: left-aligned, since the tile came first. */
+  justify-content: flex-start;
+  gap: 6px;
   margin-bottom: 2px;
   line-height: 1.3;
   /* b4 PIECE 1 — the count stays readable while the rail scrolls.
@@ -1324,7 +1368,7 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   align-items: flex-start;
   gap: 8px;
   padding: 5px 0;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid #f0f1f6;
 }
 
 .kw-rail-row:last-of-type {
@@ -3009,85 +3053,122 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 }
 
 /* ===========================================================================
-   KW2-C2 — the top navigation band, per the approved canvas (spec p.2).
+   THE TOP BAR — white, per the clinical canvas design (October 2026).
    ---------------------------------------------------------------------------
-   The one GLOBAL repaint in the Kuwick 2.0 work, and it is deliberate: the
-   nav is a single band shared by Flow and Canvas alike, so skinning it per
-   layout would make it flicker between two identities as a doctor toggles.
-   Owner-assigned to this phase for exactly that reason.
-
-   Routes are untouched. This is colour, spacing and two extra items.
+   One bar for the whole product, so it is skinned once: the KUWICK wordmark,
+   the primary navigation as pills with a soft indigo active state, the clinic
+   as a light pill, and the person. Routes and items are untouched; this is
+   colour, shape and spacing, in the canvas tokens (`design-system/tokens.ts`,
+   `canvas`) in their `--kw-c-*` form.
    ========================================================================= */
-.kw-app-header-navy {
-  background: var(--kw-brand-navy);
+.kw-app-header-canvas {
+  background: var(--kw-c-card);
+  border-bottom: 1px solid var(--kw-c-line);
+  color: var(--kw-c-ink);
+}
+
+.kw-wordmark {
+  font-family: var(--kw-font);
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--kw-c-ink);
+  flex-shrink: 0;
+  line-height: 1;
+  user-select: none;
+}
+
+/* The navigation as pills. antd's horizontal menu underlines the selected
+   item; the design draws a soft indigo pill instead, so the underline goes. */
+.kw-app-header-canvas .ant-menu {
+  background: transparent;
   border-bottom: none;
+  font-size: 15px;
+  line-height: var(--kw-c-topbar);
+  align-items: center;
 }
 
-.kw-app-header-navy .ant-menu {
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 14px;
+.kw-app-header-canvas .ant-menu-horizontal > .ant-menu-item,
+.kw-app-header-canvas .ant-menu-horizontal > .ant-menu-submenu {
+  padding-inline: 14px;
+  margin-inline: 2px;
+  height: 38px;
+  line-height: 38px;
+  border-radius: var(--kw-c-radius-control);
+  color: var(--kw-c-ink2);
+  top: 0;
 }
 
-.kw-app-header-navy .ant-menu-item {
-  color: rgba(255, 255, 255, 0.78);
+.kw-app-header-canvas .ant-menu-horizontal > .ant-menu-item::after,
+.kw-app-header-canvas .ant-menu-horizontal > .ant-menu-submenu::after {
+  display: none !important;
 }
 
-.kw-app-header-navy .ant-menu-item a {
+.kw-app-header-canvas .ant-menu-item a {
   color: inherit;
 }
 
-.kw-app-header-navy .ant-menu-item:hover,
-.kw-app-header-navy .ant-menu-item:hover a {
-  color: #fff !important;
+.kw-app-header-canvas .ant-menu-horizontal > .ant-menu-item:hover,
+.kw-app-header-canvas .ant-menu-horizontal > .ant-menu-item:hover a {
+  color: var(--kw-c-ink) !important;
+  background: var(--kw-c-hover);
 }
 
-/* Active item: white, with the accent underline the mockup draws. */
-.kw-app-header-navy .ant-menu-item-selected,
-.kw-app-header-navy .ant-menu-item-selected a {
-  color: #fff !important;
+/* Active item: the soft indigo pill. */
+.kw-app-header-canvas .ant-menu-horizontal > .ant-menu-item-selected,
+.kw-app-header-canvas .ant-menu-horizontal > .ant-menu-item-selected a {
+  color: var(--kw-c-indigo-text) !important;
+  background: var(--kw-c-indigo-soft);
   font-weight: 600;
-}
-
-.kw-app-header-navy .ant-menu-item-selected::after {
-  border-bottom: 2px solid var(--kw-brand-blue) !important;
-  opacity: 1 !important;
 }
 
 /* A disabled item still has to be readable — it is stating a fact about the
    product, not decoration. */
-.kw-app-header-navy .ant-menu-item-disabled,
-.kw-app-header-navy .ant-menu-item-disabled span {
-  color: rgba(255, 255, 255, 0.38) !important;
+.kw-app-header-canvas .ant-menu-item-disabled,
+.kw-app-header-canvas .ant-menu-item-disabled span {
+  color: var(--kw-c-ink3) !important;
   cursor: not-allowed;
 }
 
-.kw-app-header-navy .kw-app-header-identity div,
-.kw-app-header-navy .kw-app-header-identity .ant-typography {
-  color: #fff !important;
+.kw-app-header-canvas .kw-app-header-identity div,
+.kw-app-header-canvas .kw-app-header-identity .ant-typography {
+  color: var(--kw-c-ink) !important;
 }
 
-.kw-app-header-navy .kw-app-header-identity .ant-typography-secondary {
-  color: rgba(255, 255, 255, 0.66) !important;
+.kw-app-header-canvas .kw-app-header-identity .ant-typography-secondary {
+  color: var(--kw-c-ink2) !important;
 }
 
-.kw-app-header-navy .anticon {
-  color: rgba(255, 255, 255, 0.85);
+.kw-app-header-canvas .anticon {
+  color: var(--kw-c-ink2);
 }
 
-/* The clinic pill. */
+.kw-app-header-canvas .ant-typography {
+  color: var(--kw-c-ink);
+}
+
+.kw-app-header-canvas .kw-app-header-back {
+  color: var(--kw-c-ink2);
+}
+
+.kw-app-header-canvas .kw-app-header-back:hover {
+  color: var(--kw-c-indigo);
+}
+
+/* The clinic pill: light, bordered, the clinic's name in ink. */
 .kw-app-clinic-pill {
   display: inline-flex;
   align-items: center;
-  height: 30px;
+  height: 36px;
   padding: 0 14px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  color: #fff;
-  font-size: 12px;
+  border-radius: var(--kw-c-radius-control);
+  background: var(--kw-c-card);
+  border: 1px solid var(--kw-c-line-strong);
+  color: var(--kw-c-ink);
+  font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
-  max-width: 220px;
+  max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -6804,3 +6885,162 @@ button.kw-stage__button:hover { background: var(--kw-surface-2); }
 }
 
 .kw-approveFigures .kw-payFig--lead .kw-payFig__value { font-size: 21px; }
+
+/* ===========================================================================
+   THE ICON TILE — the gradient square beside a card title (canvas design).
+   `design-system/components/IconTile.tsx` renders it; the gradients are the
+   canvas tokens. Decorative: it is aria-hidden, and the title beside it still
+   says what the card is.
+   ========================================================================= */
+.kw-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 9px;
+  color: #fff;
+  font-size: 15px;
+  line-height: 1;
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.1), 0 1px 2px rgba(16, 24, 40, 0.12);
+}
+
+/* Inside a one-line card header: the height of the line it sits on, so a
+   card measured to a budget does not grow for it. */
+.kw-tile--sm {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.kw-tile .anticon {
+  display: inline-flex;
+  line-height: 0;
+}
+
+.kw-tile .anticon svg {
+  fill: currentColor;
+}
+
+.kw-tile--indigo {
+  background: var(--kw-c-tile-indigo);
+}
+
+.kw-tile--rose {
+  background: var(--kw-c-tile-rose);
+}
+
+.kw-tile--amber {
+  background: var(--kw-c-tile-amber);
+}
+
+.kw-tile--violet {
+  background: var(--kw-c-tile-violet);
+}
+
+.kw-tile--teal {
+  background: var(--kw-c-tile-teal);
+}
+
+.kw-tile--sky {
+  background: var(--kw-c-tile-sky);
+}
+
+.kw-tile--green {
+  background: var(--kw-c-tile-green);
+}
+
+.kw-tile--slate {
+  background: var(--kw-c-tile-slate);
+}
+
+.kw-tile--blue {
+  background: var(--kw-c-tile-blue);
+}
+
+/* THE RIGHT RAIL'S CARDS DROP THEIR TILES BELOW 1440px. The rail is 463px
+   wide at 1366 and its invoice card is measured to a 160px budget
+   (canvas-viewport.spec.ts); the tile's 24px pushes the card's second status
+   chip onto a new line there, which costs 23px the budget does not have. From
+   1440 the rail has the room, and the tiles return. */
+@media (max-width: 1439px) {
+  [data-testid='canvas-right'] .kw-rail-panel .kw-tile {
+    display: none;
+  }
+}
+
+/* A card title that carries a tile: the tile, then the words. */
+.kw-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   THE CLINICAL CANVAS'S CONTROLS on the canvas tokens: rounded controls,
+   indigo primaries, soft tags, rounded cards. Scoped to the canvas layout;
+   the modules outside it keep the navy they were reviewed in.
+   ------------------------------------------------------------------------ */
+.kw-canvas2 .ant-btn {
+  border-radius: var(--kw-c-radius-control);
+}
+
+.kw-canvas2 .ant-btn-primary:not(.ant-btn-background-ghost):not(:disabled) {
+  background: var(--kw-c-indigo);
+  border-color: var(--kw-c-indigo);
+  box-shadow: none;
+}
+
+.kw-canvas2 .ant-btn-primary:not(.ant-btn-background-ghost):not(:disabled):hover {
+  background: var(--kw-c-indigo-hover) !important;
+  border-color: var(--kw-c-indigo-hover) !important;
+}
+
+.kw-canvas2 .ant-btn-primary.ant-btn-background-ghost {
+  color: var(--kw-c-indigo);
+  border-color: var(--kw-c-indigo);
+}
+
+.kw-canvas2 .ant-btn-link {
+  color: var(--kw-c-indigo);
+}
+
+.kw-canvas2 .ant-btn-default:not(:disabled):hover {
+  color: var(--kw-c-indigo);
+  border-color: var(--kw-c-indigo);
+}
+
+.kw-canvas2 .ant-card {
+  border-radius: var(--kw-c-radius-card);
+  border-color: var(--kw-c-card-border);
+  box-shadow: var(--kw-c-shadow-card);
+}
+
+.kw-canvas2 .ant-card > .ant-card-head {
+  border-bottom-color: var(--kw-c-line);
+}
+
+.kw-canvas2 .ant-segmented {
+  border-radius: var(--kw-c-radius-control);
+  background: var(--kw-c-hover);
+}
+
+.kw-canvas2 .ant-segmented .ant-segmented-item-selected {
+  border-radius: 8px;
+  color: var(--kw-c-indigo-text);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.14);
+}
+
+.kw-canvas2 .ant-tag {
+  border-radius: 999px;
+}
+
+.kw-canvas2 .ant-input,
+.kw-canvas2 .ant-input-affix-wrapper,
+.kw-canvas2 .ant-select-selector,
+.kw-canvas2 .ant-input-number {
+  border-radius: var(--kw-c-radius-control) !important;
+}

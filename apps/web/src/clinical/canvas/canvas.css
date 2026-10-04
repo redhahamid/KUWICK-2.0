@@ -1,61 +1,57 @@
 /* ===========================================================================
-   KUWICK 2.0 CANVAS — "Compact Pro" tokens
+   KUWICK 2.0 CANVAS — the canvas tokens, in the names this file was written in
    ---------------------------------------------------------------------------
-   Scoped to `.kw-canvas2`, deliberately, and NOT merged into the global
-   palette.
+   Scoped to `.kw-canvas2`. The values are no longer the canvas's own: since
+   the October 2026 design they are the product's canvas palette, declared in
+   `design-system/tokens.ts` (`canvas`) and carried by `index.css` as
+   `--kw-c-*` — the same palette the HR module and the portal read. The
+   `--kw2-*` names below stay because three hundred rules use them; each one
+   now points at a shared token, so the clinical workspace cannot drift from
+   the other two areas.
 
-   The approved spec gives a different palette from the one this product
-   ships: navy #171E4E and accent #2557E8 against the shipped #184a6b navy and
-   #0f766e clinical teal. Applying those globally would repaint Flow, the
-   Queue, Billing, Management and Settings in one commit — every surface the
-   brief says not to break — and none of that was reviewed. So the new palette
-   lives here, on the Canvas only, and adopting it product-wide stays a
-   separate decision with its own review.
-
-   TYPE SIZES ARE THE ONE DELIBERATE DEVIATION. The spec asks for 9.5–11px
-   body and 7.5–8px micro-labels. An approved earlier decision (D-072) put a
-   12px floor under clinical text, and 8px is below what a GP reads reliably
-   at the end of a session. The compact feel here comes from spacing and
-   density instead: micro-labels sit at 10px uppercase with letter-spacing,
-   which reads as a caption without pretending to be body text, and anything
-   carrying a clinical VALUE stays at 12px or above. Both floors are single
-   tokens — raise or lower them in one place.
+   TYPE SIZES ARE THE ONE DELIBERATE DEVIATION from the design's density. An
+   approved earlier decision (D-072) put a 12px floor under clinical text,
+   and 8px is below what a GP reads reliably at the end of a session. The
+   compact feel comes from spacing and density instead: micro-labels sit at
+   10px uppercase with letter-spacing, which reads as a caption without
+   pretending to be body text, and anything carrying a clinical VALUE stays
+   at 12px or above. Both floors are single tokens.
    ========================================================================= */
 .kw-canvas2 {
-  /* --- Brand ------------------------------------------------------------ */
-  --kw2-navy: #171e4e;
-  --kw2-navy-d: #101632;
-  --kw2-blue: #2557e8;
-  --kw2-blue-l: #4d7cff;
+  /* --- Brand: indigo is the action, deep indigo its text form ------------ */
+  --kw2-navy: var(--kw-c-indigo-text);
+  --kw2-navy-d: var(--kw-c-indigo-hover);
+  --kw2-blue: var(--kw-c-indigo);
+  --kw2-blue-l: var(--kw-c-indigo-text);
 
   /* --- Surfaces --------------------------------------------------------- */
-  --kw2-bg: #f2f3f6;
-  --kw2-surface: #ffffff;
-  --kw2-border: #e2e4ec;
-  --kw2-input: #f5f6f9;
-  --kw2-soft: #e7ebf8;
+  --kw2-bg: var(--kw-c-bg);
+  --kw2-surface: var(--kw-c-card);
+  --kw2-border: var(--kw-c-line);
+  --kw2-input: #f6f7fb;
+  --kw2-soft: var(--kw-c-indigo-soft);
 
   /* --- Text ------------------------------------------------------------- */
-  --kw2-text: #12142a;
-  --kw2-muted: #6e7288;
+  --kw2-text: var(--kw-c-ink);
+  --kw2-muted: var(--kw-c-ink2);
 
   /* --- Status (pair: background / foreground) --------------------------- */
-  --kw2-ok-bg: #e8f6ee;
-  --kw2-ok-fg: #1e7a4b;
-  --kw2-warn-bg: #fff6e6;
-  --kw2-warn-border: #f0dcac;
-  --kw2-warn-fg: #8a6510;
+  --kw2-ok-bg: var(--kw-c-green-bg);
+  --kw2-ok-fg: var(--kw-c-green);
+  --kw2-warn-bg: var(--kw-c-amber-bg);
+  --kw2-warn-border: #f1dfb6;
+  --kw2-warn-fg: var(--kw-c-amber);
 
   /* --- Geometry --------------------------------------------------------- */
-  --kw2-radius-card: 10px;
-  --kw2-radius-row: 7px;
-  --kw2-gap: 14px;
-  --kw2-pad: 12px;
-  --kw2-shadow: 0 3px 7px rgba(11, 27, 42, 0.05);
+  --kw2-radius-card: var(--kw-c-radius-card);
+  --kw2-radius-row: 12px;
+  --kw2-gap: 16px;
+  --kw2-pad: 14px;
+  --kw2-shadow: var(--kw-c-shadow-card);
 
   /* --- Type ------------------------------------------------------------- */
-  --kw2-font: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
-  --kw2-title: 13.5px;
+  --kw2-font: var(--kw-font);
+  --kw2-title: 15px;
   /* The two floors described above. */
   --kw2-body: 12px;
   --kw2-micro: 10px;
@@ -138,7 +134,7 @@
    ------------------------------------------------------------------------ */
 .kw-canvas2 .kw2-card {
   background: var(--kw2-surface);
-  border: 1px solid var(--kw2-border);
+  border: 1px solid var(--kw-c-card-border);
   border-radius: var(--kw2-radius-card);
   box-shadow: var(--kw2-shadow);
   padding: var(--kw2-pad);
@@ -146,7 +142,7 @@
 
 .kw-canvas2 .kw2-card-title {
   font-size: var(--kw2-title);
-  font-weight: 600;
+  font-weight: 700;
   color: var(--kw2-text);
   margin: 0;
 }
@@ -217,7 +213,7 @@
   justify-content: center;
   border: none;
   border-radius: 8px;
-  background: var(--kw2-navy);
+  background: var(--kw-c-indigo);
   color: #fff;
   cursor: pointer;
   font-size: 14px;
@@ -229,12 +225,13 @@
 }
 
 .kw-canvas2 .kw2-icon-btn:not(:disabled):hover {
-  background: var(--kw2-navy-d);
+  background: var(--kw-c-indigo-hover);
 }
 
 .kw-canvas2 .kw2-visit-today {
-  background: var(--kw2-navy);
-  color: #fff;
+  background: var(--kw-c-indigo-soft);
+  color: var(--kw2-text);
+  border: 1px solid #dfe2fa;
   border-radius: var(--kw2-radius-row);
   padding: 12px;
   display: flex;
@@ -332,12 +329,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px 8px;
 }
 
 .kw-canvas2 .kw2-visit-when {
   font-size: 14px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 /* The visit number is a pill in both cards — white on the navy today card,
@@ -377,7 +376,7 @@
 }
 
 .kw-canvas2 .kw2-visit-today .kw2-visit-line {
-  color: #fff;
+  color: var(--kw2-muted);
   white-space: normal;
 }
 
@@ -387,12 +386,12 @@
 }
 
 .kw-canvas2 .kw2-visit-today .kw2-visit-key {
-  color: #fff;
+  color: var(--kw2-text);
 }
 
 .kw-canvas2 .kw2-visit-attrib {
   font-size: var(--kw2-body);
-  color: rgba(255, 255, 255, 0.66);
+  color: var(--kw-c-ink3);
 }
 
 .kw-canvas2 .kw2-visit-actions {
@@ -486,34 +485,32 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 6px 14px;
-  padding: 6px var(--kw2-pad, 12px);
-  margin-bottom: 8px;
-  background: #fff;
-  border: 1px solid #e2e4ec;
-  border-radius: 10px;
-  box-shadow: 0 3px 7px rgba(11, 27, 42, 0.05);
-  /* The accent stripe the mockup puts down the left edge. */
-  border-left: 3px solid #171e4e;
-  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
-  color: #12142a;
+  padding: 8px 16px;
+  margin-bottom: 10px;
+  background: var(--kw-c-card);
+  border: 1px solid var(--kw-c-card-border);
+  border-radius: var(--kw-c-radius-card);
+  box-shadow: var(--kw-c-shadow-card);
+  font-family: var(--kw-font);
+  color: var(--kw-c-ink);
 }
 
 .kw2-back {
   border: none;
   background: none;
   cursor: pointer;
-  color: #6e7288;
+  color: var(--kw-c-ink2);
   padding: 4px;
   font-size: 15px;
 }
 
 .kw2-back:hover {
-  color: #171e4e;
+  color: var(--kw-c-indigo-text);
 }
 
 .kw2-avatar {
-  background: #e7ebf8 !important;
-  color: #171e4e !important;
+  background: var(--kw-c-indigo-soft) !important;
+  color: var(--kw-c-indigo-text) !important;
   font-weight: 700;
   flex: 0 0 auto;
 }
@@ -553,7 +550,7 @@
 }
 
 .kw2-identity-button:focus-visible {
-  outline: 2px solid #1677ff;
+  outline: 2px solid var(--kw-c-indigo);
   outline-offset: 2px;
 }
 
@@ -562,8 +559,8 @@
    between "nothing recorded" and "nobody looked". */
 .kw2-chip-alerts {
   appearance: none;
-  border: 1px solid #d9d9d9;
-  background: #fafafa;
+  border: 1px solid var(--kw-c-line-strong);
+  background: #f6f7fb;
   color: rgba(0, 0, 0, 0.65);
   cursor: pointer;
   display: inline-flex;
@@ -583,9 +580,9 @@
    a chronic condition qualifies one. Two readable weights, one hierarchy —
    which is the whole point of having split them. */
 .kw2-chip-alerts-active {
-  border-color: #ffd591;
-  background: #fff7e6;
-  color: #ad4e00;
+  border-color: #f1dfb6;
+  background: var(--kw-c-amber-bg);
+  color: var(--kw-c-amber);
   /* Deliberately not 600. The red chip is the one that shouts. */
   font-weight: 500;
   /* WRAPS, rather than ellipsising.
@@ -621,7 +618,7 @@
 }
 
 .kw2-chip-alerts:focus-visible {
-  outline: 2px solid #1677ff;
+  outline: 2px solid var(--kw-c-indigo);
   outline-offset: 2px;
 }
 
@@ -647,7 +644,7 @@
   padding: 6px 10px;
   border-radius: 6px;
   border: 1px solid #e6e6e6;
-  background: #fafafa;
+  background: #f6f7fb;
   color: rgba(0, 0, 0, 0.65);
   font-size: 12px;
 }
@@ -676,8 +673,8 @@
   gap: 5px;
   border-radius: 999px;
   padding: 2px 10px;
-  background: #e8f6ee;
-  color: #1e7a4b;
+  background: var(--kw-c-green-bg);
+  color: var(--kw-c-green);
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
@@ -689,8 +686,8 @@
 }
 
 .kw2-state-done {
-  background: #f2f3f6;
-  color: #6e7288;
+  background: var(--kw-c-hover);
+  color: var(--kw-c-ink2);
 }
 
 /* KW2-C2 — paused. Amber, the token this system already uses for "true and
@@ -698,8 +695,8 @@
    Green here would say the consultation is running, which is the one thing
    this state is not. */
 .kw2-state-held {
-  background: #fff6e6;
-  color: #8a6510;
+  background: var(--kw-c-amber-bg);
+  color: var(--kw-c-amber);
 }
 
 /* b4 PIECE A — vertical rhythm, and only that. The identity block is three
@@ -711,7 +708,7 @@
 .kw2-identity-meta {
   font-size: 12px;
   line-height: 1.35;
-  color: #6e7288;
+  color: var(--kw-c-ink2);
 }
 
 /* The complaint is clinical content, so it is ink and not a muted caption. */
@@ -719,7 +716,7 @@
   font-size: 12px;
   line-height: 1.35;
   font-weight: 700;
-  color: #171e4e;
+  color: var(--kw-c-indigo-text);
 }
 
 .kw2-header-chips {
@@ -736,8 +733,8 @@
   gap: 5px;
   border-radius: 999px;
   padding: 3px 11px;
-  background: #f5f6f9;
-  border: 1px solid #e2e4ec;
+  background: var(--kw2-input);
+  border: 1px solid var(--kw-c-line);
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
@@ -754,7 +751,7 @@
   filter: brightness(0.96);
 }
 .kw2-chip-button:focus-visible {
-  outline: 2px solid #4338ca;
+  outline: 2px solid var(--kw-c-indigo);
   outline-offset: 1px;
 }
 
@@ -763,9 +760,9 @@
    The non-allergy alert chip beside it is amber at weight 500 — both readable
    without interaction, one clearly louder. */
 .kw2-chip-danger {
-  background: #fdecec;
+  background: var(--kw-c-red-bg);
   border-color: #f5c2c2;
-  color: #b42318;
+  color: var(--kw-c-red);
   font-weight: 600;
 }
 
@@ -791,22 +788,22 @@
 /* "Allergy not asked" — amber, because an unasked question is not a
    negative answer. */
 .kw2-chip-warn {
-  background: #fff6e6;
-  border-color: #f0dcac;
-  color: #8a6510;
+  background: var(--kw-c-amber-bg);
+  border-color: #f1dfb6;
+  color: var(--kw-c-amber);
 }
 
 .kw2-chip-payer {
-  background: #fff6e6;
-  border-color: #f0dcac;
-  color: #8a6510;
+  background: var(--kw-c-amber-bg);
+  border-color: #f1dfb6;
+  color: var(--kw-c-amber);
   letter-spacing: 0.03em;
 }
 
 .kw2-autosave {
   font-size: 12px;
   font-weight: 600;
-  color: #1e7a4b;
+  color: var(--kw-c-green);
   white-space: nowrap;
 }
 
@@ -844,24 +841,49 @@
 /* Hold carries the mockup's amber outline even while disabled — the shape
    the clinic was shown, in the state the product is actually in. */
 .kw2-hold:disabled {
-  border-color: #f0dcac !important;
+  border-color: #f1dfb6 !important;
   color: #b99a4e !important;
 }
 
 .kw2-complete {
-  background: #171e4e !important;
-  border-color: #171e4e !important;
+  background: var(--kw-c-indigo) !important;
+  border-color: var(--kw-c-indigo) !important;
 }
 
 .kw2-complete:not(:disabled):hover {
-  background: #101632 !important;
-  border-color: #101632 !important;
+  background: var(--kw-c-indigo-hover) !important;
+  border-color: var(--kw-c-indigo-hover) !important;
 }
 
 @media (max-width: 767px) {
   .kw2-header-actions {
     margin-left: 0;
     width: 100%;
+  }
+
+  .kw2-complete-slot {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .kw2-complete-slot .kw-consult-bar {
+    flex-wrap: wrap;
+  }
+
+  .kw2-complete-slot [role='alert'] {
+    white-space: normal;
+    max-width: 100%;
+  }
+
+  /* antd keeps a button on one line; the completion control's wording is a
+     sentence, and on a phone a sentence wraps. */
+  .kw2-complete-slot .ant-btn,
+  .kw2-complete-slot .ant-btn > span {
+    white-space: normal;
+    height: auto;
+    max-width: 100%;
+    line-height: 1.35;
+    padding-block: 8px;
   }
 
   .kw2-header-actions .ant-btn {
@@ -882,7 +904,7 @@
   align-items: flex-start;
   gap: 10px;
   padding: 10px;
-  border: 1px solid #e2e4ec;
+  border: 1px solid var(--kw-c-line);
   border-radius: 8px;
   margin-bottom: 8px;
   cursor: pointer;
@@ -890,12 +912,12 @@
 }
 
 .kw2-copy-row:hover {
-  border-color: #4d7cff;
+  border-color: var(--kw-c-indigo);
 }
 
 .kw2-copy-row-flagged {
-  background: #fff6e6;
-  border-color: #f0dcac;
+  background: var(--kw-c-amber-bg);
+  border-color: #f1dfb6;
 }
 
 .kw2-copy-row-body {
@@ -908,18 +930,18 @@
 .kw2-copy-row-name {
   font-size: 13px;
   font-weight: 700;
-  color: #12142a;
+  color: var(--kw-c-ink);
 }
 
 .kw2-copy-row-detail {
   font-size: 12px;
-  color: #6e7288;
+  color: var(--kw-c-ink2);
 }
 
 .kw2-copy-row-warn {
   font-size: 12px;
   font-weight: 600;
-  color: #8a6510;
+  color: var(--kw-c-amber);
 }
 
 /* ---------------------------------------------------------------------------
@@ -1074,9 +1096,10 @@
    same scroll the rail already needs.
    ======================================================================== */
 .kw2-appt-dock {
-  border: 1px solid var(--kw-border);
-  border-radius: 8px;
-  background: #fff;
+  border: 1px solid var(--kw-c-card-border);
+  border-radius: 14px;
+  background: var(--kw-c-card);
+  box-shadow: var(--kw-c-shadow-card);
   padding: 6px 8px;
   display: flex;
   flex-direction: column;

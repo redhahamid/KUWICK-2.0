@@ -1,5 +1,6 @@
 import { Skeleton } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { ClockCircleOutlined, PlusOutlined } from '@ant-design/icons';
+import { IconTile } from '../../design-system/components/IconTile';
 import dayjs from 'dayjs';
 import { useVisitHistory } from '../history/useVisitHistory';
 import { useDiagnoses } from '../hooks/useDiagnoses';
@@ -163,6 +164,9 @@ export function CanvasVisitsRail({
   return (
     <section className="kw2-card kw2-visits" aria-label="Visits">
       <header className="kw2-visits-head">
+        <IconTile tone="indigo" size="sm">
+          <ClockCircleOutlined />
+        </IconTile>
         <h2 className="kw2-card-title">Visits</h2>
         {!isLoading && <span className="kw2-count-chip">{total} total</span>}
         <button

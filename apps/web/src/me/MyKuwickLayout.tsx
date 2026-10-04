@@ -1,7 +1,16 @@
 import type { ReactNode } from "react";
-import { colors, fontFamily } from "../design-system/tokens";
+import { canvas, fontFamily } from "../design-system/tokens";
 import { ConfigProvider } from "antd";
-import { Link, NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import {
+  CalendarOutlined,
+  ClockCircleOutlined,
+  FileDoneOutlined,
+  HomeOutlined,
+  UserOutlined,
+  WalletOutlined,
+} from "@ant-design/icons";
+import { SectionTileContext, type SectionTile } from "../admin/hr/ui/sectionTile";
 import { useAuthStore } from "../core/auth-store";
 import { setClinicTimeZone } from "../clinical/clinicTime";
 import { initialsOf } from "../admin/hr/ui/who";
@@ -27,7 +36,18 @@ const TABS: { to: string; label: string; end?: boolean }[] = [
   { to: "/my/attendance", label: "Attendance" },
 ];
 
+/** The tile each tab's panels wear — see `SectionTileContext`. */
+const TILES: Record<string, SectionTile> = {
+  "/my": { tone: "indigo", icon: <HomeOutlined aria-hidden="true" /> },
+  "/my/payslips": { tone: "violet", icon: <WalletOutlined aria-hidden="true" /> },
+  "/my/leave": { tone: "teal", icon: <CalendarOutlined aria-hidden="true" /> },
+  "/my/claims": { tone: "green", icon: <FileDoneOutlined aria-hidden="true" /> },
+  "/my/attendance": { tone: "amber", icon: <ClockCircleOutlined aria-hidden="true" /> },
+  "/my/profile": { tone: "slate", icon: <UserOutlined aria-hidden="true" /> },
+};
+
 export function MyKuwickLayout() {
+  const location = useLocation();
   const { data: profile } = useMyProfile();
   const { data: home } = useMyHome();
   const tenantName = useAuthStore((state) => state.tenant?.name ?? null);
@@ -40,18 +60,24 @@ export function MyKuwickLayout() {
     "/my/attendance": home?.waiting.attendanceCorrections ?? 0,
   };
   const name = profile?.fullName ?? home?.fullName ?? "";
+  // The longest tab path that leads this route: `/my/leave/…` wears Leave's tile.
+  const tileKey =
+    Object.keys(TILES)
+      .filter((path) => location.pathname === path || location.pathname.startsWith(`${path}/`))
+      .sort((a, b) => b.length - a.length)[0] ?? "/my";
 
   return (
     <ConfigProvider
       theme={{
         token: {
-          colorPrimary: colors.brandBlue,
-          colorLink: colors.brandBlue,
-          borderRadius: 8,
+          colorPrimary: canvas.indigo,
+          colorLink: canvas.indigo,
+          borderRadius: canvas.radiusControl,
           fontFamily,
         },
       }}
     >
+      <SectionTileContext.Provider value={TILES[tileKey]}>
       <div className="kw-hrSlate hr-portal" data-testid="my-kuwick">
         <header className="hr-top">
           <Link to="/my" className="hr-top__logo">
@@ -97,6 +123,7 @@ export function MyKuwickLayout() {
           <Outlet />
         </main>
       </div>
+      </SectionTileContext.Provider>
     </ConfigProvider>
   );
 }

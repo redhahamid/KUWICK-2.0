@@ -116,6 +116,8 @@ export function MyHomePage() {
         <Panel>
           <PanelHead
             title="Payslips"
+            icon={<IconDoc />}
+            tone="violet"
             actions={
               <Link className="hr-link" to="/my/payslips">
                 All
@@ -148,7 +150,7 @@ export function MyHomePage() {
         </Panel>
 
         <Panel>
-          <PanelHead title="Quick actions" />
+          <PanelHead title="Quick actions" icon={<IconPlus />} tone="indigo" />
           <div className="hr-quick">
             <Link className="hr-btn" to="/my/leave">
               <IconCalendar />
@@ -168,7 +170,7 @@ export function MyHomePage() {
             </Link>
           </div>
           <div className="hr-panelHead--top">
-            <PanelHead title="Recent" />
+            <PanelHead title="Recent" icon={<IconClock />} tone="slate" />
           </div>
           {data && data.recent.length === 0 ? (
             <PortalEmpty title="Nothing yet">Decisions on your leave and claims, and paid months, show here.</PortalEmpty>

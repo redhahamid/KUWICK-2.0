@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { colors } from "../../design-system/tokens";
+import { canvas } from "../../design-system/tokens";
 import { Button, Progress, Tag } from "antd";
 import { AdminSection } from "../components/AdminShell";
 import {
@@ -198,7 +198,7 @@ export function HrSetupJourney({
       <Progress
         percent={Math.round((ready / steps.length) * 100)}
         showInfo={false}
-        strokeColor={colors.brandBlue}
+        strokeColor={canvas.indigo}
       />
       <div className="kw-setupSteps">
         {steps.map((step, index) => (

@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { ADMIN_CATEGORIES } from '../../admin/adminNav';
+import { canvas } from '../tokens';
 import { useAuthStore } from '../../core/auth-store';
 import { useClinicTimeZoneSync } from '../../core/hooks/useClinicTimeZone';
 import { canViewDispensary } from '../../clinical/dispensary/dispensaryAccess';
@@ -198,10 +199,13 @@ export function AppLayout() {
   return (
     <Layout style={{ height: '100vh', overflow: 'hidden' }}>
       <Header
-        style={{ display: 'flex', alignItems: 'center', gap: 16, height: 54, lineHeight: '54px' }}
-        className={`kw-app-header kw-app-header-navy${inAdminHr ? ' kw-hrSlateHeader' : ''}`}
+        style={{ display: 'flex', alignItems: 'center', gap: 16, height: canvas.topBarHeight, lineHeight: `${canvas.topBarHeight}px` }}
+        className={`kw-app-header kw-app-header-canvas${inAdminHr ? ' kw-hrSlateHeader' : ''}`}
       >
-        <img src="/kuwick-logo.png" alt="Kuwick" style={{ height: 22, flexShrink: 0 }} />
+        {/* The wordmark, as the canvas design sets it: the word, in ink. */}
+        <span className="kw-wordmark" aria-label="Kuwick">
+          KUWICK
+        </span>
 
         {inHub && (
           <>
@@ -246,7 +250,7 @@ export function AppLayout() {
         {!inHub && (
           <Menu
             mode="horizontal"
-            theme="dark"
+            theme="light"
             items={navItems}
             selectedKeys={[location.pathname]}
             style={{ flex: 1, minWidth: 0, borderBottom: 'none', background: 'transparent' }}
@@ -269,7 +273,7 @@ export function AppLayout() {
             </Text>
           </div>
           <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
-            <Avatar style={{ cursor: 'pointer', backgroundColor: '#4338ca' }} icon={<UserOutlined />} />
+            <Avatar style={{ cursor: 'pointer', backgroundColor: canvas.indigo }} icon={<UserOutlined />} />
           </Dropdown>
         </Space>
       </Header>

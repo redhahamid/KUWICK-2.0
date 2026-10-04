@@ -56,3 +56,28 @@ Ant Design's built-in icon set (`@ant-design/icons`) — no separate icon librar
 **Built now** (`packages/design-system` — see folder structure): theme token file (colors, spacing, typography), the `<StatusBadge>` shared component, and a themed Ant Design `ConfigProvider` wrapper. This is enough to render a consistent placeholder shell.
 
 **Not built now**: any clinical, appointment, HR, inventory, panel-claims, or reports screen. Those arrive with their respective Phase 1 module, built using the tokens and patterns established here.
+
+## 8. The canvas palette (October 2026)
+
+The clinical canvas design the owner approved in October 2026 — a white top
+bar with the KUWICK wordmark, pill navigation with a soft indigo active state,
+a grey-lavender page, white cards with 18px corners and a soft shadow, a
+gradient icon tile beside every card title, indigo primary buttons and soft
+tinted status chips — is declared once:
+
+- `apps/web/src/design-system/tokens.ts` — `canvas` (surfaces, ink, indigo,
+  the four status pairs, radii, the card shadow, the bar height) and
+  `tileGradients` (one gradient per card family: indigo, rose, amber, violet,
+  teal, sky, green, slate, blue).
+- `apps/web/src/index.css` — the same values as `--kw-c-*` custom properties,
+  the white top bar (`.kw-app-header-canvas`), the tile (`.kw-tile`) and the
+  canvas's antd overrides.
+
+Three areas read it and nothing else restates it: the clinical canvas
+(`clinical/canvas/canvas.css`, whose `--kw2-*` names now point at `--kw-c-*`),
+the HR module and the My Kuwick portal (`admin/hr/ui/slate.css`, whose `--hr-*`
+names do the same). `design-system/components/IconTile.tsx` renders the tile;
+HR panels inherit their section's tile through `SectionTileContext` and may
+name their own. The product-wide antd primary (`colors.primary`, navy) is
+deliberately untouched: the modules outside those three areas keep the colours
+they were reviewed in, and moving them is one line in `theme.ts`.

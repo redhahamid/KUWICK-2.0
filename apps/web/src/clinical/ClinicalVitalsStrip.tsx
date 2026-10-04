@@ -1,4 +1,6 @@
 import { Button, Space, Typography } from 'antd';
+import { HeartOutlined } from '@ant-design/icons';
+import { IconTile } from '../design-system/components/IconTile';
 import { formatClinicTime } from './clinicTime';
 import { useLatestObservation } from './hooks/useVisitObservations';
 import { displayBmi } from './vitalsBmi';
@@ -40,6 +42,9 @@ export function ClinicalVitalsStrip({ visitId, onRecord, expanded, onToggleExpan
   if (!latest) {
     return (
       <div className="kw-vitals-strip">
+        <IconTile tone="rose" size="sm">
+          <HeartOutlined />
+        </IconTile>
         <Text type="secondary" style={{ fontSize: 12 }}>
           No vitals recorded yet
         </Text>
@@ -69,6 +74,9 @@ export function ClinicalVitalsStrip({ visitId, onRecord, expanded, onToggleExpan
 
   return (
     <div className="kw-vitals-strip">
+      <IconTile tone="rose" size="sm">
+        <HeartOutlined />
+      </IconTile>
       {recorded.length === 0 ? (
         <Text type="secondary" style={{ fontSize: 12 }}>
           No vitals recorded yet

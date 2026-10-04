@@ -2,9 +2,20 @@
 import type { ReactNode } from 'react';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, configure, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+/*
+ * THESE FLOWS ARE LONG BY DESIGN. Each one walks a four-stage form from the
+ * first field to the request body, through antd selects and date pickers, and
+ * takes three to four seconds on an ordinary machine. On a loaded one they
+ * ran past vitest's five-second default and the library's one-second wait,
+ * and a test that fails for want of a second proves nothing about the form.
+ * The budgets are raised for this file only; nothing here is skipped.
+ */
+vi.setConfig({ testTimeout: 20_000 });
+configure({ asyncUtilTimeout: 4_000 });
 
 /**
  * ADD EMPLOYEE, ON THE FORM ITSELF.

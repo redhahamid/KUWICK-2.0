@@ -23,6 +23,7 @@ import {
   SafetyCertificateOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
+import { IconTile } from '../design-system/components/IconTile';
 import dayjs from 'dayjs';
 import {
   useAmendClinicalNote,
@@ -706,7 +707,14 @@ export function ClinicalNotesTab({ visitId, patientId, compact, embedded }: Clin
 
       <Card
         size="small"
-        title={draftType === 'STAFF_REMARK' ? 'Staff Remark' : 'Clinical Notes'}
+        title={
+          <span className="kw-card-title">
+            <IconTile tone="amber" size="sm">
+              <EditOutlined />
+            </IconTile>
+            {draftType === 'STAFF_REMARK' ? 'Staff Remark' : 'Clinical Notes'}
+          </span>
+        }
         styles={
           compact
             ? {

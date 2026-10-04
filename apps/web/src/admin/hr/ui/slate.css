@@ -9,10 +9,11 @@
  * for the whole product: it feeds antd's theme AND the `--kw-*` properties in
  * `index.css`. The Slate kit's own names (`--hr-*`) live under `.kw-hrSlate`
  * and nowhere else, and a unit guard fails the build if any file outside
- * `admin/hr/` reaches for them. Since the KW2 polish the chrome values are
- * READ from the brand tokens (`--kw-brand-navy`, `--kw-brand-blue`, the
- * product's font) rather than declared here, so the module looks like the
- * rest of Kuwick without the rest of Kuwick depending on it.
+ * `admin/hr/` reaches for them. Since the canvas design of October 2026 the
+ * values are READ from the canvas tokens (`--kw-c-*`: the lavender page, the
+ * indigo action, the soft chips, the product's font) rather than declared
+ * here, so the module looks like the clinical workspace and the portal
+ * without the rest of Kuwick depending on it.
  *
  * Every class here is prefixed `hr-`, except the three the browser specs use
  * to find a rail entry. Those keep their existing names deliberately: the test
@@ -25,34 +26,34 @@
    neither of them is `:root`. */
 .kw-hrSlate,
 .kw-hrSlateHeader {
-  --hr-canvas: #f3f4f6;
-  --hr-surface: #ffffff;
-  --hr-line: #e4e7eb;
-  --hr-line2: #cbd1d8;
-  --hr-ink: #0f1a1e;
-  --hr-ink2: #4b5a63;
-  --hr-ink3: #8b979f;
-  /* The chrome is the product's brand chrome: the logo's deep navy for the
-     sidebar and the header, its royal blue for every action — the same
-     tokens the top band reads, so the module no longer has a colour of
-     its own. The names below are the kit's; only the values moved. */
-  --hr-slate: var(--kw-brand-navy);
-  --hr-slate2: var(--kw-brand-navy-raised);
-  --hr-slate-txt: var(--kw-on-navy);
-  --hr-slate-dim: var(--kw-on-navy-dim);
-  /* Blue is ACTION. Gold is NEEDS A PERSON. Red BLOCKS payroll. Green is
+  --hr-canvas: var(--kw-c-bg);
+  --hr-surface: var(--kw-c-card);
+  --hr-line: var(--kw-c-line);
+  --hr-line2: var(--kw-c-line-strong);
+  --hr-ink: var(--kw-c-ink);
+  --hr-ink2: var(--kw-c-ink2);
+  --hr-ink3: var(--kw-c-ink3);
+  /* The chrome is white now — the sidebar, the header and the portal's top
+     bar are the same surface as the cards, and the section you are in is a
+     soft indigo pill rather than a lit row on navy. The names below are the
+     kit's; only the values moved. */
+  --hr-slate: var(--kw-c-card);
+  --hr-slate2: var(--kw-c-card);
+  --hr-slate-txt: var(--kw-c-ink2);
+  --hr-slate-dim: var(--kw-c-ink3);
+  /* Indigo is ACTION. Amber is NEEDS A PERSON. Red BLOCKS payroll. Green is
      DONE. Grey is from a record, or worked out. Nothing here is decoration. */
-  --hr-action: var(--kw-brand-blue);
-  --hr-action-soft: var(--kw-brand-blue-soft);
-  --hr-gold: #b7791f;
-  --hr-gold-soft: #fbf1dc;
-  --hr-red: #c2362e;
-  --hr-red-soft: #fce6e4;
-  --hr-green: #1e7f45;
-  --hr-green-soft: #e1f3e7;
-  --hr-blue: #2d63b5;
-  --hr-blue-soft: #e4ecf9;
-  --hr-shadow: 0 1px 2px rgba(15, 26, 30, 0.05), 0 6px 20px -8px rgba(15, 26, 30, 0.12);
+  --hr-action: var(--kw-c-indigo);
+  --hr-action-soft: var(--kw-c-indigo-soft);
+  --hr-gold: var(--kw-c-amber);
+  --hr-gold-soft: var(--kw-c-amber-bg);
+  --hr-red: var(--kw-c-red);
+  --hr-red-soft: var(--kw-c-red-bg);
+  --hr-green: var(--kw-c-green);
+  --hr-green-soft: var(--kw-c-green-bg);
+  --hr-blue: var(--kw-c-blue);
+  --hr-blue-soft: var(--kw-c-blue-bg);
+  --hr-shadow: var(--kw-c-shadow-card);
 }
 
 .kw-hrSlate {
@@ -83,6 +84,7 @@
 }
 .hr-side {
   background: var(--hr-slate2);
+  border-right: 1px solid var(--hr-line);
   padding: 18px 12px;
   display: flex;
   flex-direction: column;
@@ -107,7 +109,7 @@
   width: 100%;
   padding: 9px 12px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   color: var(--hr-slate-txt);
   font: inherit;
@@ -116,13 +118,13 @@
   cursor: pointer;
 }
 .kw-hrSlate .kw-hubRail__item:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
+  background: var(--kw-c-hover);
+  color: var(--hr-ink);
 }
 .kw-hrSlate .kw-hubRail__item.is-active {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  box-shadow: inset 3px 0 0 var(--hr-action);
+  background: var(--hr-action-soft);
+  color: var(--kw-c-indigo-text);
+  font-weight: 600;
 }
 .kw-hrSlate .kw-hubRail__item svg {
   width: 17px;
@@ -146,7 +148,7 @@
 }
 .hr-side__bottom {
   margin-top: auto;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--hr-line);
   padding-top: 12px;
 }
 
@@ -271,7 +273,7 @@
   border: 1px solid var(--hr-line2);
   background: var(--hr-surface);
   color: var(--hr-ink);
-  border-radius: 8px;
+  border-radius: var(--kw-c-radius-control);
   padding: 7px 13px;
   font: inherit;
   font-weight: 500;
@@ -325,8 +327,8 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border-radius: 6px;
-  padding: 3px 9px;
+  border-radius: 999px;
+  padding: 3px 10px;
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
@@ -362,8 +364,8 @@
 /* ── Panel ────────────────────────────────────────────────────────────────── */
 .hr-panel {
   background: var(--hr-surface);
-  border: 1px solid var(--hr-line);
-  border-radius: 14px;
+  border: 1px solid var(--kw-c-card-border);
+  border-radius: var(--kw-c-radius-card);
   box-shadow: var(--hr-shadow);
   overflow: hidden;
 }
@@ -375,8 +377,15 @@
   border-bottom: 1px solid var(--hr-line);
 }
 .hr-panelHead h2 {
-  font-size: 17px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
+}
+/* The tile, then the words. */
+.hr-panelHead__title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
 }
 .hr-panelHead .hr-sub {
   font-size: 13px;
@@ -400,8 +409,8 @@
 }
 .hr-stat {
   background: var(--hr-surface);
-  border: 1px solid var(--hr-line);
-  border-radius: 14px;
+  border: 1px solid var(--kw-c-card-border);
+  border-radius: var(--kw-c-radius-card);
   padding: 14px 18px;
   box-shadow: var(--hr-shadow);
 }
@@ -568,17 +577,19 @@
 }
 .hr-seg {
   display: flex;
-  border: 1px solid var(--hr-line2);
-  border-radius: 8px;
-  overflow: hidden;
+  gap: 2px;
+  padding: 3px;
+  background: var(--kw-c-hover);
+  border-radius: var(--kw-c-radius-control);
 }
 .hr-seg button {
-  padding: 5px 11px;
+  padding: 4px 11px;
   font: inherit;
   font-size: 13px;
   color: var(--hr-ink2);
-  background: var(--hr-surface);
+  background: transparent;
   border: 0;
+  border-radius: 8px;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -587,8 +598,10 @@
   cursor: default;
 }
 .hr-seg button.is-active {
-  background: var(--hr-slate);
-  color: #fff;
+  background: var(--hr-surface);
+  color: var(--hr-ink);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.14);
 }
 
 /* ── Cards ────────────────────────────────────────────────────────────────── */
@@ -599,8 +612,8 @@
 }
 .hr-card {
   background: var(--hr-surface);
-  border: 1px solid var(--hr-line);
-  border-radius: 14px;
+  border: 1px solid var(--kw-c-card-border);
+  border-radius: var(--kw-c-radius-card);
   padding: 16px 18px 14px;
   display: flex;
   flex-direction: column;
@@ -632,7 +645,7 @@
   width: 34px;
   height: 34px;
   border-radius: 9px;
-  background: var(--hr-slate);
+  background: var(--kw-c-tile-indigo);
   color: #fff;
   display: grid;
   place-items: center;
@@ -802,6 +815,14 @@
     align-items: center;
     gap: 4px;
     padding: 10px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--hr-line);
+  }
+  /* The entries themselves are the row's items, so they wrap as one line of
+     pills; the two <nav> groups and the settings block no longer stack. */
+  .hr-side nav,
+  .hr-side__bottom {
+    display: contents;
   }
   .kw-hrSlate .kw-hubRail__heading {
     padding: 0 8px 0 4px;
@@ -835,23 +856,16 @@
  * area, so it is not restyled: it is given this class on HR routes and left
  * alone everywhere else. The five module tabs live in it, because the Slate
  * mockups have no second row and crossing from HR to Finance without going
- * back to a hub is a thing the product promises on every screen.
+ * back to a hub is a thing the product promises on every screen. White, like
+ * the bar everywhere else since the canvas design; only the tabs are HR's.
  */
 .kw-app-header.kw-hrSlateHeader {
   background: var(--hr-slate);
-  height: 56px;
-  line-height: 56px;
-}
-.kw-hrSlateHeader .kw-app-clinic-pill {
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: transparent;
-  border-radius: 20px;
-  padding: 4px 12px;
-  color: #fff;
-  font-weight: 500;
+  height: var(--kw-c-topbar);
+  line-height: var(--kw-c-topbar);
 }
 .kw-hrSlateHeader .kw-app-header-identity div {
-  color: #fff;
+  color: var(--hr-ink);
 }
 .kw-hrSlateHeader .kw-app-header-identity .ant-typography {
   color: var(--hr-slate-txt);
@@ -861,12 +875,12 @@
   color: var(--hr-slate-txt);
 }
 .kw-hrSlateHeader .kw-app-header-crumbs b {
-  color: #fff;
-  font-weight: 500;
+  color: var(--hr-ink);
+  font-weight: 600;
 }
 .kw-hrSlateHeader .kw-app-header-back:hover,
 .kw-hrSlateHeader .kw-app-header-crumbs a:hover {
-  color: #fff;
+  color: var(--hr-action);
 }
 .kw-hrSlateHeader .ant-avatar {
   background: var(--hr-action) !important;
@@ -882,7 +896,7 @@
   border-bottom: 0;
 }
 .kw-hrSlateHeader .hr-modules .ant-tabs-tab {
-  padding: 17px 0;
+  padding: 19px 0;
   margin: 0 0 0 22px;
 }
 .kw-hrSlateHeader .hr-modules .ant-tabs-tab:first-child {
@@ -892,9 +906,12 @@
   color: var(--hr-slate-txt);
   font-weight: 500;
 }
-.kw-hrSlateHeader .hr-modules .ant-tabs-tab:hover .ant-tabs-tab-btn,
+.kw-hrSlateHeader .hr-modules .ant-tabs-tab:hover .ant-tabs-tab-btn {
+  color: var(--hr-ink);
+}
 .kw-hrSlateHeader .hr-modules .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: #fff;
+  color: var(--kw-c-indigo-text);
+  font-weight: 600;
 }
 .kw-hrSlateHeader .hr-modules .ant-tabs-ink-bar {
   background: var(--hr-action);
@@ -1944,9 +1961,10 @@ a.hr-who:hover .hr-who__name {
   font-feature-settings: 'tnum' 1, 'cv11' 1;
 }
 .hr-top {
-  height: 56px;
+  height: var(--kw-c-topbar);
   background: var(--hr-slate);
-  color: #fff;
+  color: var(--hr-ink);
+  border-bottom: 1px solid var(--hr-line);
   display: flex;
   align-items: center;
   padding: 0 22px;
@@ -1954,10 +1972,10 @@ a.hr-who:hover .hr-who__name {
 }
 .hr-top__logo {
   font-family: var(--kw-font);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  font-size: 15px;
-  color: #fff;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  font-size: 17px;
+  color: var(--hr-ink);
   text-decoration: none;
 }
 .hr-top__crumbs {
@@ -1972,11 +1990,12 @@ a.hr-who:hover .hr-who__name {
   min-width: 0;
 }
 .hr-top__clinic {
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 20px;
-  padding: 4px 12px;
-  color: #fff;
-  font-weight: 500;
+  border: 1px solid var(--hr-line2);
+  border-radius: var(--kw-c-radius-control);
+  padding: 6px 14px;
+  color: var(--hr-ink);
+  font-weight: 600;
+  font-size: 13px;
   white-space: nowrap;
 }
 .hr-top__name {
@@ -2010,21 +2029,25 @@ a.hr-who:hover .hr-who__name {
 }
 .hr-ptabs a {
   padding: 8px 14px;
-  border-radius: 20px;
+  border-radius: var(--kw-c-radius-control);
   text-decoration: none;
   color: var(--hr-ink2);
   font-weight: 500;
-  border: 1px solid var(--hr-line2);
-  background: #fff;
+  border: 1px solid transparent;
+  background: transparent;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-height: 40px;
 }
+.hr-ptabs a:hover {
+  background: var(--kw-c-hover);
+  color: var(--hr-ink);
+}
 .hr-ptabs a.is-active {
-  background: var(--hr-slate);
-  color: #fff;
-  border-color: var(--hr-slate);
+  background: var(--hr-action-soft);
+  color: var(--kw-c-indigo-text);
+  font-weight: 600;
 }
 .hr-ptabs__count {
   font-size: 11px;
@@ -2931,15 +2954,6 @@ textarea.hr-f {
 }
 
 /* ── KW2 polish: brand band, product icons, narrow screens ───────────────── */
-/* The band's underline: the logo's two blues as one hairline under the
-   header, so the HR shell starts where the top band ends. */
-.kw-hrSlate::before {
-  content: '';
-  display: block;
-  flex: none;
-  height: 3px;
-  background: linear-gradient(90deg, var(--kw-brand-navy), var(--kw-brand-blue) 55%, var(--kw-brand-blue-soft));
-}
 /* The product's icons are filled glyphs; the stroke rules above were written
    for the traced outlines and would hollow them out. */
 .kw-hrSlate .anticon,

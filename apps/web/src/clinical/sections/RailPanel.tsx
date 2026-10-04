@@ -1,7 +1,32 @@
 import { ReactNode, useState } from 'react';
 import { Alert, Button, Skeleton, Space, Typography } from 'antd';
+import {
+  AppstoreOutlined,
+  CreditCardOutlined,
+  ExperimentOutlined,
+  FileTextOutlined,
+  MedicineBoxOutlined,
+  TagsOutlined,
+} from '@ant-design/icons';
+import { IconTile } from '../../design-system/components/IconTile';
+import type { TileTone } from '../../design-system/tokens';
 
 const { Text } = Typography;
+
+/**
+ * The tile each card wears, by the name the card already carries — the
+ * canvas design gives every card header a gradient icon. Decorative (the
+ * tile is aria-hidden); the title is still what names the card.
+ */
+const TILES: Record<string, { tone: TileTone; glyph: ReactNode }> = {
+  Diagnosis: { tone: 'violet', glyph: <TagsOutlined /> },
+  'Orders / Procedures': { tone: 'sky', glyph: <ExperimentOutlined /> },
+  'Direct Services': { tone: 'sky', glyph: <AppstoreOutlined /> },
+  Medications: { tone: 'green', glyph: <MedicineBoxOutlined /> },
+  Documents: { tone: 'teal', glyph: <FileTextOutlined /> },
+  Invoice: { tone: 'indigo', glyph: <CreditCardOutlined /> },
+};
+const DEFAULT_TILE = { tone: 'slate' as TileTone, glyph: <AppstoreOutlined /> };
 
 export interface RailPanelProps {
   title: string;
@@ -84,6 +109,7 @@ export function RailPanel({
    * item exists the card opens on its own.
    */
   const isEmpty = !isLoading && !error && items.length === 0;
+  const tile = TILES[title] ?? DEFAULT_TILE;
 
   return (
     <section
@@ -93,6 +119,9 @@ export function RailPanel({
       id={anchorId}
     >
       <div className="kw-rail-head">
+        <IconTile tone={tile.tone} size="sm">
+          {tile.glyph}
+        </IconTile>
         <Space size={6} align="center">
           <Text strong style={{ fontSize: 14 }}>
             {title}

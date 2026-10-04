@@ -6,6 +6,91 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 12 — 4 Oktober 2026 — gaya kanvas klinikal: bar atas putih, kad bulat, jubin ikon, indigo
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 11 (`11c276a`). Komit: komit yang menambah bahagian ini (hash dalam
+laporan). **Migrasi: tiada. Tiada perubahan tingkah laku** — CSS, token dan
+elemen hiasan (jubin ikon, `aria-hidden`) sahaja.
+
+### Apa yang berubah
+
+- `[D]` **Reka bentuk kanvas yang dilampirkan belum wujud dalam repo.** Yang
+  ada ialah spek kanvas lama (`docs/design/kuwick2-canvas-final.pdf`, navy
+  "Compact Pro", dilaksanakan sebagai token `.kw-canvas2` dalam
+  `canvas.css`). Jadi palet baharu diletakkan **sekali** dalam
+  `apps/web/src/design-system/tokens.ts` (`canvas`, `tileGradients`) dan
+  dalam `index.css` sebagai `--kw-c-*`; `canvas.css` (klinikal) dan
+  `slate.css` (HR dan portal) membaca token itu, bukan menyalin hex.
+- `[D]` **Bar atas** (`AppLayout`): putih, wordmark KUWICK sebagai teks,
+  menu utama sebagai pil dengan keadaan aktif indigo lembut, pil klinik
+  bercahaya, avatar indigo; tinggi 60px. Item navigasi tidak berubah.
+- `[D]` **Kanvas klinikal**: latar kelabu-lavender, kad putih bucu 18px
+  dengan bayang lembut, jubin ikon berkecerunan pada setiap kepala kad
+  (Visits, Clinical Notes, Diagnosis, Orders, Medications, Documents,
+  Invoice, Appointments, Vitals), butang utama indigo, cip status lembut.
+  Kad lawatan semasa kini indigo lembut, bukan navy.
+- `[D]` **HR & payroll**: sidebar putih dengan garis halus, bahagian aktif
+  sebagai pil indigo lembut; header HR putih dengan tab modul; panel, kad
+  stat dan butang pada bucu kanvas; cip = pil; `PanelHead` memakai jubin
+  bahagian secara lalai (`SectionTileContext` daripada `HrShell`) atau
+  jubin sendiri melalui prop `icon`/`tone`; tajuk kedua dalam satu panel
+  (`rule`) tiada jubin. Pada telefon, rail menjadi baris pil di bawah header.
+- `[D]` **My Kuwick**: bar atas putih, tab sebagai pil indigo lembut, kad
+  dengan jubin (halaman utama: Payslips ungu, Quick actions indigo, Recent
+  kelabu; halaman lain mengikut tab).
+- `[D]` **Ujian**: `slateIsolation.test.tsx` menjaga kontrak baharu
+  (`slate.css` membaca `var(--kw-c-indigo)`/`var(--kw-c-bg)`, tiada hex
+  kanvas ditaip di dalamnya); 324 ujian unit HR/portal/kanvas lulus.
+- `[D]` **Bajet kanvas 1920×1080** (`canvas-viewport.spec.ts`) diukur
+  selepas gaya baharu: rail kanan 873/873 (tiada skrol), dok janji temu
+  bawah 878 < 1080, halaman tidak skrol; tiada limpahan mendatar pada 1440
+  mahupun 390 untuk kesemua sembilan skrin yang ditangkap.
+
+### Uji di staging (ikut urutan)
+
+1. Log masuk; bar atas putih dengan wordmark **KUWICK**; item menu semasa
+   (cth. *Queue*) ialah pil indigo lembut; nama klinik dalam pil putih.
+2. Buka satu lawatan dalam susun atur *Canvas*: latar lavender, kad putih
+   bulat, jubin ikon pada Visits/Clinical Notes/Medications/Invoice, butang
+   *Dispense*/*Start* indigo, cip *In Consult* hijau.
+3. *Administration → HR*: sidebar putih, bahagian aktif pil indigo; header
+   putih dengan tab Operation/Stock/Panel/HR/Finance; panel Payroll berjubin
+   ungu, Leave berjubin teal.
+4. *My Kuwick* (akaun nurse): tab Home/Payslips/… sebagai pil; kad Payslips
+   jubin ungu, Quick actions indigo, Recent kelabu; butang *Clock in* indigo.
+5. Kecilkan ke 390px: tiada skrol mendatar pada kanvas, HR dan portal; rail
+   HR menjadi baris pil di bawah header.
+
+### Keputusan terbuka / yang saya pilih bagi pihak anda
+
+- `[A]` Warna utama antd seluruh produk (`colors.primary`, navy) **tidak
+  diubah**: Stock/Panel/Finance/Operation/Queue kekal seperti yang disemak,
+  dan indigo diskop kepada kanvas klinikal, HR dan portal. Satu baris dalam
+  `theme.ts` jika seluruh produk patut indigo.
+- `[A]` Wordmark sebagai teks, bukan imej logo, mengikut reka bentuk; PNG
+  logo kekal untuk halaman log masuk.
+- `[A]` Garis rambut 3px di bawah header HR (Batch 7) dibuang — reka bentuk
+  putih tidak mempunyainya.
+- `[A]` Latar halaman global `--kw-page-bg` beralih daripada #f4f7fa ke
+  #f3f4f9 (kelabu-lavender) supaya satu warna latar untuk seluruh produk;
+  perbezaannya hampir tidak kelihatan pada modul lain.
+- `[A]` **Jubin pada kad rail kanan kanvas disembunyikan di bawah 1440px.**
+  Pada 1366 rail itu 463px lebar dan kad Invoice diukur kepada bajet 160px
+  (`canvas-viewport.spec.ts`); jubin 24px menolak cip status kedua ke baris
+  baharu (kad 167px). Dari 1440 ke atas jubin dipaparkan; kad lajur tengah
+  (Diagnosis) mengekalkan jubinnya pada semua lebar. Pilihan lain ialah
+  melonggarkan bajet, dan peraturan spek itu ialah kad yang dipendekkan,
+  bukan ujian.
+- `[A]` **Bajet ujian `addEmployeeForm.test.tsx` dinaikkan** (20 s setiap
+  ujian, 4 s untuk `findBy`/`waitFor`) untuk fail itu sahaja. Mesin ujian
+  hari ini ~1.5× lebih perlahan (gate 1: 48 s berbanding 30 s semalam) dan
+  dua aliran borang empat peringkat itu melepasi had lalai 5 s **juga pada
+  pokok sebelum perubahan ini** (`git stash` → 5.07 s / 5.09 s), jadi ia
+  bukan kesan gaya baharu. Tiada ujian dilangkau.
+
+---
+
 ## Batch 11 — 3 Oktober 2026 — pembetulan S berkuat kuasa dari 1 Januari 2026
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas

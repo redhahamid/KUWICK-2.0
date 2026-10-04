@@ -40,8 +40,8 @@ const tokensSource = read("../../../design-system/tokens.ts");
  * the product's brand tokens, which the test below checks separately.
  */
 const SLATE_HEXES = ["#b7791f", "#c2362e", "#1e7f45"];
-/** The brand chrome, as `design-system/tokens.ts` declares it. */
-const BRAND_HEXES = ["#101632", "#2557e8"];
+/** The canvas chrome — the indigo action, the lavender page — as `design-system/tokens.ts` declares it. */
+const CANVAS_HEXES = ["#4f55e0", "#f3f4f9"];
 
 /** Comments name the other modules deliberately; a selector check must not read them as selectors. */
 const rules = (css: string) =>
@@ -113,15 +113,16 @@ describe("the Slate kit", () => {
     expect(found).toEqual([]);
   });
 
-  it("reads the brand chrome from the product tokens rather than restating it", () => {
-    // The sidebar and the actions are navy and royal blue because the whole
-    // product is; typing the hex here would be a second place for it to drift.
-    for (const hex of BRAND_HEXES) {
+  it("reads the canvas chrome from the product tokens rather than restating it", () => {
+    // The page, the actions and the chips are the canvas palette because the
+    // clinical workspace and the portal are too; typing a hex here would be a
+    // second place for it to drift.
+    for (const hex of CANVAS_HEXES) {
       expect(slateCss.toLowerCase()).not.toContain(hex);
       expect(tokensSource.toLowerCase()).toContain(hex);
     }
-    expect(slateCss).toContain("var(--kw-brand-navy)");
-    expect(slateCss).toContain("var(--kw-brand-blue)");
+    expect(slateCss).toContain("var(--kw-c-indigo)");
+    expect(slateCss).toContain("var(--kw-c-bg)");
     expect(slateCss).toContain("var(--kw-font)");
     // And no face of its own: the module types in the product's stack.
     expect(slateCss).not.toMatch(/Inter/);

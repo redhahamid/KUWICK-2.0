@@ -1,4 +1,5 @@
 import { useMemo, type ReactElement } from 'react';
+import { AppstoreOutlined } from '@ant-design/icons';
 import { ConfigProvider, Select } from 'antd';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -15,6 +16,8 @@ import {
   IconReports,
   IconSettings,
 } from './ui/icons';
+import { SectionTileContext, type SectionTile } from './ui/sectionTile';
+import { canvas, fontFamily } from '../../design-system/tokens';
 import './ui/slate.css';
 
 /**
@@ -37,6 +40,23 @@ const ICONS: Record<string, () => ReactElement> = {
   '/admin/hr/reports': IconReports,
   '/admin/hr/settings': IconSettings,
 };
+
+/**
+ * THE TILE EACH SECTION'S PANELS WEAR, by the section the rail has lit —
+ * the canvas design puts a gradient icon beside every card title, and a
+ * panel inherits its section's unless it names its own. The overview, which
+ * has no rail entry, wears the module's indigo.
+ */
+const TILES: Record<string, SectionTile> = {
+  '/admin/hr/employees': { tone: 'indigo', icon: <IconEmployees /> },
+  '/admin/hr/payroll': { tone: 'violet', icon: <IconPayroll /> },
+  '/admin/hr/attendance': { tone: 'amber', icon: <IconClock /> },
+  '/admin/hr/leave': { tone: 'teal', icon: <IconCalendar /> },
+  '/admin/hr/claims': { tone: 'green', icon: <IconClaims /> },
+  '/admin/hr/reports': { tone: 'sky', icon: <IconReports /> },
+  '/admin/hr/settings': { tone: 'slate', icon: <IconSettings /> },
+};
+const OVERVIEW_TILE: SectionTile = { tone: 'indigo', icon: <AppstoreOutlined aria-hidden="true" /> };
 
 export function HrShell() {
   const location = useLocation();
@@ -88,6 +108,8 @@ export function HrShell() {
     '/admin/hr/claims': today.data?.pendingClaims ?? 0,
   };
 
+  const sectionTile = (activePath && TILES[activePath]) || OVERVIEW_TILE;
+
   const railItem = (path: string, label: string, apart = false) => {
     const Icon = ICONS[path];
     const count = counts[path] ?? 0;
@@ -111,11 +133,12 @@ export function HrShell() {
   return (
     <ConfigProvider
       theme={{
-        // antd inside HR follows the kit: teal is the action colour, and the
-        // radius and control height match the hand-drawn components beside it.
-        token: { colorPrimary: '#0F8F7A', colorLink: '#0F8F7A', borderRadius: 8, fontFamily: 'Inter, system-ui, sans-serif' },
+        // antd inside HR follows the canvas tokens: indigo is the action
+        // colour, and the radius matches the hand-drawn components beside it.
+        token: { colorPrimary: canvas.indigo, colorLink: canvas.indigo, borderRadius: canvas.radiusControl, fontFamily },
       }}
     >
+      <SectionTileContext.Provider value={sectionTile}>
       <div className="kw-hrSlate">
         <div className="hr-shell">
           <aside className="hr-side">
@@ -150,6 +173,7 @@ export function HrShell() {
           </main>
         </div>
       </div>
+      </SectionTileContext.Provider>
     </ConfigProvider>
   );
 }

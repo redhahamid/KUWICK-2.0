@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Badge, Button, Calendar, Space, Typography } from 'antd';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
-import { PlusOutlined } from '@ant-design/icons';
+import { CalendarOutlined, PlusOutlined } from '@ant-design/icons';
+import { IconTile } from '../../design-system/components/IconTile';
 import { useAppointments } from '../../appointment/hooks/useAppointments';
 import { useStaff } from '../../hr/hooks/useStaff';
 import { useServices } from '../hooks/useServices';
@@ -102,9 +103,14 @@ export function CanvasAppointmentCalendar({
   return (
     <section className="kw2-appt-dock" aria-label="Appointments" data-testid="canvas-appointment-calendar">
       <div className="kw2-appt-head">
-        <Text strong style={{ fontSize: 13 }}>
-          Appointments
-        </Text>
+        <span className="kw-card-title">
+          <IconTile tone="blue" size="sm">
+            <CalendarOutlined />
+          </IconTile>
+          <Text strong style={{ fontSize: 13 }}>
+            Appointments
+          </Text>
+        </span>
         <Button
           size="small"
           type="link"

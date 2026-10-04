@@ -102,7 +102,7 @@ export const colors = {
   errorBase: "#dc2626",
 
   // --- Surfaces ------------------------------------------------------------
-  pageBg: "#f4f7fa",
+  pageBg: "#f3f4f9",
   card: "#ffffff",
   railBg: "#f8fafc",
   border: "#dce4ea",
@@ -110,6 +110,69 @@ export const colors = {
   textSecondary: "#667085",
   textMuted: "#98a2b3",
 } as const;
+
+/**
+ * THE CANVAS PALETTE — the clinical canvas design approved in October 2026,
+ * shared by the clinical workspace, the HR module and the My Kuwick portal.
+ *
+ * White chrome and white cards on a grey-lavender page; indigo for every
+ * action; a soft tinted chip for every state; a gradient tile beside every
+ * card title. `index.css` carries the same values as `--kw-c-*` custom
+ * properties for the stylesheets (`canvas.css`, `slate.css`), which read
+ * them rather than restating a hex — so the three areas cannot drift apart.
+ *
+ * The `colors` above are untouched: the modules outside those three areas
+ * keep the navy they were reviewed in. Moving them is one line in
+ * `theme.ts`, and a decision of its own.
+ */
+export const canvas = {
+  /** The page behind the cards: grey with a breath of lavender. */
+  pageBg: "#f3f4f9",
+  card: "#ffffff",
+  cardBorder: "rgba(16, 24, 40, 0.06)",
+  line: "#e7e8f0",
+  lineStrong: "#d6d8e4",
+  /** The quiet fill behind a hovered pill or a segmented control's track. */
+  hover: "#eef0f6",
+  ink: "#15172b",
+  ink2: "#5d6178",
+  ink3: "#8b90a7",
+  /** The action colour, and the soft pill its active state sits on. */
+  indigo: "#4f55e0",
+  indigoHover: "#4046c9",
+  indigoSoft: "#e9eafc",
+  indigoText: "#3a40c2",
+  indigoRing: "rgba(79, 85, 224, 0.28)",
+  /** Status pairs: ready, pending, alert, note. Always rendered with a word. */
+  green: "#1f7a3f",
+  greenBg: "#e3f5ea",
+  amber: "#9a5b06",
+  amberBg: "#fff2dc",
+  red: "#c0392b",
+  redBg: "#fde8e8",
+  blue: "#2d5cb8",
+  blueBg: "#e4ecfb",
+  radiusCard: 18,
+  radiusControl: 10,
+  shadowCard:
+    "0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 28px -14px rgba(16, 24, 40, 0.18)",
+  topBarHeight: 60,
+} as const;
+
+/** The card-header tiles: one gradient per card family, a white glyph on top. */
+export const tileGradients = {
+  indigo: ["#5b63f1", "#8b6cf6"],
+  rose: ["#f0506e", "#f98aa0"],
+  amber: ["#f0a020", "#f7c85a"],
+  violet: ["#8c5cf6", "#b48cfb"],
+  teal: ["#17b1a4", "#4fd4c6"],
+  sky: ["#2d9cf0", "#64c1fb"],
+  green: ["#2fb36b", "#6ad495"],
+  slate: ["#6b7280", "#9ca3af"],
+  blue: ["#3b6ff5", "#6c95ff"],
+} as const;
+
+export type TileTone = keyof typeof tileGradients;
 
 /**
  * The product's type stack: the platform's own UI face. Declared once so the
