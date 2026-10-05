@@ -2548,6 +2548,15 @@ export interface PayrollJourneyPayItem {
 }
 
 export interface PayrollJourney {
+  /**
+   * Who changed since this draft was worked out, and which kinds of record —
+   * null when nothing did, when the month is not a worked-out draft, or when it
+   * was worked out before Kuwick kept a fingerprint to compare with.
+   */
+  recordsChanged?: {
+    since: string | null;
+    employees: { staffId: string; name: string; what: string[] }[];
+  } | null;
   run: {
     id: string;
     period: string;

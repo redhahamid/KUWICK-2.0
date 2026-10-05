@@ -1,5 +1,6 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { byEmployeeName } from './employee-order';
+import { computeInputStamps, diffInputStamps, storedInputStamps, type StampDb } from './payroll-input-stamps';
+import { byEmployeeName, compareByEmployeeName } from './employee-order';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { actorCan, requirePermission, requireScope } from '../finance/admin-actor';
@@ -1009,6 +1010,12 @@ export class PayrollJourneyService {
     // THE MONTH BEFORE, for this branch — so "compare with December" is said
     // only when there is a December to compare with. A branch's first month
     // on record has nothing to compare against, and the screen says so.
+    // The records as they are now, fingerprinted the way the calculation was.
+    const currentStamps =
+      run.status === 'CALCULATED' && storedInputStamps(run.inputStamps)
+        ? await computeInputStamps(this.prisma as unknown as StampDb, { clinicId: run.clinicId, period })
+        : null;
+
     const previousRun = await this.prisma.payrollRun.findFirst({
       where: { period: monthBefore(period), runType: 'REGULAR', clinicId: run.clinicId, status: { not: 'CANCELLED' } },
       orderBy: { sequence: 'desc' },
@@ -1033,7 +1040,30 @@ export class PayrollJourneyService {
           })
         : null;
 
+    /*
+     * RECORDS CHANGED SINCE THIS DRAFT WAS WORKED OUT. Only for a worked-out,
+     * unapproved month: an approved month is settled and changes reach it as
+     * adjustments; a draft never worked out has nothing to be behind. A run
+     * worked out before fingerprints existed says nothing rather than guess.
+     */
+    const savedStamps = run.status === 'CALCULATED' ? storedInputStamps(run.inputStamps) : null;
+    const recordsChanged = savedStamps
+      ? (() => {
+          const names = new Map<string, string>([
+            ...run.lines.map((line) => [line.staffId, line.staff.fullName] as [string, string]),
+            ...employees.map((e) => [e.staffId, e.staff.fullName] as [string, string]),
+          ]);
+          return diffInputStamps(savedStamps, currentStamps!)
+            .map((change) => ({ ...change, name: names.get(change.staffId) ?? 'An employee no longer on record' }))
+            .sort(compareByEmployeeName);
+        })()
+      : null;
+
     return {
+      recordsChanged:
+        recordsChanged && recordsChanged.length > 0
+          ? { since: run.calculatedAt?.toISOString() ?? null, employees: recordsChanged }
+          : null,
       run: {
         id: run.id,
         period: period.toISOString().slice(0, 7),

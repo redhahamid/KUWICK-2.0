@@ -7460,6 +7460,11 @@ model PayrollRun {
   /// dropped or zeroed.
   exceptions Json?
 
+  /// What the month was worked out from: a fingerprint per employee of each
+  /// kind of record the calculation reads (payroll-input-stamps.ts), taken at
+  /// the end of every calculation. Null on runs worked out before it existed.
+  inputStamps Json? @map("input_stamps")
+
   /// THE ORDINARY RATE OF PAY AS APPLIED, frozen so a later policy change
   /// cannot silently reprice a historical run.
   ///

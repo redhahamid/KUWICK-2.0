@@ -7,6 +7,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { computeInputStamps } from './payroll-input-stamps';
 import {
   PayrollApprovalMode as PayrollApprovalModeEnum,
   PayrollRunStatus,
@@ -2508,6 +2509,15 @@ export class PayrollService {
         },
         source: 'hr.payroll',
       });
+
+      /*
+       * WHAT THIS DRAFT WAS WORKED OUT FROM, fingerprinted LAST — after the
+       * claims are linked and the derived items written above, so the
+       * calculation's own writes are part of what it was worked out from and
+       * do not read as a change the moment it finishes.
+       */
+      const inputStamps = await computeInputStamps(tx, { clinicId: run.clinicId, period });
+      await tx.payrollRun.update({ where: { id: runId }, data: { inputStamps: inputStamps as never } });
 
       return updated;
         },

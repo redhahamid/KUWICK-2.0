@@ -156,4 +156,23 @@ describe('Additional PCB each month (e2e)', () => {
     await standing(bettyId, { effectiveFrom: '2026-08-01', additionalPcbCents: -1, reason: 'Typo' }).expect(400);
     await standing(bettyId, { effectiveFrom: '2026-08-01', additionalPcbCents: 20_000_000, reason: 'Typo' }).expect(400);
   });
+
+  /*
+   * RECORDS CHANGED SINCE THE DRAFT WAS WORKED OUT (UAT, 5 October 2026): the
+   * workspace names who changed and what, and stops once the month is worked
+   * out again.
+   */
+  it('says when a record changed after the month was worked out, and stops saying it once worked out again', async () => {
+    const runId = await runMonth('2026-08');
+    type Journey = { recordsChanged: null | { employees: { staffId: string; name: string; what: string[] }[] } };
+    const journey = async () =>
+      (await request(server()).get(`/workforce/payroll/runs/${runId}/journey`).set('Authorization', bearer).expect(200)).body as Journey;
+    expect((await journey()).recordsChanged).toBeNull();
+
+    await standing(bettyId, { effectiveFrom: '2026-08-01', additionalPcbCents: 25_000, additionalPcbNote: 'CP38 ref 2026/9', reason: 'CP38 direction' }).expect(201);
+    expect((await journey()).recordsChanged?.employees).toEqual([{ staffId: bettyId, name: 'Additional Betty', what: ['statutory standing'] }]);
+
+    await request(server()).patch(`/workforce/payroll/runs/${runId}/calculate`).set('Authorization', bearer).expect(200);
+    expect((await journey()).recordsChanged).toBeNull();
+  });
 });

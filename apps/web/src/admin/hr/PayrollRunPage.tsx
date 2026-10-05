@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { RecordsChangedBanner } from './RecordsChangedBanner';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { App, Grid, Modal } from 'antd';
 import dayjs from 'dayjs';
@@ -63,6 +64,8 @@ export function PayrollWorkspace({ runId, monthNav }: { runId: string; monthNav?
   const data = journey.data;
   const mayApprove = useCan('hr.payroll.approve');
   const mayRun = useCan('hr.payroll.run');
+  const { message } = App.useApp();
+  const workOut = useCalculatePayroll();
 
   // The inputs drawer, hosted here so the exception centre's "Enter it now"
   // opens on this screen, for this employee, instead of routing away.
@@ -168,6 +171,19 @@ export function PayrollWorkspace({ runId, monthNav }: { runId: string; monthNav?
       ) : null}
       {/* Only once the run is read: an unread status is not "not production-ready". */}
       {data ? <ProvisionalBanner statutoryStatus={data.run.statutoryStatus} /> : null}
+      {data && !locked ? (
+        <RecordsChangedBanner
+          changed={data.recordsChanged}
+          mayRun={mayRun}
+          working={workOut.isPending}
+          onWorkOut={() =>
+            workOut.mutate(runId, {
+              onSuccess: () => message.success('Worked out again from the records as they are now.'),
+              onError: (error: Error) => message.error(error.message),
+            })
+          }
+        />
+      ) : null}
 
       <Panel>
         {/*

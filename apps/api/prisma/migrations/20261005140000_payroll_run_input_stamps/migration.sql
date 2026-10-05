@@ -1,0 +1,13 @@
+-- WHAT A DRAFT WAS WORKED OUT FROM.
+--
+-- A fingerprint per employee of the records a payroll calculation reads —
+-- the employee record, salary, statutory standing, EPF basis, TP1/TP3,
+-- attendance, leave, incentives, the month's items, claims, recurring items
+-- and the year to date — taken when the month is worked out. The workspace
+-- compares it with the records as they are now and says "Records changed
+-- since this draft was worked out — work it out again" (UAT, 5 October 2026).
+--
+-- Nullable and unfilled: a run worked out before this column existed has no
+-- fingerprint, and says nothing, until it is next worked out. No data
+-- statement, and nothing about a run's figures changes.
+ALTER TABLE "payroll_runs" ADD COLUMN "input_stamps" JSONB;

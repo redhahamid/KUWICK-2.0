@@ -6,6 +6,75 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 17 — 5 Oktober 2026 — "Records changed since this draft was worked out — work it out again"
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 16 (`f925fb2`). Komit: komit yang menambah bahagian ini (hash dalam
+laporan). **Migrasi: `20261005140000_payroll_run_input_stamps`** — satu
+lajur `input_stamps jsonb` (boleh null) pada `payroll_runs`, tiada
+pernyataan data. **Tiada logik pengiraan statutori diubah.** Penemuan UAT 5
+Okt, item B5.
+
+### Apa yang berubah
+
+- `[D]` **Cap jari input** (`payroll-input-stamps.ts`): di hujung setiap
+  pengiraan — selepas tuntutan dipaut dan item terbitan ditulis — setiap
+  pekerja dalam skop run diberi cap jari bagi setiap jenis rekod yang dibaca
+  pengiraan: rekod pekerja (medan yang dibaca payslip/pengiraan sahaja; nombor
+  telefon tidak), gaji, kedudukan statutori, asas KWSP, TP1/TP3, kehadiran
+  bulan itu, cuti diluluskan, insentif, item bulan itu, tuntutan, item
+  berulang, YTD bulan sebelumnya. Cap jari ialah hash **kandungan**, bukan
+  masa — simpan tanpa ubah tidak menggerakkannya; tambah/padam
+  menggerakkannya.
+- `[D]` **Ruang kerja** (`journey`): untuk draf yang sudah dikerjakan
+  (`CALCULATED`), cap jari dikira semula dan dibanding; perbezaan dinamakan
+  — siapa, dan jenis rekod — serta pekerja yang masuk atau keluar skop.
+- `[D]` **Sepanduk** di atas ruang kerja Payroll: "Records changed since this
+  draft was worked out — work it out again." dengan senarai (8 pertama + "and
+  N more") dan butang **Work it out again** (bagi pemegang
+  `hr.payroll.run`). Hilang selepas dikerjakan semula. Tidak dipaparkan untuk
+  bulan diluluskan/dibayar (perubahan kepada bulan itu melalui pelarasan).
+- `[D]` Run yang dikerjakan sebelum lajur wujud tiada cap jari → tiada
+  sepanduk sehingga dikerjakan semula (tidak meneka).
+- `[D]` Cap jari membaca **bulan itu sahaja**: versi gaji/kedudukan/asas
+  KWSP dibaca hanya jika berkuat kuasa pada mana-mana hari bulan itu, dan
+  untuk nilainya (bukan id, sebab, nota); tarikh di luar bulan dibaca
+  sebagai "sebelum/selepas bulan". Jadi merekod gaji tahun depan, atau
+  menukar nombor telefon, tidak menimbulkan sepanduk.
+- `[D]` **Ujian**: API unit +7 (`diffInputStamps`, `storedInputStamps`, dan
+  tiga ujian tetingkap bulan: versi ditutup selepas bulan / sebab ditukar →
+  tiada perubahan; gaji bulan itu berubah atau versi baharu bermula di
+  tengah bulan → "salary"; telefon → tiada, bank → "employee record"), e2e
+  +1 (kerjakan bulan → tiada; ubah Additional PCB → "statutory standing";
+  kerjakan semula → hilang), web +3 (sepanduk, 8 nama + "and N more", tiada
+  butang tanpa kebenaran).
+- `[D]` **Disemak dalam pelayar** (klinik UAT sintetik, draf Oktober Contoh
+  Central): selepas dikerjakan → tiada sepanduk; Additional PCB Puteri
+  Balqis ditukar → sepanduk "Puteri Balqis: statutory standing"; *Work it
+  out again* → hilang; 390px tiada limpahan.
+
+### Uji di staging (ikut urutan)
+
+1. *Payroll* → bulan draf yang sudah dikerjakan → tiada sepanduk kuning.
+2. Buka seorang pekerja dalam draf itu → *Statutory* → *Record a change* →
+   ubah Additional PCB → simpan. Kembali ke *Payroll*: sepanduk "Records
+   changed since this draft was worked out — work it out again." dengan
+   "<nama>: statutory standing".
+3. Tekan **Work it out again** → sepanduk hilang dan PCB pekerja itu
+   termasuk amaun baharu.
+
+### Keputusan terbuka / yang saya pilih bagi pihak anda
+
+- `[A]` Sepanduk ialah amaran, bukan sekatan: kelulusan tidak dihalang oleh
+  sepanduk ini (sekatan sedia ada kekal). Cadangan: jika mahu, tambah
+  pengadang di `approve` yang menolak draf yang ketinggalan — perlu keputusan
+  anda kerana ia mengubah aliran kelulusan.
+- `[A]` Tetapan seluruh run (komponen gaji, polisi payroll, cuti umum, jadual
+  statutori) tidak termasuk dalam cap jari: item meminta "employee records";
+  jadual statutori sudah ada semakan sendiri semasa kelulusan.
+
+---
+
 ## Batch 16 — 5 Oktober 2026 — payroll: baris PCB, YTD, earned-in, hari bekerja, memuat, susunan, amaun dalam perkataan
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
