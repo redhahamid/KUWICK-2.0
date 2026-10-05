@@ -1,4 +1,5 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { byEmployeeName } from './employee-order';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { actorCan, requirePermission, requireScope } from '../finance/admin-actor';
@@ -389,7 +390,12 @@ export class PayrollJourneyService {
         include: { staff: { select: { fullName: true, active: true } } },
       }),
     ]);
-    const active = employees.filter((e) => e.staff.active);
+    // In the one order every payroll list uses (employee-order.ts), so the
+    // grid, the attendance step and an employee's previous/next agree with
+    // the payslips and the bank listing.
+    const active = employees
+      .filter((e) => e.staff.active)
+      .sort(byEmployeeName((e) => ({ name: e.staff.fullName, staffId: e.staffId })));
     const staffIds = active.map((e) => e.staffId);
 
     const [salaryRows, inputs, attendance, leave] = await Promise.all([
@@ -611,7 +617,7 @@ export class PayrollJourneyService {
      * quietly. The server already holds all three; it does the join once.
      */
     const standingByStaff = new Map(step1.map((row) => [row.staffId, row]));
-    const paidRows = run.lines.map((line) => {
+    const paidRows = [...run.lines].sort(byEmployeeName((line) => ({ name: line.staff.fullName, staffId: line.staffId }))).map((line) => {
       const own = inputsByStaff.get(line.staffId) ?? [];
       const standing = standingByStaff.get(line.staffId);
       const ownExceptions = exceptionsByStaff.get(line.staffId) ?? [];

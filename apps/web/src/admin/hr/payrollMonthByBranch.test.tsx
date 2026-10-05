@@ -29,9 +29,11 @@ vi.mock('../../core/hooks/useClinicFilter', () => ({
 vi.mock('../../core/hooks/useCan', () => ({ useCan: () => true }));
 
 let home: PayrollHome;
+/** The query still reading the month: no data yet. */
+let loading = false;
 vi.mock('../hooks/useAdmin', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../hooks/useAdmin')>()),
-  usePayrollHome: () => ({ data: home, error: null, isLoading: false }),
+  usePayrollHome: () => (loading ? { data: undefined, error: null, isLoading: true } : { data: home, error: null, isLoading: false }),
   usePayrollReadiness: () => ({ data: undefined, isLoading: false }),
   useCreatePayrollRun: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useCalculatePayroll: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -86,7 +88,22 @@ function show() {
 beforeEach(() => {
   setClinicId.mockReset();
   clinicId = undefined;
+  loading = false;
   home = fixture();
+});
+
+/*
+ * LOADING IS NOT "NOT STARTED". Every month, a started one included, used to
+ * flash "Not started" and the not-production-ready banner while it was read.
+ */
+describe('while the month is being read', () => {
+  it('says it is loading, and neither that the month has not been started nor that setup is unsafe', () => {
+    loading = true;
+    show();
+    expect(screen.getByTestId('payroll-month-loading')).toHaveTextContent('Loading September 2026');
+    expect(screen.queryByText('Not started')).toBeNull();
+    expect(screen.queryByText(/not yet production-ready/)).toBeNull();
+  });
 });
 
 describe('the payroll month under All branches', () => {

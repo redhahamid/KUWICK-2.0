@@ -1638,13 +1638,19 @@ export function useOverrideException() {
   );
 }
 
-/** The year so far for one person — approved months and the opening import, summed by the server. */
-export function useEmployeeYtd(staffId: string | undefined, taxYear: number) {
+/**
+ * The year so far for one person — approved months and the opening import,
+ * summed by the server — through a month when one is given.
+ *
+ * `year`, not `taxYear`: the API reads `year`, and the old name was ignored,
+ * so every card showed the current year whatever month it sat beside.
+ */
+export function useEmployeeYtd(staffId: string | undefined, taxYear: number, throughMonth?: number) {
   return useQuery({
-    queryKey: ["admin-hr", "employee-ytd", staffId, taxYear],
+    queryKey: ["admin-hr", "employee-ytd", staffId, taxYear, throughMonth ?? null],
     queryFn: () =>
       apiClient.get<EmployeeYtd>(
-        `/workforce/payroll/employees/${staffId}/ytd?taxYear=${taxYear}`,
+        `/workforce/payroll/employees/${staffId}/ytd?year=${taxYear}${throughMonth ? `&throughMonth=${throughMonth}` : ""}`,
       ),
     enabled: Boolean(staffId),
   });

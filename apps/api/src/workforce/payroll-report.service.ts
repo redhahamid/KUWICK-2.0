@@ -1,4 +1,5 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { byEmployeeName, compareByEmployeeName } from './employee-order';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { requirePermission, withScopedAdminTx } from '../finance/admin-actor';
@@ -919,7 +920,7 @@ export class PayrollReportService {
             : null,
         drill: `/admin/hr/employees/${bucket.staffId}`,
       }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort(compareByEmployeeName);
 
     const total = (pick: (bucket: YtdBucket) => number) =>
       formatCents([...buckets.values()].reduce((sum, bucket) => sum + pick(bucket), 0));
@@ -1267,7 +1268,7 @@ export class PayrollReportService {
                   included: line.included,
                   exclusionReason: line.exclusionReason,
                 }))
-                .sort((a, b) => Number(a.included) - Number(b.included) || a.name.localeCompare(b.name)),
+                .sort(compareByEmployeeName),
             },
       supersededBatches: batches
         .filter((batch) => batch.id !== current?.id)
@@ -1301,6 +1302,7 @@ export class PayrollReportService {
       },
     });
     if (!run) throw new NotFoundException('Payroll run not found');
+    run.lines.sort(byEmployeeName((line) => ({ name: line.staff.fullName, staffId: line.staffId })));
     // Reports read the LIVE lines — the right source for a month being
     // worked on, and a different answer from the approved snapshot while a
     // reopened month is being corrected. Only the history report used to say

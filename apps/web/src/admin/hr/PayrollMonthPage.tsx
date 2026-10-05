@@ -106,13 +106,29 @@ export function PayrollMonthPage() {
         </>
       }
     >
-      <StatRow>
-        <StatCard icon={<IconPayroll />} label="Gross pay" value="—" sub={data ? `${data.employeesExpected} with a salary on record` : undefined} />
-        <StatCard icon={<IconPayroll />} label="Employee deductions" value="—" sub="EPF, SOCSO, EIS, PCB" />
-        <StatCard icon={<IconPayroll />} label="Employer contributions" value="—" sub="Paid on top of gross" />
-        <StatCard icon={<IconPayroll />} label="Net pay" value="—" sub="Not started" />
-      </StatRow>
-      <ProvisionalBanner statutoryStatus={data?.periodStatutoryStatus} />
+      {/*
+        * LOADING IS NOT "NOT STARTED". The cards and the setup banner used to
+        * draw before the month was read, so every month — including one with
+        * a run — flashed "Not started" first. Until the answer is in, the page
+        * says it is reading the month.
+        */}
+      {!data && home.isLoading ? (
+        <Panel>
+          <div className="hr-panelNote" role="status" aria-live="polite" data-testid="payroll-month-loading">
+            Loading {label}…
+          </div>
+        </Panel>
+      ) : (
+        <>
+          <StatRow>
+            <StatCard icon={<IconPayroll />} label="Gross pay" value="—" sub={data ? `${data.employeesExpected} with a salary on record` : undefined} />
+            <StatCard icon={<IconPayroll />} label="Employee deductions" value="—" sub="EPF, SOCSO, EIS, PCB" />
+            <StatCard icon={<IconPayroll />} label="Employer contributions" value="—" sub="Paid on top of gross" />
+            <StatCard icon={<IconPayroll />} label="Net pay" value="—" sub={data ? 'Not started' : undefined} />
+          </StatRow>
+          {data ? <ProvisionalBanner statutoryStatus={data.periodStatutoryStatus} /> : null}
+        </>
+      )}
 
       {data && byBranch ? (
         <BranchMonthPanel label={label} clinics={clinics ?? []} runs={data.runs} mayRun={mayRun} onPick={(id) => setClinicId(id)} />

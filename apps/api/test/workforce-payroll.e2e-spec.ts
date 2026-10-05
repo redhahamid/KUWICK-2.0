@@ -1121,6 +1121,18 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       expect(ytd.body.months).toHaveLength(8);
       expect(ytd.body.imported).toEqual([1, 2, 3, 4, 5, 6, 7]);
       expect(ytd.body.months[7]).toMatchObject({ month: 8, source: 'CALCULATED' });
+
+      // Through a month: what a March payslip's year to date adds up, whatever
+      // has been approved since.
+      const throughMarch = await request(app.getHttpServer())
+        .get(`/workforce/payroll/employees/${staffId}/ytd?year=2026&throughMonth=3`)
+        .set('Authorization', bearer)
+        .expect(200);
+      expect(throughMarch.body.months.map((m: { month: number }) => m.month)).toEqual([1, 2, 3]);
+      await request(app.getHttpServer())
+        .get(`/workforce/payroll/employees/${staffId}/ytd?year=2026&throughMonth=13`)
+        .set('Authorization', bearer)
+        .expect(400);
     });
 
     it('takes OPENING year-to-date for a clinic that starts using Kuwick mid-year', async () => {

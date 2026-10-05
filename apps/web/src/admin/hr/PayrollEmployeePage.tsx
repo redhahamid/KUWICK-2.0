@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { earnedInLabel, ytdSummary } from './payrollLabels';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { App, Input, Modal } from 'antd';
 import dayjs from 'dayjs';
@@ -112,7 +113,9 @@ export function PayrollEmployeePage() {
   const variance = usePayrollVariance(runId);
   const exceptions = usePayrollExceptions(runId);
   const taxYear = journey.data ? Number(journey.data.run.period.slice(0, 4)) : dayjs().year();
-  const ytd = useEmployeeYtd(staffId, taxYear);
+  const runMonth = journey.data ? Number(journey.data.run.period.slice(5, 7)) : undefined;
+  // Asked for once the month is known: the year to date THROUGH this month.
+  const ytd = useEmployeeYtd(journey.data ? staffId : undefined, taxYear, runMonth);
   const override = useOverrideException();
   const upsert = useUpsertPayrollInput();
   const mayApprove = useCan('hr.payroll.approve');
@@ -148,6 +151,13 @@ export function PayrollEmployeePage() {
   const monthStart = data ? dayjs(`${data.run.period}-01`) : null;
   const monthEnd = monthStart ? monthStart.endOf('month') : null;
   const previousMonth = monthStart ? monthStart.subtract(1, 'month').format('MMMM') : '';
+
+  // What the year-to-date card adds up, and its range in words (payrollLabels.ts).
+  const ytdMonths = (ytd.data?.months ?? []).map((m) => m.month);
+  const ytdText = ytdSummary(ytdMonths, taxYear, runMonth);
+  /** A line earned in another month carries that month, as the payslip prints it. */
+  const earnedLabel = (item: { label: string; earnedPeriod?: string | null }) =>
+    data ? earnedInLabel(item.label, item.earnedPeriod, data.run.period) : item.label;
 
   const items = row?.items ?? [];
   const overtimeItems = items.filter((item) => item.componentCode === 'OVERTIME');
@@ -323,7 +333,7 @@ export function PayrollEmployeePage() {
                   {earningItems.map((item) => (
                     <Line
                       key={item.id}
-                      label={item.label}
+                      label={earnedLabel(item)}
                       value={item.amount}
                       tag={srcTag(item)}
                       note={item.componentCode === 'CLAIM_REIMBURSEMENT' || item.componentCode === 'MILEAGE' ? 'not taxed' : item.editable ? 'added by hand' : undefined}
@@ -380,7 +390,7 @@ export function PayrollEmployeePage() {
                   />
                   {row.lindungEmployee !== null && Number(row.lindungEmployee) > 0 ? <Line label="LINDUNG 24 JAM" value={row.lindungEmployee} note="employee-borne" /> : null}
                   {deductionItems.map((item) => (
-                    <Line key={item.id} label={item.label} value={item.amount} tag={srcTag(item)} note={item.editable ? 'added by hand' : undefined} />
+                    <Line key={item.id} label={earnedLabel(item)} value={item.amount} tag={srcTag(item)} note={item.editable ? 'added by hand' : undefined} />
                   ))}
                   {deductionItems.length === 0 ? <Line label="Other deductions" value={row.otherDeductions} /> : null}
                   <div className="hr-tot">
@@ -439,8 +449,23 @@ export function PayrollEmployeePage() {
             <Panel>
               <PanelHead title="What fed this month" />
               <div className="hr-kv">
-                <span className="hr-kv__k">Days worked</span>
-                <span className="hr-kv__v">{attendance?.daysWorked ?? 0}</span>
+                {/*
+                  * A MONTHLY SALARY IS NOT PAID BY THE DAY. Payroll pays only
+                  * monthly salaries, and "Days worked 0" beside a full salary
+                  * read as a fault. With no attendance on record the row says
+                  * what the pay is; with attendance it counts the days.
+                  */}
+                {(attendance?.daysWorked ?? 0) > 0 ? (
+                  <>
+                    <span className="hr-kv__k">Days worked</span>
+                    <span className="hr-kv__v">{attendance?.daysWorked}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="hr-kv__k">Pay basis</span>
+                    <span className="hr-kv__v">Monthly salary</span>
+                  </>
+                )}
                 <span className="hr-kv__k">Unpaid leave</span>
                 <span className="hr-kv__v">
                   {attendance && attendance.unpaidLeaveDays > 0
@@ -477,8 +502,9 @@ export function PayrollEmployeePage() {
             </Panel>
 
             <Panel className="hr-mt">
-              <PanelHead title="Year to date" actions={<span className="hr-eff">Jan – {monthStart?.format('MMM YYYY')}</span>} />
+              <PanelHead title="Year to date" actions={ytdText.range ? <span className="hr-eff" data-testid="ytd-range">{ytdText.range}</span> : null} />
               {ytd.data && ytd.data.months.length > 0 ? (
+                <>
                 <div className="hr-kv">
                   <span className="hr-kv__k">Gross</span>
                   <span className="hr-kv__v">{cents(ytd.data.total.grossCents)}</span>
@@ -487,8 +513,15 @@ export function PayrollEmployeePage() {
                   <span className="hr-kv__k">PCB paid</span>
                   <span className="hr-kv__v">{cents(ytd.data.total.pcbCents)}</span>
                   <span className="hr-kv__k">Months on record</span>
-                  <span className="hr-kv__v">{ytd.data.months.length}</span>
+                  <span className="hr-kv__v">{ytdText.monthsOnRecord}</span>
                 </div>
+                {ytdText.gaps.length > 0 || (ytdText.pending && !locked) ? (
+                  <div className="hr-panelNote" data-testid="ytd-note">
+                    {ytdText.gaps.length > 0 ? `${ytdText.gaps.join(', ')} not on record. ` : ''}
+                    {ytdText.pending && !locked ? `${ytdText.pending} is added when it is approved.` : ''}
+                  </div>
+                ) : null}
+                </>
               ) : (
                 <div className="hr-panelNote">No approved month on record for {taxYear} yet. The year to date fills in as months are approved.</div>
               )}

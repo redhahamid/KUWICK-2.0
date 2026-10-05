@@ -1,4 +1,5 @@
 import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { compareByEmployeeName } from './employee-order';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { requirePermission, withAdminTx } from '../finance/admin-actor';
@@ -57,13 +58,17 @@ export class PayrollPayslipService {
       versions: run.snapshotCount,
       verdict: verification.verdict,
       reopenedSinceApproval: run.status === 'CALCULATED' || run.status === 'DRAFT',
-      payslips: payload.employees.map((line) => ({
-        staffId: line.staffId,
-        name: line.name,
-        netCents: line.netCents,
-        grossCents: line.bases.grossCents,
-        itemised: Boolean(line.payslip),
-      })),
+      // The one order every payroll list uses (employee-order.ts); the
+      // snapshot itself keeps the order it was frozen in.
+      payslips: payload.employees
+        .map((line) => ({
+          staffId: line.staffId,
+          name: line.name,
+          netCents: line.netCents,
+          grossCents: line.bases.grossCents,
+          itemised: Boolean(line.payslip),
+        }))
+        .sort(compareByEmployeeName),
     };
   }
 

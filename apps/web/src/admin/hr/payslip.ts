@@ -620,7 +620,14 @@ ${banners.join('\n')}
   <div class="section">
     <h2>This period</h2>
     <table>
-      ${slip.attendance?.workedDays !== null && slip.attendance?.workedDays !== undefined ? `<tr><th>Days worked</th><td class="num">${slip.attendance.workedDays}</td></tr>` : ''}
+      ${
+        slip.attendance?.workedDays !== null && slip.attendance?.workedDays !== undefined
+          ? slip.attendance.workedDays > 0
+            ? `<tr><th>Days worked</th><td class="num">${slip.attendance.workedDays}</td></tr>`
+            : // A monthly salary with no attendance on record: say what the pay is, not "0 days".
+              '<tr><th>Pay basis</th><td>Monthly salary</td></tr>'
+          : ''
+      }
       ${slip.attendance?.unpaidDays ? `<tr><th>Unpaid days</th><td class="num">${slip.attendance.unpaidDays}</td></tr>` : ''}
       ${slip.attendance?.overtimeHours ? `<tr><th>Overtime hours</th><td class="num">${slip.attendance.overtimeHours}</td></tr>` : ''}
       <tr><th>Approved</th><td>${escapeHtml(new Date(slip.revision.approvedAt).toLocaleDateString('en-MY'))}${

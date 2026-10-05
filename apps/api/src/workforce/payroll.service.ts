@@ -176,10 +176,15 @@ export class PayrollService {
    * running total is derived by the caller, because a stored running total is a
    * figure that can disagree with the months it came from.
    */
-  async yearToDate(staffId: string, taxYear: number) {
+  async yearToDate(staffId: string, taxYear: number, throughMonth?: number) {
     await requirePermission(this.rawPrisma, 'hr.payroll.view');
+    if (!Number.isInteger(taxYear) || (throughMonth !== undefined && !(Number.isInteger(throughMonth) && throughMonth >= 1 && throughMonth <= 12))) {
+      throw new BadRequestException('year must be a whole year, and throughMonth a month from 1 to 12.');
+    }
+    // THROUGH A MONTH, when asked: the year to date of a March payslip is
+    // January to March, whatever has been approved since.
     const months = await this.prisma.employeeYtd.findMany({
-      where: { staffId, taxYear },
+      where: { staffId, taxYear, ...(throughMonth !== undefined ? { month: { lte: throughMonth } } : {}) },
       orderBy: { month: 'asc' },
     });
     const sum = (pick: (row: (typeof months)[number]) => number) =>
@@ -2030,6 +2035,9 @@ export class PayrollService {
          * reads next month counts it as tax already paid, which it is.
          */
         const additionalPcbCents = classification.additionalPcbCents ?? 0;
+        // What the MTD method produced, before anything is added to it: its own
+        // line in the working, beside the additional PCB (UAT, 5 October 2026).
+        const computedMtdCents = pcbEnteredByHand ? null : payslip.statutory.pcbCents;
         if (additionalPcbCents > 0 && payslip.statutory.pcbCents !== null && !pcbEnteredByHand) {
           payslip.statutory.pcbCents += additionalPcbCents;
           payslip.employeeDeductionCents += additionalPcbCents;
@@ -2342,7 +2350,12 @@ export class PayrollService {
                 socso: payslip.statutory.socso.working ?? null,
                 eis: payslip.statutory.eis.working ?? null,
                 lindung: payslip.statutory.lindung.working ?? null,
-                pcb: pcbWorkingRows(payslip.statutory.pcbWorking, payslip.statutory.pcbNote ?? null, editions.sources.PCB.document),
+                pcb: pcbWorkingRows(payslip.statutory.pcbWorking, payslip.statutory.pcbNote ?? null, editions.sources.PCB.document, {
+                  computedMtdCents,
+                  additionalPcbCents,
+                  additionalPcbNote: classification.additionalPcbNote ?? null,
+                  deductedCents: payslip.statutory.pcbCents,
+                }),
               },
               // CALCULATED from the official specification, or ENTERED by a
               // person. Null when there is no figure at all.
@@ -4060,9 +4073,21 @@ function pcbWorkingRows(
   working: { pCents: number; mCents: number; ratePercent: number; bCents: number; n: number; k2Cents: number; totalReliefCents: number; pWithAdditionalCents?: number; yearTaxCents?: number; yearMtdCents?: number } | null | undefined,
   note: string | null,
   edition: string,
+  /**
+   * THE MONTH'S FIGURE, SPLIT. The MTD the method produced and the additional
+   * PCB recorded on the standing are two lines here, not only a sentence in
+   * the note, so the PCB on the payslip reads as their sum.
+   */
+  month: { computedMtdCents: number | null; additionalPcbCents: number; additionalPcbNote: string | null; deductedCents: number | null } = {
+    computedMtdCents: null,
+    additionalPcbCents: 0,
+    additionalPcbNote: null,
+    deductedCents: null,
+  },
 ): Record<string, string | number | null> | null {
   if (!working) return null;
   const rm = (cents: number | undefined) => (cents === undefined ? null : `RM${formatCents(cents)}`);
+  const added = month.computedMtdCents !== null && month.additionalPcbCents > 0;
   return {
     'P — chargeable income for the year': rm(working.pCents),
     'M — band floor': rm(working.mCents),
@@ -4074,6 +4099,13 @@ function pcbWorkingRows(
     ...(working.yearTaxCents !== undefined ? { 'Year tax with additional remuneration, [(P − M) R + B]': rm(working.yearTaxCents) } : {}),
     ...(working.yearMtdCents !== undefined ? { 'MTD for the year so far plus this month': rm(working.yearMtdCents) } : {}),
     ...(working.pWithAdditionalCents !== undefined ? { 'P with additional remuneration': rm(working.pWithAdditionalCents) } : {}),
+    ...(month.computedMtdCents !== null ? { 'MTD worked out for this month': rm(month.computedMtdCents) } : {}),
+    ...(added
+      ? {
+          'Additional PCB each month (statutory standing)': `RM${formatCents(month.additionalPcbCents)}${month.additionalPcbNote ? ` · ${month.additionalPcbNote}` : ''}`,
+          'PCB deducted this month': month.deductedCents === null ? null : rm(month.deductedCents),
+        }
+      : {}),
     Edition: edition,
     ...(note ? { Note: note } : {}),
   };

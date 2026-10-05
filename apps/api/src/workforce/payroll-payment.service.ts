@@ -1,4 +1,5 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { compareByEmployeeName } from './employee-order';
 import { PaymentBatchStatus, PayrollRunStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
@@ -53,9 +54,12 @@ export class PayrollPaymentService {
       orderBy: { version: 'desc' },
       include: {
         createdBy: { select: { fullName: true } },
-        lines: { orderBy: [{ included: 'desc' }, { name: 'asc' }] },
+        lines: true,
       },
     });
+    // The one order every payroll list uses: by name, the excluded where their
+    // name falls, marked rather than moved (employee-order.ts).
+    batch?.lines.sort(compareByEmployeeName);
     const mayPrepare = actorCan(actor, 'hr.payroll.export.bank');
     return {
       runStatus: run.status,
@@ -239,9 +243,11 @@ export class PayrollPaymentService {
       const batch = await tx.payrollPaymentBatch.findFirst({
         where: { payrollRunId: runId, status: { not: PaymentBatchStatus.SUPERSEDED } },
         orderBy: { version: 'desc' },
-        include: { lines: { orderBy: [{ included: 'desc' }, { name: 'asc' }] }, payrollRun: true },
+        include: { lines: true, payrollRun: true },
       });
       if (!batch) throw new NotFoundException('No payment batch has been prepared for this run.');
+      // Same order as the screen and the payslips (employee-order.ts).
+      batch.lines.sort(compareByEmployeeName);
 
       if (batch.status === PaymentBatchStatus.GENERATED) {
         await tx.payrollPaymentBatch.update({

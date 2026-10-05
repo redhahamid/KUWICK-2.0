@@ -856,8 +856,12 @@ export class WorkforceController {
   // --- Payroll --------------------------------------------------------------
 
   @Get('payroll/employees/:staffId/ytd')
-  employeeYtd(@Param('staffId') staffId: string, @Query('year') year?: string) {
-    return this.payroll.yearToDate(staffId, year ? Number(year) : new Date().getUTCFullYear());
+  employeeYtd(@Param('staffId') staffId: string, @Query('year') year?: string, @Query('throughMonth') throughMonth?: string) {
+    return this.payroll.yearToDate(
+      staffId,
+      year ? Number(year) : new Date().getUTCFullYear(),
+      throughMonth ? Number(throughMonth) : undefined,
+    );
   }
 
   @Post('payroll/ytd-opening')

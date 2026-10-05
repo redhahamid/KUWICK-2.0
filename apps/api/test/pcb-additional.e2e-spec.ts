@@ -127,6 +127,13 @@ describe('Additional PCB each month (e2e)', () => {
     // The payslip note says what rode on top, and why.
     expect(JSON.stringify(line!.breakdown)).toMatch(/Includes RM100\.00 additional PCB each month, as recorded on the statutory standing \(At her request\)/);
 
+    // And "How this was worked out" carries the two figures as lines of their
+    // own, which add up to the PCB on the payslip (UAT, 5 October 2026).
+    const working = (line!.breakdown as { workings?: { pcb?: Record<string, string | number | null> } }).workings?.pcb ?? {};
+    expect(working['MTD worked out for this month']).toBe(`RM${juneBetty.toFixed(2)}`);
+    expect(working['Additional PCB each month (statutory standing)']).toBe('RM100.00 · At her request');
+    expect(working['PCB deducted this month']).toBe(`RM${(juneBetty + 100).toFixed(2)}`);
+
     // The standing's history carries the figure and the note, as recorded.
     const versions = await request(server()).get(`/workforce/employees/${bettyId}/statutory-classification`).set('Authorization', bearer).expect(200);
     const current = (versions.body as { current: boolean; additionalPcbCents: number; additionalPcbNote: string | null }[]).find((row) => row.current)!;

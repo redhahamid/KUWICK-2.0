@@ -6,6 +6,84 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 16 — 5 Oktober 2026 — payroll: baris PCB, YTD, earned-in, hari bekerja, memuat, susunan, amaun dalam perkataan
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 15 (`70d4367`). Komit: komit yang menambah bahagian ini (hash dalam
+laporan). **Migrasi: tiada. Tiada logik pengiraan statutori diubah** —
+angka PCB, KWSP, PERKESO, EIS sama; yang berubah ialah cara ia dibentangkan
+dan disusun. Penemuan UAT 5 Okt, bahagian B, item 6–12.
+
+### Apa yang berubah
+
+- `[D]` **B6 — "How this was worked out" (PCB)**: dua baris baharu, *MTD
+  worked out for this month* dan *Additional PCB each month (statutory
+  standing)* (dengan nota CP38), serta *PCB deducted this month* =
+  jumlahnya. Nota lama dikekalkan. Terpakai pada bulan yang dikerjakan
+  selepas kemas kini (kerjakan semula draf untuk melihatnya).
+- `[D]` **B7 — Year to date**: label kini bulan yang **benar-benar dijumlah**
+  ("Jan – Apr 2026"), bukan bulan draf; jurang dinamakan ("March not on
+  record"), dan bulan draf disebut "May is added when it is approved".
+  Pepijat ditemui: web menghantar `?taxYear=` tetapi API membaca `?year=`,
+  jadi kad sentiasa tahun semasa — dibetulkan, dan API menerima
+  `throughMonth` supaya kad bulan lama tidak mengira bulan kemudian.
+- `[D]` **B8 — Earned-in** pada halaman payroll pekerja: "Director's fee
+  (April 2026)", format sama dengan PDF dan payslip.
+- `[D]` **B9 — "Days worked 0"**: tanpa kehadiran direkod, baris menjadi
+  *Pay basis: Monthly salary* (halaman pekerja dan cetakan payslip
+  diluluskan); dengan kehadiran, bilangan hari kekal.
+- `[D]` **B10 — memuat**: halaman Payroll tidak lagi berkelip "Not started"
+  dan sepanduk "not production-ready" semasa membaca bulan; ia menulis
+  "Loading September 2026…". Sepanduk di ruang kerja juga menunggu data.
+- `[D]` **B11 — satu susunan**: grid, sebelum/seterusnya pekerja, senarai
+  payslip, senarai bank (skrin dan CSV), laporan status bayaran dan laporan
+  YTD kini disusun dengan satu pembanding (`employee-order.ts`): nama A–Z
+  tanpa beza huruf besar/kecil, nombor dibaca sebagai nombor, kemudian id.
+  Baris dikecualikan dalam senarai bank kini berada di tempat namanya
+  (ditanda, tidak dipindah ke hujung).
+- `[D]` **B12 — amaun dalam perkataan** (PDF payslip): "Ringgit Malaysia
+  Thirteen Thousand Eight Hundred Six and Thirty-One Sen Only".
+- `[D]` **Ujian**: API unit +4 (perkataan: contoh UAT tepat dan
+  "Minus"; susunan 3), dua ujian e2e dilanjutkan (baris PCB dalam
+  `pcb-additional`; `throughMonth` dan 400 dalam `workforce-payroll`), web +8
+  (`payrollLabels` 7, keadaan memuat 1).
+- `[D]` **Disemak dalam pelayar** pada klinik UAT sintetik (Puteri Balqis,
+  draf Oktober, Additional PCB RM100 CP38, Director's fee RM500 earned
+  September): "Director's fee (September 2026)", *Pay basis: Monthly
+  salary*, *Year to date: Jul – Sep 2026* + "October is added when it is
+  approved", baris *MTD worked out for this month RM0.00* / *Additional PCB
+  RM100.00 · CP38 ref 2026/1234* / *PCB deducted RM100.00*; susunan payslip
+  September = susunan senarai bank; halaman Payroll menunjukkan "Loading
+  October 2026…" dahulu, tidak "Not started".
+
+### Uji di staging (ikut urutan)
+
+1. *Payroll* → tukar bulan: tiada kelipan "Not started"; "Loading …" sebentar,
+   kemudian ruang kerja atau "has not been started" yang betul.
+2. Draf bulan Mei → buka pekerja dengan Additional PCB → *How this was
+   worked out* → PCB: baris *MTD worked out for this month* dan *Additional
+   PCB each month*; jumlahnya = PCB pada payslip. (Kerjakan semula draf dulu.)
+3. Halaman yang sama: kad *Year to date* bertulis "Jan – Apr 2026" dan "May
+   is added when it is approved"; item bulan lain bertulis "(April 2026)";
+   tanpa kehadiran, *Pay basis: Monthly salary*.
+4. Bulan diluluskan: senarai *Payslips* dan *Bank listing* (skrin dan CSV)
+   dalam susunan nama yang sama dengan grid.
+5. Muat turun PDF payslip: baris perkataan "Ringgit Malaysia … Sen Only".
+
+### Keputusan terbuka / yang saya pilih bagi pihak anda
+
+- `[A]` Susunan bank: nama sahaja, baris dikecualikan di tempat namanya —
+  "susunan yang sama di mana-mana" dibaca secara literal. Satu baris untuk
+  kembali kepada "dikecualikan di hujung" jika itu lebih baik untuk yang
+  membayar.
+- `[A]` Fail statutori (KWSP/PERKESO/LHDN) tidak disentuh: susunannya
+  ikut format agensi.
+- `[A]` *Pay basis: Monthly salary* hanya apabila tiada kehadiran direkod;
+  payroll hanya membayar gaji bulanan (yang lain dikecualikan dengan
+  `SALARY_BASIS_UNSUPPORTED`).
+
+---
+
 ## Batch 15 — 5 Oktober 2026 — hari rehat "Rotating — follows the roster"
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas

@@ -166,7 +166,8 @@ export function PayrollWorkspace({ runId, monthNav }: { runId: string; monthNav?
           />
         </StatRow>
       ) : null}
-      <ProvisionalBanner statutoryStatus={data?.run.statutoryStatus} />
+      {/* Only once the run is read: an unread status is not "not production-ready". */}
+      {data ? <ProvisionalBanner statutoryStatus={data.run.statutoryStatus} /> : null}
 
       <Panel>
         {/*
