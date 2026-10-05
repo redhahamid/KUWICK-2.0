@@ -6,6 +6,111 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 14 — 5 Oktober 2026 — kedudukan statutori: pra-isi ikut tarikh, ringkasan perubahan, versi kemudian, pengesahan padam
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 13 (`7276e71`). Komit: komit yang menambah bahagian ini (hash dalam
+laporan). **Migrasi: `20261005120000_statutory_classification_changed_fields`**
+— satu lajur `changed_fields jsonb` (boleh null) pada
+`employee_statutory_classifications`, **tiada pernyataan data**. Dicuba pada
+DB ujian kosong (`kuwick_test`, melalui global-setup) dan DB tempatan
+berbenih (12 versi sedia ada): kedua-duanya bersih, 0 baris disentuh.
+**Tiada logik pengiraan statutori diubah.** Penemuan UAT 5 Okt, bahagian A,
+item 1–3.
+
+### Apa yang berubah
+
+- `[D]` **A1 — pra-isi ikut tarikh** (`StatutoryStandingManager.tsx`):
+  *Record a change* dahulu mengisi borang daripada versi **terkini** dan
+  menghantar kesemuanya terhadap tarikh yang lebih awal — itulah sebabnya
+  LINDUNG 24 JAM dan hari rehat ikut berubah apabila hanya Additional PCB
+  diubah. Kini borang diisi daripada **versi yang berkuat kuasa pada tarikh
+  yang dipilih** (atau versi pertama, jika tarikh mendahuluinya), dan
+  mengikut tarikh apabila tarikh diubah. Teks bantuan di bawah tarikh
+  menyatakannya.
+- `[D]` **A1 — "You are changing: …"** sebelum simpan: senarai medan yang
+  berbeza daripada versi asas, dalam perkataan borang ("Additional PCB each
+  month (None becomes RM50.00)"), dengan versi perbandingannya dinamakan.
+  Jika tiada yang berbeza, notis "Nothing differs…" dan butang *Record*
+  dimatikan (pelayan pun menolaknya dengan 400).
+- `[D]` **A2 — versi kemudian**: apabila tarikh mendahului versi lain dan ada
+  perubahan, borang bertanya *Apply this change to later versions too?*
+  (Yes/No, wajib dijawab). `applyToLater` baharu pada DTO; pelayan menyalin
+  **medan yang berubah sahaja** ke setiap versi kemudian **yang masih
+  memegang nilai lama**; versi yang mengubah medan itu sendiri kekal. Soalan
+  yang sama pada *Correct* untuk versi yang mempunyai versi kemudian. Tidak
+  ditanya untuk tarikh sebelum versi pertama (tiada nilai lama untuk
+  dibawa). Mesej kejayaan menyebut berapa versi kemudian yang berubah.
+- `[D]` **A2 — "What changed" kekal asal**: dahulu dikira semula pada setiap
+  bacaan terhadap baris sebelumnya, jadi versi Jun yang diselitkan membuat
+  September "berubah" medan yang tidak disentuh. Kini senarai medan
+  **disimpan semasa versi ditulis** (`changed_fields`) dan tidak dikira
+  semula; pembetulan (`correct`) mengira semula untuk baris itu sahaja.
+  Baris lama (null) **dibekukan** — teks langsung ditulis sekali — sebelum
+  operasi pertama yang menyusun semula rantai pekerja itu (tarikh ke
+  belakang, padam, pembetulan), di bawah tenant yang memilikinya.
+- `[D]` **A3 — pengesahan padam**: dialog sedia ada (komit `a3e78e9`) kini
+  menunjukkan julat *In force*, sebab, perakam, dan **apa yang kembali**:
+  versi sebelumnya berlanjutan dan setiap medan yang berbeza disenaraikan
+  ("Additional PCB each month: RM50.00 becomes None"); versi pertama: amaran
+  bulan-bulan itu tiada kedudukan dan payroll akan menyekatnya.
+- `[D]` Lajur *What changed* untuk versi tanpa perubahan yang bukan yang
+  pertama kini "Same as the version before" (dahulu "First recorded
+  standing", mengelirukan). API `history` menambah `first`.
+- `[D]` **Pembetulan sampingan**: baris borang dua lajur dalam modal tidak
+  runtuh pada ≤767px (pra-wujud; pada 390px medan kanan terkeluar dari
+  tepi) — kini satu lajur; notis dalam borang sejajar dengan medan.
+- `[D]` **Ujian**: API e2e `statutory-standing-backdate` +5 (teks September
+  kekal selepas Jun diselitkan; baris lama dibekukan; salin ke versi
+  kemudian dua kes — masih nilai lama vs sengaja diubah; pembetulan Jan
+  dibawa ke Sep; tidak diminta → tidak disentuh), unit +2
+  (`storedChangedFields`), web +10 (pra-isi ikut tarikh, ringkasan, soalan
+  wajib dan nilainya, soalan pada *Correct*, tiada soalan sebelum versi
+  pertama atau tanpa versi kemudian, Record dimatikan, label lajur, dua
+  dialog padam).
+- `[D]` **Disemak dalam pelayar** pada pekerja demo sintetik ("Demo Backdate
+  (Synthetic)", Jan dan Sep, baris dinolkan seperti staging): tarikh 1 Jun
+  → Additional PCB kosong (Jan), ringkasan betul, Yes → Sep mendapat RM50
+  dan teksnya kekal "LINDUNG 24 JAM participation"; padam Jun → dialog
+  betul, Jan berlanjutan ke 31 Ogos; 390px tiada limpahan.
+
+### Uji di staging (ikut urutan)
+
+1. *Employees* → pekerja dengan ≥2 versi kedudukan → *Record a change* →
+   tarikh **1 Jun 2026**: medan menunjukkan versi yang berkuat kuasa pada
+   tarikh itu (bukan terkini). Taip Additional PCB `50` → notis "You are
+   changing: Additional PCB each month (None becomes RM50.00)".
+2. Soalan *Apply this change to later versions too?* muncul. Tekan *Record*
+   tanpa menjawab → ralat. Pilih **Yes** → versi kemudian yang masih
+   memegang nilai lama turut RM50; lajur *What changed* versi kemudian
+   **tidak berubah**.
+3. *Delete* pada versi Jun → dialog menunjukkan "In force 1 Jun 2026 to 31
+   Aug 2026" dan "Additional PCB each month: RM50.00 becomes None"; sahkan →
+   versi sebelumnya berlanjutan ke 31 Ogos.
+4. *Record a change* tanpa mengubah apa-apa → "Nothing differs…" dan
+   *Record* dimatikan.
+
+### Keputusan terbuka / yang saya pilih bagi pihak anda
+
+- `[A]` Soalan versi kemudian **wajib dijawab**, tiada lalai — "Ask" dalam
+  penemuan dibaca sebagai soalan yang mesti dijawab, bukan kotak semak.
+- `[A]` Salinan ke versi kemudian hanya untuk medan yang versi itu masih
+  memegang nilai lama; perubahan sengaja pada versi kemudian dikekalkan.
+- `[A]` Teks baris lama dibekukan pada operasi pertama, bukan backfill
+  migrasi: jadual ini `FORCE ROW LEVEL SECURITY`, dan pada pemilik bukan
+  superuser (staging) backfill tanpa tenant akan menyentuh 0 baris secara
+  senyap.
+- `[D]` Pengadang bulan diluluskan **tidak diubah**: perubahan bertarikh ke
+  belakang masih ditolak jika mana-mana bulan ≥ tarikh itu sudah
+  diluluskan untuk pekerja itu (walaupun bulan itu ditadbir versi kemudian
+  yang tidak disentuh). Pengadang inilah yang menghalang *Yes* daripada
+  mengubah versi yang bulan diluluskan dikira daripadanya. Cadangan:
+  longgarkan kepada bulan dalam julat versi yang dibelah, dengan *Yes*
+  menolak versi kemudian yang dibaca bulan diluluskan — perlu keputusan
+  anda.
+
+---
+
 ## Batch 13 — 5 Oktober 2026 — jadual statutori dibuka dalam pemapar besar, bukan laci sempit
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas

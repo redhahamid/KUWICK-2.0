@@ -13,6 +13,7 @@ import {
   classificationDiff,
   resolveClassificationForPayroll,
   resolveEmployerProfileForPayroll,
+  storedChangedFields,
 } from './statutory-classification';
 import {
   RecordEmployerStatutoryDto,
@@ -51,6 +52,8 @@ type PrismaClassification = {
   overtimeContractPolicy: StatutoryClassificationRow['overtimeContractPolicy'];
   additionalPcbCents?: number;
   additionalPcbNote?: string | null;
+  /** The JSON column: what the row was recorded as changing, or null before the column existed. */
+  changedFields?: unknown;
 };
 
 /**
@@ -155,14 +158,18 @@ export class StatutoryClassificationService {
     return rows.map((row) => {
       const index = ordered.findIndex((r) => r.id === row.id);
       const previous = index > 0 ? ordered[index - 1] : null;
-      const changed: ClassificationField[] = previous
-        ? classificationDiff(toClassificationRow(previous), toClassificationRow(row))
-        : [];
+      // What the row was RECORDED as changing, where that was written down;
+      // the live diff only for rows older than the column.
+      const changed: ClassificationField[] =
+        storedChangedFields(row.changedFields) ??
+        (previous ? classificationDiff(toClassificationRow(previous), toClassificationRow(row)) : []);
       return {
         id: row.id,
         effectiveFrom: isoDate(row.effectiveFrom),
         effectiveTo: row.effectiveTo ? isoDate(row.effectiveTo) : null,
         current: !row.effectiveTo,
+        /** The earliest version on record: nothing before it to have changed from. */
+        first: index === 0,
         epfApplicable: row.epfApplicable,
         epfMembership: row.epfMembership,
         epfEmployeeRate: row.epfEmployeeRate === null ? null : Number(row.epfEmployeeRate),
@@ -262,8 +269,12 @@ export class StatutoryClassificationService {
         );
       }
 
+      // Before anything reorders this employee's chain, write down what each
+      // older row currently reads as changing, so that text stays theirs.
+      await this.freezeChangedFields(tx, staffId);
+
       const standing = await tx.employeeStatutoryClassification.findFirst({ where: { staffId, effectiveFrom: from } });
-      if (standing) return this.correct(tx, actor, standing, dto, from);
+      if (standing) return this.correct(tx, actor, staffId, standing, dto, from);
 
       /*
        * ANY PAST DATE, BY SPLITTING THE ROW THAT COVERS IT.
@@ -302,13 +313,13 @@ export class StatutoryClassificationService {
       // A version that states nothing new is a row with no fact in it. It would
       // also be indistinguishable, in the history, from a change somebody
       // meant to make and got wrong.
-      if (base) {
-        const changed = classificationDiff(base, { ...next, id: '', effectiveFrom: from, effectiveTo: runsTo });
-        if (changed.length === 0) {
-          throw new BadRequestException(
-            'Nothing in this classification differs from the one in force on that date, so there is no new fact to record.',
-          );
-        }
+      const changed: ClassificationField[] = base
+        ? classificationDiff(base, { ...next, id: '', effectiveFrom: from, effectiveTo: runsTo })
+        : [];
+      if (base && changed.length === 0) {
+        throw new BadRequestException(
+          'Nothing in this classification differs from the one in force on that date, so there is no new fact to record.',
+        );
       }
 
       if (covering) {
@@ -327,22 +338,84 @@ export class StatutoryClassificationService {
           effectiveTo: runsTo,
           reason: dto.reason ?? null,
           note: dto.note ?? null,
+          // What this row changed against the one in force on its date, kept
+          // as recorded: a version slid in before it later does not alter it.
+          changedFields: changed,
           createdByStaffId: actor.id,
         },
       });
+
+      const appliedToLater = dto.applyToLater && base ? await this.carryIntoLater(tx, staffId, from, base, next, changed) : [];
 
       await recordAudit(tx, actor, {
         action: 'employeeStatutoryClassification.recorded',
         entityType: 'EmployeeStatutoryClassification',
         entityId: saved.id,
-        reason: `Recorded statutory classification from ${dto.effectiveFrom}`,
+        reason:
+          `Recorded statutory classification from ${dto.effectiveFrom}` +
+          (appliedToLater.length > 0 ? `, applied to ${appliedToLater.length} later version(s)` : ''),
         before: base ? (base as unknown as Record<string, unknown>) : null,
-        after: { ...next, effectiveFrom: dto.effectiveFrom } as unknown as Record<string, unknown>,
+        after: { ...next, effectiveFrom: dto.effectiveFrom, appliedToLater } as unknown as Record<string, unknown>,
         source: 'hr.employees',
       });
 
-      return saved;
+      return { ...saved, appliedToLater };
     });
+  }
+
+  /**
+   * THE LATER VERSIONS, IF ASKED.
+   *
+   * A change dated into the past is usually a fact that still holds: an SKBBK
+   * opt-out from June is an opt-out in September too, unless September's own
+   * version said otherwise. So each later version takes the changed fields
+   * WHERE IT STILL CARRIES THE OLD VALUE, and keeps anything it changed
+   * deliberately. What it was recorded as changing stays as it was: the list
+   * is the row's own, not a function of its neighbours.
+   */
+  private async carryIntoLater(
+    tx: AdminTx,
+    staffId: string,
+    from: Date,
+    base: StatutoryClassificationRow,
+    next: ReturnType<typeof applyToBase>,
+    changed: ClassificationField[],
+  ): Promise<{ id: string; effectiveFrom: string; fields: ClassificationField[] }[]> {
+    if (changed.length === 0) return [];
+    const later = await tx.employeeStatutoryClassification.findMany({
+      where: { staffId, effectiveFrom: { gt: from } },
+      orderBy: { effectiveFrom: 'asc' },
+    });
+    const carried: { id: string; effectiveFrom: string; fields: ClassificationField[] }[] = [];
+    for (const version of later) {
+      const held = toClassificationRow(version);
+      const fields = changed.filter((key) => held[key] === base[key]);
+      if (fields.length === 0) continue;
+      const data = Object.fromEntries(fields.map((key) => [key, next[key]])) as Partial<typeof next>;
+      await tx.employeeStatutoryClassification.update({ where: { id: version.id }, data });
+      carried.push({ id: version.id, effectiveFrom: isoDate(version.effectiveFrom), fields });
+    }
+    return carried;
+  }
+
+  /**
+   * KEEP WHAT EACH VERSION WAS RECORDED AS CHANGING.
+   *
+   * Rows written before `changedFields` existed carry no list, so their "what
+   * changed" is diffed live against whichever row happens to sit before them.
+   * The first thing that reorders the chain — a back-dated version, a delete,
+   * a correction — would then rewrite their text. So before any of those, the
+   * live text of every such row is written down once, in chronological order,
+   * and is never recomputed again.
+   */
+  private async freezeChangedFields(tx: AdminTx, staffId: string): Promise<void> {
+    const rows = await tx.employeeStatutoryClassification.findMany({ where: { staffId }, orderBy: { effectiveFrom: 'asc' } });
+    for (const [index, row] of rows.entries()) {
+      if (storedChangedFields(row.changedFields) !== null) continue;
+      const previous = index > 0 ? rows[index - 1] : null;
+      const changed = previous ? classificationDiff(toClassificationRow(previous), toClassificationRow(row)) : [];
+      await tx.employeeStatutoryClassification.update({ where: { id: row.id }, data: { changedFields: changed } });
+    }
   }
 
   /**
@@ -361,6 +434,7 @@ export class StatutoryClassificationService {
   private async correct(
     tx: AdminTx,
     actor: ActingStaff,
+    staffId: string,
     standing: PrismaClassification & { reason: string | null; note: string | null },
     dto: RecordStatutoryClassificationDto,
     from: Date,
@@ -371,12 +445,24 @@ export class StatutoryClassificationService {
     const reason = dto.reason ?? standing.reason;
     const note = dto.note ?? standing.note;
 
-    if (changed.length === 0 && reason === standing.reason && note === standing.note) return standing;
+    if (changed.length === 0 && reason === standing.reason && note === standing.note) return { ...standing, appliedToLater: [] };
+
+    // A restated row is a different statement, so what it changes against the
+    // version before it is worked out again — for this row only.
+    const previous = await tx.employeeStatutoryClassification.findFirst({
+      where: { staffId, effectiveFrom: { lt: from } },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+    const changedFields = previous
+      ? classificationDiff(toClassificationRow(previous), { ...next, id: standing.id, effectiveFrom: from, effectiveTo: standing.effectiveTo })
+      : [];
 
     const saved = await tx.employeeStatutoryClassification.update({
       where: { id: standing.id },
-      data: { ...next, reason, note },
+      data: { ...next, reason, note, changedFields },
     });
+    // The same question a new version answers: do the later versions take it too.
+    const appliedToLater = dto.applyToLater ? await this.carryIntoLater(tx, staffId, from, base, next, changed) : [];
 
     await recordAudit(tx, actor, {
       action: 'employeeStatutoryClassification.corrected',
@@ -386,11 +472,11 @@ export class StatutoryClassificationService {
         changed.length > 0 ? changed.map((key) => CLASSIFICATION_FIELDS[key]).join(', ') : 'reason only'
       }`,
       before: base as unknown as Record<string, unknown>,
-      after: { ...next, effectiveFrom: isoDate(from) } as unknown as Record<string, unknown>,
+      after: { ...next, effectiveFrom: isoDate(from), appliedToLater } as unknown as Record<string, unknown>,
       source: 'hr.employees',
     });
 
-    return saved;
+    return { ...saved, appliedToLater };
   }
 
   /**
@@ -430,6 +516,10 @@ export class StatutoryClassificationService {
             'Reopen that run and correct it deliberately, or record a change from a later date.',
         );
       }
+
+      // The version after the deleted one keeps what it was recorded as
+      // changing; written down first where it was never kept.
+      await this.freezeChangedFields(tx, staffId);
 
       const previous = await tx.employeeStatutoryClassification.findFirst({
         where: { staffId, effectiveFrom: { lt: row.effectiveFrom } },

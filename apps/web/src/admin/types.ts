@@ -3269,8 +3269,10 @@ export interface StatutoryClassificationVersion {
   note: string | null;
   recordedBy: string | null;
   recordedAt: string;
-  /** What this version changed, in words, from the API's own diff. */
+  /** What this version changed, in words, as recorded when it was written. */
   changed: string[];
+  /** The earliest version on record. Absent on rows read before the field existed. */
+  first?: boolean;
 }
 
 /** The body POST /statutory-classification accepts — a statement from a date. */
@@ -3296,6 +3298,8 @@ export interface RecordStatutoryClassificationBody {
   additionalPcbCents?: number;
   additionalPcbNote?: string | null;
   reason?: string;
+  /** For a change dated before later versions: carry the changed fields into those that still hold the old value. */
+  applyToLater?: boolean;
 }
 
 /** One month of opening year-to-date, in cents, as the import endpoint takes it. */

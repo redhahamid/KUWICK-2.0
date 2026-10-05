@@ -44,6 +44,13 @@ export class RecordStatutoryClassificationDto {
 
   @IsOptional() @IsString() reason?: string;
   @IsOptional() @IsString() note?: string;
+
+  /**
+   * For a change dated before later versions: carry the changed fields into
+   * each later version that still holds the old value. A later version that
+   * changed the same field deliberately keeps its own value either way.
+   */
+  @IsOptional() @IsBoolean() applyToLater?: boolean;
 }
 
 /**

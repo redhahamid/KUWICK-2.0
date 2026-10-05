@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { App, DatePicker, Input, InputNumber, Modal, Select } from 'antd';
+import { App, DatePicker, Input, InputNumber, Modal, Radio, Select } from 'antd';
 import dayjs from 'dayjs';
 import { useDeleteStatutoryClassification, useRecordStatutoryClassification, useStatutoryClassifications } from '../hooks/useAdmin';
 import { useCan } from '../../core/hooks/useCan';
@@ -9,7 +9,7 @@ import { STANDING_REASONS } from './ui/reasons';
 import { Table } from './ui/Table';
 import { IconEdit } from './ui/icons';
 import type { FormProblem } from './ui';
-import type { EmployeeRecord, StatutoryClassificationVersion } from '../types';
+import type { EmployeeRecord, RecordStatutoryClassificationBody, StatutoryClassificationVersion } from '../types';
 
 /**
  * THE STATUTORY STANDING — editable as a dated version, never as a patch.
@@ -48,6 +48,134 @@ const STANDING_LABELS: Record<string, string> = {
   PAY_AT_STATUTORY_RATES: 'Paid at the statutory rates',
   NOT_PAID: 'Not paid',
 };
+
+/** The fields the form edits, in the words the form uses for them. */
+type FormField =
+  | 'epfMembership'
+  | 'epfEmployeeRate'
+  | 'lindungParticipation'
+  | 'taxResidence'
+  | 'pcbCategory'
+  | 'qualifyingChildren'
+  | 'additionalPcbCents'
+  | 'additionalPcbNote'
+  | 'disabledSelf'
+  | 'disabledSpouse'
+  | 'restDay'
+  | 'overtimeContractPolicy';
+
+const FORM_FIELD_LABELS: Record<FormField, string> = {
+  epfMembership: 'EPF Third Schedule part',
+  epfEmployeeRate: 'EPF employee share',
+  lindungParticipation: 'LINDUNG 24 JAM',
+  taxResidence: 'Tax residence',
+  pcbCategory: 'MTD category',
+  qualifyingChildren: 'Qualifying children',
+  additionalPcbCents: 'Additional PCB each month',
+  additionalPcbNote: 'Additional PCB note',
+  disabledSelf: 'Disabled (self)',
+  disabledSpouse: 'Disabled spouse',
+  restDay: 'Rest day',
+  overtimeContractPolicy: 'Overtime above the Act limit',
+};
+
+/** One version's answers, normalised so two of them compare field by field. */
+type FieldValues = {
+  epfMembership: string | null;
+  epfEmployeeRate: number | null;
+  lindungParticipation: string | null;
+  taxResidence: string | null;
+  pcbCategory: string | null;
+  qualifyingChildren: number;
+  additionalPcbCents: number;
+  additionalPcbNote: string | null;
+  disabledSelf: boolean;
+  disabledSpouse: boolean;
+  restDay: number | 'VARIES' | null;
+  overtimeContractPolicy: string | null;
+};
+
+function valuesOf(v: StatutoryClassificationVersion): FieldValues {
+  return {
+    epfMembership: v.epfMembership,
+    epfEmployeeRate: v.epfEmployeeRate,
+    lindungParticipation: v.lindungParticipation,
+    taxResidence: v.taxResidence,
+    pcbCategory: v.pcbCategory,
+    qualifyingChildren: v.qualifyingChildren,
+    additionalPcbCents: v.additionalPcbCents ?? 0,
+    additionalPcbNote: v.additionalPcbNote ?? null,
+    disabledSelf: v.disabledSelf,
+    disabledSpouse: v.disabledSpouse,
+    restDay: v.restDayVaries ? 'VARIES' : v.restDayOfWeek,
+    overtimeContractPolicy: v.overtimeContractPolicy,
+  };
+}
+
+/** A value in the words the form shows for it. */
+function describeValue(field: FormField, value: FieldValues[FormField]): string {
+  if (value === null || value === undefined) {
+    if (field === 'lindungParticipation') return 'Enrolled (the default)';
+    if (field === 'epfEmployeeRate') return '11% (the default)';
+    if (field === 'additionalPcbNote') return 'None';
+    return 'Not recorded';
+  }
+  switch (field) {
+    case 'epfEmployeeRate':
+      return `${value}%`;
+    case 'qualifyingChildren':
+      return String(value);
+    case 'additionalPcbCents':
+      return Number(value) > 0 ? `RM${(Number(value) / 100).toFixed(2)}` : 'None';
+    case 'additionalPcbNote':
+      return String(value);
+    case 'disabledSelf':
+    case 'disabledSpouse':
+      return value ? 'Yes' : 'No';
+    case 'restDay':
+      return value === 'VARIES' ? 'Varies week to week' : DAY_NAMES[Number(value)];
+    default:
+      return STANDING_LABELS[String(value)] ?? String(value);
+  }
+}
+
+type Change = { field: FormField; label: string; before: string; after: string };
+
+/**
+ * Each field `next` answers differently from `base`. A field `next` leaves
+ * out is not a change: the service carries the base's answer forward.
+ */
+function changesBetween(base: FieldValues, next: Partial<FieldValues>): Change[] {
+  return (Object.keys(FORM_FIELD_LABELS) as FormField[])
+    .filter((field) => next[field] !== undefined && next[field] !== base[field])
+    .map((field) => ({
+      field,
+      label: FORM_FIELD_LABELS[field],
+      before: describeValue(field, base[field]),
+      after: describeValue(field, next[field] as FieldValues[FormField]),
+    }));
+}
+
+/**
+ * The version in force on a date — or, before the first one, the first one.
+ *
+ * A change is pre-filled from THIS, not from the latest version: back-dating
+ * a change to Additional PCB from the latest version silently copied the
+ * latest LINDUNG and rest day into the earlier months as well. Reported from
+ * UAT as "I only changed Additional PCB".
+ */
+function versionOn(
+  versions: StatutoryClassificationVersion[],
+  date: dayjs.Dayjs,
+): { base: StatutoryClassificationVersion | null; kind: 'covering' | 'following' | 'none' } {
+  const day = date.format('YYYY-MM-DD');
+  const covering = versions.find((row) => row.effectiveFrom <= day && (row.effectiveTo === null || row.effectiveTo >= day));
+  if (covering) return { base: covering, kind: 'covering' };
+  const following = [...versions].filter((row) => row.effectiveFrom > day).sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom))[0];
+  return following ? { base: following, kind: 'following' } : { base: null, kind: 'none' };
+}
+
+const longDate = (value: string | null | undefined) => (value ? dayjs(value).format('D MMM YYYY') : 'now');
 
 /**
  * THE STANDING AS FACTS — pure, so a test can render it without the query
@@ -168,22 +296,11 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
   const [additionalPcbNote, setAdditionalPcbNote] = useState('');
   const [otPolicy, setOtPolicy] = useState<string | undefined>();
   const [reason, setReason] = useState('');
+  /** For a change dated before later versions: whether they take it too. Null until the person says. */
+  const [applyToLater, setApplyToLater] = useState<boolean | null>(null);
 
-  /**
-   * `row` given, the form corrects that version; otherwise it records a change
-   * from a date the user chooses.
-   *
-   * A correction prefills from THE ROW ITSELF and from nothing else. Filling it
-   * from the standing in force would quietly carry this month's answers back
-   * into a month that never had them — which is the opposite of what somebody
-   * opening January came to do.
-   */
-  const openForm = (row?: StatutoryClassificationVersion) => {
-    const base = row ?? current;
-    // Only a change may fall back on the resolved record; a correction may not.
-    const fallback = row ? null : s;
-    setTarget(row ?? null);
-    setFrom(row ? dayjs(row.effectiveFrom) : dayjs().startOf('month'));
+  /** The fields, filled from one version — or, with none on record, from the resolved standing. */
+  const fill = (base: StatutoryClassificationVersion | null, fallback: EmployeeRecord['statutory'] | null) => {
     setEpfMembership(base?.epfMembership ?? fallback?.epfMembership ?? undefined);
     setEpfRate(base?.epfEmployeeRate ?? undefined);
     setLindung(base?.lindungParticipation ?? fallback?.lindungParticipation ?? undefined);
@@ -197,12 +314,80 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
     setDisabledSpouse(base?.disabledSpouse ?? null);
     setRestDay(base?.restDayVaries || fallback?.restDayVaries ? 'VARIES' : (base?.restDayOfWeek ?? fallback?.restDayOfWeek ?? undefined));
     setOtPolicy(base?.overtimeContractPolicy ?? fallback?.overtimeContractPolicy ?? undefined);
+  };
+
+  /**
+   * `row` given, the form corrects that version; otherwise it records a change
+   * from a date the user chooses.
+   *
+   * A correction prefills from THE ROW ITSELF and from nothing else. Filling it
+   * from the standing in force would quietly carry this month's answers back
+   * into a month that never had them — which is the opposite of what somebody
+   * opening January came to do. A change prefills from the version IN FORCE ON
+   * ITS DATE, for the same reason in the other direction.
+   */
+  const openForm = (row?: StatutoryClassificationVersion) => {
+    const start = row ? dayjs(row.effectiveFrom) : dayjs().startOf('month');
+    const base = row ?? versionOn(versions, start).base;
+    // Only a change with nothing on record may fall back on the resolved record.
+    fill(base, base ? null : s);
+    setTarget(row ?? null);
+    setFrom(start);
+    setApplyToLater(null);
     // Never the old reason: a correction has its own, and it is the only place
     // the history will say why the row stopped saying what it said.
     setReason('');
     setError(null);
     setOpen(true);
   };
+
+  /** A change moved to another date starts again from the version in force on that date. */
+  const moveDate = (value: dayjs.Dayjs) => {
+    setFrom(value);
+    const base = versionOn(versions, value).base;
+    fill(base, base ? null : s);
+    setApplyToLater(null);
+  };
+
+  /** What the form will send: only the fields it has an answer for. */
+  const sent: Partial<FieldValues> = {
+    ...(epfMembership !== undefined ? { epfMembership } : {}),
+    ...(epfRate !== undefined ? { epfEmployeeRate: epfRate } : {}),
+    ...(lindung !== undefined ? { lindungParticipation: lindung } : {}),
+    ...(taxResidence !== undefined ? { taxResidence } : {}),
+    ...(pcbCategory !== undefined ? { pcbCategory } : {}),
+    ...(children !== null ? { qualifyingChildren: children } : {}),
+    ...(additionalPcb.trim() !== ''
+      ? { additionalPcbCents: Math.round(Number(additionalPcb) * 100), additionalPcbNote: additionalPcbNote.trim() || null }
+      : {}),
+    ...(disabledSelf !== null ? { disabledSelf } : {}),
+    ...(disabledSpouse !== null ? { disabledSpouse } : {}),
+    ...(restDay !== undefined ? { restDay } : {}),
+    ...(otPolicy !== undefined ? { overtimeContractPolicy: otPolicy } : {}),
+  };
+  /*
+   * WHAT THIS STATEMENT CHANGES, said before it is saved. A correction is
+   * measured against the row itself; a change against the version in force on
+   * its date. Nothing here is a guess the server does not make too: the server
+   * refuses a change that differs in nothing from the version in force.
+   */
+  const basis = target ? { base: target, kind: 'covering' as const } : versionOn(versions, from);
+  const changes = basis.base ? changesBetween(valuesOf(basis.base), sent) : [];
+  const fromDay = from.format('YYYY-MM-DD');
+  // The versions after the one this statement splits or restates. Before the
+  // first version there is no old value for a later version to still hold,
+  // so nothing is carried and nothing is asked.
+  const laterVersions =
+    basis.kind === 'covering' ? versions.filter((row) => row.effectiveFrom > fromDay).sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom)) : [];
+  const askLater = laterVersions.length > 0 && changes.length > 0;
+  const nothingNew = !target && basis.kind === 'covering' && changes.length === 0;
+
+  /** What deleting a version takes those months back to: the version before it, field by field. */
+  const doomedPrevious = doomed
+    ? ([...versions].filter((row) => row.effectiveFrom < doomed.effectiveFrom).sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0] ?? null)
+    : null;
+  const reverts = doomed && doomedPrevious ? changesBetween(valuesOf(doomed), valuesOf(doomedPrevious)) : [];
+  const earliest = versions.length > 0 ? [...versions].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom))[0] : null;
 
   return (
     <>
@@ -234,7 +419,12 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
             {
               title: 'What changed',
               key: 'changed',
-              render: (_: unknown, row) => (row.changed.length > 0 ? row.changed.join(', ') : <span className="hr-faint">First recorded standing</span>),
+              render: (_: unknown, row) =>
+                row.changed.length > 0 ? (
+                  row.changed.join(', ')
+                ) : (
+                  <span className="hr-faint">{(row.first ?? row.id === earliest?.id) ? 'First recorded standing' : 'Same as the version before'}</span>
+                ),
             },
             {
               title: 'Reason',
@@ -296,7 +486,11 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
             {
               onSuccess: () => {
                 setDoomed(null);
-                message.success('Version deleted. The one before it now runs on to cover those months.');
+                message.success(
+                  doomedPrevious
+                    ? `Version deleted. The one from ${longDate(doomedPrevious.effectiveFrom)} now runs on to cover those months.`
+                    : 'Version deleted. Those months have no standing on record until one is recorded.',
+                );
               },
               onError: (error: Error) => setDeleteProblem(error.message),
             },
@@ -308,17 +502,46 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
             {deleteProblem}
           </div>
         ) : null}
-        <p>
-          For a version recorded in error. The version before it runs on to{' '}
-          {doomed?.effectiveTo ? dayjs(doomed.effectiveTo).format('D MMM YYYY') : 'now'}, so those months keep an
-          answer. A version an approved payroll month was worked out from cannot be deleted.
-        </p>
+        {doomed ? (
+          <div data-testid="st-delete-summary">
+            <p>
+              <strong>In force {longDate(doomed.effectiveFrom)} to {longDate(doomed.effectiveTo)}</strong>
+              {doomed.reason ? ` · ${doomed.reason}` : ''} · recorded by {doomed.recordedBy ?? 'unknown'} on {longDate(doomed.recordedAt)}.
+            </p>
+            {doomedPrevious ? (
+              <>
+                <p>
+                  After deleting, the version from {longDate(doomedPrevious.effectiveFrom)} runs on to {longDate(doomed.effectiveTo)}, so those months go back to
+                  what it says:
+                </p>
+                {reverts.length > 0 ? (
+                  <ul className="hr-list" data-testid="st-delete-reverts">
+                    {reverts.map((change) => (
+                      <li key={change.field}>
+                        {change.label}: {change.before} becomes {change.after}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="hr-faint">Nothing differs between the two, so those months read exactly as they do now.</p>
+                )}
+              </>
+            ) : (
+              <p>
+                There is no earlier version. {longDate(doomed.effectiveFrom)} to {longDate(doomed.effectiveTo)} will have no standing on record, and payroll
+                blocks those months until one is recorded.
+              </p>
+            )}
+            <p className="hr-faint">A version an approved payroll month was worked out from cannot be deleted.</p>
+          </div>
+        ) : null}
       </Modal>
 
       <Modal
         open={open}
         title={target ? `Correct the standing from ${dayjs(target.effectiveFrom).format('D MMM YYYY')}` : 'Record a statutory standing'}
         okText={target ? 'Save correction' : 'Record'}
+        okButtonProps={{ disabled: nothingNew }}
         width={620}
         confirmLoading={record.isPending}
         onCancel={() => setOpen(false)}
@@ -328,26 +551,29 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
             setError({ field: 'st-reason', message: 'Say why this is being recorded — a standing with no reason is not a record.' });
             return;
           }
+          if (askLater && applyToLater === null) {
+            setError({ field: 'st-apply-later', message: 'Say whether the later versions should take this change too.' });
+            return;
+          }
+          // Only what the form knows is sent; the service carries the rest of
+          // the standing forward, and stores the whole statement.
+          const { restDay: sentRestDay, ...fields } = sent;
+          const body: RecordStatutoryClassificationBody & { staffId: string } = {
+            staffId,
+            effectiveFrom: fromDay,
+            ...fields,
+            ...(sentRestDay === 'VARIES'
+              ? { restDayOfWeek: null, restDayVaries: true }
+              : typeof sentRestDay === 'number'
+                ? { restDayOfWeek: sentRestDay, restDayVaries: false }
+                : {}),
+            reason: reason.trim(),
+            ...(askLater ? { applyToLater: applyToLater === true } : {}),
+          };
+          let carried = 0;
           try {
-            await record.mutateAsync({
-              staffId,
-              effectiveFrom: from.format('YYYY-MM-DD'),
-              // Only what the form knows is sent; the service carries the rest
-              // of the standing forward, and stores the whole statement.
-              ...(epfMembership !== undefined ? { epfMembership } : {}),
-              ...(epfRate !== undefined ? { epfEmployeeRate: epfRate } : {}),
-              ...(lindung !== undefined ? { lindungParticipation: lindung } : {}),
-              ...(taxResidence !== undefined ? { taxResidence } : {}),
-              ...(pcbCategory !== undefined ? { pcbCategory } : {}),
-              ...(children !== null ? { qualifyingChildren: children } : {}),
-              ...(additionalPcb.trim() !== '' ? { additionalPcbCents: Math.round(Number(additionalPcb) * 100) } : {}),
-              ...(additionalPcb.trim() !== '' ? { additionalPcbNote: additionalPcbNote.trim() || null } : {}),
-              ...(disabledSelf !== null ? { disabledSelf } : {}),
-              ...(disabledSpouse !== null ? { disabledSpouse } : {}),
-              ...(restDay === 'VARIES' ? { restDayOfWeek: null, restDayVaries: true } : restDay !== undefined ? { restDayOfWeek: restDay, restDayVaries: false } : {}),
-              ...(otPolicy !== undefined ? { overtimeContractPolicy: otPolicy } : {}),
-              reason: reason.trim(),
-            });
+            const result = (await record.mutateAsync(body)) as { appliedToLater?: unknown[] } | undefined;
+            carried = result?.appliedToLater?.length ?? 0;
           } catch (e) {
             setError({ message: e instanceof Error ? e.message : 'The server refused the change and did not say why.' });
             return;
@@ -360,10 +586,16 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
            * statement to be sent a second time.
            */
           setOpen(false);
+          const later =
+            askLater && applyToLater
+              ? carried > 0
+                ? ` ${carried} later version${carried === 1 ? '' : 's'} took the change too.`
+                : ' No later version still held the old value, so none changed.'
+              : '';
           message.success(
             target
-              ? `Corrected. ${dayjs(target.effectiveFrom).format('D MMM YYYY')} onwards reads this, and no second version was opened.`
-              : 'Recorded. Payroll resolves it from the date it takes effect.',
+              ? `Corrected. ${dayjs(target.effectiveFrom).format('D MMM YYYY')} onwards reads this, and no second version was opened.${later}`
+              : `Recorded. Payroll resolves it from the date it takes effect.${later}`,
           );
         }}
       >
@@ -374,7 +606,7 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
             <DatePicker
               id="st-from"
               value={from}
-              onChange={(v) => v && setFrom(v)}
+              onChange={(v) => v && moveDate(v)}
               style={{ width: '100%' }}
               allowClear={false}
               format="D MMM YYYY"
@@ -385,7 +617,7 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
             <div className="hr-form__help">
               {target
                 ? 'The date this version starts, which a correction does not move. To start a new version from a later date, close this and use Record a change.'
-                : "Date it from the first day of the month it took effect, even if that was earlier this year: the version covering that date is split, and the months before it keep what they had. A standing that changes part-way through a month blocks that month's payroll, because a contribution is worked out for a whole wage period. A month already approved refuses the change."}
+                : "Date it from the first day of the month it took effect, even if that was earlier this year: the version covering that date is split, and the months before it keep what they had. The fields below show the standing in force on this date, and follow the date when it moves. A standing that changes part-way through a month blocks that month's payroll, because a contribution is worked out for a whole wage period. A month already approved refuses the change."}
             </div>
           </div>
 
@@ -557,6 +789,61 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
             Overtime above the limit only matters for wages above the First Schedule limit, where the Act's own overtime provisions stop applying. Below it, overtime is statutory and
             that setting is ignored.
           </div>
+
+          {/*
+            * SAID BEFORE IT IS SAVED. The list is exactly the fields that differ
+            * from the version this statement is measured against, in the words
+            * the form uses; everything else stays as that version has it.
+            */}
+          {basis.base ? (
+            changes.length > 0 ? (
+              <div className="hr-notice hr-notice--info" data-testid="st-changes">
+                <strong>You are changing:</strong>{' '}
+                {changes.map((change) => `${change.label} (${change.before} becomes ${change.after})`).join('; ')}.
+                <div className="hr-faint">
+                  {target
+                    ? `Compared with what this version says now.`
+                    : basis.kind === 'covering'
+                      ? `Compared with the version in force on ${longDate(fromDay)}, from ${longDate(basis.base.effectiveFrom)}. Everything else stays as that version has it.`
+                      : `Compared with the first version on record, from ${longDate(basis.base.effectiveFrom)}, which starts after this date.`}
+                </div>
+              </div>
+            ) : (
+              <div className={target ? 'hr-notice hr-notice--muted' : 'hr-notice hr-notice--attn'} data-testid="st-changes">
+                {target
+                  ? 'Nothing differs from what this version says now; saving records the reason only.'
+                  : basis.kind === 'covering'
+                    ? `Nothing differs from the version in force on ${longDate(fromDay)}, so there is nothing to record. Change a field, or pick another date.`
+                    : `Nothing differs from the first version on record, from ${longDate(basis.base.effectiveFrom)}.`}
+              </div>
+            )
+          ) : (
+            <div className="hr-notice hr-notice--muted" data-testid="st-changes">
+              This is the first standing recorded for this employee.
+            </div>
+          )}
+
+          {askLater ? (
+            <div id="st-apply-later" data-testid="st-apply-later">
+              <label id="st-apply-later-label">Apply this change to later versions too?</label>
+              <Radio.Group
+                aria-labelledby="st-apply-later-label"
+                value={applyToLater}
+                onChange={(event) => setApplyToLater(event.target.value as boolean)}
+                style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
+              >
+                <Radio value={true}>
+                  Yes — the {laterVersions.length} later version{laterVersions.length === 1 ? '' : 's'} (from{' '}
+                  {laterVersions.map((row) => longDate(row.effectiveFrom)).join(', ')}) take the same change where they still carry the old value
+                </Radio>
+                <Radio value={false}>No — only this version; the later versions keep what they say</Radio>
+              </Radio.Group>
+              <div className="hr-form__help">
+                A later version that changed the same field on purpose keeps its own answer either way, and each version keeps what it was recorded as changing.
+              </div>
+              <FieldProblem problem={error} field="st-apply-later" />
+            </div>
+          ) : null}
 
           <div>
             <label htmlFor="st-reason">Reason</label>

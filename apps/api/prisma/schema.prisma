@@ -8090,6 +8090,14 @@ model EmployeeStatutoryClassification {
   reason String?
   note   String?
 
+  /// What this version changed against the one before it WHEN IT WAS RECORDED,
+  /// as field keys (a JSON array of strings). Fixed at write time, so a
+  /// back-dated version inserted before it later does not rewrite what this
+  /// row was recorded as changing. Null on rows written before the column
+  /// existed: those are diffed live until the first reordering of the chain
+  /// writes their text down.
+  changedFields Json? @map("changed_fields")
+
   createdByStaffId String?  @map("created_by_staff_id")
   createdAt        DateTime @default(now()) @map("created_at")
 

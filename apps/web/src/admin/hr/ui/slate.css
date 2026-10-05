@@ -939,6 +939,11 @@
     flex: 1 1 100%;
     min-width: 0;
   }
+  /* A two-column form row is one column on a phone: in a 620px modal it
+     ran out of the right edge of a 390px screen. */
+  .hr-form__row {
+    grid-template-columns: 1fr;
+  }
   .hr-modal__body {
     padding: 0 14px 14px;
   }
@@ -1268,6 +1273,10 @@ a.hr-who:hover .hr-who__name {
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
+/* A notice inside a form sits flush with the fields, not inset like a page bar. */
+.hr-form > .hr-notice {
+  margin: 4px 0;
+}
 .hr-form__help {
   font-size: 12px;
   color: var(--hr-ink3);
@@ -1497,9 +1506,21 @@ a.hr-who:hover .hr-who__name {
   border-color: transparent;
   color: var(--hr-ink);
 }
+/* A statement of fact, not a warning: "nothing differs", "this is the first". */
+.hr-notice--muted {
+  color: var(--hr-ink2);
+}
 .hr-notice ul {
   margin: 6px 0 0;
   padding-left: 18px;
+}
+/* A short list inside a dialog: what a delete takes the months back to. */
+.hr-list {
+  margin: 6px 0 10px;
+  padding-left: 18px;
+}
+.hr-list li {
+  margin: 2px 0;
 }
 
 /* ── Inline popover (a decision that needs a date and a reason) ───────────── */

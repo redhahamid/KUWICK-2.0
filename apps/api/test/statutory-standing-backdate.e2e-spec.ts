@@ -1,6 +1,6 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { PrismaClient, Role } from '@prisma/client';
+import { Prisma, PrismaClient, Role } from '@prisma/client';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { createTestPrismaClient, randomId, withTenantContext } from './test-db';
@@ -60,6 +60,7 @@ describe('back-dating and deleting statutory standing versions (e2e)', () => {
       lindungParticipation: string | null;
       restDayOfWeek: number | null;
       epfMembership: string | null;
+      changed: string[];
     }[];
   const resolve = async (staffId: string, period: string) =>
     (await request(server()).get(`/workforce/employees/${staffId}/statutory-classification/resolve?period=${period}`).set('Authorization', owner).expect(200)).body as {
@@ -99,6 +100,97 @@ describe('back-dating and deleting statutory standing versions (e2e)', () => {
     expect(await resolve(staffId, '2026-05-01')).toMatchObject({ state: 'RESOLVED', effectiveFrom: '2026-01-01' });
     expect(await resolve(staffId, '2026-06-01')).toMatchObject({ state: 'RESOLVED', effectiveFrom: '2026-06-01' });
     expect(await resolve(staffId, '2026-09-01')).toMatchObject({ state: 'RESOLVED', effectiveFrom: '2026-09-01' });
+  });
+
+  /*
+   * WHAT A VERSION WAS RECORDED AS CHANGING IS ITS OWN.
+   *
+   * The text used to be diffed on every read against whichever row sat
+   * before it, so a June version slid in here made September read as
+   * changing the rest day — a change nobody made on 1 September — while its
+   * real change, the opt-out, stayed listed only by luck.
+   */
+  it('keeps the September version’s own "what changed" after a June version is inserted before it', async () => {
+    const staffId = await staffAdmin('Staff Admin Text');
+    const september = (rows: Awaited<ReturnType<typeof history>>) => rows.find((row) => row.effectiveFrom === '2026-09-01');
+    expect(september(await history(staffId))?.changed).toEqual(['LINDUNG 24 JAM participation']);
+
+    await post(staffId, { effectiveFrom: '2026-06-01', restDayOfWeek: 3, reason: 'Rest day moved in June' }).expect(201);
+
+    const rows = await history(staffId);
+    expect(rows.find((row) => row.effectiveFrom === '2026-06-01')?.changed).toEqual(['designated rest day']);
+    expect(september(rows)?.changed).toEqual(['LINDUNG 24 JAM participation']);
+    expect(rows.find((row) => row.effectiveFrom === '2026-01-01')?.changed).toEqual([]);
+  });
+
+  /*
+   * Rows written before the column existed carry no list and are diffed live.
+   * The first reordering of the chain writes their live text down first, so
+   * the back-date does not rewrite it.
+   */
+  it('writes down the live text of versions older than the column before the chain is reordered', async () => {
+    const staffId = await staffAdmin('Staff Admin Legacy');
+    await withTenantContext(prisma, tenantId, (tx) =>
+      tx.employeeStatutoryClassification.updateMany({ where: { staffId }, data: { changedFields: Prisma.DbNull } }),
+    );
+    const september = (rows: Awaited<ReturnType<typeof history>>) => rows.find((row) => row.effectiveFrom === '2026-09-01');
+    expect(september(await history(staffId))?.changed).toEqual(['LINDUNG 24 JAM participation']);
+
+    await post(staffId, { effectiveFrom: '2026-06-01', restDayOfWeek: 3, reason: 'Rest day moved in June' }).expect(201);
+
+    expect(september(await history(staffId))?.changed).toEqual(['LINDUNG 24 JAM participation']);
+  });
+
+  /*
+   * A CHANGE DATED INTO THE PAST USUALLY STILL HOLDS. Asked to, the later
+   * versions take the changed field where they still carry the old value;
+   * a later version that set the same field on purpose keeps its own.
+   */
+  it('applies a back-dated change to later versions that still hold the old value, and leaves a deliberate later change alone', async () => {
+    const byDate = (rows: Awaited<ReturnType<typeof history>>) =>
+      [...rows].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom)).map((row) => [row.effectiveFrom, row.restDayOfWeek]);
+
+    const carried = await staffAdmin('Staff Admin Carried');
+    await post(carried, { effectiveFrom: '2026-06-01', restDayOfWeek: 3, applyToLater: true, reason: 'Rest day moved in June' }).expect(201);
+    const rows = await history(carried);
+    expect(byDate(rows)).toEqual([
+      ['2026-01-01', 0],
+      ['2026-06-01', 3],
+      ['2026-09-01', 3],
+    ]);
+    const september = rows.find((row) => row.effectiveFrom === '2026-09-01');
+    expect(september).toMatchObject({ lindungParticipation: 'NOT_PARTICIPATING', changed: ['LINDUNG 24 JAM participation'] });
+
+    const deliberate = await staffAdmin('Staff Admin Deliberate');
+    await post(deliberate, { effectiveFrom: '2026-09-01', restDayOfWeek: 5, reason: 'Friday from September' }).expect(201);
+    await post(deliberate, { effectiveFrom: '2026-06-01', restDayOfWeek: 3, applyToLater: true, reason: 'Rest day moved in June' }).expect(201);
+    expect(byDate(await history(deliberate))).toEqual([
+      ['2026-01-01', 0],
+      ['2026-06-01', 3],
+      ['2026-09-01', 5],
+    ]);
+  });
+
+  it('carries a correction of an earlier version into the later ones, when asked', async () => {
+    const staffId = await staffAdmin('Staff Admin Corrected');
+    await post(staffId, { effectiveFrom: '2026-01-01', restDayOfWeek: 6, applyToLater: true, reason: 'Rest day was Saturday from hire' }).expect(201);
+    const rows = [...(await history(staffId))].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
+    expect(rows.map((row) => [row.effectiveFrom, row.restDayOfWeek])).toEqual([
+      ['2026-01-01', 6],
+      ['2026-09-01', 6],
+    ]);
+    expect(rows[1].changed).toEqual(['LINDUNG 24 JAM participation']);
+  });
+
+  it('leaves later versions exactly as they were unless asked to carry the change into them', async () => {
+    const staffId = await staffAdmin('Staff Admin Unasked');
+    await post(staffId, { effectiveFrom: '2026-06-01', restDayOfWeek: 3, reason: 'Rest day moved in June' }).expect(201);
+    const rows = [...(await history(staffId))].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
+    expect(rows.map((row) => [row.effectiveFrom, row.restDayOfWeek])).toEqual([
+      ['2026-01-01', 0],
+      ['2026-06-01', 3],
+      ['2026-09-01', 0],
+    ]);
   });
 
   it('refuses a back-dated change where a later month is already approved', async () => {

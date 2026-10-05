@@ -1,5 +1,6 @@
 import {
   CLASSIFICATION_FIELDS,
+  storedChangedFields,
   ClassificationField,
   StatutoryClassificationRow,
   classificationDiff,
@@ -266,5 +267,20 @@ describe('resolveEmployerProfileForPayroll', () => {
 
   it('says nothing is on record rather than assuming NOT_REGISTERED', () => {
     expect(resolveEmployerProfileForPayroll([], MARCH_START, MARCH_END).kind).toBe('NONE_ON_RECORD');
+  });
+});
+
+describe('storedChangedFields', () => {
+  it('reads back a list of known field keys, including the empty list of a first version', () => {
+    expect(storedChangedFields(['lindungParticipation', 'restDayOfWeek'])).toEqual(['lindungParticipation', 'restDayOfWeek']);
+    expect(storedChangedFields([])).toEqual([]);
+  });
+
+  it('is null for a row written before the column existed, or for anything but a list of field keys', () => {
+    expect(storedChangedFields(null)).toBeNull();
+    expect(storedChangedFields(undefined)).toBeNull();
+    expect(storedChangedFields('lindungParticipation')).toBeNull();
+    expect(storedChangedFields(['lindungParticipation', 'notAField'])).toBeNull();
+    expect(storedChangedFields([1])).toBeNull();
   });
 });

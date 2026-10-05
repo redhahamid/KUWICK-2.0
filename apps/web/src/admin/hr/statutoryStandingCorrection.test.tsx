@@ -273,3 +273,193 @@ describe('deleting a version', () => {
     expect(screen.getByRole('button', { name: /Correct/ })).toBeVisible();
   });
 });
+
+/*
+ * A CHANGE STARTS FROM THE VERSION IN FORCE ON ITS DATE.
+ *
+ * Reported from UAT: back-dating a change to Additional PCB alone silently
+ * changed LINDUNG and the rest day too, because the form filled itself from
+ * the LATEST version and sent all of it against the earlier date. The form
+ * now fills from the version covering the chosen date, follows the date when
+ * it moves, and says what it is changing before it is saved.
+ */
+describe('back-dating a change', () => {
+  const jan = () =>
+    version({
+      id: 'v-jan',
+      effectiveFrom: JOINED,
+      effectiveTo: '2026-05-31',
+      current: false,
+      restDayOfWeek: 0,
+      lindungParticipation: null,
+      additionalPcbCents: 0,
+      changed: [],
+      first: true,
+    });
+  const jun = () =>
+    version({
+      id: 'v-jun',
+      effectiveFrom: '2026-06-01',
+      effectiveTo: null,
+      current: true,
+      restDayOfWeek: 5,
+      lindungParticipation: 'NOT_PARTICIPATING',
+      additionalPcbCents: 10000,
+      additionalPcbNote: 'CP38 ref 2026/1234',
+      changed: ['LINDUNG 24 JAM participation', 'designated rest day', 'additional PCB each month'],
+      first: false,
+    });
+  /** What a closed antd Select shows: the chosen option's title on its content box, nothing when empty. */
+  const selected = (id: string) => document.querySelector(`#${id}`)?.closest('.ant-select')?.querySelector('.ant-select-content')?.getAttribute('title') ?? '';
+
+  async function openOn(date: string) {
+    fireEvent.click(ok('Record a change'));
+    const from = await screen.findByLabelText('In force from');
+    fireEvent.change(from, { target: { value: date } });
+    fireEvent.keyDown(from, { key: 'Enter', keyCode: 13 });
+    await waitFor(() => expect(from).toHaveValue(date));
+  }
+
+  it('fills from the version in force on the chosen date, and follows the date when it moves', async () => {
+    versions = [jun(), jan()];
+    render(<StatutoryStandingManager data={record()} />);
+    fireEvent.click(ok('Record a change'));
+    await screen.findByLabelText('In force from');
+    // This month: the June version is in force.
+    expect(screen.getByLabelText('Additional PCB each month (RM)')).toHaveValue('100.00');
+    expect(selected('st-rest')).toBe('Friday');
+
+    const from = screen.getByLabelText('In force from');
+    fireEvent.change(from, { target: { value: '1 Mar 2026' } });
+    fireEvent.keyDown(from, { key: 'Enter', keyCode: 13 });
+    await waitFor(() => expect(from).toHaveValue('1 Mar 2026'));
+    // March: the January version, not the latest one.
+    expect(screen.getByLabelText('Additional PCB each month (RM)')).toHaveValue('');
+    expect(selected('st-rest')).toBe('Sunday');
+    expect(selected('st-lindung')).toBe('');
+  });
+
+  it('says what is being changed, sends only that, and asks about the later version', async () => {
+    versions = [jun(), jan()];
+    render(<StatutoryStandingManager data={record()} />);
+    await openOn('1 Mar 2026');
+
+    fireEvent.change(screen.getByLabelText('Additional PCB each month (RM)'), { target: { value: '50' } });
+    expect(screen.getByTestId('st-changes')).toHaveTextContent('You are changing: Additional PCB each month (None becomes RM50.00).');
+    expect(screen.getByTestId('st-changes')).toHaveTextContent('Compared with the version in force on 1 Mar 2026, from 1 Jan 2026');
+
+    fireEvent.change(reasonBox(), { target: { value: 'CP38 direction received late' } });
+    fireEvent.click(ok('Record'));
+    // The question is not optional.
+    await screen.findByText('Say whether the later versions should take this change too.');
+    expect(recordMutate).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('radio', { name: /No — only this version/ }));
+    fireEvent.click(ok('Record'));
+    await waitFor(() => expect(recordMutate).toHaveBeenCalled());
+    const sent = recordMutate.mock.calls[0][0];
+    expect(sent).toMatchObject({ effectiveFrom: '2026-03-01', additionalPcbCents: 5000, restDayOfWeek: 0, applyToLater: false });
+    // January had no LINDUNG answer, so none is sent — and June's opt-out is not copied back.
+    expect(sent).not.toHaveProperty('lindungParticipation');
+  });
+
+  it('sends the answer when the later versions should take the change too', async () => {
+    versions = [jun(), jan()];
+    render(<StatutoryStandingManager data={record()} />);
+    await openOn('1 Mar 2026');
+    await choose('Rest day', 'Wednesday');
+    expect(screen.getByTestId('st-changes')).toHaveTextContent('Rest day (Sunday becomes Wednesday)');
+    fireEvent.click(screen.getByRole('radio', { name: /Yes — the 1 later version \(from 1 Jun 2026\)/ }));
+    fireEvent.change(reasonBox(), { target: { value: 'Rest day moved in March' } });
+    fireEvent.click(ok('Record'));
+    await waitFor(() => expect(recordMutate).toHaveBeenCalled());
+    expect(recordMutate.mock.calls[0][0]).toMatchObject({ effectiveFrom: '2026-03-01', restDayOfWeek: 3, restDayVaries: false, applyToLater: true });
+  });
+
+  it('refuses to record a statement that changes nothing against the version in force', async () => {
+    versions = [jun(), jan()];
+    render(<StatutoryStandingManager data={record()} />);
+    fireEvent.click(ok('Record a change'));
+    await screen.findByLabelText('In force from');
+    expect(screen.getByTestId('st-changes')).toHaveTextContent(/Nothing differs from the version in force on/);
+    expect(ok('Record')).toBeDisabled();
+    expect(screen.queryByTestId('st-apply-later')).toBeNull();
+  });
+
+  it('does not ask about later versions when the change is dated after all of them', async () => {
+    versions = [jun(), jan()];
+    render(<StatutoryStandingManager data={record()} />);
+    fireEvent.click(ok('Record a change'));
+    await screen.findByLabelText('In force from');
+    await choose('Rest day', 'Wednesday');
+    expect(screen.queryByTestId('st-apply-later')).toBeNull();
+    fireEvent.change(reasonBox(), { target: { value: 'Rest day moved' } });
+    fireEvent.click(ok('Record'));
+    await waitFor(() => expect(recordMutate).toHaveBeenCalled());
+    expect(recordMutate.mock.calls[0][0]).not.toHaveProperty('applyToLater');
+  });
+
+  it('asks the same question when correcting a version that has later ones', async () => {
+    versions = [jun(), jan()];
+    render(<StatutoryStandingManager data={record()} />);
+    fireEvent.click(screen.getAllByRole('button', { name: /Correct/ })[1]);
+    await screen.findByText('Correct the standing from 1 Jan 2026');
+    await choose('Rest day', 'Wednesday');
+    expect(screen.getByTestId('st-changes')).toHaveTextContent('Rest day (Sunday becomes Wednesday)');
+    fireEvent.click(screen.getByRole('radio', { name: /Yes — the 1 later version/ }));
+    fireEvent.change(reasonBox(), { target: { value: 'Rest day was Wednesday from hire' } });
+    fireEvent.click(ok('Save correction'));
+    await waitFor(() => expect(recordMutate).toHaveBeenCalled());
+    expect(recordMutate.mock.calls[0][0]).toMatchObject({ effectiveFrom: JOINED, restDayOfWeek: 3, applyToLater: true });
+  });
+
+  it('does not ask for a date before the first version, where nothing is carried', async () => {
+    versions = [version({ id: 'v-mar', effectiveFrom: '2026-03-01', changed: [], first: true })];
+    render(<StatutoryStandingManager data={record()} />);
+    await openOn('1 Jan 2026');
+    await choose('Rest day', 'Wednesday');
+    expect(screen.getByTestId('st-changes')).toHaveTextContent('Compared with the first version on record, from 1 Mar 2026');
+    expect(screen.queryByTestId('st-apply-later')).toBeNull();
+  });
+
+  it('names the version that reads as the first, and the one that changed nothing', () => {
+    versions = [version({ id: 'v-sep', effectiveFrom: '2026-09-01', changed: [], first: false }), jan()];
+    render(<StatutoryStandingManager data={record()} />);
+    expect(screen.getByText('First recorded standing')).toBeVisible();
+    expect(screen.getByText('Same as the version before')).toBeVisible();
+  });
+});
+
+/*
+ * DELETING A VERSION SAYS WHAT IT TAKES THOSE MONTHS BACK TO: its dates, and
+ * the version before it field by field — or that there is none.
+ */
+describe('confirming a delete', () => {
+  it('shows the version’s dates and what those months go back to', async () => {
+    versions = [
+      version({ id: 'v-jun', effectiveFrom: '2026-06-01', effectiveTo: null, current: true, restDayOfWeek: 5, lindungParticipation: 'NOT_PARTICIPATING', additionalPcbCents: 10000, additionalPcbNote: 'CP38 ref 2026/1234', reason: 'Opted out through PERKESO' }),
+      version({ id: 'v-jan', effectiveFrom: JOINED, effectiveTo: '2026-05-31', current: false, restDayOfWeek: 0, lindungParticipation: null, additionalPcbCents: 0 }),
+    ];
+    render(<StatutoryStandingManager data={record()} />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete' })[0]);
+    await screen.findByText('Delete the version from 1 Jun 2026?');
+    const summary = screen.getByTestId('st-delete-summary');
+    expect(summary).toHaveTextContent('In force 1 Jun 2026 to now');
+    expect(summary).toHaveTextContent('Opted out through PERKESO');
+    expect(summary).toHaveTextContent('the version from 1 Jan 2026 runs on to now');
+    const reverts = screen.getByTestId('st-delete-reverts');
+    expect(reverts).toHaveTextContent('LINDUNG 24 JAM: Opted out becomes Enrolled (the default)');
+    expect(reverts).toHaveTextContent('Rest day: Friday becomes Sunday');
+    expect(reverts).toHaveTextContent('Additional PCB each month: RM100.00 becomes None');
+    expect(reverts).toHaveTextContent('Additional PCB note: CP38 ref 2026/1234 becomes None');
+    expect(deleteMutate).not.toHaveBeenCalled();
+  });
+
+  it('says plainly that the first version leaves its months with no standing', async () => {
+    render(<StatutoryStandingManager data={record()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await screen.findByText('Delete the version from 1 Jan 2026?');
+    expect(screen.getByTestId('st-delete-summary')).toHaveTextContent('There is no earlier version. 1 Jan 2026 to now will have no standing on record');
+    expect(screen.queryByTestId('st-delete-reverts')).toBeNull();
+  });
+});

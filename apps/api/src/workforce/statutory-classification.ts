@@ -123,6 +123,22 @@ export function classificationDiff(
   return (Object.keys(CLASSIFICATION_FIELDS) as ClassificationField[]).filter((key) => a[key] !== b[key]);
 }
 
+/**
+ * The list a row was recorded as changing, read back from its JSON column.
+ *
+ * Null when the row carries none (it was written before the column existed)
+ * or holds anything but known field keys; the caller then diffs live. A
+ * stored list is never recomputed: it is what the row was recorded as
+ * changing, and a version inserted before it later does not alter that.
+ */
+export function storedChangedFields(value: unknown): ClassificationField[] | null {
+  if (!Array.isArray(value)) return null;
+  const keys = value.filter(
+    (entry): entry is ClassificationField => typeof entry === 'string' && entry in CLASSIFICATION_FIELDS,
+  );
+  return keys.length === value.length ? keys : null;
+}
+
 function atDayStart(d: Date): number {
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }

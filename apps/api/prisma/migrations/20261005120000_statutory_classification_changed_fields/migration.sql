@@ -1,0 +1,17 @@
+-- WHAT EACH STANDING VERSION WAS RECORDED AS CHANGING, kept with the row.
+--
+-- "What changed" was worked out on every read by diffing a version against
+-- whichever row happened to sit before it. A back-dated version inserted
+-- between two rows therefore rewrote the later row's text: a June opt-out
+-- slid in before September made September read as changing LINDUNG when
+-- nobody had touched it on that date. The list is now written down when the
+-- row is recorded (or restated), and never recomputed.
+--
+-- NO BACKFILL HERE, on purpose. This table is under FORCE ROW LEVEL SECURITY
+-- with a tenant policy, and a migration runs with no tenant set, so a data
+-- statement here would quietly touch nothing on a non-superuser owner. Rows
+-- written before this column existed stay NULL and are diffed live, until
+-- the first back-date, delete or correction on that employee writes their
+-- live text down (StatutoryClassificationService.freezeChangedFields) under
+-- the tenant that owns them.
+ALTER TABLE "employee_statutory_classifications" ADD COLUMN "changed_fields" JSONB;
