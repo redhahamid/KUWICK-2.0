@@ -81,9 +81,15 @@ async function main() {
     // The verifier is the OWNER, which is also what the real flow requires:
     // signing authority is granted BY somebody, and a credential with no
     // named granter is not a credential.
-    const owner = await tx.staff.findFirst({ where: { role: 'OWNER_ADMIN' }, select: { id: true } });
+    // EVERY LOOKUP BELOW NAMES THE TENANT. This seed runs as the migration
+    // owner, which row-level security waves through, so a `findFirst` by name
+    // alone sees every clinic in the database. Measured: after the admin UAT
+    // clinic existed, the medicine lookup picked ITS Paracetamol and wrote a
+    // stock row under this tenant for another tenant's item — a row neither
+    // seed could delete afterwards.
+    const owner = await tx.staff.findFirst({ where: { tenantId, role: 'OWNER_ADMIN' }, select: { id: true } });
     const doctors = await tx.staff.findMany({
-      where: { role: { in: ['DOCTOR_RESIDENT', 'DOCTOR_LOCUM'] } },
+      where: { tenantId, role: { in: ['DOCTOR_RESIDENT', 'DOCTOR_LOCUM'] } },
       select: { id: true, fullName: true, medicalRegistrationNo: true },
     });
     if (doctors.length === 0) throw new Error('The staging tenant has no doctor.');
@@ -104,7 +110,7 @@ async function main() {
 
     // --- 2. The diagnosis the golden path types ------------------------
     const existingDiagnosis = await tx.diagnosisCatalog.findFirst({
-      where: { OR: [{ icd10Code: E2E_DIAGNOSIS_CODE }, { name: E2E_DIAGNOSIS_NAME }] },
+      where: { tenantId, OR: [{ icd10Code: E2E_DIAGNOSIS_CODE }, { name: E2E_DIAGNOSIS_NAME }] },
       select: { id: true },
     });
     if (existingDiagnosis) {
@@ -132,7 +138,7 @@ async function main() {
     // guardrail that passes at 09:00 and fails at 23:00 teaches people to
     // re-run it rather than read it.
     let consultationService = await tx.serviceCatalog.findFirst({
-      where: { name: 'Consultation (E2E)' },
+      where: { tenantId, name: 'Consultation (E2E)' },
       select: { id: true },
     });
     if (!consultationService) {
@@ -160,7 +166,7 @@ async function main() {
     // clinic's Services & Procedures rows do carry codes; this makes the test
     // world resemble one in the single respect the test is about.
     const dressing = await tx.serviceCatalog.findFirst({
-      where: { name: 'Dressing (E2E)' },
+      where: { tenantId, name: 'Dressing (E2E)' },
       select: { id: true },
     });
     if (!dressing) {
@@ -206,7 +212,7 @@ async function main() {
     }
 
     // --- 4. A medicine in stock ----------------------------------------
-    let item = await tx.item.findFirst({ where: { name: E2E_MEDICATION }, select: { id: true } });
+    let item = await tx.item.findFirst({ where: { tenantId, name: E2E_MEDICATION }, select: { id: true } });
     if (!item) {
       item = await tx.item.create({
         data: {
@@ -276,6 +282,7 @@ async function main() {
     // spec opens. They are fixtures, not leftovers.
     const stale = await tx.queueTicket.findMany({
       where: {
+        tenantId,
         status: 'WAITING',
         visit: { createdAt: { lt: startOfToday }, visitNumber: { not: { startsWith: 'UAT-' } } },
       },
