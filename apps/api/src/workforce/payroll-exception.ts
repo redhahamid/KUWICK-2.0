@@ -309,7 +309,10 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     code: 'REST_DAY_VARIES',
     severity: 'INFO',
     overridable: false,
-    cause: () => 'Their rest day varies week to week, so Kuwick cannot tell which worked day was a rest day.',
+    cause: (c) =>
+      c.restDayRule === 'ROSTER'
+        ? 'Their rest day rotates with the roster, and Kuwick does not read the roster’s off days, so it cannot tell which worked day was a rest day.'
+        : 'Their rest day varies week to week, so Kuwick cannot tell which worked day was a rest day.',
     consequence: 'Every day worked this month is priced as a normal day. Rest-day pay under s.60(3), if any is due, is not in this figure.',
     remediation: 'Check the timesheet against the roster. If a rest day was worked, key the rest-day pay as a line on their items.',
     deepLink: (c) => `/admin/hr/attendance?staffId=${String(c.staffId)}`,

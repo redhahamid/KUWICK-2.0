@@ -1454,7 +1454,7 @@ export class PayrollService {
           classification.restDayVaries &&
           attendance.some((row) => (row.workedMinutes ?? 0) > 0)
         ) {
-          raise('REST_DAY_VARIES', employee);
+          raise('REST_DAY_VARIES', employee, { restDayRule: classification.restDayFollowsRoster ? 'ROSTER' : 'VARIES' });
         }
 
         // LINDUNG 24 JAM raises nothing for a blank participation: PERKESO
@@ -2137,6 +2137,7 @@ export class PayrollService {
                 disabledSpouse: classification.disabledSpouse,
                 restDayOfWeek: classification.restDayOfWeek,
                 restDayVaries: classification.restDayVaries,
+                restDayFollowsRoster: classification.restDayFollowsRoster,
                 overtimeContractPolicy: classification.overtimeContractPolicy,
                 additionalPcbCents: classification.additionalPcbCents,
                 additionalPcbNote: classification.additionalPcbNote,

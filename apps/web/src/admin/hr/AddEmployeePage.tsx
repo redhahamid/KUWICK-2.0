@@ -12,7 +12,7 @@ import { useClinics } from '../../core/hooks/useClinics';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { parseNric } from '../../core/nric';
 import { PhoneField } from './ui/PhoneField';
-import { DAY_NAMES } from './StatutoryStandingManager';
+import { REST_DAY_CHOICES, restDayBody } from './restDay';
 import { useJobTitles, useLegalEmployers } from '../hooks/useAdmin';
 import { JobTitlePicker } from './JobTitlePicker';
 import { MALAYSIAN_STATES } from './malaysianStates';
@@ -99,6 +99,7 @@ const FORM_FIELD_OF: Record<string, string> = {
   'standing.pcbCategory': 'pcbCategory',
   'standing.restDayOfWeek': 'restDayOfWeek',
   'standing.restDayVaries': 'restDayOfWeek',
+  'standing.restDayFollowsRoster': 'restDayOfWeek',
   'standing.lindungParticipation': 'lindungParticipation',
   'standing.overtimeContractPolicy': 'overtimeContractPolicy',
 };
@@ -134,11 +135,7 @@ function intakeRowOf(values: Record<string, any>, fallbackClinicId: string | und
     ...(values.pcbCategory ? { pcbCategory: values.pcbCategory } : {}),
     ...(values.taxResidence ? { taxResidence: values.taxResidence } : {}),
     ...(values.lindungParticipation ? { lindungParticipation: values.lindungParticipation } : {}),
-    ...(hasRestDay
-      ? values.restDayOfWeek === 'VARIES'
-        ? { restDayOfWeek: null, restDayVaries: true }
-        : { restDayOfWeek: values.restDayOfWeek, restDayVaries: false }
-      : {}),
+    ...(hasRestDay ? restDayBody(values.restDayOfWeek) : {}),
     ...(values.overtimeContractPolicy ? { overtimeContractPolicy: values.overtimeContractPolicy } : {}),
   };
   // The standing is dated from the day they START, not from the salary's
@@ -608,13 +605,9 @@ export function AddEmployeePage() {
                 <Form.Item
                   name="restDayOfWeek"
                   label="Rest day"
-                  extra="Section 60(1) gives one whole day a week and the employer appoints it. Payroll refuses to work out a month without it. Where it varies week to week, say so: the month runs, and rest-day pay is keyed by hand."
+                  extra="Section 60(1) gives one whole day a week and the employer appoints it. Payroll refuses to work out a month without it. Where it varies week to week or rotates with the roster, say so: the month runs, and rest-day pay is keyed by hand."
                 >
-                  <Select
-                    allowClear
-                    placeholder="Choose"
-                    options={[...DAY_NAMES.map((name, index) => ({ value: index, label: name })), { value: 'VARIES', label: 'Varies week to week' }]}
-                  />
+                  <Select allowClear placeholder="Choose" options={REST_DAY_CHOICES} />
                 </Form.Item>
                 <Form.Item
                   name="lindungParticipation"

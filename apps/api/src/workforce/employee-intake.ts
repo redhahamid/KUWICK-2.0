@@ -118,7 +118,11 @@ export function standingBodyOf(row: EmployeeIntakeRowDto): Record<string, unknow
     if (!blank(s[key])) given[key] = String(s[key]).trim();
   }
   if (s.qualifyingChildren !== undefined && s.qualifyingChildren !== null) given.qualifyingChildren = s.qualifyingChildren;
-  if (s.restDayVaries) {
+  if (s.restDayFollowsRoster) {
+    given.restDayOfWeek = null;
+    given.restDayVaries = true;
+    given.restDayFollowsRoster = true;
+  } else if (s.restDayVaries) {
     given.restDayOfWeek = null;
     given.restDayVaries = true;
   } else if (s.restDayOfWeek !== undefined && s.restDayOfWeek !== null) {

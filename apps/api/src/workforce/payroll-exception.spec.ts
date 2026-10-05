@@ -144,6 +144,15 @@ describe('payroll exceptions', () => {
     expect(() => buildException('NOT_A_CODE' as never, null)).toThrow(/Unknown payroll exception/);
   });
 
+  it('says where a rest day with no fixed day comes from, without changing what it does', () => {
+    const roster = buildException('REST_DAY_VARIES', 's1', { staffId: 's1', restDayRule: 'ROSTER' });
+    const varies = buildException('REST_DAY_VARIES', 's1', { staffId: 's1', restDayRule: 'VARIES' });
+    expect(roster.cause).toContain('rotates with the roster');
+    expect(varies.cause).toContain('varies week to week');
+    expect(roster.severity).toBe('INFO');
+    expect(roster.consequence).toBe(varies.consequence);
+  });
+
   it('approves a run with no exceptions', () => {
     expect(approvalGate([])).toMatchObject({ canApprove: true, blocking: 0, warnings: 0 });
   });

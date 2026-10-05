@@ -1,0 +1,13 @@
+-- A REST DAY THAT ROTATES WITH THE ROSTER.
+--
+-- Many clinic staff have no fixed off day: the roster gives each of them
+-- theirs, week by week. "Varies week to week" said there was no fixed day; it
+-- did not say where the day comes from. This records that it is the roster.
+--
+-- Payroll prices it exactly as a varying rest day (no weekday is the rest
+-- day; rest-day pay is keyed by hand and the run says so each month): it does
+-- not read the roster's off days. A flag, not a pricing rule.
+--
+-- Metadata only: a NOT NULL column with a constant default is added without
+-- rewriting the table, and no row is touched.
+ALTER TABLE "employee_statutory_classifications" ADD COLUMN "rest_day_follows_roster" BOOLEAN NOT NULL DEFAULT false;

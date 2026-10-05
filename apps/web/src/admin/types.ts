@@ -1503,6 +1503,8 @@ export interface EmployeeRecord {
     restDayOfWeek: number | null;
     /** No fixed rest day: it varies week to week. */
     restDayVaries: boolean;
+    /** The varying rest day is the roster's. Absent on records read before the field existed. */
+    restDayFollowsRoster?: boolean;
     overtimeContractPolicy: string | null;
     /** On top of the computed MTD each month, in cents; 0 when none. */
     additionalPcbCents: number;
@@ -3261,6 +3263,8 @@ export interface StatutoryClassificationVersion {
   restDayOfWeek: number | null;
   /** No fixed rest day. Absent on rows read before the field existed. */
   restDayVaries?: boolean;
+  /** The varying rest day is the roster's. Absent on rows read before the field existed. */
+  restDayFollowsRoster?: boolean;
   overtimeContractPolicy: string | null;
   /** On top of the computed MTD each month, in cents. Absent on rows read before the field existed. */
   additionalPcbCents?: number;
@@ -3293,6 +3297,8 @@ export interface RecordStatutoryClassificationBody {
   restDayOfWeek?: number | null;
   /** True when the rest day varies week to week; sent with restDayOfWeek null. */
   restDayVaries?: boolean;
+  /** True when the rest day rotates with the roster; sent with restDayVaries true. */
+  restDayFollowsRoster?: boolean;
   overtimeContractPolicy?: string | null;
   /** On top of the computed MTD each month, in cents; 0 clears it. */
   additionalPcbCents?: number;
@@ -3736,6 +3742,7 @@ export interface EmployeeIntakeRowDto {
     qualifyingChildren?: number;
     restDayOfWeek?: number | null;
     restDayVaries?: boolean;
+    restDayFollowsRoster?: boolean;
     overtimeContractPolicy?: string;
   };
 }

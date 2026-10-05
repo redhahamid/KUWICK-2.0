@@ -8077,6 +8077,10 @@ model EmployeeStatutoryClassification {
   /// set the run no longer waits for a weekday, and says it cannot price
   /// rest-day work by itself for this person.
   restDayVaries          Boolean                 @default(false) @map("rest_day_varies")
+  /// The rest day rotates with the roster, which gives each week's off day.
+  /// Always with restDayVaries: payroll prices it exactly as a varying rest
+  /// day and does not read the roster's off days.
+  restDayFollowsRoster   Boolean                 @default(false) @map("rest_day_follows_roster")
   overtimeContractPolicy OvertimeContractPolicy? @map("overtime_contract_policy")
   /// On top of the computed MTD each month: a CP38 direction from LHDN, or the
   /// employee's own request. Never on top of a hand-entered PCB figure, which is

@@ -73,6 +73,8 @@ export interface ReadinessStanding {
   restDayOfWeek: number | null;
   /** No fixed rest day: an answer, not a gap. */
   restDayVaries?: boolean;
+  /** The varying rest day is the roster's. */
+  restDayFollowsRoster?: boolean;
 }
 
 export interface ReadinessFacts {
@@ -147,7 +149,9 @@ export function buildPayrollReadiness(facts: ReadinessFacts): ReadinessResult {
       severity: 'BLOCKING',
       done: (standing.restDayOfWeek !== null && standing.restDayOfWeek !== undefined) || standing.restDayVaries === true,
       detail:
-        standing.restDayVaries === true
+        standing.restDayFollowsRoster === true
+          ? 'Rotates with the roster. Kuwick does not read the roster’s off days, so rest-day pay for them is keyed by hand when it arises; the run says so each month.'
+          : standing.restDayVaries === true
           ? 'Varies week to week. Kuwick cannot tell which worked day was the rest day, so rest-day pay for them is keyed by hand when it arises; the run says so each month.'
           : standing.restDayOfWeek === null || standing.restDayOfWeek === undefined
             ? 'No rest day is designated. The Employment Act requires one a week, and working it is paid in days at the ordinary rate rather than as hours of overtime — so without it their extra hours cannot be priced.'

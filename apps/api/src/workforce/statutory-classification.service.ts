@@ -49,6 +49,7 @@ type PrismaClassification = {
   disabledSpouse: boolean;
   restDayOfWeek: number | null;
   restDayVaries?: boolean;
+  restDayFollowsRoster?: boolean;
   overtimeContractPolicy: StatutoryClassificationRow['overtimeContractPolicy'];
   additionalPcbCents?: number;
   additionalPcbNote?: string | null;
@@ -82,6 +83,7 @@ export function toClassificationRow(row: PrismaClassification): StatutoryClassif
     disabledSpouse: row.disabledSpouse,
     restDayOfWeek: row.restDayOfWeek,
     restDayVaries: row.restDayVaries ?? false,
+    restDayFollowsRoster: row.restDayFollowsRoster ?? false,
     overtimeContractPolicy: row.overtimeContractPolicy,
     additionalPcbCents: row.additionalPcbCents ?? 0,
     additionalPcbNote: row.additionalPcbNote ?? null,
@@ -106,6 +108,16 @@ function applyToBase(
       ? (base?.[key] ?? fallback)
       : dto[key as keyof RecordStatutoryClassificationDto]) as StatutoryClassificationRow[K];
 
+  /*
+   * THE REST DAY IS ONE ANSWER IN THREE COLUMNS: a weekday, "varies", or
+   * "varies, and the roster gives it". Following the roster always means no
+   * weekday and varying; naming a weekday or a fixed day ends it.
+   */
+  const followsRoster = dto.restDayFollowsRoster === true;
+  const restDayOfWeek = followsRoster ? null : pick('restDayOfWeek', null);
+  const restDayVaries = followsRoster ? true : pick('restDayVaries', false);
+  const restDayFollowsRoster = followsRoster || (restDayVaries && restDayOfWeek === null && pick('restDayFollowsRoster', false));
+
   return {
     epfApplicable: pick('epfApplicable', true),
     epfMembership: pick('epfMembership', null),
@@ -119,8 +131,9 @@ function applyToBase(
     qualifyingChildren: pick('qualifyingChildren', 0),
     disabledSelf: pick('disabledSelf', false),
     disabledSpouse: pick('disabledSpouse', false),
-    restDayOfWeek: pick('restDayOfWeek', null),
-    restDayVaries: pick('restDayVaries', false),
+    restDayOfWeek,
+    restDayVaries,
+    restDayFollowsRoster,
     overtimeContractPolicy: pick('overtimeContractPolicy', null),
     additionalPcbCents: pick('additionalPcbCents', 0),
     additionalPcbNote: pick('additionalPcbNote', null),
@@ -184,6 +197,7 @@ export class StatutoryClassificationService {
         disabledSpouse: row.disabledSpouse,
         restDayOfWeek: row.restDayOfWeek,
         restDayVaries: row.restDayVaries,
+        restDayFollowsRoster: row.restDayFollowsRoster,
         overtimeContractPolicy: row.overtimeContractPolicy,
         additionalPcbCents: row.additionalPcbCents,
         additionalPcbNote: row.additionalPcbNote,

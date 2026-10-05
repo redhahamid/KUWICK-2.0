@@ -84,6 +84,10 @@ describe('toIntakeRowDto', () => {
     expect(toIntakeRowDto(emptyRow()).standing).toBeUndefined();
   });
 
+  it('sends a rest day that rotates with the roster as varying, with the roster flag', () => {
+    expect(toIntakeRowDto(emptyRow({ restDay: 'ROSTER' })).standing).toEqual({ restDayOfWeek: null, restDayVaries: true, restDayFollowsRoster: true });
+  });
+
   it('knows a blank line from a person with a branch already chosen', () => {
     expect(rowIsBlank(emptyRow({ clinicId: 'clinic-1', legalEmployerId: 'emp-1' }))).toBe(true);
     expect(rowIsBlank(emptyRow({ fullName: 'D' }))).toBe(false);

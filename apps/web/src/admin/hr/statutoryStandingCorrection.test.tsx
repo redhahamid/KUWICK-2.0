@@ -223,6 +223,21 @@ describe('correcting the standing that is already on a date', () => {
   });
 });
 
+describe('a rest day that rotates with the roster', () => {
+  it('is offered, sent as varying with no weekday, and said in words', async () => {
+    render(<StatutoryStandingManager data={record()} />);
+    fireEvent.click(screen.getByRole('button', { name: /Correct/ }));
+    await screen.findByText('Correct the standing from 1 Jan 2026');
+    await choose('Rest day', 'Rotating — follows the roster');
+    expect(screen.getByText(/Payroll does not read the roster’s off days/)).toBeInTheDocument();
+    expect(screen.getByTestId('st-changes')).toHaveTextContent('Rest day (Not recorded becomes Rotating — follows the roster)');
+    fireEvent.change(reasonBox(), { target: { value: 'Rest day rotates with the roster' } });
+    fireEvent.click(ok('Save correction'));
+    await waitFor(() => expect(recordMutate).toHaveBeenCalled());
+    expect(recordMutate.mock.calls[0][0]).toMatchObject({ restDayOfWeek: null, restDayVaries: true, restDayFollowsRoster: true });
+  });
+});
+
 describe('recording a change from a date the user picks', () => {
   it('sends the date on the form, not the month the form was opened in', async () => {
     render(<StatutoryStandingManager data={record()} />);

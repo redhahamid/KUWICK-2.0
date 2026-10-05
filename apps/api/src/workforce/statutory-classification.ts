@@ -75,6 +75,8 @@ export interface StatutoryClassificationRow {
   readonly restDayOfWeek: number | null;
   /** No fixed rest day: it varies week to week, so no weekday is the rest day. */
   readonly restDayVaries: boolean;
+  /** The varying rest day is the one the roster gives. Only ever with restDayVaries. */
+  readonly restDayFollowsRoster: boolean;
   readonly overtimeContractPolicy: OvertimeContractPolicyCode | null;
   /** On top of the computed MTD each month, in cents; 0 when none. */
   readonly additionalPcbCents: number;
@@ -105,6 +107,7 @@ export const CLASSIFICATION_FIELDS = {
   disabledSpouse: 'disabled (spouse)',
   restDayOfWeek: 'designated rest day',
   restDayVaries: 'whether the rest day varies week to week',
+  restDayFollowsRoster: 'whether the rest day follows the roster',
   overtimeContractPolicy: 'overtime policy above the First Schedule limit',
   additionalPcbCents: 'additional PCB each month',
   additionalPcbNote: 'additional PCB note',

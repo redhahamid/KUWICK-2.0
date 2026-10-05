@@ -223,6 +223,7 @@ describe('the rest day, on the employment tab', () => {
       effectiveFrom: '2026-01-01',
       restDayOfWeek: 0,
       restDayVaries: false,
+      restDayFollowsRoster: false,
       reason: 'Rest day recorded on the employment record',
     });
   });
@@ -244,6 +245,29 @@ describe('the rest day, on the employment tab', () => {
       effectiveFrom: '2026-01-01',
       restDayOfWeek: null,
       restDayVaries: true,
+      restDayFollowsRoster: false,
+      reason: 'Rest day recorded on the employment record',
+    });
+  });
+
+  /*
+   * ROTATING WITH THE ROSTER: no weekday, varying, and the roster gives the
+   * day. Payroll prices it as a varying rest day; the record says where the
+   * day comes from.
+   */
+  it('records a rest day that rotates with the roster', async () => {
+    versions = [{ id: 'v1', effectiveFrom: '2026-01-01', current: true, restDayOfWeek: null }];
+    open({ startDate: '2026-01-01' });
+    await chooseDay('Rotating — follows the roster');
+    fireEvent.click(saveButton());
+
+    await waitFor(() => expect(standingMutate).toHaveBeenCalled());
+    expect(standingMutate).toHaveBeenCalledWith({
+      staffId: 'staff-1',
+      effectiveFrom: '2026-01-01',
+      restDayOfWeek: null,
+      restDayVaries: true,
+      restDayFollowsRoster: true,
       reason: 'Rest day recorded on the employment record',
     });
   });

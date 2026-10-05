@@ -23,6 +23,7 @@ export class IntakeStandingDto {
   @IsOptional() @IsNumber() qualifyingChildren?: number;
   @IsOptional() @IsNumber() restDayOfWeek?: number | null;
   @IsOptional() @IsBoolean() restDayVaries?: boolean;
+  @IsOptional() @IsBoolean() restDayFollowsRoster?: boolean;
   @IsOptional() @IsString() @MaxLength(40) overtimeContractPolicy?: string;
 }
 

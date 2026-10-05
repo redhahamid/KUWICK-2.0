@@ -1,4 +1,4 @@
-import { DAY_NAMES } from './StatutoryStandingManager';
+import { DAY_NAMES, REST_DAY_ROSTER_LABEL, REST_DAY_VARIES_LABEL } from './restDay';
 import { downloadCsv } from './ui/csv';
 import type { EmployeeIntakeRowDto } from '../types';
 
@@ -35,7 +35,7 @@ export interface IntakeRow {
   epfMembership: string;
   taxResidence: string;
   pcbCategory: string;
-  /** '0'..'6', 'VARIES' or blank. */
+  /** '0'..'6', 'VARIES', 'ROSTER' or blank. */
   restDay: string;
   lindungParticipation: string;
 }
@@ -72,7 +72,8 @@ export const PCB_OPTIONS = [
 
 export const REST_DAY_OPTIONS = [
   ...DAY_NAMES.map((name, index) => ({ value: String(index), label: name })),
-  { value: 'VARIES', label: 'Varies week to week' },
+  { value: 'VARIES', label: REST_DAY_VARIES_LABEL },
+  { value: 'ROSTER', label: REST_DAY_ROSTER_LABEL },
 ];
 
 export const LINDUNG_OPTIONS = [
@@ -131,7 +132,11 @@ export function toIntakeRowDto(row: IntakeRow): EmployeeIntakeRowDto {
   if (or(row.taxResidence)) standing.taxResidence = row.taxResidence;
   if (or(row.pcbCategory)) standing.pcbCategory = row.pcbCategory;
   if (or(row.lindungParticipation)) standing.lindungParticipation = row.lindungParticipation;
-  if (row.restDay === 'VARIES') {
+  if (row.restDay === 'ROSTER') {
+    standing.restDayOfWeek = null;
+    standing.restDayVaries = true;
+    standing.restDayFollowsRoster = true;
+  } else if (row.restDay === 'VARIES') {
     standing.restDayOfWeek = null;
     standing.restDayVaries = true;
   } else if (or(row.restDay)) {
@@ -315,7 +320,7 @@ export function readIntakeSheet(
     row.epfMembership = pick('epfMembership', EPF_OPTIONS, { citizen: 'MALAYSIAN_CITIZEN', malaysian: 'MALAYSIAN_CITIZEN', pr: 'PERMANENT_RESIDENT', foreigner: 'NON_CITIZEN', foreign: 'NON_CITIZEN', noncitizenpre1998: 'NON_CITIZEN_ELECTED_PRE_1998' }, 'an EPF membership');
     row.taxResidence = pick('taxResidence', TAX_RESIDENCE_OPTIONS, { nonresident: 'NON_RESIDENT', nr: 'NON_RESIDENT', r: 'RESIDENT' }, 'a tax residence');
     row.pcbCategory = pick('pcbCategory', PCB_OPTIONS, { '1': 'CATEGORY_1', '2': 'CATEGORY_2', '3': 'CATEGORY_3', cat1: 'CATEGORY_1', cat2: 'CATEGORY_2', cat3: 'CATEGORY_3', single: 'CATEGORY_1' }, 'a monthly tax category');
-    row.restDay = pick('restDay', REST_DAY_OPTIONS, { sun: '0', mon: '1', tue: '2', tues: '2', wed: '3', thu: '4', thur: '4', thurs: '4', fri: '5', sat: '6', varies: 'VARIES', variesweektoweek: 'VARIES', ahad: '0', isnin: '1', selasa: '2', rabu: '3', khamis: '4', jumaat: '5', sabtu: '6' }, 'a rest day');
+    row.restDay = pick('restDay', REST_DAY_OPTIONS, { sun: '0', mon: '1', tue: '2', tues: '2', wed: '3', thu: '4', thur: '4', thurs: '4', fri: '5', sat: '6', varies: 'VARIES', variesweektoweek: 'VARIES', roster: 'ROSTER', rotating: 'ROSTER', rotates: 'ROSTER', followstheroster: 'ROSTER', rotatingfollowstheroster: 'ROSTER', ikutroster: 'ROSTER', ahad: '0', isnin: '1', selasa: '2', rabu: '3', khamis: '4', jumaat: '5', sabtu: '6' }, 'a rest day');
     row.lindungParticipation = pick('lindungParticipation', LINDUNG_OPTIONS, { optedout: 'NOT_PARTICIPATING', optout: 'NOT_PARTICIPATING', no: 'NOT_PARTICIPATING', yes: 'ENROLLED', mandatory: 'MANDATORY_FOREIGN_WORKER', foreignworker: 'MANDATORY_FOREIGN_WORKER' }, 'a LINDUNG answer');
 
     const named = (field: 'clinicId' | 'legalEmployerId', list: { id: string; name: string }[], what: string) => {

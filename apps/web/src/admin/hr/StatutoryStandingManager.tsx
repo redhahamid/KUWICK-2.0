@@ -10,6 +10,7 @@ import { Table } from './ui/Table';
 import { IconEdit } from './ui/icons';
 import type { FormProblem } from './ui';
 import type { EmployeeRecord, RecordStatutoryClassificationBody, StatutoryClassificationVersion } from '../types';
+import { NO_FIXED_DAY_HELP, REST_DAY_CHOICES, restDayBody, restDayChoiceOf, restDayLabel, type RestDayChoice } from './restDay';
 
 /**
  * THE STATUTORY STANDING — editable as a dated version, never as a patch.
@@ -28,8 +29,8 @@ import type { EmployeeRecord, RecordStatutoryClassificationBody, StatutoryClassi
  *     asks for what is not, and the engine keeps refusing to guess anything
  *     the form does not say.
  */
-/** The rest day is stored as 0–6. One list of names, so three screens cannot disagree about which day 0 is. */
-export const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+/** Kept here for the screens that already import it; the list itself lives in `restDay.ts`. */
+export { DAY_NAMES } from './restDay';
 
 /** The stored codes, in the words the editor uses. A screen that prints MALAYSIAN_CITIZEN is talking to a developer. */
 const STANDING_LABELS: Record<string, string> = {
@@ -91,7 +92,7 @@ type FieldValues = {
   additionalPcbNote: string | null;
   disabledSelf: boolean;
   disabledSpouse: boolean;
-  restDay: number | 'VARIES' | null;
+  restDay: RestDayChoice | null;
   overtimeContractPolicy: string | null;
 };
 
@@ -107,7 +108,7 @@ function valuesOf(v: StatutoryClassificationVersion): FieldValues {
     additionalPcbNote: v.additionalPcbNote ?? null,
     disabledSelf: v.disabledSelf,
     disabledSpouse: v.disabledSpouse,
-    restDay: v.restDayVaries ? 'VARIES' : v.restDayOfWeek,
+    restDay: restDayChoiceOf(v) ?? null,
     overtimeContractPolicy: v.overtimeContractPolicy,
   };
 }
@@ -133,7 +134,7 @@ function describeValue(field: FormField, value: FieldValues[FormField]): string 
     case 'disabledSpouse':
       return value ? 'Yes' : 'No';
     case 'restDay':
-      return value === 'VARIES' ? 'Varies week to week' : DAY_NAMES[Number(value)];
+      return REST_DAY_CHOICES.find((choice) => choice.value === value)?.label ?? String(value);
     default:
       return STANDING_LABELS[String(value)] ?? String(value);
   }
@@ -216,7 +217,7 @@ export function StatutoryStandingSection({
           : 'None'
         : null,
     ],
-    ['Rest day', resolved ? (s.restDayVaries ? 'Varies week to week' : s.restDayOfWeek !== null ? DAY_NAMES[s.restDayOfWeek] : null) : null],
+    ['Rest day', resolved ? restDayLabel(s) : null],
     ['Overtime above the Act limit', value(s.overtimeContractPolicy)],
   ];
   return (
@@ -290,7 +291,7 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
   const [children, setChildren] = useState<number | null>(null);
   const [disabledSelf, setDisabledSelf] = useState<boolean | null>(null);
   const [disabledSpouse, setDisabledSpouse] = useState<boolean | null>(null);
-  const [restDay, setRestDay] = useState<number | 'VARIES' | undefined>();
+  const [restDay, setRestDay] = useState<RestDayChoice | undefined>();
   /** Ringgit as typed; blank leaves the standing's figure as it is, 0 clears it. */
   const [additionalPcb, setAdditionalPcb] = useState('');
   const [additionalPcbNote, setAdditionalPcbNote] = useState('');
@@ -312,7 +313,7 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
     setAdditionalPcbNote(base?.additionalPcbNote ?? fallback?.additionalPcbNote ?? '');
     setDisabledSelf(base?.disabledSelf ?? null);
     setDisabledSpouse(base?.disabledSpouse ?? null);
-    setRestDay(base?.restDayVaries || fallback?.restDayVaries ? 'VARIES' : (base?.restDayOfWeek ?? fallback?.restDayOfWeek ?? undefined));
+    setRestDay(restDayChoiceOf(base) ?? restDayChoiceOf(fallback));
     setOtPolicy(base?.overtimeContractPolicy ?? fallback?.overtimeContractPolicy ?? undefined);
   };
 
@@ -562,11 +563,7 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
             staffId,
             effectiveFrom: fromDay,
             ...fields,
-            ...(sentRestDay === 'VARIES'
-              ? { restDayOfWeek: null, restDayVaries: true }
-              : typeof sentRestDay === 'number'
-                ? { restDayOfWeek: sentRestDay, restDayVaries: false }
-                : {}),
+            ...(sentRestDay !== undefined && sentRestDay !== null ? restDayBody(sentRestDay) : {}),
             reason: reason.trim(),
             ...(askLater ? { applyToLater: applyToLater === true } : {}),
           };
@@ -739,8 +736,9 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
                 onChange={setRestDay}
                 style={{ width: '100%' }}
                 placeholder="Not recorded"
-                options={[...DAY_NAMES.map((day, index) => ({ value: index, label: day })), { value: 'VARIES', label: 'Varies week to week' }]}
+                options={REST_DAY_CHOICES}
               />
+              {restDay === 'VARIES' || restDay === 'ROSTER' ? <div className="hr-form__help">{NO_FIXED_DAY_HELP}</div> : null}
             </div>
             <div>
               <label htmlFor="st-ot">Overtime above the Employment Act limit</label>

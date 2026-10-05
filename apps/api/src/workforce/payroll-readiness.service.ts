@@ -139,6 +139,7 @@ export class PayrollReadinessService {
               pcbCategory: null,
               restDayOfWeek: null,
               restDayVaries: false,
+              restDayFollowsRoster: false,
               additionalPcbCents: 0,
               additionalPcbNote: null,
             };

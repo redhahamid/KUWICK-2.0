@@ -13,7 +13,7 @@ import { Drawer, ProblemNotice, useProblemFocus } from './ui';
 import { PhoneField } from './ui/PhoneField';
 import { ReasonPicker } from './ui/ReasonPicker';
 import { EMPLOYER_REASONS, RELATIONSHIPS } from './ui/reasons';
-import { DAY_NAMES } from './StatutoryStandingManager';
+import { NO_FIXED_DAY_HELP, REST_DAY_CHOICES, restDayBody, restDayChoiceOf, type RestDayChoice } from './restDay';
 import { JobTitlePicker } from './JobTitlePicker';
 import { MALAYSIAN_STATES } from './malaysianStates';
 import type { EmployeeRecord } from '../types';
@@ -67,13 +67,6 @@ const TITLES: Record<EditSection, string> = {
 const day = (value: Dayjs | null) => (value ? value.format('YYYY-MM-DD') : undefined);
 const parse = (value: string | null | undefined) => (value ? dayjs(value) : null);
 
-/** The weekday a standing names, or VARIES when it says the rest day is not fixed. */
-function restDayValueOf(row: { restDayOfWeek: number | null; restDayVaries?: boolean } | null | undefined): number | 'VARIES' | undefined {
-  if (!row) return undefined;
-  if (row.restDayVaries) return 'VARIES';
-  return row.restDayOfWeek ?? undefined;
-}
-
 export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffId: string; data: EmployeeRecord; section: EditSection | null; onClose: () => void }) {
   const { message } = App.useApp();
   const upsert = useUpsertEmployee();
@@ -115,8 +108,9 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
   const [employerReason, setEmployerReason] = useState('');
   const [notes, setNotes] = useState('');
   const [legalEmployerId, setLegalEmployerId] = useState<string | undefined>();
-  // A weekday, or VARIES for an employee whose rest day is not fixed (s.59).
-  const [restDay, setRestDay] = useState<number | 'VARIES' | undefined>();
+  // A weekday, VARIES for an employee whose rest day is not fixed (s.59), or
+  // ROSTER for one whose rest day the roster gives.
+  const [restDay, setRestDay] = useState<RestDayChoice | undefined>();
   const [postcode, setPostcode] = useState('');
   const [city, setCity] = useState('');
   const [state, setState] = useState<string | undefined>();
@@ -161,7 +155,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
     setConfirmedDate(parse(em.confirmedDate));
     setNotes(em.notes ?? '');
     setLegalEmployerId(em.legalEmployerId ?? undefined);
-    setRestDay(restDayValueOf(standingNow) ?? (data.statutory.restDayVaries ? 'VARIES' : (data.statutory.restDayOfWeek ?? undefined)));
+    setRestDay(restDayChoiceOf(standingNow) ?? restDayChoiceOf(data.statutory));
     setEpfNumber('');
     setSocsoNumber('');
     setTaxNumber('');
@@ -179,7 +173,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
    */
   useEffect(() => {
     if (!section || !standingNow) return;
-    setRestDay((chosen) => chosen ?? restDayValueOf(standingNow));
+    setRestDay((chosen) => chosen ?? restDayChoiceOf(standingNow));
   }, [section, standingNow]);
 
   /**
@@ -203,10 +197,10 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
 
   const saveRestDay = async () => {
     if (restDay === undefined) return;
-    // The weekday, or "it varies" with no weekday: the standing carries both.
-    const chosen = restDay === 'VARIES' ? { restDayOfWeek: null, restDayVaries: true } : { restDayOfWeek: restDay, restDayVaries: false };
+    // The weekday, "it varies", or "the roster gives it": the standing carries all three.
+    const chosen = restDayBody(restDay);
     if (everRecorded) {
-      if (restDay === restDayValueOf(standingNow)) return;
+      if (restDay === restDayChoiceOf(standingNow)) return;
       await recordStanding.mutateAsync({
         staffId,
         effectiveFrom: changeFrom,
@@ -563,12 +557,13 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
                 onChange={setRestDay}
                 placeholder="Not recorded"
                 style={{ width: '100%' }}
-                options={[...DAY_NAMES.map((name, index) => ({ value: index, label: name })), { value: 'VARIES', label: 'Varies week to week' }]}
+                options={REST_DAY_CHOICES}
               />
               <div className="hr-form__help">
                 {restDayNote} Section 60(1) gives one whole day a week and the employer appoints it. Payroll refuses to
-                work out a month without it, and that refusal cannot be passed. Where it varies week to week, say so: the
-                month runs, and the run says rest-day pay for them is keyed by hand.
+                work out a month without it, and that refusal cannot be passed. Where it varies week to week or rotates
+                with the roster, say so: the month runs, and the run says rest-day pay for them is keyed by hand.
+                {restDay === 'VARIES' || restDay === 'ROSTER' ? ` ${NO_FIXED_DAY_HELP}` : ''}
               </div>
             </div>
             <div>

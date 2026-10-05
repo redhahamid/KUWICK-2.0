@@ -57,6 +57,8 @@ export interface SnapshotClassification {
   restDayOfWeek: number | null;
   /** Absent on snapshots frozen before the field existed. */
   restDayVaries?: boolean | null;
+  /** The varying rest day is the roster's. Absent on snapshots frozen before the field existed. */
+  restDayFollowsRoster?: boolean | null;
   overtimeContractPolicy: string | null;
   /** On top of the computed MTD each month. Absent on rows frozen before the field existed. */
   additionalPcbCents?: number | null;

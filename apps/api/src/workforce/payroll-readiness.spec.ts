@@ -178,6 +178,18 @@ describe('the statutory standing item', () => {
     expect(result.ready).toBe(true);
   });
 
+  it('takes a rest day that rotates with the roster as recorded, and says payroll does not read the roster', () => {
+    const result = buildPayrollReadiness({
+      ...COMPLETE,
+      standing: { ...COMPLETE.standing, restDayOfWeek: null, restDayVaries: true, restDayFollowsRoster: true },
+    });
+    const restDay = result.items.find((item) => item.key === 'restDay')!;
+    expect(restDay.done).toBe(true);
+    expect(restDay.detail).toContain('Rotates with the roster');
+    expect(restDay.detail).toContain('does not read the roster');
+    expect(result.ready).toBe(true);
+  });
+
   it('takes a rest day that varies week to week as recorded, and says what that costs', () => {
     const result = buildPayrollReadiness({
       ...COMPLETE,

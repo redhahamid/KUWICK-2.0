@@ -58,6 +58,7 @@ const FIELD_OF: Record<string, Field> = {
   'standing.pcbCategory': 'pcbCategory',
   'standing.restDayOfWeek': 'restDay',
   'standing.restDayVaries': 'restDay',
+  'standing.restDayFollowsRoster': 'restDay',
   'standing.lindungParticipation': 'lindungParticipation',
   nationality: 'epfMembership',
   passportNumber: 'identifierValue',

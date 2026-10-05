@@ -6,6 +6,66 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 15 — 5 Oktober 2026 — hari rehat "Rotating — follows the roster"
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 14 (`7e1ba48`). Komit: komit yang menambah bahagian ini (hash dalam
+laporan). **Migrasi: `20261005130000_statutory_classification_rest_day_roster`**
+— satu lajur `rest_day_follows_roster boolean NOT NULL DEFAULT false`
+(metadata sahaja, tiada baris disentuh). Dicuba pada `kuwick_test` (kosong)
+dan DB tempatan berbenih: bersih. **Tiada logik pengiraan statutori diubah.**
+Penemuan UAT 5 Okt, item A4.
+
+### Apa yang berubah
+
+- `[D]` Pilihan hari rehat baharu **"Rotating — follows the roster"** pada
+  kelima-lima tempat hari rehat ditanya: *Record a change*/*Correct*
+  (kedudukan statutori), laci *Edit employment*, *Add employee*, *Bulk add*
+  (CSV: `roster`, `rotating`, `followstheroster`, `ikutroster`), dan
+  paparan rekod pekerja/kedudukan. Satu modul `restDay.ts` memegang senarai
+  pilihan, label dan badan permintaan supaya lima skrin tidak bercanggah.
+- `[D]` Disimpan sebagai `restDayFollowsRoster = true` **bersama**
+  `restDayVaries = true` dan tiada hari minggu; memilih hari minggu atau
+  "Varies week to week" mengosongkannya (pelayan menormalkan dalam
+  `applyToBase`). Masuk `CLASSIFICATION_FIELDS`, jadi ia muncul dalam
+  "What changed" dan menyekat bulan jika berubah di tengah bulan, seperti
+  medan lain.
+- `[D]` **Payroll tidak berubah**: ia mengira tepat seperti "Varies week to
+  week" (tiada hari minggu ialah hari rehat; hari bekerja dikira hari biasa;
+  notis INFO `REST_DAY_VARIES` setiap bulan; bayaran hari rehat dikunci
+  dengan tangan). Ayat notis dan semakan kesediaan kini menyebut "rotates
+  with the roster … Kuwick does not read the roster's off days".
+- `[D]` Teks bantuan di bawah pilihan menyatakan perkara itu terus terang.
+- `[D]` **Ujian**: API unit +2 (notis, kesediaan), e2e +1 (roster disimpan
+  sebagai varies tanpa hari; hari Selasa menamatkannya), web +7 (`restDay`
+  4, borang kedudukan, laci, intake CSV). Disemak dalam pelayar pada pekerja
+  demo sintetik "Demo Roster (Synthetic)".
+
+### Uji di staging (ikut urutan)
+
+1. *Employees* → pekerja → *Statutory* → *Correct* (atau *Record a change*)
+   → *Rest day*: pilihan terakhir **Rotating — follows the roster**; pilih →
+   "You are changing: Rest day (Sunday becomes Rotating — follows the
+   roster)" dan teks bantuan tentang roster.
+2. Simpan → panel *Statutory standing* menunjukkan *Rest day: Rotating —
+   follows the roster*; lajur *What changed* versi itu menyebut hari rehat.
+3. Kerjakan payroll bulan itu untuk pekerja yang bekerja → notis INFO
+   "Their rest day rotates with the roster…"; angka gaji sama seperti
+   "Varies week to week".
+
+### Keputusan terbuka / yang saya pilih bagi pihak anda
+
+- `[A]` **Payroll tidak membaca hari OFF roster.** Arahan "jangan ubah logik
+  pengiraan statutori kecuali dinyatakan" — item A4 hanya meminta pilihan.
+  `[D]` Model roster (`ProviderShift`, jenis `OFF`) wujud tetapi payroll
+  tidak pernah membacanya, dan kehadiran membaca masa baris OFF sebagai syif
+  (`attendance-record.service.ts` tidak menapis `shiftType`). Cadangan
+  susulan, perlu keputusan anda: ajar `classifyDay` menganggap tarikh OFF
+  dalam roster sebagai `REST_DAY` bagi pekerja "Rotating", selepas
+  pembetulan penapis OFF dalam kehadiran.
+
+---
+
 ## Batch 14 — 5 Oktober 2026 — kedudukan statutori: pra-isi ikut tarikh, ringkasan perubahan, versi kemudian, pengesahan padam
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas

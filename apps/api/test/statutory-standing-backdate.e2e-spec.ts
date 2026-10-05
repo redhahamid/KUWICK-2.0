@@ -59,6 +59,8 @@ describe('back-dating and deleting statutory standing versions (e2e)', () => {
       effectiveTo: string | null;
       lindungParticipation: string | null;
       restDayOfWeek: number | null;
+      restDayVaries: boolean;
+      restDayFollowsRoster: boolean;
       epfMembership: string | null;
       changed: string[];
     }[];
@@ -191,6 +193,21 @@ describe('back-dating and deleting statutory standing versions (e2e)', () => {
       ['2026-06-01', 3],
       ['2026-09-01', 0],
     ]);
+  });
+
+  /*
+   * A REST DAY THAT ROTATES WITH THE ROSTER is a varying rest day whose day
+   * the roster gives: always no weekday and varying, and a weekday ends it.
+   */
+  it('records a rest day that follows the roster as varying, with no weekday, and a weekday ends it', async () => {
+    const staffId = await staffAdmin('Staff Admin Roster');
+    await post(staffId, { effectiveFrom: '2026-10-01', restDayFollowsRoster: true, reason: 'Rest day rotates with the roster' }).expect(201);
+    let october = (await history(staffId)).find((row) => row.effectiveFrom === '2026-10-01');
+    expect(october).toMatchObject({ restDayOfWeek: null, restDayVaries: true, restDayFollowsRoster: true, changed: expect.arrayContaining(['designated rest day', 'whether the rest day follows the roster']) });
+
+    await post(staffId, { effectiveFrom: '2026-10-01', restDayOfWeek: 2, restDayVaries: false, reason: 'Fixed on Tuesday after all' }).expect(201);
+    october = (await history(staffId)).find((row) => row.effectiveFrom === '2026-10-01');
+    expect(october).toMatchObject({ restDayOfWeek: 2, restDayVaries: false, restDayFollowsRoster: false });
   });
 
   it('refuses a back-dated change where a later month is already approved', async () => {

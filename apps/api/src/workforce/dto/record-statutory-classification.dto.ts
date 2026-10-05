@@ -35,6 +35,8 @@ export class RecordStatutoryClassificationDto {
   @IsOptional() @IsInt() @Min(0) @Max(6) restDayOfWeek?: number | null;
   /** True when the rest day is not a fixed weekday (s.59 lets the employer vary it). Sent with restDayOfWeek null. */
   @IsOptional() @IsBoolean() restDayVaries?: boolean;
+  /** The rest day rotates with the roster. True implies restDayVaries and no weekday; a weekday ends it. */
+  @IsOptional() @IsBoolean() restDayFollowsRoster?: boolean;
   /** On top of the computed MTD each month, in cents: a CP38 direction or the employee's own request. 0 clears it. */
   @IsOptional() @IsInt() @Min(0) @Max(10_000_000) additionalPcbCents?: number;
   @IsOptional() @IsString() @MaxLength(120) additionalPcbNote?: string | null;

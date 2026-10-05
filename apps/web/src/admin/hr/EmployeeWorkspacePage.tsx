@@ -334,6 +334,7 @@ function EmploymentTab({ data, onEdit, onResign }: { data: EmployeeRecord; onEdi
   const rules = policies.data?.policies.find((row) => row.isDefault) ?? policies.data?.policies[0];
   const restDay = data.statutory.classificationState === 'RESOLVED' ? data.statutory.restDayOfWeek : null;
   const restDayVaries = data.statutory.classificationState === 'RESOLVED' && data.statutory.restDayVaries;
+  const restDayRoster = data.statutory.classificationState === 'RESOLVED' && data.statutory.restDayFollowsRoster === true;
   const daysPerWeek = data.employment.workDaysPerWeek;
   /*
    * WHAT IS RECORDED, not what a six-day span would imply: the days a week
@@ -343,12 +344,13 @@ function EmploymentTab({ data, onEdit, onResign }: { data: EmployeeRecord; onEdi
   const workingDays = useMemo(() => {
     const parts: string[] = [];
     if (daysPerWeek !== null && daysPerWeek !== undefined) parts.push(`${daysPerWeek}-day week`);
-    if (restDayVaries) parts.push('rest day varies week to week');
+    if (restDayRoster) parts.push('rest day rotates with the roster');
+    else if (restDayVaries) parts.push('rest day varies week to week');
     else if (restDay !== null && restDay !== undefined) parts.push(`rest day ${DAY_NAMES[restDay]}`);
     if (parts.length === 0) return null;
     const divisor = rules?.overtime.days ? `, ${rules.overtime.days}-day divisor` : '';
     return `${parts.join(' · ')}${divisor}`;
-  }, [daysPerWeek, restDay, restDayVaries, rules]);
+  }, [daysPerWeek, restDay, restDayVaries, restDayRoster, rules]);
   const employment = data.employment;
   const gone = GONE.has(employment.employmentStatus);
 
