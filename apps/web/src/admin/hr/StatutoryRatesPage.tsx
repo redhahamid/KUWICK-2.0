@@ -10,11 +10,13 @@ import {
   usePayrollReadiness,
   useStatutoryRates,
 } from "../hooks/useAdmin";
-import { Drawer, HrPage, Panel, PanelHead, StatusChip } from "./ui";
+import { HrPage, Panel, PanelHead, StatusChip, TableModal } from "./ui";
 import { Table } from "./ui/Table";
 import {
+  EisBandsTable,
   EpfScheduleTable,
   PcbParametersView,
+  SocsoBandsTable,
   editionLine,
 } from "./StatutoryTablesView";
 
@@ -34,8 +36,6 @@ import {
  * clinic's own diligence, kept apart from Kuwick's so that neither can be
  * mistaken for the other.
  */
-const rm = (cents: number) =>
-  `RM${(cents / 100).toLocaleString("en-MY", { minimumFractionDigits: 2 })}`;
 const pct = (value: number) => `${value}%`;
 
 const HRD_LABELS: Record<string, string> = {
@@ -64,6 +64,9 @@ export function StatutoryRatesPage() {
   >(null);
   const [epfPart, setEpfPart] = useState<"A" | "C" | "E" | "F">("A");
   const [wageSearch, setWageSearch] = useState("");
+  // PCB's box asks for a chargeable income, not a monthly wage, so it keeps
+  // its own value: a figure typed into one must not light a band in the other.
+  const [incomeSearch, setIncomeSearch] = useState("");
 
   const data = rates.data;
   const check = data?.check ?? null;
@@ -429,7 +432,7 @@ export function StatutoryRatesPage() {
           />
         )}
       </Panel>
-      <Drawer
+      <TableModal
         open={showBands !== null}
         title={
           showBands === "SOCSO"
@@ -449,6 +452,21 @@ export function StatutoryRatesPage() {
                 ? (editionLine(data?.editions?.EPF) ?? "")
                 : (editionLine(data?.editions?.PCB) ?? "")
         }
+        search={
+          showBands === "PCB"
+            ? {
+                label: "Find the band for a chargeable income",
+                placeholder: "e.g. 45000 — find the P band",
+                value: incomeSearch,
+                onChange: setIncomeSearch,
+              }
+            : {
+                label: "Find the band for a monthly wage",
+                placeholder: "e.g. 3250.00 — find the band",
+                value: wageSearch,
+                onChange: setWageSearch,
+              }
+        }
         onClose={() => setShowBands(null)}
       >
         {showBands === "EPF" ? (
@@ -457,77 +475,15 @@ export function StatutoryRatesPage() {
             part={epfPart}
             onPart={setEpfPart}
             wages={wageSearch}
-            onWages={setWageSearch}
           />
         ) : showBands === "PCB" ? (
-          <PcbParametersView pcb={data?.tables?.pcb} />
+          <PcbParametersView pcb={data?.tables?.pcb} amount={incomeSearch} />
         ) : showBands === "SOCSO" ? (
-          <Table
-            rows={data?.socso.bands}
-            rowKey={(band) => String(band.fromCents)}
-            columns={[
-              {
-                title: "Wages",
-                render: (_: unknown, band) =>
-                  band.toCents === null
-                    ? `over ${rm(band.fromCents)}`
-                    : `${rm(band.fromCents)} – ${rm(band.toCents)}`,
-              },
-              {
-                title: "Employer (cat 1)",
-                num: true,
-                render: (_: unknown, band) => rm(band.cat1EmployerCents),
-              },
-              {
-                title: "Employee invalidity (cat 1)",
-                num: true,
-                render: (_: unknown, band) => rm(band.cat1EmployeeCents),
-              },
-              {
-                title: "Employee SKBBK (cat 1)",
-                num: true,
-                render: (_: unknown, band) =>
-                  rm(band.cat1EmployeeNonInjuryCents),
-              },
-              {
-                title: "Employer (cat 2)",
-                num: true,
-                render: (_: unknown, band) => rm(band.cat2EmployerCents),
-              },
-              {
-                title: "Employee SKBBK (cat 2)",
-                num: true,
-                render: (_: unknown, band) =>
-                  rm(band.cat2EmployeeNonInjuryCents),
-              },
-            ]}
-          />
+          <SocsoBandsTable bands={data?.socso.bands} wages={wageSearch} />
         ) : (
-          <Table
-            rows={data?.eis.bands}
-            rowKey={(band) => String(band.fromCents)}
-            columns={[
-              {
-                title: "Wages",
-                render: (_: unknown, band) =>
-                  band.toCents === null
-                    ? `over ${rm(band.fromCents)}`
-                    : `${rm(band.fromCents)} – ${rm(band.toCents)}`,
-              },
-              {
-                title: "Employer",
-                num: true,
-                render: (_: unknown, band) => rm(band.employerCents),
-              },
-              {
-                title: "Employee",
-                num: true,
-                render: (_: unknown, band) => rm(band.employeeCents),
-              },
-            ]}
-          />
+          <EisBandsTable bands={data?.eis.bands} wages={wageSearch} />
         )}
-      </Drawer>
+      </TableModal>
     </HrPage>
   );
 }

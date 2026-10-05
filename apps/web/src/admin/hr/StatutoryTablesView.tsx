@@ -1,14 +1,24 @@
-import { Input } from "antd";
+import { useEffect, useRef, type RefObject } from "react";
 import { SegControl } from "./ui";
 import { Table } from "./ui/Table";
-import type { StatutoryEditionSource, StatutoryTables } from "../types";
+import type {
+  StatutoryEditionSource,
+  StatutoryRates,
+  StatutoryTables,
+} from "../types";
 
 /**
  * THE TABLES THEMSELVES, band by band — what the rates screen used to
  * summarise and now shows in full for the month chosen: the Third Schedule
- * part by part with a wage search, and the MTD specification's Table 1 with
- * every parameter the formula reads. Read-only: a clinic checks these; the
- * platform adds a later edition.
+ * part by part, Act 4's and Act 800's schedules, and the MTD specification's
+ * Table 1 with every parameter the formula reads. Read-only: a clinic checks
+ * these; the platform adds a later edition.
+ *
+ * Each table takes the amount typed in the viewer's head and LIGHTS the band
+ * it falls in, scrolling it into view, rather than hiding the rest of the
+ * table: a clinic checking a figure wants to see the band's neighbours, and a
+ * table that shrinks to seven rows as you type reads as a table that lost
+ * something.
  */
 const rm = (cents: number | null | undefined) =>
   cents === null || cents === undefined
@@ -42,6 +52,38 @@ export function editionLine(
   return `${who}${year} · ${source.document}${inForce}`;
 }
 
+/** The amount typed in the head, in cents; null when nothing usable is typed. */
+export function amountCents(value: string): number | null {
+  const cents = Math.round(Number(value.replace(/[^0-9.]/g, "")) * 100);
+  return value.trim() !== "" && Number.isFinite(cents) && cents > 0
+    ? cents
+    : null;
+}
+
+/** The index of the band an amount falls in; an open top band (`to` null) takes everything above its floor. */
+export function bandIndex<T>(
+  rows: readonly T[],
+  cents: number | null,
+  from: (row: T) => number,
+  to: (row: T) => number | null,
+): number {
+  if (cents === null) return -1;
+  return rows.findIndex((row) => {
+    const top = to(row);
+    return cents >= from(row) && (top === null || cents <= top);
+  });
+}
+
+/** The lit band comes into view, centred, each time it changes. */
+function useScrollToHit(ref: RefObject<HTMLDivElement | null>, hit: number) {
+  useEffect(() => {
+    if (hit < 0) return;
+    const row = ref.current?.querySelector<HTMLElement>(".hr-row--hit");
+    // jsdom has no scrollIntoView; a browser does.
+    row?.scrollIntoView?.({ block: "center" });
+  }, [ref, hit]);
+}
+
 const PART_LABEL: Record<string, string> = {
   A: "Part A — under 60: citizens, PRs, non-citizens who elected before Aug 1998",
   C: "Part C — 60 and over: PRs and non-citizens who elected before Aug 1998",
@@ -54,19 +96,16 @@ export function EpfScheduleTable({
   part,
   onPart,
   wages,
-  onWages,
 }: {
   tables: StatutoryTables["epf"] | undefined;
   part: "A" | "C" | "E" | "F";
   onPart: (part: "A" | "C" | "E" | "F") => void;
+  /** The wage typed in the viewer's head. */
   wages: string;
-  onWages: (value: string) => void;
 }) {
   const current = tables?.parts.find((candidate) => candidate.part === part);
-  const wagesCents = Math.round(Number(wages.replace(/[^0-9.]/g, "")) * 100);
-  const searching =
-    wages.trim() !== "" && Number.isFinite(wagesCents) && wagesCents > 0;
-  // A wage typed in shows its own row and its neighbours, not a thousand rows.
+  const wagesCents = amountCents(wages);
+  const searching = wagesCents !== null;
   const rows = (current?.bands ?? []).map((band, index) => ({
     index,
     from: band[0],
@@ -74,25 +113,17 @@ export function EpfScheduleTable({
     employer: band[2],
     employee: band[3],
   }));
-  const hit = searching
-    ? rows.findIndex((row) => wagesCents >= row.from && wagesCents <= row.to)
-    : -1;
-  const shown = searching
-    ? hit >= 0
-      ? rows.slice(Math.max(0, hit - 3), hit + 4)
-      : []
-    : rows;
+  const hit = bandIndex(
+    rows,
+    wagesCents,
+    (row) => row.from,
+    (row) => row.to,
+  );
+  const ref = useRef<HTMLDivElement>(null);
+  useScrollToHit(ref, hit);
   return (
-    <div>
-      <div
-        style={{
-          display: "flex",
-          gap: 12,
-          flexWrap: "wrap",
-          alignItems: "center",
-          marginBottom: 12,
-        }}
-      >
+    <div ref={ref}>
+      <div className="hr-modal__tools">
         <SegControl
           label="Third Schedule part"
           value={part}
@@ -101,14 +132,6 @@ export function EpfScheduleTable({
             value: row.part,
             label: `Part ${row.part}`,
           }))}
-        />
-        <Input
-          aria-label="Find the band for a monthly wage"
-          placeholder="e.g. 3250.00 — find the band"
-          value={wages}
-          onChange={(event) => onWages(event.target.value)}
-          style={{ maxWidth: 260 }}
-          allowClear
         />
       </div>
       <div className="hr-panelNote">
@@ -136,38 +159,37 @@ export function EpfScheduleTable({
             : `${rm(wagesCents)} falls in no band of this part.`}
         </div>
       ) : null}
-      <div style={{ overflowX: "auto" }}>
-        <Table
-          rows={shown}
-          rowKey={(row) => String(row.from)}
-          emptyText={
-            current && current.bands.length === 0
-              ? "Flat percentage, no bands"
-              : "Type a wage to find its band"
-          }
-          columns={[
-            {
-              title: "Wages",
-              render: (_: unknown, row) => `${rm(row.from)} – ${rm(row.to)}`,
-            },
-            {
-              title: "Employer",
-              num: true,
-              render: (_: unknown, row) => rm(row.employer),
-            },
-            {
-              title: "Employee",
-              num: true,
-              render: (_: unknown, row) => rm(row.employee),
-            },
-            {
-              title: "Total",
-              num: true,
-              render: (_: unknown, row) => rm(row.employer + row.employee),
-            },
-          ]}
-        />
-      </div>
+      <Table
+        rows={rows}
+        rowKey={(row) => String(row.from)}
+        rowClassName={(row) => (row.index === hit ? "hr-row--hit" : "")}
+        emptyText={
+          current && current.bands.length === 0
+            ? "Flat percentage, no bands"
+            : "No bands in this part"
+        }
+        columns={[
+          {
+            title: "Wages",
+            render: (_: unknown, row) => `${rm(row.from)} – ${rm(row.to)}`,
+          },
+          {
+            title: "Employer",
+            num: true,
+            render: (_: unknown, row) => rm(row.employer),
+          },
+          {
+            title: "Employee",
+            num: true,
+            render: (_: unknown, row) => rm(row.employee),
+          },
+          {
+            title: "Total",
+            num: true,
+            render: (_: unknown, row) => rm(row.employer + row.employee),
+          },
+        ]}
+      />
       {!searching && rows.length > 0 ? (
         <div className="hr-panelNote">
           {rows.length} bands in Part {part}.
@@ -177,11 +199,138 @@ export function EpfScheduleTable({
   );
 }
 
+type SocsoBand = StatutoryRates["socso"]["bands"][number];
+type EisBand = StatutoryRates["eis"]["bands"][number];
+
+const bandLabel = (fromCents: number, toCents: number | null) =>
+  toCents === null
+    ? `over ${rm(fromCents)}`
+    : `${rm(fromCents)} – ${rm(toCents)}`;
+
+export function SocsoBandsTable({
+  bands,
+  wages,
+}: {
+  bands: readonly SocsoBand[] | undefined;
+  wages: string;
+}) {
+  const rows = bands ?? [];
+  const hit = bandIndex(
+    rows,
+    amountCents(wages),
+    (band) => band.fromCents,
+    (band) => band.toCents,
+  );
+  const ref = useRef<HTMLDivElement>(null);
+  useScrollToHit(ref, hit);
+  return (
+    <div ref={ref}>
+      <Table
+        rows={rows as SocsoBand[]}
+        rowKey={(band) => String(band.fromCents)}
+        rowClassName={(band) =>
+          rows.indexOf(band) === hit ? "hr-row--hit" : ""
+        }
+        columns={[
+          {
+            title: "Wages",
+            render: (_: unknown, band) =>
+              bandLabel(band.fromCents, band.toCents),
+          },
+          {
+            title: "Employer (cat 1)",
+            num: true,
+            render: (_: unknown, band) => rm(band.cat1EmployerCents),
+          },
+          {
+            title: "Employee invalidity (cat 1)",
+            num: true,
+            render: (_: unknown, band) => rm(band.cat1EmployeeCents),
+          },
+          {
+            title: "Employee SKBBK (cat 1)",
+            num: true,
+            render: (_: unknown, band) => rm(band.cat1EmployeeNonInjuryCents),
+          },
+          {
+            title: "Employer (cat 2)",
+            num: true,
+            render: (_: unknown, band) => rm(band.cat2EmployerCents),
+          },
+          {
+            title: "Employee SKBBK (cat 2)",
+            num: true,
+            render: (_: unknown, band) => rm(band.cat2EmployeeNonInjuryCents),
+          },
+        ]}
+      />
+    </div>
+  );
+}
+
+export function EisBandsTable({
+  bands,
+  wages,
+}: {
+  bands: readonly EisBand[] | undefined;
+  wages: string;
+}) {
+  const rows = bands ?? [];
+  const hit = bandIndex(
+    rows,
+    amountCents(wages),
+    (band) => band.fromCents,
+    (band) => band.toCents,
+  );
+  const ref = useRef<HTMLDivElement>(null);
+  useScrollToHit(ref, hit);
+  return (
+    <div ref={ref}>
+      <Table
+        rows={rows as EisBand[]}
+        rowKey={(band) => String(band.fromCents)}
+        rowClassName={(band) =>
+          rows.indexOf(band) === hit ? "hr-row--hit" : ""
+        }
+        columns={[
+          {
+            title: "Wages",
+            render: (_: unknown, band) =>
+              bandLabel(band.fromCents, band.toCents),
+          },
+          {
+            title: "Employer",
+            num: true,
+            render: (_: unknown, band) => rm(band.employerCents),
+          },
+          {
+            title: "Employee",
+            num: true,
+            render: (_: unknown, band) => rm(band.employeeCents),
+          },
+        ]}
+      />
+    </div>
+  );
+}
+
 export function PcbParametersView({
   pcb,
+  amount,
 }: {
   pcb: StatutoryTables["pcb"] | undefined;
+  /** The chargeable income (P) typed in the viewer's head. */
+  amount: string;
 }) {
+  const rows = pcb?.table1 ?? [];
+  const hit = bandIndex(
+    rows,
+    amountCents(amount),
+    (row) => row.fromCents,
+    (row) => row.toCents,
+  );
+  const ref = useRef<HTMLDivElement>(null);
+  useScrollToHit(ref, hit);
   if (!pcb) return null;
   const params: [string, string][] = [
     ["Individual relief", rm(pcb.individualCents)],
@@ -194,8 +343,8 @@ export function PcbParametersView({
     ["Minimum MTD deducted", rm(pcb.minimumCents)],
   ];
   return (
-    <div>
-      <div className="hr-kv hr-kv--pairs" style={{ marginBottom: 16 }}>
+    <div ref={ref}>
+      <div className="hr-kv hr-kv--pairs" style={{ padding: "14px 0 12px" }}>
         {params.map(([key, value]) => (
           <span key={key} style={{ display: "contents" }}>
             <span className="hr-kv__k">{key}</span>
@@ -203,41 +352,37 @@ export function PcbParametersView({
           </span>
         ))}
       </div>
-      <div style={{ overflowX: "auto" }}>
-        <Table
-          rows={pcb.table1}
-          rowKey={(row) => String(row.fromCents)}
-          columns={[
-            {
-              title: "P — chargeable income",
-              render: (_: unknown, row) =>
-                row.toCents === null
-                  ? `over ${rm(row.fromCents)}`
-                  : `${rm(row.fromCents)} – ${rm(row.toCents)}`,
-            },
-            {
-              title: "M",
-              num: true,
-              render: (_: unknown, row) => rm(row.mCents),
-            },
-            {
-              title: "R",
-              num: true,
-              render: (_: unknown, row) => `${row.ratePercent}%`,
-            },
-            {
-              title: "B — categories 1 and 3",
-              num: true,
-              render: (_: unknown, row) => rm(row.bCategory13Cents),
-            },
-            {
-              title: "B — category 2",
-              num: true,
-              render: (_: unknown, row) => rm(row.bCategory2Cents),
-            },
-          ]}
-        />
-      </div>
+      <Table
+        rows={rows as StatutoryTables["pcb"]["table1"][number][]}
+        rowKey={(row) => String(row.fromCents)}
+        rowClassName={(row) => (rows.indexOf(row) === hit ? "hr-row--hit" : "")}
+        columns={[
+          {
+            title: "P — chargeable income",
+            render: (_: unknown, row) => bandLabel(row.fromCents, row.toCents),
+          },
+          {
+            title: "M",
+            num: true,
+            render: (_: unknown, row) => rm(row.mCents),
+          },
+          {
+            title: "R",
+            num: true,
+            render: (_: unknown, row) => `${row.ratePercent}%`,
+          },
+          {
+            title: "B — categories 1 and 3",
+            num: true,
+            render: (_: unknown, row) => rm(row.bCategory13Cents),
+          },
+          {
+            title: "B — category 2",
+            num: true,
+            render: (_: unknown, row) => rm(row.bCategory2Cents),
+          },
+        ]}
+      />
       <div className="hr-panelNote">
         Table 1 of the Computerised Calculation: the year’s tax is [(P − M) R +
         B], apportioned over the months left.

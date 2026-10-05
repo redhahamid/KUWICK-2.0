@@ -212,7 +212,7 @@ describe("the Third Schedule drawer", () => {
     expect(screen.getByText("3 bands in Part A.")).toBeTruthy();
   });
 
-  it("finds the band for a wage typed in, and shows only its neighbourhood", () => {
+  it("lights the band for a wage typed in, says what it means, and keeps the rest of the table", () => {
     mount();
     fireEvent.click(
       screen.getByRole("button", {
@@ -223,8 +223,29 @@ describe("the Third Schedule drawer", () => {
       screen.getByLabelText("Find the band for a monthly wage"),
       { target: { value: "3490" } },
     );
-    expect(screen.getByText("RM3,480.01 – RM3,500.00")).toBeTruthy();
+    const band = screen.getByText("RM3,480.01 – RM3,500.00");
+    expect(band.closest("tr")?.className).toMatch(/hr-row--hit/);
+    expect(
+      screen.getByText(/RM3,490.00 falls in the band RM3,480.01 – RM3,500.00/),
+    ).toBeTruthy();
+    // The neighbours are still there to read against; only the count line
+    // gives way to the notice.
+    expect(screen.getAllByRole("row").length).toBeGreaterThan(2);
     expect(screen.queryByText("3 bands in Part A.")).toBeNull();
+  });
+
+  it("opens as a viewer over the page and closes on Escape", () => {
+    mount();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /View Third Schedule, band by band/i,
+      }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "EPF Third Schedule" }),
+    ).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("says when a part is a flat percentage with no bands", () => {

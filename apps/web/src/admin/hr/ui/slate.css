@@ -804,6 +804,146 @@
   background: #fafbfb;
 }
 
+/* ── The table viewer (Statutory rates) ──────────────────────────────────── */
+/* A full contribution schedule opens like a photo in an image viewer: centred,
+   nine-tenths of the window, the page dimmed around it. The body is the one
+   scroller, so the column headers hold to its top and the band column to its
+   left; on a desktop every column is on screen, on a phone the sheet is the
+   screen and the band column stays put while the figures scroll past it. */
+.hr-modalMask {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(21, 23, 43, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5vh 5vw;
+}
+.hr-modal {
+  width: 90vw;
+  max-width: 1400px;
+  height: 90vh;
+  max-height: 100%;
+  background: var(--hr-surface);
+  border-radius: var(--kw-c-radius-card);
+  box-shadow: 0 24px 60px -20px rgba(21, 23, 43, 0.45);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.hr-modal__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--hr-line);
+}
+.hr-modal__title {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+.hr-modal__title h2 {
+  font-size: 16px;
+  font-weight: 700;
+}
+.hr-modal__title .hr-sub {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.hr-modal__search {
+  flex: 0 1 300px;
+  min-width: 200px;
+}
+.hr-modal__close {
+  flex: none;
+}
+.hr-modal__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0 20px 20px;
+}
+/* The row above a table: the Third Schedule's part control. */
+.hr-modal__tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 0 10px;
+}
+/* The body scrolls, not the table's own wrapper, or the headers could not hold.
+   This includes the sideways scroll a narrow screen gives `.ant-table-content`
+   (index.css): in the viewer the body takes that too, so a phone keeps the
+   header and the wage-band column in place while the rest slides under them. */
+.hr-modal__body .hr-table,
+.hr-modal__body .hr-table .ant-table-content {
+  overflow: visible;
+}
+.hr-modal__body .hr-table .ant-table {
+  width: 100%;
+}
+.hr-modal__body .hr-table .ant-table-thead > tr > th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #fafbfb;
+}
+.hr-modal__body .hr-table .ant-table-thead > tr > th:first-child,
+.hr-modal__body .hr-table .ant-table-tbody > tr > td:first-child {
+  position: sticky;
+  left: 0;
+  background: var(--hr-surface);
+  box-shadow: inset -1px 0 0 var(--hr-line);
+}
+.hr-modal__body .hr-table .ant-table-thead > tr > th:first-child {
+  z-index: 4;
+  background: #fafbfb;
+}
+.hr-modal__body .hr-table .ant-table-tbody > tr:hover > td:first-child {
+  background: #fafbfb;
+}
+/* The band the typed amount falls in. */
+.hr-table .hr-row--hit > td {
+  background: var(--hr-action-soft) !important;
+}
+.hr-table .hr-row--hit > td:first-child {
+  box-shadow: inset 3px 0 0 var(--hr-action), inset -1px 0 0 var(--hr-line);
+  font-weight: 600;
+}
+@media (max-width: 767px) {
+  .hr-modalMask {
+    padding: 0;
+  }
+  .hr-modal {
+    width: 100vw;
+    max-width: none;
+    height: 100vh;
+    height: 100dvh;
+    border-radius: 0;
+  }
+  .hr-modal__head {
+    padding: 12px 14px;
+  }
+  /* Title and close on the first row, the amount box on a row of its own. */
+  .hr-modal__title {
+    flex: 1 1 0;
+  }
+  .hr-modal__close {
+    order: 1;
+  }
+  .hr-modal__search {
+    order: 2;
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .hr-modal__body {
+    padding: 0 14px 14px;
+  }
+}
+
 /* ── Narrow screens ───────────────────────────────────────────────────────── */
 @media (max-width: 991px) {
   .hr-shell {

@@ -9,5 +9,6 @@ export { Panel, PanelHead } from './Panel';
 export { SegControl } from './SegControl';
 export { StatCard, StatRow, type StatTone } from './StatCard';
 export { StatusChip, type ChipTone } from './StatusChip';
+export { TableModal } from './TableModal';
 export { Steps, type Step } from './Steps';
 export { Toolbar, ToolbarSearch } from './Toolbar';

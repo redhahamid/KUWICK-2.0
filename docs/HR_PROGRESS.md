@@ -6,6 +6,86 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 13 — 5 Oktober 2026 — jadual statutori dibuka dalam pemapar besar, bukan laci sempit
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 12 (`ea54f24`). Komit: komit yang menambah bahagian ini (hash dalam
+laporan). **Migrasi: tiada. Visual sahaja.**
+
+### Apa yang berubah
+
+- `[D]` **Pemapar jadual** (`admin/hr/ui/TableModal.tsx`, gaya
+  `.hr-modal*` dalam `slate.css`): Jadual Ketiga KWSP, jadual PERKESO, jadual
+  EIS dan Jadual 1 PCB (dengan parameternya) dibuka dalam tetingkap tengah
+  ~90% lebar dan tinggi tetingkap pelayar, halaman di belakang dimalapkan;
+  **Esc**, butang tutup atau klik pada kawasan malap menutupnya. Pada
+  telefon (≤767px) ia helaian skrin penuh.
+- `[D]` **Pengepala lajur melekat** di atas dan **lajur jalur gaji melekat**
+  di kiri semasa badan tetingkap diskrol; badan tetingkap ialah satu-satunya
+  penskrol (`.hr-table` di dalamnya `overflow: visible`). Pada desktop semua
+  lajur kelihatan tanpa skrol sisi (jadual PERKESO 6 lajur muat dalam
+  ~1,300px); pada telefon lajur gaji kekal di tempatnya ketika angka diskrol.
+- `[D]` **Diukur dalam pelayar** (Chromium, akaun pemilik UAT sintetik):
+  pada 1440×900 pemapar 1296×810 (90%/90%), jadual PERKESO 1256px dalam
+  badan 1296px (skrol sisi 0), kepala kekal pada y badan selepas skrol
+  900px; Esc dan klik di luar menutup `dialog`. Pada 390×844 helaian
+  390×844, badan menskrol sisi (PCB +270px, PERKESO +508px) dengan kepala
+  dan lajur pertama kekal; `3250` → PERKESO RM3,200.00 – RM3,300.00, KWSP
+  RM3,240.01 – RM3,260.00; `45000` → PCB RM35,001.00 – RM50,000.00.
+- `[D]` **Kotak "taip gaji"** berpindah ke kepala pemapar untuk keempat-empat
+  jadual (PCB: pendapatan bercukai P). Ia **menyerlahkan** jalur yang
+  dipadankan (`hr-row--hit`, latar indigo lembut dan jalur kiri) dan
+  **menskrol** ke jalur itu (`scrollIntoView`, di tengah) — jadual penuh
+  kekal, bukan lagi ditapis kepada 7 baris. Notis "RM… falls in the band …"
+  dikekalkan untuk KWSP.
+- `[D]` `StatutoryTablesView.tsx` kini memegang keempat-empat jadual
+  (`EpfScheduleTable`, `SocsoBandsTable`, `EisBandsTable`,
+  `PcbParametersView`) dengan pembantu `amountCents`/`bandIndex` yang sama;
+  `StatutoryRatesPage` hanya memilih yang mana. Laci kit (`Drawer`) kekal
+  untuk skrin lain (cuti, tuntutan).
+- `[D]` **Ujian**: `statutoryRatesEditions.test.tsx` — jalur yang dipadankan
+  membawa kelas `hr-row--hit` dan jadual kekal penuh; pemapar bernama
+  `dialog` dan ditutup dengan Escape; ujian PERKESO/PCB sedia ada tidak
+  berubah.
+
+### Uji di staging (ikut urutan)
+
+1. *Settings → Statutory rates* → **View SOCSO table**: tetingkap besar di
+   tengah, keenam-enam lajur kelihatan tanpa skrol sisi; skrol ke bawah —
+   baris pengepala kekal di atas. Esc menutup; klik kawasan malap menutup.
+2. **View Third Schedule, band by band** → taip `3250` dalam kotak di kepala:
+   jalur RM3,240.01 – RM3,260.00 diserlahkan dan diskrol ke pandangan, dengan
+   notis angka majikan/pekerja; tukar ke *Part C* — kotak yang sama berfungsi.
+3. Pada telefon (390px): **View Table 1 and the parameters** — helaian skrin
+   penuh; skrol jadual ke sisi — lajur *P — chargeable income* kekal di kiri;
+   taip `45000` — baris RM35,000.01 – RM50,000.00 diserlahkan.
+
+### Keputusan terbuka / yang saya pilih bagi pihak anda
+
+- `[A]` Pemapar dilukis dalam pokok React (bukan portal) dengan
+  `position: fixed; z-index: 1000` — menutup bar atas juga, seperti pemapar
+  imej; tiada unsur bertransformasi di atasnya dalam shell HR.
+- `[A]` Kotak carian pada PCB mencari jalur **P** (pendapatan bercukai),
+  dilabel sedemikian dan **menyimpan nilainya sendiri**; pada KWSP/PERKESO/EIS
+  ia gaji bulanan seperti dahulu, dan gaji yang ditaip kekal semasa anda
+  berada di halaman ini supaya satu gaji boleh dibandingkan merentas ketiga-tiga
+  jadual (buka PERKESO selepas KWSP: jalur yang sama terus bercahaya).
+- `[D]` Pada skrin ≤991px, `index.css` menjadikan pembalut jadual antd
+  penskrol mendatar; dalam pemapar ini ia ditimpa supaya **badan pemapar**
+  ialah satu-satunya penskrol (menegak dan mendatar) — diukur: tanpa timpaan,
+  kepala jadual PERKESO hilang ke atas pada 390px selepas skrol 900px.
+- `[D]` **Pembetulan benih ujian, komit berasingan** (`prisma/seed-e2e.ts`):
+  carian benih E2E (`staff`, `diagnosis_catalog`, `service_catalog`, `items`)
+  tidak menamakan tenant; ia berjalan sebagai pemilik DB yang RLS tidak
+  tapis, jadi selepas klinik admin UAT wujud ia memilih *Paracetamol 500mg*
+  klinik itu dan menulis baris `stock_levels` tenant staging untuk item
+  tenant lain — baris yang `seed-admin-uat` tidak boleh padam (23503 pada
+  `items`), jadi gate 4 gagal pada semaian semula. CI terlepas hanya kerana
+  urutannya (admin UAT disemai terakhir). Setiap carian kini berskop
+  `tenantId`. Tiada kesan pada kod produk atau staging.
+
+---
+
 ## Batch 12 — 4 Oktober 2026 — gaya kanvas klinikal: bar atas putih, kad bulat, jubin ikon, indigo
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
