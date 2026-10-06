@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { App, DatePicker, Input, Select } from 'antd';
+import { App, AutoComplete, DatePicker, Input, Select } from 'antd';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../core/api-client';
@@ -7,7 +7,7 @@ import { useClinics } from '../../core/hooks/useClinics';
 import { useClinicFilter, useDefaultClinicId } from '../../core/hooks/useClinicFilter';
 import { useCan } from '../../core/hooks/useCan';
 import { parseNric } from '../../core/nric';
-import { useEmployeeIntake, useLegalEmployers } from '../hooks/useAdmin';
+import { useEmployeeIntake, useJobTitles, useLegalEmployers } from '../hooks/useAdmin';
 import { HrPage, Panel } from './ui';
 import { IconDownload, IconPlus } from './ui/icons';
 import {
@@ -62,6 +62,7 @@ const FIELD_OF: Record<string, Field> = {
   'standing.lindungParticipation': 'lindungParticipation',
   nationality: 'epfMembership',
   passportNumber: 'identifierValue',
+  jobTitleId: 'position',
 };
 
 interface RowProblem {
@@ -80,6 +81,8 @@ const readText = (file: File): Promise<string> =>
 
 const COLUMN_HEADS: Record<Field, string> = {
   fullName: 'Full name',
+  employeeNo: 'Employee No.',
+  position: 'Position',
   role: 'Account role',
   clinicId: 'Branch',
   legalEmployerId: 'Employer',
@@ -108,6 +111,10 @@ export function BulkEmployeesPage() {
   const defaultClinic = useDefaultClinicId();
   const startingClinic = chosenClinic ?? defaultClinic ?? '';
   const employers = useLegalEmployers();
+  // The clinic's job titles, offered as the Position cell is typed; any other
+  // words are kept as typed.
+  const jobTitles = useJobTitles();
+  const titleOptions = (jobTitles.data ?? []).filter((title) => title.active).map((title) => ({ value: title.name }));
   const intake = useEmployeeIntake();
   const fileInput = useRef<HTMLInputElement | null>(null);
   /** Which boxes a row's IC filled, so a typed answer is kept and a filled one is refilled. */
@@ -389,6 +396,33 @@ export function BulkEmployeesPage() {
                         disabled={!mayManage}
                       />
                       {at('fullName')}
+                    </td>
+                    <td>
+                      <Input
+                        aria-label={`Employee No., row ${n}`}
+                        size="small"
+                        value={row.employeeNo}
+                        onChange={(event) => update(row.key, { employeeNo: event.target.value })}
+                        placeholder="e.g. KC-014"
+                        status={cellProblem(row, 'employeeNo') ? 'error' : undefined}
+                        disabled={!mayManage}
+                      />
+                      {at('employeeNo')}
+                    </td>
+                    <td>
+                      <AutoComplete
+                        aria-label={`Position, row ${n}`}
+                        size="small"
+                        style={{ width: '100%' }}
+                        value={row.position}
+                        options={titleOptions}
+                        filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())}
+                        onChange={(value) => update(row.key, { position: String(value ?? '') })}
+                        placeholder="e.g. Staff Nurse"
+                        status={cellProblem(row, 'position') ? 'error' : undefined}
+                        disabled={!mayManage}
+                      />
+                      {at('position')}
                     </td>
                     <td>{select('role', ROLE_OPTIONS)}</td>
                     <td>{select('clinicId', clinicOptions, { search: true })}</td>

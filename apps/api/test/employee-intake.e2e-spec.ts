@@ -145,6 +145,31 @@ describe('Adding several employees through the intake (e2e)', () => {
     expect(await row((tx) => tx.auditLog.count({ where: { tenantId, action: 'employee.created', entityId: first.staffId } }))).toBe(1);
   });
 
+  /*
+   * EMPLOYEE NO. AND POSITION FROM THE SHEET (UAT, 6 October 2026). A position
+   * that names a title on the clinic's list IS that title; other words are
+   * kept as typed.
+   */
+  it('takes the employee number and the position, linking a position on the job title list to that title', async () => {
+    const title = (await request(server()).post('/workforce/job-titles').set('Authorization', owner).send({ name: 'Staff Nurse' }).expect(201)).body;
+    const result = await intake({
+      rows: [
+        person({ fullName: 'Demo Jawatan Satu', identifierValue: '910202-14-5563', employeeNo: 'KA-101', position: 'staff nurse' }),
+        person({ fullName: 'Demo Jawatan Dua', identifierValue: '920303-14-5569', employeeNo: 'KA-102', position: 'Clinic Runner' }),
+      ],
+      commit: true,
+    }).expect(201);
+    expect(result.body.clean).toBe(true);
+    const [linked, typed] = result.body.results as { staffId: string }[];
+    const profileOf = (staffId: string) => row((tx) => tx.employeeProfile.findFirst({ where: { staffId } }));
+    expect(await profileOf(linked.staffId)).toMatchObject({ employeeNo: 'KA-101', jobTitleId: title.id, position: 'Staff Nurse' });
+    expect(await profileOf(typed.staffId)).toMatchObject({ employeeNo: 'KA-102', jobTitleId: null, position: 'Clinic Runner' });
+
+    // The number is checked for uniqueness as before.
+    const again = await intake({ rows: [person({ fullName: 'Demo Jawatan Tiga', identifierValue: '930404-14-5565', employeeNo: 'KA-101' })] }).expect(201);
+    expect(again.body.results[0].problems).toEqual([{ field: 'employeeNo', message: 'Another employee already has this number.' }]);
+  });
+
   it('keeps a branch manager to their branch, and an HR clerk out of the salary', async () => {
     const manager = await row((tx) => tx.staff.create({ data: { tenantId, role: Role.CLINIC_MANAGER, fullName: 'Pengurus A', clinicId: clinicA } }));
     const clerk = await row((tx) => tx.staff.create({ data: { tenantId, role: Role.HR_STAFF, fullName: 'Kerani HR', clinicId: clinicA } }));

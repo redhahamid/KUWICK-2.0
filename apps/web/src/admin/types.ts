@@ -3715,6 +3715,8 @@ export interface EmployeeIntakeRowDto {
   clinicId?: string;
   legalEmployerId?: string;
   employeeNo?: string;
+  /** Free text, or a job title's name: the server links a name on the clinic's list to that title. */
+  position?: string;
   jobTitleId?: string;
   department?: string;
   employmentType?: string;

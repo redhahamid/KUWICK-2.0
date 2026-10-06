@@ -1,4 +1,5 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { CSV_BOM, csvCell, csvTextCell } from './csv';
 import { PayrollRunStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
@@ -66,8 +67,7 @@ export class PayrollStatutoryOutputService {
         source: 'hr.payroll',
       });
 
-      const escape = (value: string | null) =>
-        value === null ? '' : /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+      const escape = csvCell;
       const rows = [
         // `basis_note` is empty for everybody whose wages column is Kuwick's
         // own assessment, and states the difference for anybody whose employer
@@ -77,8 +77,9 @@ export class PayrollStatutoryOutputService {
         ...block.rows.map((row) =>
           [
             escape(row.name),
-            escape(row.identifier),
-            escape(row.membershipNo),
+            // Numbers Excel must keep as written: no 9.63E+12, no lost zero.
+            csvTextCell(row.identifier),
+            csvTextCell(row.membershipNo),
             row.wagesCents === null ? '' : (row.wagesCents / 100).toFixed(2),
             row.employeeCents === null ? '' : (row.employeeCents / 100).toFixed(2),
             row.employerCents === null ? '' : (row.employerCents / 100).toFixed(2),
@@ -110,11 +111,17 @@ export class PayrollStatutoryOutputService {
       ];
       return {
         fileName: `${upper.toLowerCase()}-listing-${composed.view.period}.csv`,
+        // UTF-8 with a byte-order mark, and the opening note as one cell, so
+        // Excel shows "—" as "—" and the note stays on its own line (csv.ts).
         content:
-          `# ${upper} contribution listing — ${composed.view.period}, ${composed.view.employerName ?? ''} ` +
-          `(from approved record ${composed.snapshotHash.slice(0, 16)}…). This is NOT a submission file: no ` +
-          `authority upload format is on record. Use it to key or cross-check the filing at the authority's own portal, ` +
-          'then record the submission in Kuwick with its reference.\n' +
+          CSV_BOM +
+          csvCell(
+            `# ${upper} contribution listing — ${composed.view.period}, ${composed.view.employerName ?? ''} ` +
+              `(from approved record ${composed.snapshotHash.slice(0, 16)}…). This is NOT a submission file: no ` +
+              `authority upload format is on record. Use it to key or cross-check the filing at the authority's own portal, ` +
+              'then record the submission in Kuwick with its reference.',
+          ) +
+          '\n' +
           rows.join('\n'),
       };
     });
@@ -137,8 +144,13 @@ export class PayrollStatutoryOutputService {
     await withAdminTx(this.rawPrisma, 'hr.payroll.export.statutory', async (tx, actor) => {
       // Validated INSIDE the permission boundary: an unauthorised caller gets
       // the 403 the permission owes them, not a validation hint.
-      if (!body.reference || body.reference.trim().length < 3) {
-        throw new ConflictException('Recording a submission needs the reference the authority’s portal issued.');
+      // Said plainly (UAT, 6 October 2026): an empty box is "please enter
+      // it", a two-letter one is "check it", not one sentence for both.
+      if (!body.reference || body.reference.trim() === '') {
+        throw new ConflictException('Please enter the portal reference.');
+      }
+      if (body.reference.trim().length < 3) {
+        throw new ConflictException('That portal reference looks too short. Please check it against the portal.');
       }
       if (!body.submittedDate || Number.isNaN(new Date(body.submittedDate).getTime())) {
         throw new ConflictException('Recording a submission needs the date it was filed.');

@@ -66,7 +66,7 @@ const SHORT: Record<string, string> = {
 };
 const shortOf = (label: string) => SHORT[label] ?? `${label} missing`;
 
-type RecordState = { label: string; tone: 'done' | 'attn' | 'muted'; blockers: string[] };
+type RecordState = { label: string; tone: 'done' | 'attn' | 'muted'; blockers: string[]; noBank?: boolean };
 
 function recordOf(row: EmployeeRow, items: PayrollReadinessItem[] | undefined): RecordState {
   if (!row.hasProfile) return { label: 'No record', tone: 'muted', blockers: [] };
@@ -78,7 +78,16 @@ function recordOf(row: EmployeeRow, items: PayrollReadinessItem[] | undefined): 
       : { label: 'Bank missing', tone: 'attn', blockers: ['Bank account'] };
   }
   const blockers = items.filter((item) => !item.done && item.severity === 'BLOCKING').map((item) => item.label);
-  if (blockers.length === 0) return { label: 'Complete', tone: 'done', blockers };
+  /*
+   * COMPLETE IS NOT THE SAME AS PAYABLE BY TRANSFER (UAT, 6 October 2026). A
+   * missing bank account does not stop the month — it is advisory, and the
+   * bank listing leaves the person out with the reason — but a plain
+   * "Complete" beside a record nobody can transfer to read as all done.
+   */
+  const noBank = items.some((item) => item.key === 'bank' && !item.done);
+  if (blockers.length === 0) {
+    return noBank ? { label: 'Complete — no bank account', tone: 'attn', blockers, noBank } : { label: 'Complete', tone: 'done', blockers };
+  }
   return { label: blockers.length === 1 ? shortOf(blockers[0]) : `${blockers.length} missing`, tone: 'attn', blockers };
 }
 
@@ -150,7 +159,10 @@ export function EmployeesPage() {
   const joinedThisYear = employed.filter((row) => row.startDate && dayjs(row.startDate).year() === dayjs().year());
   const joinedNames = joinedThisYear.slice(0, 3).map((row) => row.fullName).join(', ') + (joinedThisYear.length > 3 ? ` +${joinedThisYear.length - 3}` : '');
 
-  const incomplete = employed.filter((row) => records.get(row.staffId)?.tone !== 'done');
+  // A record complete but for its bank account is complete: it is counted
+  // apart, so the card never says "incomplete" beside a chip saying "Complete".
+  const incomplete = employed.filter((row) => records.get(row.staffId)?.tone !== 'done' && !records.get(row.staffId)?.noBank);
+  const withoutBank = employed.filter((row) => records.get(row.staffId)?.noBank).length;
   const reasons = incomplete.flatMap((row) => {
     const state = records.get(row.staffId);
     return state?.label === 'No record' ? ['No employment record'] : (state?.blockers ?? []).map(shortOf);
@@ -250,7 +262,13 @@ export function EmployeesPage() {
               label="Records incomplete"
               value={incomplete.length}
               tone={incomplete.length > 0 ? 'gold' : 'plain'}
-              sub={incomplete.length > 0 ? commonest : 'Every record is complete'}
+              sub={
+                incomplete.length > 0
+                  ? commonest
+                  : withoutBank > 0
+                    ? `Every record is complete · ${withoutBank} without a bank account`
+                    : 'Every record is complete'
+              }
             />
             <StatCard
               icon={<IconPayroll />}

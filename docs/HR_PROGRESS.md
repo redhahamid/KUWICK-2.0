@@ -6,6 +6,69 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 19 — 6 Oktober 2026 — fail dan rekod: CSV dibuka betul dalam Excel, mesej rujukan, "tiada akaun bank", lajur Position dan Employee No.
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 18 (`8e9a24a`). Komit: komit yang menambah bahagian ini (hash dalam
+laporan). **Migrasi: tiada. Tiada logik pengiraan statutori diubah.**
+Penemuan UAT, bahagian D, item 18–21.
+
+### Apa yang berubah
+
+- `[D]` **D18 — CSV untuk Excel** (`apps/api/src/workforce/csv.ts`):
+  senarai sumbangan statutori (KWSP/PERKESO/EIS/LINDUNG/PCB/HRD) dan senarai
+  arahan bayaran kini UTF-8 **dengan BOM** — "—" tidak lagi menjadi "â€”" —
+  dan nombor IC, nombor ahli KWSP/PERKESO, nombor cukai dan nombor akaun bank
+  ditulis sebagai `="…"` supaya Excel menyimpannya sebagai teks (tiada
+  9.63E+12, tiada sifar hadapan hilang). Nota pembuka fail kini satu sel, jadi
+  tidak lagi pecah merentas lajur. Sebelum ini setiap fail mempunyai salinan
+  fungsi `escape` sendiri; kini satu.
+- `[D]` **D19 — rujukan kosong**: kedua-dua laluan rekod pemfailan (pelayan
+  dan dua borang web) kini berkata **"Please enter the portal reference."**
+  untuk kotak kosong, dan "That portal reference looks too short. Please
+  check it against the portal." untuk 1–2 aksara.
+- `[D]` **D20 — tiada akaun bank**: senarai pekerja menunjukkan **"Complete —
+  no bank account"** (amber) bila semua perkara yang menyekat payroll lengkap
+  tetapi akaun bank tiada; pengepala rekod pekerja: "Record complete — no bank
+  account". Kad *Records incomplete* tidak mengiranya sebagai tidak lengkap
+  tetapi menyebut "N without a bank account".
+- `[D]` **D21 — Position dan Employee No.**: dua lajur baharu dalam grid *Add
+  several* dan templat CSV, terus selepas *Full name*. *Position* menawarkan
+  senarai jawatan klinik semasa menaip; nama yang sepadan dengan jawatan aktif
+  dipautkan kepada jawatan itu oleh pelayan, perkataan lain disimpan seperti
+  ditaip. *Employee No.* disemak unik (dalam kelompok dan dengan pekerja
+  sedia ada) seperti sebelumnya. Contoh lajur baharu kosong, supaya templat
+  lama masih dikenali.
+- `[D]` **Ujian**: API unit +3 (`csv`), e2e dilanjutkan (BOM dan `="…"` dalam
+  kedua-dua muat turun; mesej rujukan kosong dan pendek; intake +1: Employee
+  No. dan Position, termasuk pautan kepada jawatan sedia ada), web dikemas kini
+  dan +2 (lajur baharu, templat lama).
+
+### Uji di staging (ikut urutan)
+
+1. Bulan diluluskan → *Statutory outputs* → *Listing* KWSP → buka dalam
+   Excel: "—" dipaparkan betul, nombor IC dan nombor ahli penuh (bukan
+   9.63E+12). Senarai bank: nombor akaun penuh.
+2. *Statutory filing* → *Mark as submitted* → kosongkan rujukan → *Record*:
+   "Please enter the portal reference."
+3. *Employees*: pekerja tanpa akaun bank tetapi lain-lain lengkap →
+   "Complete — no bank account"; buka rekod → "Record complete — no bank
+   account".
+4. *Add several* → muat turun templat: lajur *Employee No.* dan *Position*
+   selepas *Full name*; isi dan muat naik → kedua-duanya masuk ke rekod.
+
+### Keputusan terbuka
+
+- `[A]` Senarai bank (bukan fail statutori) turut menerima BOM dan nombor
+  akaun sebagai teks — nombor akaun 12 digit mengalami masalah Excel yang
+  sama.
+- `[A]` Templat import pekerja (fail web) sudah mempunyai BOM; IC dalam
+  templat bertanda sengkang jadi Excel menyimpannya sebagai teks. IC tanpa
+  sengkang yang ditaip dalam Excel masih boleh ditukar Excel — cadangan:
+  tulis IC dengan sengkang, atau format lajur sebagai Text sebelum menaip.
+
+---
+
 ## Batch 18 — 6 Oktober 2026 — rekod berubah kini MENYEKAT kelulusan; keputusan anda direkod
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas

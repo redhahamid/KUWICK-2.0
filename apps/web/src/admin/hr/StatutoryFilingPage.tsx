@@ -357,9 +357,11 @@ function RecordDrawer({
   const submit = () => {
     setProblem(null);
     if (!date) return setProblem("When was it filed?");
+    if (reference.trim() === "")
+      return setProblem("Please enter the portal reference.");
     if (reference.trim().length < 3)
       return setProblem(
-        "The portal issued a reference. It is what makes this a record rather than a claim.",
+        "That portal reference looks too short. Please check it against the portal.",
       );
     record.mutate(
       {

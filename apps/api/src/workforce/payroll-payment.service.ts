@@ -1,4 +1,5 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { CSV_BOM, csvCell, csvTextCell } from './csv';
 import { compareByEmployeeName } from './employee-order';
 import { PaymentBatchStatus, PayrollRunStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
@@ -263,8 +264,7 @@ export class PayrollPaymentService {
         source: 'hr.payroll',
       });
 
-      const escape = (value: string | null) =>
-        value === null ? '' : /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+      const escape = csvCell;
       const period = batch.payrollRun.period.toISOString().slice(0, 7);
       const rows = [
         ['employee', 'bank', 'account_number', 'amount_rm', 'status', 'reason'].join(','),
@@ -272,7 +272,8 @@ export class PayrollPaymentService {
           [
             escape(line.name),
             escape(line.bankName),
-            escape(line.bankAccountNo),
+            // A 12-digit account number opened in Excel became 5.12346E+11.
+            csvTextCell(line.bankAccountNo),
             (line.amountCents / 100).toFixed(2),
             line.included ? 'PAY' : 'EXCLUDED',
             escape(line.exclusionReason),
@@ -285,9 +286,13 @@ export class PayrollPaymentService {
         // The first line inside the file restates what this is, so a copy
         // found on a desktop a year later cannot be mistaken for a bank file.
         content:
-          `# Payment instruction listing — ${period}, batch ${batch.version}, from approved record ` +
-          `${batch.snapshotHash.slice(0, 16)}… This is NOT a bank file: no verified bank format is on record. ` +
-          'Key these payments in your bank portal and record the transfer in Kuwick afterwards.\n' +
+          CSV_BOM +
+          csvCell(
+            `# Payment instruction listing — ${period}, batch ${batch.version}, from approved record ` +
+              `${batch.snapshotHash.slice(0, 16)}… This is NOT a bank file: no verified bank format is on record. ` +
+              'Key these payments in your bank portal and record the transfer in Kuwick afterwards.',
+          ) +
+          '\n' +
           rows.join('\n'),
       };
     });

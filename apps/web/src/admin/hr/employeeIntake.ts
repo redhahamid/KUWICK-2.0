@@ -20,6 +20,10 @@ export interface IntakeRow {
   /** A key for React; never sent. */
   key: string;
   fullName: string;
+  /** The clinic's own number for them; optional, and unique if given. */
+  employeeNo: string;
+  /** A job title from the clinic's list, or the words the sheet used. */
+  position: string;
   role: string;
   clinicId: string;
   legalEmployerId: string;
@@ -98,6 +102,8 @@ export function emptyRow(defaults: Partial<IntakeRow> = {}): IntakeRow {
   return {
     key: `row-${Date.now()}-${counter}`,
     fullName: '',
+    employeeNo: '',
+    position: '',
     role: '',
     clinicId: '',
     legalEmployerId: '',
@@ -145,6 +151,8 @@ export function toIntakeRowDto(row: IntakeRow): EmployeeIntakeRowDto {
   }
   return {
     fullName: or(row.fullName),
+    employeeNo: or(row.employeeNo),
+    position: or(row.position),
     role: or(row.role),
     clinicId: or(row.clinicId),
     legalEmployerId: or(row.legalEmployerId),
@@ -174,6 +182,10 @@ export interface IntakeColumn {
 
 export const INTAKE_COLUMNS: IntakeColumn[] = [
   { key: 'fullName', header: 'Full name', example: 'Demo Pekerja binti Contoh' },
+  // Blank examples on purpose: a template saved before these columns existed
+  // still has its example row recognised and skipped.
+  { key: 'employeeNo', header: 'Employee No.', example: '' },
+  { key: 'position', header: 'Position', example: '' },
   { key: 'role', header: 'Account role', example: 'Front desk / clinical staff' },
   { key: 'clinicId', header: 'Branch', example: 'Contoh Central' },
   { key: 'legalEmployerId', header: 'Employer', example: 'Klinik Contoh Sdn Bhd' },
@@ -297,6 +309,8 @@ export function readIntakeSheet(
     if (INTAKE_COLUMNS.every((column) => (cells[column.key] ?? '') === column.example)) return;
 
     row.fullName = cells.fullName ?? '';
+    row.employeeNo = cells.employeeNo ?? '';
+    row.position = cells.position ?? '';
     row.startDate = cells.startDate ?? '';
     row.identifierValue = cells.identifierValue ?? '';
     row.dateOfBirth = cells.dateOfBirth ?? '';

@@ -124,6 +124,7 @@ export function EmployeeWorkspacePage() {
   };
 
   const outstanding = data?.payrollReadiness?.items.filter((item) => !item.done && item.severity === 'BLOCKING') ?? [];
+  const noBank = data?.payrollReadiness?.items.some((item) => item.key === 'bank' && !item.done) ?? false;
   const name = data?.identity.fullName ?? 'Employee';
   const gone = GONE.has(data?.employment.employmentStatus ?? '');
 
@@ -162,7 +163,11 @@ export function EmployeeWorkspacePage() {
             {data.engagement === 'CONTRACTOR' ? (
               <StatusChip tone="info">Contractor, not on payroll</StatusChip>
             ) : outstanding.length === 0 ? (
-              <StatusChip tone="done">Record complete</StatusChip>
+              noBank ? (
+                <StatusChip tone="attn">Record complete — no bank account</StatusChip>
+              ) : (
+                <StatusChip tone="done">Record complete</StatusChip>
+              )
             ) : (
               <Tooltip title={outstanding.map((item) => item.label).join(' · ')}>
                 <span>

@@ -26,13 +26,15 @@ describe('parseCsv', () => {
 describe('readIntakeSheet', () => {
   it('turns names into ids and words into codes, and skips the template’s own example row', () => {
     const example = INTAKE_COLUMNS.map((column) => column.example).join(',');
-    const sheet = `${header}\n${example}\nDemo Pekerja binti Contoh,Front desk / clinical staff,Contoh Central,Klinik Contoh Sdn Bhd,2026-01-01,IC,900101-14-5566,,,"RM 2,500",Malaysian citizen,Resident,Category 1,Sunday,\n`;
+    const sheet = `${header}\n${example}\nDemo Pekerja binti Contoh,KC-014,Staff Nurse,Front desk / clinical staff,Contoh Central,Klinik Contoh Sdn Bhd,2026-01-01,IC,900101-14-5566,,,"RM 2,500",Malaysian citizen,Resident,Category 1,Sunday,\n`;
     const reading = readIntakeSheet(sheet, lookups);
     expect(reading.problems).toEqual([]);
     expect(reading.unknownHeaders).toEqual([]);
     expect(reading.rows).toHaveLength(1);
     expect(reading.rows[0]).toMatchObject({
       fullName: 'Demo Pekerja binti Contoh',
+      employeeNo: 'KC-014',
+      position: 'Staff Nurse',
       role: 'FRONT_DESK_CLINICAL_STAFF',
       clinicId: 'clinic-1',
       legalEmployerId: 'emp-1',
@@ -49,7 +51,7 @@ describe('readIntakeSheet', () => {
   });
 
   it('names the cell it could not read, leaves it blank for the picker, and says which columns it ignored', () => {
-    const sheet = `${header},Shoe size\nDemo Dua bin Contoh,Nurse,Contoh Utara,Klinik Contoh Sdn Bhd,2026-02-01,Passport,A1234567,1990-05-05,F,3000,PR,Non-resident,2,Varies,Opted out,42\n`;
+    const sheet = `${header},Shoe size\nDemo Dua bin Contoh,,,Nurse,Contoh Utara,Klinik Contoh Sdn Bhd,2026-02-01,Passport,A1234567,1990-05-05,F,3000,PR,Non-resident,2,Varies,Opted out,42\n`;
     const reading = readIntakeSheet(sheet, lookups);
     expect(reading.unknownHeaders).toEqual(['Shoe size']);
     expect(reading.problems).toEqual([{ row: 0, field: 'clinicId', message: 'No branch called "Contoh Utara". Pick one.' }]);
@@ -68,6 +70,23 @@ describe('readIntakeSheet', () => {
 
   it('reads nothing from a sheet without the template’s headings', () => {
     expect(readIntakeSheet('Name,Salary\nSomebody,100\n', lookups).rows).toEqual([]);
+  });
+});
+
+describe('Employee No. and Position', () => {
+  it('are columns of the template, right after the name, and reach the intake row', () => {
+    expect(INTAKE_COLUMNS.slice(0, 3).map((column) => column.header)).toEqual(['Full name', 'Employee No.', 'Position']);
+    expect(toIntakeRowDto(emptyRow({ fullName: 'Demo', employeeNo: ' KC-014 ', position: 'Staff Nurse' }))).toMatchObject({
+      fullName: 'Demo',
+      employeeNo: 'KC-014',
+      position: 'Staff Nurse',
+    });
+  });
+
+  it('still skips the example row of a template saved before they existed', () => {
+    const old = INTAKE_COLUMNS.filter((column) => column.key !== 'employeeNo' && column.key !== 'position');
+    const sheet = `${old.map((column) => column.header).join(',')}\n${old.map((column) => column.example).join(',')}\n`;
+    expect(readIntakeSheet(sheet, lookups).rows).toEqual([]);
   });
 });
 

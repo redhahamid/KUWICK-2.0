@@ -155,9 +155,14 @@ export class PayrollFilingService {
       this.rawPrisma,
       "hr.payroll.export.statutory",
       async (tx, actor) => {
-        if (!body.reference || body.reference.trim().length < 3) {
+        // Said plainly (UAT, 6 October 2026): an empty box is "please enter
+        // it", a two-letter one is "check it".
+        if (!body.reference || body.reference.trim() === "") {
+          throw new ConflictException("Please enter the portal reference.");
+        }
+        if (body.reference.trim().length < 3) {
           throw new ConflictException(
-            "Recording a submission needs the reference the authority’s portal issued.",
+            "That portal reference looks too short. Please check it against the portal.",
           );
         }
         if (

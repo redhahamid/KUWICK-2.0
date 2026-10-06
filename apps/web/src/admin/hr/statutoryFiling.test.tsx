@@ -222,7 +222,7 @@ describe("the filing helper", () => {
     mount();
     fireEvent.click(screen.getByRole("button", { name: "Mark as submitted" }));
     fireEvent.click(screen.getByRole("button", { name: "Record submission" }));
-    expect(screen.getByText(/The portal issued a reference/)).toBeTruthy();
+    expect(screen.getByText('Please enter the portal reference.')).toBeTruthy();
     expect(mutate).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText("Reference from the portal"), {
       target: { value: "KWSP-2026-09-77" },

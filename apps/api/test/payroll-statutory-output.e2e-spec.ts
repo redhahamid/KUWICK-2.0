@@ -193,6 +193,10 @@ describe('Payroll statutory outputs (e2e)', () => {
     expect(res.text).toContain('NOT a submission file');
     expect(res.text).toContain('Filed Person');
     expect(res.text).toContain('EPF-M-123');
+    // Opened in Excel as written (UAT, 6 October 2026): UTF-8 with a
+    // byte-order mark, and the membership number kept as text.
+    expect(res.text.charCodeAt(0)).toBe(0xfeff);
+    expect(res.text).toContain('"=""EPF-M-123"""');
   });
 
   it('lets a human record the actual filing — once — and only then reads submitted', async () => {
@@ -218,12 +222,20 @@ describe('Payroll statutory outputs (e2e)', () => {
       .send({ submittedDate: '2026-08-11', reference: 'KWSP-ACK-991123' })
       .expect(409);
 
-    // And a reference is not optional — a claim without one is not a record.
-    await request(app.getHttpServer())
+    // And a reference is not optional — a claim without one is not a record —
+    // and the refusal says so plainly (UAT, 6 October 2026).
+    const empty = await request(app.getHttpServer())
       .post(`/workforce/payroll/runs/${runId}/statutory-outputs/socso/record-submission`)
       .set('Authorization', bearer)
       .send({ submittedDate: '2026-08-10', reference: '' })
       .expect(409);
+    expect(empty.body.message).toBe('Please enter the portal reference.');
+    const short = await request(app.getHttpServer())
+      .post(`/workforce/payroll/runs/${runId}/statutory-outputs/socso/record-submission`)
+      .set('Authorization', bearer)
+      .send({ submittedDate: '2026-08-10', reference: 'AB' })
+      .expect(409);
+    expect(short.body.message).toMatch(/looks too short/);
   });
 
   it('keeps the outputs surface behind the statutory-export permission', async () => {

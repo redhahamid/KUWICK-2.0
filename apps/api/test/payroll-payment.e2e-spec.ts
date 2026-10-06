@@ -198,6 +198,9 @@ describe('Payroll payment preparation (e2e)', () => {
     expect(body).toContain('NOT a bank file');
     expect(body).toContain('Banked Person');
     expect(body).toContain('512345678901');
+    // A 12-digit account number stays text in Excel, and the file says UTF-8.
+    expect(body).toContain('"=""512345678901"""');
+    expect(body.charCodeAt(0)).toBe(0xfeff);
     expect(body).toContain('EXCLUDED');
     expect(body).toContain('TOTAL TO PAY');
 

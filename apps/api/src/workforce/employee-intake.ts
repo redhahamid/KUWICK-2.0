@@ -60,7 +60,7 @@ export interface RowCheck {
   problems: RowProblem[];
   readiness: IntakeReadiness;
   /** Filled from the IC when the row left them blank; what the commit writes. */
-  derived: { dateOfBirth?: string; gender?: string };
+  derived: { dateOfBirth?: string; gender?: string; jobTitleId?: string };
 }
 
 const EPF = ['MALAYSIAN_CITIZEN', 'PERMANENT_RESIDENT', 'NON_CITIZEN_ELECTED_PRE_1998', 'NON_CITIZEN'];
@@ -99,6 +99,9 @@ export function createBodyOf(row: EmployeeIntakeRowDto, derived: RowCheck['deriv
   if (body.identifierType === 'PASSPORT' && body.identifierValue && !body.passportNumber) body.passportNumber = body.identifierValue;
   if (!body.dateOfBirth && derived.dateOfBirth) body.dateOfBirth = derived.dateOfBirth;
   if (!body.gender && derived.gender) body.gender = derived.gender;
+  // A Position that names a title on the clinic's list IS that title, so the
+  // record and the list say the same words (the single form picks by id).
+  if (!body.jobTitleId && derived.jobTitleId) body.jobTitleId = derived.jobTitleId;
   // A Malaysian citizen is Malaysian; the row need not say so twice.
   if (!body.nationality && row.standing?.epfMembership === 'MALAYSIAN_CITIZEN') body.nationality = 'Malaysian';
   return body;
@@ -188,6 +191,14 @@ export async function checkIntakeRow(row: EmployeeIntakeRowDto, ctx: IntakeConte
     const employer = ctx.employers.get(employerId);
     if (!employer) problems.push({ field: 'legalEmployerId', message: 'That company is not on file.' });
     else if (!employer.active) problems.push({ field: 'legalEmployerId', message: `${employer.name} is archived. Choose another company.` });
+  }
+  const typedPosition = row.position?.trim();
+  if (typedPosition && !row.jobTitleId) {
+    const named = [...ctx.jobTitles.entries()].find(([, title]) => title.active && title.name.trim().toLowerCase() === typedPosition.toLowerCase());
+    if (named) {
+      derived.jobTitleId = named[0];
+      createBody.jobTitleId = named[0];
+    }
   }
   const titleId = createBody.jobTitleId as string | undefined;
   if (titleId) {

@@ -33,6 +33,8 @@ export class EmployeeIntakeRowDto {
   @IsOptional() @IsString() @MaxLength(60) clinicId?: string;
   @IsOptional() @IsString() @MaxLength(60) legalEmployerId?: string;
   @IsOptional() @IsString() @MaxLength(40) employeeNo?: string;
+  /** The words a sheet used for the job; a name on the clinic's job title list is linked to that title. */
+  @IsOptional() @IsString() @MaxLength(80) position?: string;
   @IsOptional() @IsString() @MaxLength(60) jobTitleId?: string;
   @IsOptional() @IsString() @MaxLength(80) department?: string;
   @IsOptional() @IsString() @MaxLength(20) employmentType?: string;

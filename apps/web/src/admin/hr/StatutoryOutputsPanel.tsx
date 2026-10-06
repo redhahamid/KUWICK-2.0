@@ -113,8 +113,12 @@ export function StatutoryOutputsPanel({ runId }: { runId: string }) {
       setError('When was it filed?');
       return;
     }
+    if (reference.trim() === '') {
+      setError('Please enter the portal reference.');
+      return;
+    }
     if (reference.trim().length < 3) {
-      setError('The portal issued a reference for the filing. It is what makes this a record, not a claim.');
+      setError('That portal reference looks too short. Please check it against the portal.');
       return;
     }
     setSaving(true);
