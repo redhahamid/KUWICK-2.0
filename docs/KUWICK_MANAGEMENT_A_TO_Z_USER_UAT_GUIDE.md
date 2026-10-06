@@ -696,7 +696,11 @@ and finalise the month. What Kuwick will not do is call it correct. The advisory
 > recorded as one: Kuwick does not treat it as meeting the Act, and any shortfall against the Act stays the
 > employer's to make good.
 
-The run's own gate says: **"3 warning(s) noted; none of them prevents approval."**
+The run's own gate says: **"3 need action. None of them blocks approval."** The Review stage's header
+says the same number. The warning is one card, **EPF on the employer-selected basis**, however many staff it
+covers, with one button: **Acknowledge for 2026**. One reason covers everybody on the card for the rest of
+the year; the card then moves to **Done** and reads "Acknowledged for 2026 by … on …", the same after any
+recalculation and in the months after.
 
 **A tick cannot add what the law excludes.** Overtime is outside EPF wages by the Act. If you tick it, the
 basis does not grow — Kuwick tells you the tick did nothing rather than silently ignoring it.
@@ -787,8 +791,8 @@ does a scheme read as filed.
 | --- | --- | --- | --- |
 | **PAY-01** | HR → Payroll | The month, and what it needs before anybody is paid | Last month's figure is labelled if it is not approved |
 | **PAY-02** | Payroll → **Get ready** | Per-employee checklists | 4 people blocked, for two different reasons, each named |
-| **PAY-03** | Open the August run → **Review** | The exception centre | 4 blocking items; approval is impossible |
-| **PAY-04** | Read one blocking exception | Person, cause, consequence, what to do, and a link that works | The link lands on the right screen |
+| **PAY-03** | Open the August run → **Review** | Three parts: **Needs action**, **For information**, **Done** | The footer says "… need action. 4 of them block approval."; approval is impossible |
+| **PAY-04** | Press **Details** on one blocking card | Person, cause, consequence, what to do, and a link that works | The link lands on the right screen |
 | **PAY-05** | Employee → statutory standing of a blocked person | Relief facts read **"Not recorded"** | Never "0" or "No" for something nobody entered |
 | **PAY-06** | Fix the blockers the way the exceptions say, then recalculate | The blockers clear | Nothing else changed silently |
 | **PAY-07** | Walk steps 1–4 (Employees, Attendance, Earnings, Deductions) | Every earning itemised; EPF/SOCSO/EIS/LINDUNG/PCB shown apart | Total earnings = the sum of its rows |

@@ -144,6 +144,16 @@ describe('payroll exception state has one canonical source (e2e)', () => {
     // is that they START in agreement — the drift tests below prove which one
     // the endpoints follow when they stop agreeing.
     expect((run.exceptions as unknown[]).length).toBe(gate.total);
+
+    // Within a kind, the people in the one employee order, so a review card's
+    // "3 staff: A, B, C" reads the same on every visit (UAT, 6 October 2026).
+    const collator = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
+    const namesByCode = new Map<string, string[]>();
+    for (const row of exceptions as { code: string; staffName: string | null }[]) {
+      namesByCode.set(row.code, [...(namesByCode.get(row.code) ?? []), row.staffName ?? '']);
+    }
+    expect([...namesByCode.values()].some((names) => names.length > 1)).toBe(true);
+    for (const names of namesByCode.values()) expect(names).toEqual([...names].sort(collator.compare));
   });
 
   it('2. the run list reports the gate, not a bare count, and it matches the exceptions endpoint exactly', async () => {

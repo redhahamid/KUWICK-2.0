@@ -30,7 +30,17 @@ describe('EPF basis discrepancy, acknowledged once per selection (e2e)', () => {
 
   const exceptionsOf = async (runId: string) => {
     const res = await request(server()).get(`/workforce/payroll/runs/${runId}/exceptions`).set('Authorization', bearer).expect(200);
-    return res.body.exceptions as { id: string; code: string; severity: string; overridable: boolean; cause: string; overriddenBy?: string | null }[];
+    return res.body.exceptions as {
+      id: string;
+      code: string;
+      title: string;
+      policy: boolean;
+      severity: string;
+      overridable: boolean;
+      cause: string;
+      overriddenBy?: string | null;
+      overrideReason?: string | null;
+    }[];
   };
   const runMonth = async (period: string) => {
     const run = await request(server()).post('/workforce/payroll/runs').set('Authorization', bearer).send({ period, clinicId }).expect(201);
@@ -110,18 +120,31 @@ describe('EPF basis discrepancy, acknowledged once per selection (e2e)', () => {
     expect({ code: acks[0].code, year: acks[0].year, reason: acks[0].reason }).toEqual({ code: 'EPF_BASIS_DISCREPANCY', year: 2026, reason: 'Policy decided with the accountant for 2026' });
   });
 
-  it('the same month recalculated, and the month after, carry a one-line note instead', async () => {
+  /*
+   * THE SAME ROW, ACKNOWLEDGED, before and after a recalculation (UAT, 6
+   * October 2026). It used to come back as an INFO note of another code, so
+   * an acknowledgement looked one way on the day and another after any
+   * recalculation; the month after read differently again.
+   */
+  it('the same month recalculated, and the month after, keep the warning acknowledged, by whom and why', async () => {
     await recalc(juneRunId);
     const june = await exceptionsOf(juneRunId);
-    expect(june.find((row) => row.code === 'EPF_BASIS_DISCREPANCY')).toBeUndefined();
-    const note = june.find((row) => row.code === 'EPF_BASIS_ACKNOWLEDGED')!;
-    expect({ severity: note.severity, overridable: note.overridable }).toEqual({ severity: 'INFO', overridable: false });
-    expect(note.cause).toMatch(/acknowledged for the year by Test Owner on \d{4}-\d{2}-\d{2}: “Policy decided with the accountant for 2026”/);
+    expect(june.map((row) => row.code)).not.toContain('EPF_BASIS_ACKNOWLEDGED');
+    expect(june.find((row) => row.code === 'EPF_BASIS_DISCREPANCY')).toMatchObject({
+      severity: 'WARNING',
+      title: 'EPF on the employer-selected basis',
+      policy: true,
+      overriddenBy: 'Test Owner',
+      overrideReason: 'Policy decided with the accountant for 2026',
+    });
 
     const julyRunId = await runMonth(JULY);
     const july = await exceptionsOf(julyRunId);
-    expect(july.map((row) => row.code)).toContain('EPF_BASIS_ACKNOWLEDGED');
-    expect(july.map((row) => row.code)).not.toContain('EPF_BASIS_DISCREPANCY');
+    expect(july.map((row) => row.code)).not.toContain('EPF_BASIS_ACKNOWLEDGED');
+    expect(july.find((row) => row.code === 'EPF_BASIS_DISCREPANCY')).toMatchObject({
+      overriddenBy: 'Test Owner',
+      overrideReason: 'Policy decided with the accountant for 2026',
+    });
   });
 
   it('a changed selection asks again', async () => {
@@ -129,7 +152,37 @@ describe('EPF basis discrepancy, acknowledged once per selection (e2e)', () => {
     await recordBasis({ scheme: 'EPF', mode: 'BASIC_PLUS_SELECTED', includedComponentCodes: ['LOCUM_FEE'], effectiveFrom: '2026-08-01', reason: 'Widened after the audit' }).expect(201);
     const augustRunId = await runMonth(AUGUST);
     const august = await exceptionsOf(augustRunId);
-    expect(august.map((row) => row.code)).toContain('EPF_BASIS_DISCREPANCY');
+    expect(august.find((row) => row.code === 'EPF_BASIS_DISCREPANCY')).toMatchObject({ overriddenBy: null });
     expect(august.map((row) => row.code)).not.toContain('EPF_BASIS_ACKNOWLEDGED');
+
+    /*
+     * ONE BUTTON FOR THE POLICY (UAT, 6 October 2026): every open warning of
+     * the kind on the run acknowledged with one reason, each kept for the
+     * year exactly as one at a time would be.
+     */
+    const done = await request(server())
+      .patch(`/workforce/payroll/runs/${augustRunId}/exceptions/acknowledge`)
+      .set('Authorization', bearer)
+      .send({ code: 'EPF_BASIS_DISCREPANCY', reason: 'Widened basis agreed with the accountant' })
+      .expect(200);
+    expect(done.body).toEqual({ acknowledged: 1 });
+    expect((await exceptionsOf(augustRunId)).find((row) => row.code === 'EPF_BASIS_DISCREPANCY')).toMatchObject({
+      overriddenBy: 'Test Owner',
+      overrideReason: 'Widened basis agreed with the accountant',
+    });
+    const acks = await withTenantContext(prisma, tenantId, (tx) => tx.payrollWarningAcknowledgement.findMany({ where: { tenantId } }));
+    expect(acks).toHaveLength(2);
+    // Nothing left of that kind: said, not silently accepted.
+    await request(server())
+      .patch(`/workforce/payroll/runs/${augustRunId}/exceptions/acknowledge`)
+      .set('Authorization', bearer)
+      .send({ code: 'EPF_BASIS_DISCREPANCY', reason: 'Widened basis agreed with the accountant' })
+      .expect(404);
+    // And a reason is not optional.
+    await request(server())
+      .patch(`/workforce/payroll/runs/${augustRunId}/exceptions/acknowledge`)
+      .set('Authorization', bearer)
+      .send({ code: 'EPF_BASIS_DISCREPANCY', reason: 'ok' })
+      .expect(400);
   });
 });

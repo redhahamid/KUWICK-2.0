@@ -2097,6 +2097,10 @@ export interface PayrollExceptionRow {
   id: string;
   severity: "BLOCKING" | "WARNING" | "INFO";
   code: string;
+  /** A few words for the review card; cause, consequence and remedy sit behind Details. */
+  title: string;
+  /** A policy decision acknowledged once for the year, for everybody it applies to. */
+  policy: boolean;
   staffId: string | null;
   staffName: string | null;
   cause: string;
@@ -2121,12 +2125,16 @@ export interface PayrollExceptionGate {
   warnings: number;
   info: number;
   overridden: number;
+  /** Standing blockers plus warnings nobody has acknowledged: the review's "N need action". */
+  needAction?: number;
   reason: string;
   /** The journey's gate only: records changed since the month was worked out, so it cannot be approved yet. */
   recordsChanged?: boolean;
 }
 
 export interface PayrollExceptionList {
+  /** The run's month, "YYYY-MM": the year a policy acknowledgement covers. */
+  period: string | null;
   exceptions: PayrollExceptionRow[];
   gate: PayrollExceptionGate;
 }

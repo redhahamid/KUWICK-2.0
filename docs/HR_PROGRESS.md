@@ -6,6 +6,101 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 20 — 6 Oktober 2026 — Review: satu kad bagi setiap jenis, tiga bahagian, satu kiraan
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 19 (`fd3a887`). Komit: komit yang menambah bahagian ini (hash dalam
+laporan). **Migrasi: tiada. Tiada logik pengiraan statutori diubah** — hanya
+cara amaran disimpan selepas diakui, dikira dan dipaparkan. Penemuan UAT,
+bahagian C, item 13–17.
+
+### Apa yang berubah
+
+- `[D]` **C13 — satu kad bagi setiap jenis** (`PayrollExceptionCentre.tsx`):
+  baris dikumpul mengikut jenis dalam setiap bahagian, contohnya satu kad
+  *EPF on the employer-selected basis · 3 staff: A, B, C*. Amaran polisi
+  (kini hanya `EPF_BASIS_DISCREPANCY`, ditanda `acknowledgedFor: 'YEAR'`
+  dalam katalog) mendapat satu butang **Acknowledge for 2026** (tahun bulan
+  run). Butang memanggil laluan baharu
+  `PATCH /workforce/payroll/runs/:id/exceptions/acknowledge` `{ code, reason }`:
+  setiap baris terbuka jenis itu diakui satu persatu dalam satu transaksi —
+  audit yang sama dan rekod tahunan yang sama seperti mengakui seorang demi
+  seorang. Tiada baris terbuka → 404; sebab kurang 5 aksara → 400. Butiran
+  setiap orang di bawah **Details** (tertutup).
+- `[D]` **C14 — tiga bahagian**: *Needs action* (blocker dan amaran yang
+  belum diakui), *For information* (baris INFO, dan baris yang dibawa dari
+  bulan lepas sebagai satu kad — notis berasingan di atas Review dibuang) dan
+  *Done* (yang telah diakui, tertutup dengan *Show/Hide*).
+- `[D]` **C15 — rupa yang sama sebelum dan selepas kira semula**
+  (`payroll.service.ts`): pengiraan menulis semula baris amaran setiap kali;
+  kini amaran yang kembali SAMA (kod, orang dan ayat yang sama) mengekalkan
+  siapa mengakuinya, sebab dan tarikh. Amaran EPF yang diakui untuk tahun itu
+  kini ditulis sebagai baris `EPF_BASIS_DISCREPANCY` yang sama, sudah diakui
+  (orang, sebab dan tarikh dari rekod tahunan), bukan baris INFO
+  `EPF_BASIS_ACKNOWLEDGED` yang lain rupa. Kod lama kekal dalam katalog untuk
+  baris yang ditulis sebelum ini (dipaparkan dalam *Done*). Satu ayat untuk
+  semua: *Acknowledged for 2026 by … on 6 Oct 2026: "sebab"*.
+- `[D]` **C16 — satu kiraan**: pengepala "N need action", kaki "N need
+  action. B of them block approval." atau "Nothing needs action.", dan ayat
+  gate pelayan (dipaparkan pada langkah *Approve*) "N need action. None of
+  them blocks approval." — semuanya mengira baris yang sama: blocker yang
+  masih berdiri + amaran yang belum diakui (`approvalGate().needAction`
+  baharu). Kiraan "to check" pada grid, senarai semak *Attendance and leave
+  are settled* dan `worthALook` tidak lagi mengira amaran yang sudah diakui.
+- `[D]` **C17 — teks pendek**: setiap 35 kod dalam katalog mendapat tajuk
+  pendek (`title`, contohnya "Missing clock-in or clock-out", "Monthly tax
+  (PCB) missing"); sebab, akibat dan "What to do" di bawah **Details**.
+- `[D]` **Susunan nama dalam kad**: dalam setiap jenis, orang disusun
+  mengikut susunan pekerja yang satu (`employee-order.ts`). Semasa ujian
+  skrin, "3 staff: A, B, C" bertukar susunan selepas kira semula kerana
+  pangkalan data memulangkan baris yang sama jenis dalam sebarang susunan.
+- `[D]` **Ujian**: API unit +2 (tajuk katalog dan polisi tahunan; kiraan
+  `needAction`) dan satu dikemas kini (ayat gate); e2e: amaran EPF kekal
+  diakui selepas kira semula dan pada bulan berikutnya, butang polisi
+  (`{ acknowledged: 1 }`, 404 bila tiada, 400 bila sebab pendek), amaran HRD
+  kekal diakui selepas kira semula, nama dalam setiap jenis mengikut susunan
+  pekerja (gagal tanpa susunan baharu, lulus dengannya); web +7
+  (`payrollExceptionCentre.test.tsx`).
+- `[D]` **Dokumen**: `KUWICK_MANAGEMENT_A_TO_Z_USER_UAT_GUIDE.md` (ayat gate,
+  PAY-03, PAY-04) dan `HR_UAT_CHECKLIST.md` (7c, 7i, 8) mengikut skrin baharu.
+- `[D]` **Semakan skrin tempatan** (klinik UAT sintetik, Oktober, Contoh
+  Central, tiga pekerja demo pada EPF gaji pokok sahaja): satu kad EPF untuk
+  3 staff; selepas **Acknowledge for 2026** pengepala dan kaki turun bersama
+  dari 7 kepada 4 *need action*; kad dalam *Done* membaca ayat yang sama
+  selepas kira semula; lebar telefon tanpa skrol sisi.
+
+### Uji di staging (ikut urutan)
+
+1. Bulan dengan dua atau lebih pekerja pada asas EPF pilihan majikan →
+   *Review*: satu kad *EPF on the employer-selected basis · N staff*, satu
+   butang **Acknowledge for 2026**; **Details** menunjukkan setiap orang.
+2. Tekan butang, beri satu sebab → kad berpindah ke *Done* (tekan *Show*):
+   "Acknowledged for 2026 by … on …". Pengepala dan kaki menyebut nombor
+   *need action* yang sama.
+3. Kembali ke grid, ubah satu angka (bulan dikira semula) → *Review*: kad
+   yang diakui masih dalam *Done* dengan ayat yang sama.
+4. Bulan dengan baris dibawa dari bulan lepas → kadnya dalam *For
+   information*, bukan notis berasingan.
+5. Langkah *Approve*: ayat atas butang menyebut nombor yang sama dengan
+   *Review*.
+
+### Keputusan terbuka
+
+- `[A]` Amaran yang ayatnya berubah selepas kira semula (contohnya jam OT
+  belum diluluskan bertambah) ditanya semula — sengaja: pengakuan dibuat
+  untuk apa yang ia katakan pada hari itu.
+- `[A]` Hanya asas EPF dianggap polisi tahunan dengan satu butang. Amaran
+  lain untuk beberapa orang (contohnya *Missing clock-in or clock-out*) satu
+  kad, tetapi diakui seorang demi seorang dalam *Details*, kerana setiap satu
+  fakta bulan itu. Cadangan: tambah jenis lain sebagai polisi hanya bila
+  anda memintanya.
+- `[A]` Run yang sudah diluluskan dibekukan dengan baris lamanya: nota EPF
+  yang ditulis sebelum batch ini kekal dengan ayat lama, di bawah *Done*.
+- `[D]` Kiraan pada stepper ("2 blocked, 1 to check") mengira orang, Review
+  mengira perkara; label berbeza untuk unit berbeza.
+
+---
+
 ## Batch 19 — 6 Oktober 2026 — fail dan rekod: CSV dibuka betul dalam Excel, mesej rujukan, "tiada akaun bank", lajur Position dan Employee No.
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas

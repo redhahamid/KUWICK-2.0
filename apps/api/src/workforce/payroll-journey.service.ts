@@ -625,7 +625,9 @@ export class PayrollJourneyService {
       const blockers = ownExceptions.filter(
         (e) => e.severity === 'BLOCKING' && !(e.overridable && e.overriddenByStaffId),
       );
-      const warnings = ownExceptions.filter((e) => e.severity === 'WARNING');
+      // Acknowledged warnings are done, not "to check": the grid, the Review
+      // card and its header count the same rows (UAT, 6 October 2026).
+      const warnings = ownExceptions.filter((e) => e.severity === 'WARNING' && !e.overriddenByStaffId);
       // The remedy for the most serious thing wrong, not the first thing found:
       // a Fix button that opens a warning while a blocker sits under it is a
       // button that wastes the one click somebody gave it.
@@ -1121,7 +1123,7 @@ export class PayrollJourneyService {
           ? { runId: previousRun.id, period: previousRun.period.toISOString().slice(0, 7), periodLabel: monthLabel(previousRun.period), status: previousRun.status }
           : null,
         mustFix: attention.filter((a) => a.blocksApproval).length,
-        worthALook: attention.filter((a) => !a.blocksApproval && a.severity !== 'INFO').length,
+        worthALook: attention.filter((a) => !a.blocksApproval && a.severity !== 'INFO' && !a.overridden).length,
       },
       // -------------------------------------------------------------------
       // STEP 6 — APPROVE.

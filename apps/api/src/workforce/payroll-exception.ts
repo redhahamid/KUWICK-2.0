@@ -16,6 +16,17 @@ export type ExceptionSeverity = 'BLOCKING' | 'WARNING' | 'INFO';
 
 export interface ExceptionTemplate {
   code: string;
+  /**
+   * A few words for the review card (UAT, 6 October 2026: "shorter texts;
+   * long explanations behind Details"). The cause, the consequence and the
+   * remedy are still there, one press away.
+   */
+  title: string;
+  /**
+   * A policy decision rather than a monthly fact: acknowledged once for the
+   * year, for everybody it applies to, with one button.
+   */
+  acknowledgedFor?: 'YEAR';
   severity: ExceptionSeverity;
   /** Whether a permitted actor may pass it with a recorded reason. */
   overridable: boolean;
@@ -57,6 +68,7 @@ export interface ExceptionTemplate {
 export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   NO_SALARY: {
     code: 'NO_SALARY',
+    title: 'No salary on record',
     severity: 'BLOCKING',
     overridable: false,
     cause: () => 'Salary setup is incomplete.',
@@ -66,6 +78,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   },
   NO_DOB: {
     code: 'NO_DOB',
+    title: 'No date of birth',
     severity: 'BLOCKING',
     overridable: false,
     cause: () => 'Date of birth is missing.',
@@ -76,6 +89,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   },
   NO_LEGAL_EMPLOYER: {
     code: 'NO_LEGAL_EMPLOYER',
+    title: 'No employing company',
     severity: 'BLOCKING',
     overridable: false,
     cause: () => 'No employing company is recorded.',
@@ -86,6 +100,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   },
   PCB_MISSING: {
     code: 'PCB_MISSING',
+    title: 'Monthly tax (PCB) missing',
     severity: 'BLOCKING',
     overridable: false,
     cause: () => 'Monthly tax (PCB) is missing.',
@@ -122,6 +137,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    */
   LEAVER_UNTAKEN_LEAVE: {
     code: 'LEAVER_UNTAKEN_LEAVE',
+    title: 'Leaver with untaken leave',
     severity: 'BLOCKING',
     overridable: true,
     cause: (c) =>
@@ -147,6 +163,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    */
   LEAVER_LEAVE_PAYOUT_DUE: {
     code: 'LEAVER_LEAVE_PAYOUT_DUE',
+    title: 'Leave payout due to a leaver',
     severity: 'INFO',
     overridable: false,
     cause: (c) =>
@@ -172,6 +189,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    */
   LEAVER_LEAVE_PAYOUT_WITHHELD: {
     code: 'LEAVER_LEAVE_PAYOUT_WITHHELD',
+    title: 'Leave payout held back',
     severity: 'WARNING',
     overridable: false,
     cause: (c) =>
@@ -188,6 +206,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   },
   UNAPPROVED_OVERTIME: {
     code: 'UNAPPROVED_OVERTIME',
+    title: 'Overtime not approved',
     severity: 'WARNING',
     overridable: true,
     cause: (c) => `${c.hours} hours of overtime need approval.`,
@@ -197,6 +216,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   },
   MISSING_PUNCH: {
     code: 'MISSING_PUNCH',
+    title: 'Missing clock-in or clock-out',
     severity: 'WARNING',
     overridable: true,
     cause: (c) => `${c.days} ${Number(c.days) === 1 ? 'day has' : 'days have'} no clock-in or clock-out.`,
@@ -206,6 +226,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   },
   UNKNOWN_COMPONENT: {
     code: 'UNKNOWN_COMPONENT',
+    title: 'Unknown pay item',
     severity: 'BLOCKING',
     overridable: false,
     cause: (c) => `Payroll input "${c.componentCode}" is not a known pay component.`,
@@ -215,6 +236,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   },
   NO_BANK_DETAILS: {
     code: 'NO_BANK_DETAILS',
+    title: 'No bank account',
     severity: 'WARNING',
     overridable: true,
     cause: () => 'No bank account is recorded for this employee.',
@@ -224,6 +246,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   },
   NEGATIVE_NET: {
     code: 'NEGATIVE_NET',
+    title: 'Net pay below zero',
     severity: 'BLOCKING',
     overridable: false,
     cause: (c) => `Deductions exceed earnings; net pay would be ${c.net}.`,
@@ -243,6 +266,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    */
   SALARY_CHANGED_MID_PERIOD: {
     code: 'SALARY_CHANGED_MID_PERIOD',
+    title: 'Salary changed mid-month',
     severity: 'BLOCKING',
     overridable: false,
     cause: (c) =>
@@ -263,6 +287,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    */
   SALARY_BASIS_UNSUPPORTED: {
     code: 'SALARY_BASIS_UNSUPPORTED',
+    title: 'Not paid a monthly salary',
     severity: 'BLOCKING',
     overridable: false,
     cause: (c) => `This employee is on a ${c.basis} rate, and this build calculates monthly salaries only.`,
@@ -273,6 +298,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   },
   STATUTORY_UNVERIFIED: {
     code: 'STATUTORY_UNVERIFIED',
+    title: 'Statutory tables not verified',
     severity: 'WARNING',
     overridable: true,
     cause: () => 'The EPF, SOCSO and EIS rates have not been checked.',
@@ -307,6 +333,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    */
   REST_DAY_VARIES: {
     code: 'REST_DAY_VARIES',
+    title: 'No fixed rest day',
     severity: 'INFO',
     overridable: false,
     cause: (c) =>
@@ -319,6 +346,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   },
   CARRIED_FORWARD_UNCHECKED: {
     code: 'CARRIED_FORWARD_UNCHECKED',
+    title: 'Lines carried from last month',
     severity: 'INFO',
     overridable: false,
     cause: (c) =>
@@ -331,6 +359,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   },
   CONTRACTOR_EXCLUDED: {
     code: 'CONTRACTOR_EXCLUDED',
+    title: 'Contractor, paid outside payroll',
     severity: 'INFO',
     overridable: false,
     cause: (c) => `${c.name} is engaged as a contractor, not an employee.`,
@@ -382,6 +411,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    */
   OVERTIME_ENTITLEMENT_UNRECORDED: {
     code: 'OVERTIME_ENTITLEMENT_UNRECORDED',
+    title: 'Overtime entitlement not recorded',
     severity: 'BLOCKING',
     overridable: false,
     cause: (c) =>
@@ -415,6 +445,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    */
   CLINIC_RATE_BELOW_STATUTORY: {
     code: 'CLINIC_RATE_BELOW_STATUTORY',
+    title: 'Clinic rate below the statutory rate',
     severity: 'WARNING',
     overridable: false,
     cause: (c) =>
@@ -449,6 +480,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    */
   EMPLOYEE_IN_NO_BRANCH: {
     code: 'EMPLOYEE_IN_NO_BRANCH',
+    title: 'Employee in no branch',
     severity: 'WARNING',
     overridable: true,
     cause: () => 'This employee has no home branch on their staff record, and this payroll run covers one branch.',
@@ -463,6 +495,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   },
   HRD_REGISTRATION_UNRECORDED: {
     code: 'HRD_REGISTRATION_UNRECORDED',
+    title: 'HRD Corp registration not recorded',
     severity: 'WARNING',
     overridable: true,
     cause: (c) => `Whether ${String(c.employerName)} is registered with HRD Corp is not recorded.`,
@@ -492,6 +525,8 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    */
   EPF_BASIS_DISCREPANCY: {
     code: 'EPF_BASIS_DISCREPANCY',
+    title: 'EPF on the employer-selected basis',
+    acknowledgedFor: 'YEAR',
     severity: 'WARNING',
     overridable: true,
     cause: (c) =>
@@ -521,6 +556,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    */
   EPF_BASIS_ACKNOWLEDGED: {
     code: 'EPF_BASIS_ACKNOWLEDGED',
+    title: 'EPF on the employer-selected basis',
     severity: 'INFO',
     overridable: false,
     cause: (c) =>
@@ -535,6 +571,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   /** Mirrors a mid-month salary change: either figure looks correct. */
   EPF_BASIS_CHANGED_MID_PERIOD: {
     code: 'EPF_BASIS_CHANGED_MID_PERIOD',
+    title: 'EPF basis changed mid-month',
     severity: 'BLOCKING',
     overridable: false,
     cause: (c) => `The EPF contribution basis changed on ${String(c.changedOn)}, part-way through this period.`,
@@ -549,6 +586,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   /** Mirrors a mid-month classification change: either figure looks correct. */
   HRD_REGISTRATION_CHANGED_MID_PERIOD: {
     code: 'HRD_REGISTRATION_CHANGED_MID_PERIOD',
+    title: 'HRD Corp class changed mid-month',
     severity: 'BLOCKING',
     overridable: false,
     cause: (c) =>
@@ -578,6 +616,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    */
   EMPLOYED_BY_ANOTHER_COMPANY: {
     code: 'EMPLOYED_BY_ANOTHER_COMPANY',
+    title: 'Employed by another company',
     severity: 'INFO',
     overridable: false,
     cause: (c) => `Employed by ${c.employerName}, not ${c.runEmployerName}.`,
@@ -596,6 +635,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    */
   NOTHING_TO_PAY_OFF_CYCLE: {
     code: 'NOTHING_TO_PAY_OFF_CYCLE',
+    title: 'Nothing to pay in this run',
     severity: 'INFO',
     overridable: false,
     cause: (c) => `Nothing is keyed for this employee in ${c.periodLabel}.`,
@@ -607,6 +647,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   },
   NO_STATUTORY_CLASSIFICATION: {
     code: 'NO_STATUTORY_CLASSIFICATION',
+    title: 'No statutory standing',
     severity: 'BLOCKING',
     overridable: false,
     cause: (c) => `No statutory classification is on record for this employee for ${c.periodLabel}.`,
@@ -624,6 +665,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    */
   STATUTORY_CLASSIFICATION_CHANGED_MID_PERIOD: {
     code: 'STATUTORY_CLASSIFICATION_CHANGED_MID_PERIOD',
+    title: 'Statutory standing changed mid-month',
     severity: 'BLOCKING',
     overridable: false,
     cause: (c) =>
@@ -638,6 +680,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   },
   NO_REST_DAY: {
     code: 'NO_REST_DAY',
+    title: 'No rest day',
     severity: 'BLOCKING',
     overridable: false,
     cause: () => 'No rest day is designated for this employee.',
@@ -650,6 +693,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   },
   PART_MONTH: {
     code: 'PART_MONTH',
+    title: 'Part of the month only',
     severity: 'INFO',
     overridable: false,
     cause: (c) => String(c.note),
@@ -667,6 +711,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    */
   NOT_EMPLOYED_IN_PERIOD: {
     code: 'NOT_EMPLOYED_IN_PERIOD',
+    title: 'Not employed this month',
     severity: 'WARNING',
     overridable: true,
     cause: (c) =>
@@ -678,6 +723,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   },
   STATUTORY_UNKNOWN: {
     code: 'STATUTORY_UNKNOWN',
+    title: 'Statutory figure not worked out',
     severity: 'BLOCKING',
     overridable: false,
     cause: (c) => String(c.note),
@@ -689,6 +735,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   },
   VARIANCE_OUTSIDE_THRESHOLD: {
     code: 'VARIANCE_OUTSIDE_THRESHOLD',
+    title: 'Big change from last month',
     severity: 'WARNING',
     overridable: true,
     cause: (c) => `Take-home pay moved ${c.percent}% against last month.`,
@@ -700,6 +747,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
 
 export interface BuiltException {
   code: string;
+  title: string;
   severity: ExceptionSeverity;
   staffId: string | null;
   cause: string;
@@ -718,6 +766,7 @@ export function buildException(
   if (!t) throw new Error(`Unknown payroll exception code: ${code}`);
   return {
     code: t.code,
+    title: t.title,
     severity: t.severity,
     staffId,
     cause: t.cause(ctx),
@@ -726,6 +775,16 @@ export function buildException(
     deepLink: t.deepLink ? t.deepLink(ctx) : null,
     overridable: t.overridable,
   };
+}
+
+/** The card title for a stored row's code; the code itself for one no longer in the catalogue. */
+export function exceptionTitle(code: string): string {
+  return EXCEPTION_CATALOGUE[code]?.title ?? code;
+}
+
+/** Whether a stored row's code is a policy decision acknowledged for the year. */
+export function isYearPolicy(code: string): boolean {
+  return EXCEPTION_CATALOGUE[code]?.acknowledgedFor === 'YEAR';
 }
 
 /**
@@ -746,6 +805,13 @@ export interface ExceptionGate {
   warnings: number;
   info: number;
   overridden: number;
+  /**
+   * What still needs somebody: the standing blockers and the warnings nobody
+   * has acknowledged. The review's header and footer state this number, and
+   * so does `reason` (UAT, 6 October 2026: the header said 6, the footer
+   * "3 noted").
+   */
+  needAction: number;
   reason: string;
 }
 
@@ -775,6 +841,7 @@ export function approvalGate(
   const warnings = exceptions.filter((e) => e.severity === 'WARNING').length;
   const info = exceptions.filter((e) => e.severity === 'INFO').length;
   const overridden = exceptions.filter((e) => e.overriddenByStaffId).length;
+  const needAction = blockingRows.length + exceptions.filter((e) => e.severity === 'WARNING' && !e.overriddenByStaffId).length;
   return {
     canApprove: blockingRows.length === 0,
     total: exceptions.length,
@@ -782,11 +849,12 @@ export function approvalGate(
     warnings,
     info,
     overridden,
+    needAction,
     reason:
       blockingRows.length === 0
-        ? warnings > 0
-          ? `${warnings} warning(s) noted; none of them prevents approval.`
-          : 'No exceptions.'
+        ? needAction > 0
+          ? `${needAction} need${needAction === 1 ? 's' : ''} action. None of them blocks approval.`
+          : 'Nothing needs action.'
         : `${blockingRows.length} blocking exception(s) must be resolved before this run can be approved.`,
   };
 }

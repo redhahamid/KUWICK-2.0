@@ -1,4 +1,4 @@
-import { approvalGate, buildException, EXCEPTION_CATALOGUE } from './payroll-exception';
+import { approvalGate, buildException, EXCEPTION_CATALOGUE, exceptionTitle, isYearPolicy } from './payroll-exception';
 
 const ex = (
   severity: 'BLOCKING' | 'WARNING' | 'INFO',
@@ -18,7 +18,19 @@ describe('payroll exceptions', () => {
       const consequence = typeof t.consequence === 'function' ? t.consequence(ctx) : t.consequence;
       expect(consequence.length).toBeGreaterThan(20);
       expect(t.remediation.length).toBeGreaterThan(10);
+      // A few words for the review card: the long text is behind Details.
+      expect(t.title.length).toBeGreaterThan(3);
+      expect(t.title.length).toBeLessThanOrEqual(40);
     }
+  });
+
+  it('gives each kind a card title, and marks the policy acknowledged for the year', () => {
+    expect(exceptionTitle('EPF_BASIS_DISCREPANCY')).toBe('EPF on the employer-selected basis');
+    expect(exceptionTitle('EPF_BASIS_ACKNOWLEDGED')).toBe('EPF on the employer-selected basis');
+    expect(exceptionTitle('NOT_A_CODE')).toBe('NOT_A_CODE');
+    expect(isYearPolicy('EPF_BASIS_DISCREPANCY')).toBe(true);
+    expect(isYearPolicy('MISSING_PUNCH')).toBe(false);
+    expect(buildException('MISSING_PUNCH', 's1', { staffId: 's1', days: 2 }).title).toBe('Missing clock-in or clock-out');
   });
 
   it('builds an exception that says what will happen, not just what is wrong', () => {
@@ -167,7 +179,14 @@ describe('payroll exceptions', () => {
     const gate = approvalGate([ex('WARNING'), ex('WARNING')]);
     expect(gate.canApprove).toBe(true);
     expect(gate.warnings).toBe(2);
-    expect(gate.reason).toMatch(/none of them prevents approval/);
+    expect(gate.reason).toBe('2 need action. None of them blocks approval.');
+  });
+
+  it('counts what needs action the way the review does: an acknowledged warning is done, INFO asks nothing', () => {
+    const gate = approvalGate([ex('WARNING'), ex('WARNING', true, 'approver-1'), ex('INFO'), ex('BLOCKING', true, 'approver-1')]);
+    expect(gate).toMatchObject({ canApprove: true, needAction: 1, reason: '1 needs action. None of them blocks approval.' });
+    expect(approvalGate([ex('WARNING', true, 'approver-1'), ex('INFO')])).toMatchObject({ needAction: 0, reason: 'Nothing needs action.' });
+    expect(approvalGate([ex('BLOCKING'), ex('WARNING')])).toMatchObject({ canApprove: false, blocking: 1, needAction: 2 });
   });
 
   it('does not block on INFO', () => {

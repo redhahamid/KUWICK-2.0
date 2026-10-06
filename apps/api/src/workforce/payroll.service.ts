@@ -7,9 +7,12 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { ActingStaff } from '../clinical/clinical-actor';
 import { computeInputStamps, diffInputStamps, storedInputStamps } from './payroll-input-stamps';
+import { byEmployeeName } from './employee-order';
 import {
   PayrollApprovalMode as PayrollApprovalModeEnum,
+  PayrollException,
   PayrollRunStatus,
   Prisma,
   PayrollRunType as PayrollRunTypeEnum,
@@ -93,7 +96,7 @@ import {
   decideApproval,
   describeApprovalMode,
 } from './payroll-approval-rule';
-import { approvalGate, BuiltException, buildException, ExceptionSeverity } from './payroll-exception';
+import { approvalGate, BuiltException, buildException, ExceptionSeverity, exceptionTitle, isYearPolicy } from './payroll-exception';
 import { resolveSalaryForPayroll, SalaryRow } from './salary-resolution';
 
 /** How long one calculation may hold its transaction. See `calculate`. */
@@ -835,7 +838,15 @@ export class PayrollService {
       // every blocker depended on a sentence surviving unchanged. A blocker
       // that has to carry four facts (what the salary was, what it became, the
       // day it changed, which month) cannot survive that round trip.
-      const exceptions: (BuiltException & { name: string })[] = [];
+      /**
+       * `acknowledged`: a policy warning already acknowledged for the year, so
+       * the row is written acknowledged — the same row, by the same person,
+       * with the same reason, as on the day it was acknowledged.
+       */
+      const exceptions: (BuiltException & {
+        name: string;
+        acknowledged?: { byStaffId: string | null; reason: string; at: Date };
+      })[] = [];
       const raise = (
         code: string,
         employee: { staffId: string; staff: { fullName: string } },
@@ -910,7 +921,7 @@ export class PayrollService {
       // A DISCREPANCY ALREADY ACKNOWLEDGED FOR THIS YEAR, per selection: the
       // warning is raised once per policy decision, then rides as a one-line
       // note until the selection changes or the year turns.
-      const acknowledgedBasis = new Map<string, { by: string; on: string; reason: string }>();
+      const acknowledgedBasis = new Map<string, { by: string; on: string; reason: string; byStaffId: string | null; at: Date }>();
       for (const ack of await tx.payrollWarningAcknowledgement.findMany({
         where: { tenantId: currentTenantId(), code: 'EPF_BASIS_DISCREPANCY', year: period.getUTCFullYear() },
         include: { acknowledgedBy: { select: { fullName: true } } },
@@ -919,6 +930,8 @@ export class PayrollService {
           by: ack.acknowledgedBy?.fullName ?? 'somebody no longer on the staff list',
           on: ack.createdAt.toISOString().slice(0, 10),
           reason: ack.reason,
+          byStaffId: ack.acknowledgedByStaffId,
+          at: ack.updatedAt,
         });
       }
       const basisByStaff = new Map<string, ContributionBasisRow[]>();
@@ -1976,9 +1989,16 @@ export class PayrollService {
         if (payslip.epfBasis && payslip.epfBasis.excluded.length > 0) {
           const provenance =
             basisOutcome.kind === 'RESOLVED' ? basisProvenance.get(basisOutcome.row.id) : undefined;
-          // Once acknowledged for the year, the same selection is a note, not a warning.
+          /*
+           * ONCE ACKNOWLEDGED FOR THE YEAR, the same selection is the same
+           * warning, ALREADY ACKNOWLEDGED — not a different note. It used to
+           * come back as an INFO row of another code, so an acknowledgement
+           * looked one way on the day and another after any recalculation
+           * (UAT, 6 October 2026). EPF_BASIS_ACKNOWLEDGED stays in the
+           * catalogue for rows written before.
+           */
           const acknowledged = basisOutcome.kind === 'RESOLVED' ? acknowledgedBasis.get(basisOutcome.row.id) : undefined;
-          raise(acknowledged ? 'EPF_BASIS_ACKNOWLEDGED' : 'EPF_BASIS_DISCREPANCY', employee, {
+          raise('EPF_BASIS_DISCREPANCY', employee, {
             acknowledgedBy: acknowledged?.by ?? '',
             acknowledgedOn: acknowledged?.on ?? '',
             acknowledgementReason: acknowledged?.reason ?? '',
@@ -1998,6 +2018,9 @@ export class PayrollService {
             selectedBy: provenance?.selectedBy ?? 'somebody no longer on the staff list',
             selectionReason: provenance?.reason ?? 'no reason recorded',
           });
+          if (acknowledged) {
+            exceptions[exceptions.length - 1].acknowledged = { byStaffId: acknowledged.byStaffId, reason: acknowledged.reason, at: acknowledged.at };
+          }
         }
 
         // PCB IS calculated by the MTD engine when the tax profile is on
@@ -2477,8 +2500,24 @@ export class PayrollService {
       //
       // The blob above is still written so that nothing reading it breaks; the
       // rows are what the approval gate now consults.
+      /*
+       * AN ACKNOWLEDGEMENT THAT STILL APPLIES IS KEPT (UAT, 6 October 2026:
+       * "acknowledged items must look the same whether acknowledged before or
+       * after a recalculation"). The rows are rewritten on every calculation;
+       * a warning that comes back IDENTICAL — same code, same person, same
+       * words — keeps who acknowledged it, why and when. One that changed
+       * (more hours unapproved, a different figure) asks again.
+       */
+      const keyOf = (row: { code: string; staffId: string | null; cause: string }) => `${row.code}|${row.staffId ?? ''}|${row.cause}`;
+      const stillAcknowledged = new Map(
+        (await tx.payrollException.findMany({ where: { payrollRunId: runId, overriddenByStaffId: { not: null } } })).map((row) => [keyOf(row), row]),
+      );
       await tx.payrollException.deleteMany({ where: { payrollRunId: runId } });
       for (const built of exceptions) {
+        const before = built.overridable ? stillAcknowledged.get(keyOf(built)) : undefined;
+        const ack =
+          built.acknowledged ??
+          (before ? { byStaffId: before.overriddenByStaffId, reason: before.overrideReason ?? '', at: before.overriddenAt ?? new Date() } : undefined);
         await tx.payrollException.create({
           data: {
             tenantId: currentTenantId(),
@@ -2491,6 +2530,7 @@ export class PayrollService {
             remediation: built.remediation,
             deepLink: built.deepLink,
             overridable: built.overridable,
+            ...(ack && ack.byStaffId ? { overriddenByStaffId: ack.byStaffId, overrideReason: ack.reason, overriddenAt: ack.at } : {}),
           },
         });
       }
@@ -4002,6 +4042,7 @@ export class PayrollService {
   /** The exception centre for a run. */
   async exceptions(runId: string) {
     await requirePermission(this.rawPrisma, 'hr.payroll.view');
+    const run = await this.prisma.payrollRun.findUnique({ where: { id: runId }, select: { period: true } });
     const rows = await this.prisma.payrollException.findMany({
       where: { payrollRunId: runId },
       orderBy: [{ severity: 'asc' }, { code: 'asc' }],
@@ -4010,12 +4051,26 @@ export class PayrollService {
         overriddenBy: { select: { fullName: true } },
       },
     });
+    /*
+     * Within a kind, the people in the one employee order (employee-order.ts):
+     * the database returned ties as it pleased, so a card's "3 staff: A, B, C"
+     * read B, A, C after a recalculation (UAT, 6 October 2026).
+     */
+    const rank: Record<ExceptionSeverity, number> = { BLOCKING: 0, WARNING: 1, INFO: 2 };
+    const byName = byEmployeeName((row: (typeof rows)[number]) => ({ name: row.staff?.fullName ?? '', staffId: row.staffId ?? '' }));
+    rows.sort((a, b) => rank[a.severity] - rank[b.severity] || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0) || byName(a, b));
     const gate = approvalGate(rows);
     return {
+      /** The run's month, "YYYY-MM": the year a policy acknowledgement covers. */
+      period: run ? run.period.toISOString().slice(0, 7) : null,
       exceptions: rows.map((row) => ({
         id: row.id,
         severity: row.severity,
         code: row.code,
+        /** A few words for the card; cause, consequence and remedy sit behind Details. */
+        title: exceptionTitle(row.code),
+        /** Acknowledged once for the year, for everybody it applies to. */
+        policy: isYearPolicy(row.code),
         staffId: row.staffId,
         staffName: row.staff?.fullName ?? null,
         cause: row.cause,
@@ -4031,70 +4086,98 @@ export class PayrollService {
     };
   }
 
+  /**
+   * ACKNOWLEDGE EVERY OPEN WARNING OF ONE CODE IN A RUN, with one reason
+   * (UAT, 6 October 2026: "group identical policy warnings into ONE card with
+   * a single Acknowledge for 2026 button"). Each row is acknowledged exactly
+   * as one at a time would be — the same audit row, the same year record for
+   * a policy warning — inside one transaction, so it is all or none.
+   */
+  async acknowledgeExceptions(runId: string, code: string, reason: string) {
+    return withAdminTx(this.rawPrisma, 'hr.payroll.approve', async (tx, actor) => {
+      const rows = await tx.payrollException.findMany({
+        where: { payrollRunId: runId, code, overridable: true, overriddenByStaffId: null },
+      });
+      if (rows.length === 0) throw new NotFoundException('Nothing of that kind is waiting to be acknowledged on this run.');
+      for (const row of rows) await this.acknowledgeRow(tx, actor, row, reason);
+      return { acknowledged: rows.length };
+    });
+  }
+
   /** Pass a warning deliberately, with a reason that stays on the record. */
   async overrideException(exceptionId: string, reason: string) {
     return withAdminTx(this.rawPrisma, 'hr.payroll.approve', async (tx, actor) => {
       const row = await tx.payrollException.findFirst({ where: { id: exceptionId } });
       if (!row) throw new NotFoundException('Exception not found');
-      if (!row.overridable) {
-        throw new BadRequestException(
-          `"${row.code}" cannot be overridden. ${row.consequence} Resolve it rather than passing it.`,
+      return this.acknowledgeRow(tx, actor, row, reason);
+    });
+  }
+
+  /**
+   * ONE ROW ACKNOWLEDGED, the same whether it is passed on its own or with
+   * every other open row of its kind: the override on the row, the year
+   * record for a policy warning, and the audit.
+   */
+  private async acknowledgeRow(tx: AdminTx, actor: ActingStaff, row: PayrollException, reason: string) {
+    if (!row.overridable) {
+      throw new BadRequestException(
+        `"${row.code}" cannot be overridden. ${row.consequence} Resolve it rather than passing it.`,
+      );
+    }
+    if (!reason || reason.trim().length < 5) {
+      throw new BadRequestException('Say why this is being passed. It becomes part of the payroll record.');
+    }
+    const saved = await tx.payrollException.update({
+      where: { id: row.id },
+      data: { overriddenByStaffId: actor.id, overrideReason: reason, overriddenAt: new Date() },
+    });
+    /*
+     * AN EPF BASIS DISCREPANCY IS A POLICY DECISION, not a monthly accident:
+     * acknowledging it once covers that selection for the year, and every
+     * calculation after this one writes the warning already acknowledged, by
+     * the same person with the same reason. Keyed by the dated basis row, so
+     * a changed selection asks again.
+     */
+    if (row.code === 'EPF_BASIS_DISCREPANCY' && row.staffId) {
+      const run = await tx.payrollRun.findUnique({ where: { id: row.payrollRunId }, select: { period: true } });
+      if (run) {
+        const periodEnd = new Date(Date.UTC(run.period.getUTCFullYear(), run.period.getUTCMonth() + 1, 0));
+        const rows = await tx.employeeContributionBasis.findMany({
+          where: { staffId: row.staffId, scheme: 'EPF' },
+          orderBy: { effectiveFrom: 'asc' },
+        });
+        const outcome = resolveContributionBasisForPayroll(
+          rows.map((r) => ({ id: r.id, mode: r.mode, includedComponentCodes: r.includedComponentCodes, effectiveFrom: r.effectiveFrom, effectiveTo: r.effectiveTo })),
+          run.period,
+          periodEnd,
         );
-      }
-      if (!reason || reason.trim().length < 5) {
-        throw new BadRequestException('Say why this is being passed. It becomes part of the payroll record.');
-      }
-      const saved = await tx.payrollException.update({
-        where: { id: exceptionId },
-        data: { overriddenByStaffId: actor.id, overrideReason: reason, overriddenAt: new Date() },
-      });
-      /*
-       * AN EPF BASIS DISCREPANCY IS A POLICY DECISION, not a monthly accident:
-       * acknowledging it once covers that selection for the year, and the
-       * months after this one carry a one-line note instead of the warning.
-       * Keyed by the dated basis row, so a changed selection asks again.
-       */
-      if (row.code === 'EPF_BASIS_DISCREPANCY' && row.staffId) {
-        const run = await tx.payrollRun.findUnique({ where: { id: row.payrollRunId }, select: { period: true } });
-        if (run) {
-          const periodEnd = new Date(Date.UTC(run.period.getUTCFullYear(), run.period.getUTCMonth() + 1, 0));
-          const rows = await tx.employeeContributionBasis.findMany({
-            where: { staffId: row.staffId, scheme: 'EPF' },
-            orderBy: { effectiveFrom: 'asc' },
+        if (outcome.kind === 'RESOLVED') {
+          const year = run.period.getUTCFullYear();
+          await tx.payrollWarningAcknowledgement.upsert({
+            where: { tenantId_code_subjectId_year: { tenantId: currentTenantId(), code: row.code, subjectId: outcome.row.id, year } },
+            create: { tenantId: currentTenantId(), code: row.code, subjectId: outcome.row.id, year, acknowledgedByStaffId: actor.id, reason },
+            update: { acknowledgedByStaffId: actor.id, reason },
           });
-          const outcome = resolveContributionBasisForPayroll(
-            rows.map((r) => ({ id: r.id, mode: r.mode, includedComponentCodes: r.includedComponentCodes, effectiveFrom: r.effectiveFrom, effectiveTo: r.effectiveTo })),
-            run.period,
-            periodEnd,
-          );
-          if (outcome.kind === 'RESOLVED') {
-            const year = run.period.getUTCFullYear();
-            await tx.payrollWarningAcknowledgement.upsert({
-              where: { tenantId_code_subjectId_year: { tenantId: currentTenantId(), code: row.code, subjectId: outcome.row.id, year } },
-              create: { tenantId: currentTenantId(), code: row.code, subjectId: outcome.row.id, year, acknowledgedByStaffId: actor.id, reason },
-              update: { acknowledgedByStaffId: actor.id, reason },
-            });
-            await recordAudit(tx, actor, {
-              action: 'payrollWarning.acknowledged',
-              entityType: 'EmployeeContributionBasis',
-              entityId: outcome.row.id,
-              after: { code: row.code, year, staffId: row.staffId },
-              reason,
-              source: 'hr.payroll',
-            });
-          }
+          await recordAudit(tx, actor, {
+            action: 'payrollWarning.acknowledged',
+            entityType: 'EmployeeContributionBasis',
+            entityId: outcome.row.id,
+            after: { code: row.code, year, staffId: row.staffId },
+            reason,
+            source: 'hr.payroll',
+          });
         }
       }
-      await recordAudit(tx, actor, {
-        action: 'payrollException.overridden',
-        entityType: 'PayrollException',
-        entityId: exceptionId,
-        after: { code: row.code, severity: row.severity },
-        reason,
-        source: 'hr.payroll',
-      });
-      return saved;
+    }
+    await recordAudit(tx, actor, {
+      action: 'payrollException.overridden',
+      entityType: 'PayrollException',
+      entityId: row.id,
+      after: { code: row.code, severity: row.severity },
+      reason,
+      source: 'hr.payroll',
     });
+    return saved;
   }
 
 }

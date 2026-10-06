@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { AcknowledgeExceptionsDto } from './dto/acknowledge-exceptions.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Response } from 'express';
@@ -967,6 +968,12 @@ export class WorkforceController {
   @Patch('payroll/exceptions/:id/override')
   overridePayrollException(@Param('id') id: string, @Body() body: { reason: string }) {
     return this.payroll.overrideException(id, body.reason);
+  }
+
+  /** One reason for every open warning of one kind on the run: a policy acknowledged for the year. */
+  @Patch('payroll/runs/:id/exceptions/acknowledge')
+  acknowledgePayrollExceptions(@Param('id') id: string, @Body() dto: AcknowledgeExceptionsDto) {
+    return this.payroll.acknowledgeExceptions(id, dto.code, dto.reason);
   }
 
   @Get('payroll/runs/:id/variance')

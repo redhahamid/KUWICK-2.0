@@ -152,6 +152,24 @@ describe('HRD levy in the payroll run (e2e)', () => {
     expect(warning!.staffId).toBeNull();
     // And it does not block approval on its own.
     expect(gate.body.gate.canApprove).toBe(true);
+
+    /*
+     * AN ACKNOWLEDGEMENT SURVIVES WORKING THE MONTH OUT AGAIN when the warning
+     * comes back saying the same thing (UAT, 6 October 2026).
+     */
+    const id = (gate.body.exceptions as { id: string; code: string }[]).find((row) => row.code === 'HRD_REGISTRATION_UNRECORDED')!.id;
+    await request(app.getHttpServer())
+      .patch(`/workforce/payroll/exceptions/${id}/override`)
+      .set('Authorization', bearer)
+      .send({ reason: 'Registration in progress with HRD Corp' })
+      .expect(200);
+    await request(app.getHttpServer()).patch(`/workforce/payroll/runs/${runId}/calculate`).set('Authorization', bearer).expect(200);
+    const again = await request(app.getHttpServer()).get(`/workforce/payroll/runs/${runId}/exceptions`).set('Authorization', bearer).expect(200);
+    expect((again.body.exceptions as { code: string }[]).find((row) => row.code === 'HRD_REGISTRATION_UNRECORDED')).toMatchObject({
+      title: 'HRD Corp registration not recorded',
+      overriddenBy: expect.any(String),
+      overrideReason: 'Registration in progress with HRD Corp',
+    });
   });
 
   it('levies 1% of leviable wages into employer cost once s.14 registration is recorded', async () => {

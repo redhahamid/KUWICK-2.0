@@ -524,22 +524,14 @@ function ReviewStep({
         </StatRow>
       </div>
 
-      {carried.length > 0 ? (
-        <div className="hr-pad hr-pad--top0">
-          <div className="hr-notice hr-notice--info" data-testid="carried-unchecked">
-            <strong>
-              {carried.length} {carried.length === 1 ? 'line' : 'lines'} carried from {previousMonth} {carried.length === 1 ? 'has' : 'have'} not
-              been edited or cleared.
-            </strong>{' '}
-            {carried.length === 1 ? 'It' : 'They'} will be paid at last month’s amount:{' '}
-            {carried.map((line) => `${line.name}, ${line.label} ${ringgit(line.amount)}`).join('; ')}. Change or clear any that should
-            not repeat on the grid, or leave them as they are.
-          </div>
-        </div>
-      ) : null}
-
+      {/* The carried lines are a card of the review's For information part now, not a notice of their own. */}
       <div className="hr-pad hr-pad--top0">
-        <PayrollExceptionCentre runId={runId} canOverride={mayApprove} onFixInputs={onFixInputs} />
+        <PayrollExceptionCentre
+          runId={runId}
+          canOverride={mayApprove}
+          onFixInputs={onFixInputs}
+          carried={{ from: previousMonth, lines: carried.map((line) => ({ name: line.name, label: line.label, amount: ringgit(line.amount) })) }}
+        />
       </div>
 
       {/*
@@ -649,7 +641,8 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
   const canFinaliseHere = screens.md ?? true;
   const gate = data.review.gate;
   const blockers = data.review.attention.filter((item) => item.blocksApproval);
-  const warnings = data.review.attention.filter((item) => !item.blocksApproval && item.severity === 'WARNING');
+  // An acknowledged warning is done here too, as it is on the Review stage.
+  const warnings = data.review.attention.filter((item) => !item.blocksApproval && item.severity === 'WARNING' && !item.overridden);
   const provisional = data.run.statutoryStatus !== 'CONFIGURED';
   const alreadyApproved = data.run.status === 'APPROVED' || data.run.status === 'PAID';
   const approval = data.approval;

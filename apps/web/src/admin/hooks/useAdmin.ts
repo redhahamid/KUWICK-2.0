@@ -1628,6 +1628,15 @@ export function usePayrollExceptions(runId: string | undefined) {
   });
 }
 
+/** Acknowledge every open warning of one kind on a run, with one reason: a policy, "for 2026". */
+export function useAcknowledgeExceptions() {
+  return useAdminMutation(
+    ({ runId, code, reason }: { runId: string; code: string; reason: string }) =>
+      apiClient.patch(`/workforce/payroll/runs/${runId}/exceptions/acknowledge`, { code, reason }),
+    ["admin-hr"],
+  );
+}
+
 export function useOverrideException() {
   return useAdminMutation(
     ({ id, reason }: { id: string; reason: string }) =>

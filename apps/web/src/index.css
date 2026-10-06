@@ -5091,6 +5091,24 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 .kw-exceptionCentre .kw-attention:last-child { padding-bottom: 4px; }
 .kw-exceptionCentre .kw-attention--blocking .kw-attention__body { border-left-color: var(--kw-block-fg); }
 
+/* THE REVIEW'S CARDS (UAT, 6 October 2026): a title, who it is about, and
+   Details for the long explanation. */
+.kw-reviewCard__who { font-weight: 500; color: var(--kw-text-secondary); }
+.kw-reviewCard__toggle {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin-top: 4px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--kw-c-indigo-text, #3a40c2);
+  cursor: pointer;
+}
+.kw-reviewCard__toggle:hover { text-decoration: underline; }
+.kw-reviewCard__details { margin-top: 8px; display: flex; flex-direction: column; gap: 10px; }
+.kw-reviewCard__row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: flex-start; }
+.kw-reviewCard__collapsed { font-size: 12.5px; color: var(--kw-text-secondary); }
+
 /* Three numbers an owner actually wants. */
 .kw-reviewFigures {
   display: grid;
