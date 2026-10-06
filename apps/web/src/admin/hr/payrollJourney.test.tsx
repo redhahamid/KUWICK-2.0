@@ -281,6 +281,14 @@ describe('the stepper does not tick a step that still has a blocker', () => {
 });
 
 describe('the approval gate', () => {
+  it('says why when records changed since the month was worked out, not "0 things must be sorted"', () => {
+    // The journey gate carries recordsChanged; every place that would print a
+    // blocker count prints the gate's own reason instead.
+    const source = code(runSource);
+    expect(source.match(/gate\.recordsChanged/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+    expect(source).toMatch(/Locked until the month is worked out again/);
+  });
+
   it('takes canApprove from the API gate, never from a count on the screen', () => {
     expect(code(runSource)).toMatch(/gate\.canApprove/);
     // The button's disabled state derives from the server's gate. It may also

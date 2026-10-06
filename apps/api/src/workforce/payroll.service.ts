@@ -7,7 +7,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { computeInputStamps } from './payroll-input-stamps';
+import { computeInputStamps, diffInputStamps, storedInputStamps } from './payroll-input-stamps';
 import {
   PayrollApprovalMode as PayrollApprovalModeEnum,
   PayrollRunStatus,
@@ -2762,6 +2762,14 @@ export class PayrollService {
       // under a snapshot nothing re-prices. Only recalculation re-stamps.
       await this.refuseStaleStatutoryStamp(tx, run);
 
+      // THE RECORDS MUST STILL BE THE ONES IT WAS WORKED OUT FROM (UAT,
+      // 6 October 2026: "block approval until the month is worked out
+      // again"). A salary, standing, item or attendance changed since the
+      // calculation means the figures on screen are not what the records now
+      // say, and approving would freeze them. Refused before any approval
+      // row is written, for the first and the second approver alike.
+      await this.refuseChangedRecords(tx, run);
+
       // THE APPROVAL GATE, from exception ROWS.
       //
       // A deliberate, specified change from "any exception blocks": BLOCKING
@@ -2970,6 +2978,33 @@ export class PayrollService {
    * never recorded is not judged — the list of stamped schemes has grown over
    * time — and a run that carries no stamp at all is left to the other gates.
    */
+  /**
+   * Refuse to approve a month whose records changed after it was worked out:
+   * the same comparison the workspace's banner makes (payroll-input-stamps.ts),
+   * made again here so a stale screen or a direct call cannot approve it. A
+   * run worked out before fingerprints existed has nothing to compare with
+   * and is not refused on this ground.
+   */
+  private async refuseChangedRecords(tx: AdminTx, run: { period: Date; clinicId: string | null; inputStamps: unknown }) {
+    const saved = storedInputStamps(run.inputStamps);
+    if (!saved) return;
+    const changed = diffInputStamps(saved, await computeInputStamps(tx, { clinicId: run.clinicId, period: run.period }));
+    if (changed.length === 0) return;
+    const names = new Map(
+      (await tx.staff.findMany({ where: { id: { in: changed.map((c) => c.staffId) } }, select: { id: true, fullName: true } })).map(
+        (row) => [row.id, row.fullName] as [string, string],
+      ),
+    );
+    const list = changed
+      .slice(0, 5)
+      .map((c) => `${names.get(c.staffId) ?? 'an employee no longer on record'}: ${c.what.join(', ')}`)
+      .join('; ');
+    throw new ConflictException(
+      `Records changed since this month was worked out (${list}${changed.length > 5 ? `; and ${changed.length - 5} more` : ''}). ` +
+        'Work it out again, then approve.',
+    );
+  }
+
   private async refuseStaleStatutoryStamp(tx: AdminTx, run: { period: Date; statutorySnapshot: unknown }) {
     const stamped = (run.statutorySnapshot ?? null) as unknown as StatutoryStamp | null;
     if (!stamped || !Array.isArray(stamped.schedules)) return;

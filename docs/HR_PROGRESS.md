@@ -6,6 +6,63 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 18 — 6 Oktober 2026 — rekod berubah kini MENYEKAT kelulusan; keputusan anda direkod
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 17 (`fec0e73`). Komit: komit yang menambah bahagian ini (hash dalam
+laporan). **Migrasi: tiada. Tiada logik pengiraan statutori diubah.**
+
+### Keputusan anda (6 Oktober 2026)
+
+1. `[D]` **Hari OFF roster untuk staf "Rotating"**: tidak sekarang — dikaji
+   semula bersama pilot Kehadiran. Payroll kekal mengira seperti "Varies
+   week to week".
+2. `[D]` **Perubahan bertarikh ke belakang vs bulan diluluskan**: peraturan
+   semasa dikekalkan (ditolak jika mana-mana bulan ≥ tarikh itu sudah
+   diluluskan untuk pekerja itu).
+3. `[D]` **Sepanduk rekod berubah**: kini MENYEKAT kelulusan sehingga bulan
+   dikerjakan semula — batch ini.
+4. `[D]` **Susunan senarai bank dengan baris dikecualikan**: diterima
+   (mengikut nama, ditanda).
+
+### Apa yang berubah
+
+- `[D]` **Pelayan menolak kelulusan** (`PayrollService.refuseChangedRecords`,
+  dipanggil dalam `approve` sejurus selepas semakan jadual statutori dan
+  sebelum sebarang rekod kelulusan ditulis): cap jari input dikira semula
+  dan dibanding seperti sepanduk; jika berbeza → 409 "Records changed since
+  this month was worked out (Nama: jenis rekod). Work it out again, then
+  approve." Terpakai pada pelulus pertama dan kedua. Run yang dikerjakan
+  sebelum cap jari wujud tidak ditolak atas sebab ini.
+- `[D]` **Gerbang di ruang kerja** (`journey.review.gate`): `canApprove`
+  palsu dengan `recordsChanged: true` dan sebabnya sendiri; butang *Proceed
+  to approval* dan *Approve* dimatikan, dan teks yang dahulu mengira
+  "0 things must be sorted" kini menyebut sebab rekod berubah dan "Locked
+  until the month is worked out again". Langkah Review tidak bertanda.
+- `[D]` **Sepanduk** menambah baris "Approval is blocked until it is worked
+  out again."
+- `[D]` **Ujian**: e2e `pcb-additional` dilanjutkan (gerbang palsu dengan
+  sebab; `approve` → 409 dengan nama dan jenis; tiada baris kelulusan;
+  selepas dikerjakan semula `recordsChanged: false`), web +1 pengawal sumber
+  dan sepanduk diperluas.
+
+### Uji di staging (ikut urutan)
+
+1. Draf bulan yang sudah dikerjakan → ubah Additional PCB seorang pekerja →
+   *Payroll*: sepanduk dengan "Approval is blocked until it is worked out
+   again."; langkah *Approve*: butang dimatikan, "Locked until the month is
+   worked out again".
+2. *Work it out again* → sepanduk hilang, butang *Approve* aktif semula.
+
+### Keputusan terbuka
+
+- `[A]` Senarai run bulanan (cawangan) masih membaca gerbang pengecualian
+  sahaja; sekatan rekod berubah dikuatkuasa di ruang kerja run dan di
+  pelayan. Mengira cap jari untuk setiap run dalam senarai bulan akan
+  memperlahankan halaman itu.
+
+---
+
 ## Batch 17 — 5 Oktober 2026 — "Records changed since this draft was worked out — work it out again"
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas

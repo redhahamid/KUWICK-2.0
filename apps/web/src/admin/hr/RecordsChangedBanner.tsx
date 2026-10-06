@@ -26,6 +26,7 @@ export function RecordsChangedBanner({
   return (
     <div className="hr-notice hr-notice--attn" role="alert" data-testid="records-changed">
       <strong>Records changed since this draft was worked out — work it out again.</strong>
+      <div>Approval is blocked until it is worked out again.</div>
       <ul>
         {shown.map((person) => (
           <li key={person.staffId}>

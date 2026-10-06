@@ -164,15 +164,32 @@ describe('Additional PCB each month (e2e)', () => {
    */
   it('says when a record changed after the month was worked out, and stops saying it once worked out again', async () => {
     const runId = await runMonth('2026-08');
-    type Journey = { recordsChanged: null | { employees: { staffId: string; name: string; what: string[] }[] } };
+    type Journey = {
+      recordsChanged: null | { employees: { staffId: string; name: string; what: string[] }[] };
+      review: { gate: { canApprove: boolean; recordsChanged?: boolean; reason: string } };
+    };
     const journey = async () =>
       (await request(server()).get(`/workforce/payroll/runs/${runId}/journey`).set('Authorization', bearer).expect(200)).body as Journey;
     expect((await journey()).recordsChanged).toBeNull();
 
     await standing(bettyId, { effectiveFrom: '2026-08-01', additionalPcbCents: 25_000, additionalPcbNote: 'CP38 ref 2026/9', reason: 'CP38 direction' }).expect(201);
-    expect((await journey()).recordsChanged?.employees).toEqual([{ staffId: bettyId, name: 'Additional Betty', what: ['statutory standing'] }]);
+    const stale = await journey();
+    expect(stale.recordsChanged?.employees).toEqual([{ staffId: bettyId, name: 'Additional Betty', what: ['statutory standing'] }]);
+
+    // And it BLOCKS approval until worked out again (UAT, 6 October 2026):
+    // the gate says so in its own words, and the server refuses before any
+    // approval is recorded.
+    expect(stale.review.gate).toMatchObject({ canApprove: false, recordsChanged: true });
+    expect(stale.review.gate.reason).toMatch(/Records changed since this month was worked out/);
+    const refused = await request(server()).patch(`/workforce/payroll/runs/${runId}/approve`).set('Authorization', bearer).send({});
+    expect(refused.status).toBe(409);
+    expect(refused.body.message).toMatch(/Records changed since this month was worked out \(Additional Betty: statutory standing\)\. Work it out again, then approve\./);
+    const approvals = await withTenantContext(prisma, tenantId, (tx) => tx.payrollRunApproval.count({ where: { payrollRunId: runId } }));
+    expect(approvals).toBe(0);
 
     await request(server()).patch(`/workforce/payroll/runs/${runId}/calculate`).set('Authorization', bearer).expect(200);
-    expect((await journey()).recordsChanged).toBeNull();
+    const fresh = await journey();
+    expect(fresh.recordsChanged).toBeNull();
+    expect(fresh.review.gate.recordsChanged).toBe(false);
   });
 });

@@ -2122,6 +2122,8 @@ export interface PayrollExceptionGate {
   info: number;
   overridden: number;
   reason: string;
+  /** The journey's gate only: records changed since the month was worked out, so it cannot be approved yet. */
+  recordsChanged?: boolean;
 }
 
 export interface PayrollExceptionList {

@@ -581,7 +581,9 @@ function ReviewStep({
         <span className="hr-small hr-muted">
           {gate.canApprove
             ? 'Nothing is blocking this month.'
-            : `${gate.blocking} thing${gate.blocking === 1 ? '' : 's'} must be sorted before this run can be approved.`}
+            : gate.recordsChanged
+              ? gate.reason
+              : `${gate.blocking} thing${gate.blocking === 1 ? '' : 's'} must be sorted before this run can be approved.`}
         </span>
         <span className="hr-spacer" />
         <button type="button" className="hr-btn" onClick={() => onGoTo('prepare')}>
@@ -818,7 +820,9 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
                     ? approval.completesTheRun
                       ? gate.reason
                       : 'Your approval will be recorded. The run stays open until a second person approves it.'
-                    : `${gate.blocking} thing${gate.blocking === 1 ? '' : 's'} must be sorted first. Kuwick will not approve a run it cannot compute.`}
+                    : gate.recordsChanged
+                      ? gate.reason
+                      : `${gate.blocking} thing${gate.blocking === 1 ? '' : 's'} must be sorted first. Kuwick will not approve a run it cannot compute.`}
               </p>
               <button
                 type="button"
@@ -861,7 +865,9 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
               </button>
               {!gate.canApprove ? (
                 <div className="hr-muted hr-small" style={{ marginTop: 8, textAlign: 'center' }}>
-                  Locked until the {gate.blocking} item{gate.blocking === 1 ? '' : 's'} {gate.blocking === 1 ? 'is' : 'are'} sorted
+                  {gate.recordsChanged
+                    ? 'Locked until the month is worked out again'
+                    : `Locked until the ${gate.blocking} item${gate.blocking === 1 ? '' : 's'} ${gate.blocking === 1 ? 'is' : 'are'} sorted`}
                 </div>
               ) : null}
             </>

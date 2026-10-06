@@ -1100,7 +1100,21 @@ export class PayrollJourneyService {
       },
       pay: { rows: paidRows, totals: payTotals, columns, hrdAdvice },
       review: {
-        gate,
+        /*
+         * A month whose records changed since it was worked out cannot be
+         * approved (UAT, 6 October 2026), and the gate says so in its own
+         * words rather than as "0 things must be sorted". The server refuses
+         * on the same comparison (PayrollService.refuseChangedRecords).
+         */
+        gate:
+          recordsChanged && recordsChanged.length > 0
+            ? {
+                ...gate,
+                canApprove: false,
+                recordsChanged: true,
+                reason: 'Records changed since this month was worked out. Work it out again before approving.',
+              }
+            : { ...gate, recordsChanged: false },
         attention,
         /** Null when this branch has no run for the month before. */
         previousRun: previousRun

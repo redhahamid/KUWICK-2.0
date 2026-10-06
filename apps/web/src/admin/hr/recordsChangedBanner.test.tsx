@@ -18,6 +18,7 @@ describe('records changed since the draft was worked out', () => {
       />,
     );
     expect(screen.getByRole('alert')).toHaveTextContent('Records changed since this draft was worked out — work it out again.');
+    expect(screen.getByRole('alert')).toHaveTextContent('Approval is blocked until it is worked out again.');
     expect(screen.getByText('Puteri Balqis: statutory standing, salary')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Work it out again' }));
     expect(onWorkOut).toHaveBeenCalledTimes(1);
