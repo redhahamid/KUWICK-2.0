@@ -8312,6 +8312,11 @@ model PayComponent {
   /// the salary payment, so these are not read for one.
   payDay            Int                  @default(30) @map("pay_day") @db.SmallInt
   payMonthOffset    Int                  @default(0) @map("pay_month_offset") @db.SmallInt
+  /// THE MONTH THE DATE FALLS IN (UAT, 10 October 2026): 0 the run's own
+  /// month ("the 25th of this month"), 1 the month after it ("salary on the
+  /// 1st of the following month"). Separate from `payMonthOffset`, which is
+  /// whose month's work the run pays. Payment, not treatment, like the day.
+  payDateMonthOffset Int                 @default(0) @map("pay_date_month_offset") @db.SmallInt
   /// WHO THE ITEM IS FOR. Everyone, or only the employees named below: the
   /// grid gives the item's column to those people alone, the drawer offers
   /// it to them alone, and carry forward copies it for them alone. Audience,

@@ -58,7 +58,10 @@ export function salaryDateOf(payload: SnapshotPayload, choices: PayDateChoices =
   if (!basic?.payDate) return null;
   return chosenPayDate(
     choices,
-    scheduledPayDate(new Date(`${payload.period.slice(0, 10)}T00:00:00.000Z`), { payDay: basic.payDate.payDay ?? DEFAULT_PAY_DATE.payDay }),
+    scheduledPayDate(new Date(`${payload.period.slice(0, 10)}T00:00:00.000Z`), {
+      payDay: basic.payDate.payDay ?? DEFAULT_PAY_DATE.payDay,
+      monthOffset: basic.payDate.monthOffset ?? 0,
+    }),
   );
 }
 

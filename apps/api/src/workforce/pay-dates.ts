@@ -3,9 +3,10 @@
  *
  * A run can pay on more than one date — salary on the 30th, a director's fee
  * on the 1st, overtime and claims on the 15th — and which item goes on which
- * date is the clinic's, set per item in Settings as a day of THE RUN'S OWN
- * MONTH. It is only the default: the owner can move a date for one run on its
- * Pay step, before that date's listing is prepared (UAT, 10 October 2026).
+ * date is the clinic's, set per item in Settings as a day of the run's own
+ * month or of the month after it ("salary on the 1st of the following
+ * month"). It is only the default: the owner can move a date for one run on
+ * its Pay step, before that date's listing is prepared (UAT, 10 October 2026).
  *
  * Which month's work a run pays is a different question, answered beside the
  * day, not folded into it: an item "a month in arrears" is paid in the run
@@ -18,6 +19,8 @@
 export interface PayDateRule {
   /** 1–31. A day the month does not have is paid on its last day. */
   readonly payDay: number;
+  /** 1: the date falls in the month after the run's. Absent or 0: the run's own month. */
+  readonly monthOffset?: number;
 }
 
 /** What every item was before pay dates existed: one date, the 30th. */
@@ -69,18 +72,19 @@ export function ordinal(day: number): string {
   return `${day}${suffix}`;
 }
 
-/** "30th of the run's month", "15th of the run's month, a month in arrears" — the words the audit uses. */
+/** "30th of the run's month", "1st of the following month, a month in arrears" — the words the audit uses. */
 export function describePayDate(rule: PayDateRule, paidInArrears = false): string {
-  return `${ordinal(rule.payDay)} of the run's month${paidInArrears ? ', a month in arrears' : ''}`;
+  return `${ordinal(rule.payDay)} of ${rule.monthOffset === 1 ? 'the following month' : "the run's month"}${paidInArrears ? ', a month in arrears' : ''}`;
 }
 
 /**
- * The date a rule falls on in a run's month, as YYYY-MM-DD. `period` is any
- * day of the run's month (its first day, as runs store it).
+ * The date a rule falls on, as YYYY-MM-DD: in the run's month, or in the month
+ * after it. `period` is any day of the run's month (its first day, as runs
+ * store it).
  */
 export function scheduledPayDate(period: Date, rule: PayDateRule): string {
   const year = period.getUTCFullYear();
-  const month = period.getUTCMonth();
+  const month = period.getUTCMonth() + (rule.monthOffset === 1 ? 1 : 0);
   const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
   const day = Math.min(Math.max(1, rule.payDay), lastDay);
   return new Date(Date.UTC(year, month, day)).toISOString().slice(0, 10);

@@ -2050,6 +2050,8 @@ export interface PayComponentRow {
   payDay: number;
   /** Paid in the run after the month it was earned in: September's in the October run. */
   paidInArrears: boolean;
+  /** The pay date falls in the month after the run's: salary on the 1st of the following month. */
+  paidFollowingMonth: boolean;
   /** Who the item is for: everybody, or the employees named below. */
   appliesTo: "EVERYONE" | "SELECTED";
   appliesToStaffIds: string[];

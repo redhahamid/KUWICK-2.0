@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { App, InputNumber, Switch } from 'antd';
+import { App, InputNumber, Radio, Switch } from 'antd';
 import { useSetPayDate } from '../hooks/useAdmin';
 import type { PayComponentRow } from '../types';
 
@@ -10,9 +10,9 @@ export function ordinal(day: number): string {
   return `${day}${suffix}`;
 }
 
-/** "30th", "15th · a month in arrears" — short enough for a column. */
-export function payDateLabel(rule: { payDay: number; paidInArrears: boolean }): string {
-  return `${ordinal(rule.payDay)}${rule.paidInArrears ? ' · a month in arrears' : ''}`;
+/** "30th", "1st of the following month", "15th · a month in arrears" — short enough for a column. */
+export function payDateLabel(rule: { payDay: number; paidInArrears: boolean; paidFollowingMonth?: boolean }): string {
+  return `${ordinal(rule.payDay)}${rule.paidFollowingMonth ? ' of the following month' : ''}${rule.paidInArrears ? ' · a month in arrears' : ''}`;
 }
 
 /** The days a clinic most often pays on, one press each. */
@@ -21,11 +21,12 @@ const QUICK = [30, 15, 1];
 /**
  * WHEN AN ITEM IS PAID (UAT, 10 October 2026).
  *
- * The day is the item's DEFAULT pay date within the run's own month: the
- * owner can still move a date for one run on its Pay step, before that
- * date's listing is prepared. "A month in arrears" means the run pays what
- * was earned the month before: September's overtime in the October run,
- * counted in October's statutory figures and labelled as September's.
+ * The day is the item's DEFAULT pay date, in the run's own month or the month
+ * after it ("salary on the 1st of the following month"): the owner can still
+ * move a date for one run on its Pay step, before that date's listing is
+ * prepared. "A month in arrears" means the run pays what was earned the month
+ * before: September's overtime in the October run, counted in October's
+ * statutory figures and labelled as September's.
  *
  * Payment, not treatment: it saves at once, with no date and no reason, and
  * an approved month keeps what it was approved with. A deduction comes out of
@@ -38,6 +39,7 @@ export function PayDateCell({ row, disabled }: { row: PayComponentRow; disabled:
   const [open, setOpen] = useState(false);
   const [day, setDay] = useState(row.payDay);
   const [arrears, setArrears] = useState(row.paidInArrears);
+  const [following, setFollowing] = useState(row.paidFollowingMonth);
   const [problem, setProblem] = useState<string | null>(null);
 
   if (row.type === 'DEDUCTION') {
@@ -48,10 +50,10 @@ export function PayDateCell({ row, disabled }: { row: PayComponentRow; disabled:
   const save = (payDay: number, paidInArrears: boolean) => {
     setProblem(null);
     setPayDate.mutate(
-      { code: row.code, payDay, paidInArrears },
+      { code: row.code, payDay, paidInArrears, paidFollowingMonth: following },
       {
         onSuccess: () => {
-          message.success(`${row.name}: paid on the ${payDateLabel({ payDay, paidInArrears })}.`);
+          message.success(`${row.name}: paid on the ${payDateLabel({ payDay, paidInArrears, paidFollowingMonth: following })}.`);
           setOpen(false);
         },
         onError: (error: Error) => setProblem(error.message),
@@ -69,6 +71,7 @@ export function PayDateCell({ row, disabled }: { row: PayComponentRow; disabled:
         onClick={() => {
           setDay(row.payDay);
           setArrears(row.paidInArrears);
+          setFollowing(row.paidFollowingMonth);
           setProblem(null);
           setOpen(true);
         }}
@@ -79,9 +82,21 @@ export function PayDateCell({ row, disabled }: { row: PayComponentRow; disabled:
         <div className="hr-popover" role="dialog" aria-label={`When ${row.name} is paid`}>
           <div className="hr-popover__title">When {row.name} is paid</div>
           <div className="hr-popover__hint">
-            The day of the run&apos;s month it is paid on, unless the owner moves that date for one run on its Pay step. Each
-            date gets its own payment listing. A day the month does not have is paid on its last day.
+            The day it is paid on, in the run&apos;s month or the month after, unless the owner moves that date for one run on
+            its Pay step. Each date gets its own payment listing. A day the month does not have is paid on its last day.
           </div>
+          <Radio.Group
+            aria-label="Which month"
+            optionType="button"
+            size="small"
+            value={following ? 'FOLLOWING' : 'THIS'}
+            onChange={(event) => setFollowing(event.target.value === 'FOLLOWING')}
+            options={[
+              { label: 'Of this month', value: 'THIS' },
+              { label: 'Of the following month', value: 'FOLLOWING' },
+            ]}
+            style={{ marginBottom: 8 }}
+          />
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
             {QUICK.map((quick) => (
               <button

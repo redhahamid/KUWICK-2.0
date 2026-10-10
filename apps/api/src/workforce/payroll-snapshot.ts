@@ -105,7 +105,7 @@ export interface SnapshotComponent {
   verification: string;
   sourceRef: string | null;
   /** Version 4+. When the item is paid, as the month was approved. Version 4 also carried a month offset. */
-  payDate?: { payDay: number; payMonthOffset?: number };
+  payDate?: { payDay: number; payMonthOffset?: number; monthOffset?: number };
   /** Version 5+. Paid in the run after the month it was earned in. */
   paidInArrears?: boolean;
 }

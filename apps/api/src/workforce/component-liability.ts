@@ -83,6 +83,8 @@ export interface CatalogueRow extends LiabilityFlags {
   readonly payDay?: number;
   /** 1: paid a month in arrears. The column kept its first name. */
   readonly payMonthOffset?: number;
+  /** 1: the pay date falls in the month after the run's. */
+  readonly payDateMonthOffset?: number;
 }
 
 /**
@@ -139,7 +141,12 @@ export function catalogueFor(
       verification: row.verificationStatus,
       sourceRef: row.sourceRef,
       active: row.active,
-      payDate: { payDay: row.payDay ?? DEFAULT_PAY_DATE.payDay },
+      // The month is named only when it is the following one, so a record of
+      // an item paid in the run's own month reads as it always did.
+      payDate:
+        row.payDateMonthOffset === 1
+          ? { payDay: row.payDay ?? DEFAULT_PAY_DATE.payDay, monthOffset: 1 }
+          : { payDay: row.payDay ?? DEFAULT_PAY_DATE.payDay },
       paidInArrears: row.payMonthOffset === 1,
     });
   }

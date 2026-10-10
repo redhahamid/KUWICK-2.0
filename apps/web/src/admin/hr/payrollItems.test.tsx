@@ -39,6 +39,7 @@ const component = (over: Partial<PayComponentRow> = {}): PayComponentRow => ({
   carryForward: false,
   payDay: 30,
   paidInArrears: false,
+  paidFollowingMonth: false,
   appliesTo: 'EVERYONE',
   appliesToStaffIds: [],
   appliesToStaff: [],
@@ -489,7 +490,7 @@ describe('when an item is paid', () => {
     const popover = screen.getByRole('dialog', { name: 'When Allowance is paid' });
     fireEvent.click(within(popover).getByRole('button', { name: '1st' }));
     expect(setPayDateMutate).toHaveBeenCalledTimes(1);
-    expect(setPayDateMutate.mock.calls[0][0]).toEqual({ code: 'ALLOWANCE', payDay: 1, paidInArrears: false });
+    expect(setPayDateMutate.mock.calls[0][0]).toEqual({ code: 'ALLOWANCE', payDay: 1, paidInArrears: false, paidFollowingMonth: false });
   });
 
   it('takes any other day, and says a deduction comes out of the salary payment', () => {
@@ -509,7 +510,7 @@ describe('when an item is paid', () => {
     fireEvent.change(within(popover).getByLabelText('Day of the month'), { target: { value: '25' } });
     fireEvent.click(within(popover).getByRole('switch', { name: 'A month in arrears' }));
     fireEvent.click(within(popover).getByRole('button', { name: 'Save' }));
-    expect(setPayDateMutate.mock.calls[0][0]).toEqual({ code: 'ALLOWANCE', payDay: 25, paidInArrears: true });
+    expect(setPayDateMutate.mock.calls[0][0]).toEqual({ code: 'ALLOWANCE', payDay: 25, paidInArrears: true, paidFollowingMonth: false });
   });
 
   it('never offers basic pay a month in arrears', () => {
@@ -518,5 +519,25 @@ describe('when an item is paid', () => {
     fireEvent.click(screen.getByRole('button', { name: 'When Basic pay is paid: 30th' }));
     const popover = screen.getByRole('dialog', { name: 'When Basic pay is paid' });
     expect(within(popover).queryByRole('switch', { name: 'A month in arrears' })).toBeNull();
+  });
+
+  // UAT, 10 October 2026: "salary paid on the 1st of the following month, or the 25th of this month".
+  it('pays on a day of this month or of the following month', () => {
+    setPayDateMutate.mockReset();
+    mount({
+      ...list,
+      components: [
+        component({ id: 'c-basic', code: 'BASIC', name: 'Basic pay', category: 'REMUNERATION' }),
+        component({ id: 'c-fee', code: 'DIRECTOR_FEE', name: "Director's fee", payDay: 1, paidFollowingMonth: true }),
+      ],
+    });
+    expect(screen.getByRole('button', { name: "When Director's fee is paid: 1st of the following month" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'When Basic pay is paid: 30th' }));
+    const popover = screen.getByRole('dialog', { name: 'When Basic pay is paid' });
+    expect(within(popover).getByRole('radio', { name: 'Of this month' })).toBeChecked();
+    fireEvent.click(within(popover).getByRole('radio', { name: 'Of the following month' }));
+    fireEvent.click(within(popover).getByRole('button', { name: '1st' }));
+    expect(setPayDateMutate.mock.calls[0][0]).toEqual({ code: 'BASIC', payDay: 1, paidInArrears: false, paidFollowingMonth: true });
   });
 });

@@ -33,6 +33,8 @@ export class UpsertPayComponentDto {
   @IsOptional() @IsInt() @Min(1) @Max(31) payDay?: number;
   /** Paid in the run after the month it was earned in. Kept from the current version when absent. */
   @IsOptional() @IsBoolean() paidInArrears?: boolean;
+  /** The pay date falls in the month after the run's. Kept from the current version when absent. */
+  @IsOptional() @IsBoolean() paidFollowingMonth?: boolean;
   /** Who the item is for: everybody, or the employees named in `appliesToStaffIds`. Audience, not treatment. */
   @IsOptional() @IsIn(['EVERYONE', 'SELECTED']) appliesTo?: 'EVERYONE' | 'SELECTED';
   /** The people a SELECTED item is for. Ignored unless `appliesTo` is SELECTED. */

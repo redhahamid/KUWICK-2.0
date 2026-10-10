@@ -113,7 +113,7 @@ describe('when each payroll item is paid (e2e)', () => {
     expect(await versionsOf('OVERTIME')).toHaveLength(2);
 
     const res = await setPayDate('OVERTIME', { payDay: 15, paidInArrears: true }).expect(200);
-    expect(res.body).toEqual({ code: 'OVERTIME', payDay: 15, paidInArrears: true });
+    expect(res.body).toEqual({ code: 'OVERTIME', payDay: 15, paidInArrears: true, paidFollowingMonth: false });
 
     const versions = await versionsOf('OVERTIME');
     expect(versions).toHaveLength(2);

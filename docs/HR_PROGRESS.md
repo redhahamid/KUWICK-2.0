@@ -6,6 +6,43 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 30 — 10 Oktober 2026 — "Paid on": hari bulan ini atau bulan berikutnya
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. Komit: komit
+yang menambah bahagian ini. **Migrasi**
+`20261010150000_pay_component_pay_date_month`: satu lajur
+`pay_date_month_offset` (SMALLINT, lalai 0) pada `pay_components`. Dijalankan
+di staging dengan *Migrate only* SEBELUM master digerakkan (run dalam
+laporan).
+
+### Keputusan anda (10 Oktober 2026)
+
+- `[D]` A1: "'Paid on' in Payroll items: add 'of this month / of the
+  following month' (e.g. salary paid on the 1st of the following month, or
+  the 25th of this month). The per-run override on the Pay step stays."
+
+### Apa yang berubah
+
+- `[D]` *Settings → Payroll items*, lajur *Paid on*: pilihan **Of this month /
+  Of the following month** di sebelah hari. Label: "1st of the following
+  month". Gaji pokok boleh dibayar pada bulan berikutnya (berbeza daripada "a
+  month in arrears", yang tetap tidak dibenarkan untuk gaji pokok).
+- `[D]` Tarikh bayar, tarikh gaji (yang melepaskan payslip), senarai bank,
+  payslip dan portal pekerja mengikut bulan itu. Statutori kekal pada bulan
+  run. Pilihan tarikh setiap run pada langkah Pay kekal.
+- `[D]` **Ujian**: e2e baharu `payroll-pay-date-following-month` (3: gaji
+  Ogos dibayar 1 September dengan potongan diambil daripadanya; payslip
+  dilepaskan dengan pemindahan gaji); unit `pay-dates` +3; web
+  `payrollItems` +1.
+
+### Uji di staging
+
+1. *Settings → Payroll items* → *Basic pay* → *Paid on*: pilih *Of the
+   following month* dan *1st*. Lajur berkata "1st of the following month".
+2. Run bulan ini → langkah Pay: tarikh gaji ialah 1hb bulan depan.
+
+---
+
 ## Batch 29 — 10 Oktober 2026 — OT tertunggak dinilai seperti bulan ia dikerjakan; tarikh bayar yang sudah lepas
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas

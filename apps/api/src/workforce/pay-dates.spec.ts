@@ -136,3 +136,38 @@ describe("the owner's dates for one run", () => {
     expect(paymentsOnChosenDates(payments, {})).toEqual(payments);
   });
 });
+
+// UAT, 10 October 2026: "salary paid on the 1st of the following month, or the 25th of this month".
+describe('a pay date in the following month', () => {
+  const run = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
+
+  it('falls in the month after the run’s, on its last day where that month is shorter', () => {
+    expect(scheduledPayDate(run('2026-10-01'), { payDay: 1, monthOffset: 1 })).toBe('2026-11-01');
+    expect(scheduledPayDate(run('2026-12-01'), { payDay: 25, monthOffset: 1 })).toBe('2027-01-25');
+    expect(scheduledPayDate(run('2027-01-01'), { payDay: 31, monthOffset: 1 })).toBe('2027-02-28');
+    expect(scheduledPayDate(run('2026-10-01'), { payDay: 25, monthOffset: 0 })).toBe('2026-10-25');
+  });
+
+  it('says so in words', () => {
+    expect(describePayDate({ payDay: 1, monthOffset: 1 })).toBe('1st of the following month');
+    expect(describePayDate({ payDay: 1, monthOffset: 1 }, true)).toBe('1st of the following month, a month in arrears');
+    expect(describePayDate({ payDay: 25 })).toBe("25th of the run's month");
+  });
+
+  it('takes the month’s deductions from a salary paid in the following month', () => {
+    const { payments } = splitByPayDate({
+      period: run('2026-10-01'),
+      lines: [
+        { code: 'BASIC', kind: 'EARNING', amountCents: 300_000 },
+        { code: 'PANEL_CLAIM', kind: 'EARNING', amountCents: 12_000 },
+        { code: 'EPF_EE', kind: 'DEDUCTION', amountCents: 33_000 },
+      ],
+      netCents: 279_000,
+      ruleOf: (code) => (code === 'BASIC' ? { payDay: 1, monthOffset: 1 } : { payDay: 15 }),
+    });
+    expect(payments).toEqual([
+      { date: '2026-10-15', earningsCents: 12_000, deductionCents: 0, netCents: 12_000 },
+      { date: '2026-11-01', earningsCents: 300_000, deductionCents: 33_000, netCents: 267_000 },
+    ]);
+  });
+});

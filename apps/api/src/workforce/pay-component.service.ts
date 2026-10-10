@@ -127,6 +127,8 @@ export class PayComponentService {
         payDay: row.payDay,
         /** Paid in the run after the month it was earned in: September's in the October run. */
         paidInArrears: row.payMonthOffset === 1,
+        /** The date falls in the month after the run's: salary on the 1st of the following month. */
+        paidFollowingMonth: row.payDateMonthOffset === 1,
         /** Who the item is for: everybody, or the employees named below. */
         appliesTo: row.appliesTo,
         appliesToStaffIds: row.appliesToStaffIds,
@@ -315,16 +317,20 @@ export class PayComponentService {
       if (paidInArrears && open.code === 'BASIC') {
         throw new BadRequestException('Basic pay is the month’s own salary, so it is never paid a month in arrears.');
       }
-      await tx.payComponent.updateMany({ where: { code }, data: { payDay: dto.payDay, payMonthOffset: paidInArrears ? 1 : 0 } });
+      const paidFollowingMonth = dto.paidFollowingMonth ?? open.payDateMonthOffset === 1;
+      await tx.payComponent.updateMany({
+        where: { code },
+        data: { payDay: dto.payDay, payMonthOffset: paidInArrears ? 1 : 0, payDateMonthOffset: paidFollowingMonth ? 1 : 0 },
+      });
       await recordAudit(tx, actor, {
         action: 'payComponent.payDateSet',
         entityType: 'PayComponent',
         entityId: open.id,
-        before: { payDay: open.payDay, paidInArrears: open.payMonthOffset === 1 },
-        after: { payDay: dto.payDay, paidInArrears },
-        reason: `${open.code} is paid on the ${describePayDate({ payDay: dto.payDay }, paidInArrears)}.`,
+        before: { payDay: open.payDay, paidInArrears: open.payMonthOffset === 1, paidFollowingMonth: open.payDateMonthOffset === 1 },
+        after: { payDay: dto.payDay, paidInArrears, paidFollowingMonth },
+        reason: `${open.code} is paid on the ${describePayDate({ payDay: dto.payDay, monthOffset: paidFollowingMonth ? 1 : 0 }, paidInArrears)}.`,
       });
-      return { code, payDay: dto.payDay, paidInArrears };
+      return { code, payDay: dto.payDay, paidInArrears, paidFollowingMonth };
     });
   }
 
@@ -458,6 +464,7 @@ export class PayComponentService {
         // the 30th.
         payDay: dto.payDay ?? open?.payDay ?? DEFAULT_PAY_DATE.payDay,
         payMonthOffset: dto.paidInArrears === undefined ? (open?.payMonthOffset ?? 0) : dto.paidInArrears ? 1 : 0,
+        payDateMonthOffset: dto.paidFollowingMonth === undefined ? (open?.payDateMonthOffset ?? 0) : dto.paidFollowingMonth ? 1 : 0,
         appliesTo,
         appliesToStaffIds,
         active: dto.active ?? true,
