@@ -81,21 +81,22 @@ describe('the companies, with one branch picked', () => {
 });
 
 describe('the two employer settings (UAT, 10 October 2026)', () => {
-  it('starts on basic salary only with zakat off, and saves what the clinic picks', async () => {
+  it('starts on the PSMB Act’s levy base with zakat off, and saves what the clinic picks', async () => {
     clinicId = undefined;
     mount();
     fireEvent.click(screen.getAllByRole('button', { name: /Edit/ })[0]);
-    expect(screen.getByText(/worked out on basic salary, less unpaid leave/)).toBeTruthy();
+    expect(screen.getByText(/plus every allowance marked HRD in Payroll items/)).toBeTruthy();
     const zakat = screen.getByRole('switch', { name: 'Deduct zakat through payroll' });
     expect(zakat).toHaveAttribute('aria-checked', 'false');
 
     fireEvent.mouseDown(screen.getByLabelText('HRD levy base'));
-    fireEvent.click(screen.getByTitle('Basic + fixed allowances'));
+    fireEvent.click(screen.getByTitle('Basic salary only'));
+    expect(screen.getByText(/No allowance counts, whatever its item says/)).toBeTruthy();
     fireEvent.click(zakat);
     expect(screen.getByText(/comes off net pay and is rebated against their PCB/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(upsertMutate).toHaveBeenCalledTimes(1));
-    expect(upsertMutate.mock.calls[0][0]).toMatchObject({ id: 'e-1', hrdLevyBase: 'BASIC_PLUS_FIXED_ALLOWANCES', zakatThroughPayroll: true });
+    expect(upsertMutate.mock.calls[0][0]).toMatchObject({ id: 'e-1', hrdLevyBase: 'BASIC_ONLY', zakatThroughPayroll: true });
   });
 });

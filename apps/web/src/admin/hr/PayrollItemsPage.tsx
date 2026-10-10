@@ -51,7 +51,7 @@ const FLAGS: { key: Flag; title: string; width: number; hint?: string }[] = [
     title: 'HRD',
     width: 70,
     // The employer's levy base decides whether an allowance's switch counts (UAT, 10 October 2026).
-    hint: 'Counts toward the HRD levy where the employer’s levy base is “Basic + fixed allowances” (Settings → Company & statutory). On “Basic salary only”, the default, no allowance counts.',
+    hint: 'Counts toward the HRD levy, unless the employer’s levy base is “Basic salary only” (Settings → Company & statutory): then no allowance counts.',
   },
   { key: 'prorated', title: 'Prorate', width: 84 },
   { key: 'includeInOrpBase', title: 'OT base', width: 84 },

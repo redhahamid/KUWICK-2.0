@@ -7940,12 +7940,13 @@ model LegalEmployer {
   bankAccountNo   String? @map("bank_account_no")
   bankAccountName String? @map("bank_account_name")
 
-  /// WHAT THE HRD LEVY IS WORKED OUT ON (UAT, 10 October 2026). BASIC_ONLY,
-  /// the default at the account holder's request: basic salary less what
-  /// comes off it, such as unpaid leave. BASIC_PLUS_FIXED_ALLOWANCES adds
-  /// every allowance whose item is marked HRD in Payroll items, which is the
-  /// PSMB Act's definition of wages and what Kuwick did before this existed.
-  hrdLevyBase HrdLevyBase @default(BASIC_ONLY) @map("hrd_levy_base")
+  /// WHAT THE HRD LEVY IS WORKED OUT ON (UAT, 10 October 2026).
+  /// BASIC_PLUS_FIXED_ALLOWANCES, the default: basic salary less what comes
+  /// off it, such as unpaid leave, plus every allowance whose item is marked
+  /// HRD in Payroll items, which is the PSMB Act's definition of wages.
+  /// BASIC_ONLY leaves every allowance out. The default was basic only for a
+  /// day and was put back to the Act's at the account holder's request.
+  hrdLevyBase HrdLevyBase @default(BASIC_PLUS_FIXED_ALLOWANCES) @map("hrd_levy_base")
 
   /// ZAKAT THROUGH PAYROLL (UAT, 10 October 2026). Off by default. On: a
   /// person's monthly zakat, a Zakat item on their record, comes off net pay

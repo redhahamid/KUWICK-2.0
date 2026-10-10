@@ -11,9 +11,10 @@ const randomId = () => crypto.randomUUID();
 /**
  * TWO EMPLOYER SETTINGS (UAT, 10 October 2026).
  *
- * The HRD levy is worked out on basic salary only unless the employer chooses
- * basic plus fixed allowances: 1% of RM8,000 is RM80.00, and with a RM500
- * fixed allowance on the second basis RM85.00.
+ * The HRD levy is worked out on basic plus the allowances marked HRD, the
+ * PSMB Act's definition, unless the employer chooses basic salary only: 1%
+ * of RM8,000 and a RM500 fixed allowance is RM85.00, and RM80.00 on basic
+ * only.
  *
  * January, so the month's tax is a full year's estimate and there is PCB
  * for the zakat to come off: a first payroll later in the year with no
@@ -113,21 +114,21 @@ describe('HRD levy base and zakat through payroll (e2e)', () => {
     await prisma.$disconnect();
   });
 
-  it('starts every employer on basic salary only for the levy, and with zakat off', async () => {
+  it('starts every employer on the PSMB Act’s levy base, and with zakat off', async () => {
     const listed = (await http().get('/workforce/legal-employers').set('Authorization', bearer).expect(200)).body as {
       id: string;
       hrdLevyBase: string;
       zakatThroughPayroll: boolean;
     }[];
-    expect(listed.find((row) => row.id === legalEmployerId)).toMatchObject({ hrdLevyBase: 'BASIC_ONLY', zakatThroughPayroll: false });
-    expect((await workOut()).levy).toBe(80);
+    expect(listed.find((row) => row.id === legalEmployerId)).toMatchObject({ hrdLevyBase: 'BASIC_PLUS_FIXED_ALLOWANCES', zakatThroughPayroll: false });
+    expect((await workOut()).levy).toBe(85);
   });
 
-  it('adds the fixed allowance when the employer chooses basic plus fixed allowances', async () => {
-    await employer({ hrdLevyBase: 'BASIC_PLUS_FIXED_ALLOWANCES' });
-    expect((await workOut()).levy).toBe(85);
+  it('leaves the allowance out when the employer chooses basic salary only', async () => {
     await employer({ hrdLevyBase: 'BASIC_ONLY' });
     expect((await workOut()).levy).toBe(80);
+    await employer({ hrdLevyBase: 'BASIC_PLUS_FIXED_ALLOWANCES' });
+    expect((await workOut()).levy).toBe(85);
   });
 
   it('refuses a Zakat item while the employer does not deduct zakat', async () => {

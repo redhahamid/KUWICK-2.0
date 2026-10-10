@@ -149,8 +149,8 @@ export interface EmployeeStatutoryProfile {
   hrdRegistration?: 'MANDATORY_SECTION_14' | 'OPTIONAL_SECTION_15' | 'NOT_REGISTERED' | null;
   /**
    * WHAT THE LEVY IS WORKED OUT ON, the employer's setting. Absent is the
-   * PSMB Act's definition, basic plus fixed allowances; a run always passes
-   * the employer's own answer, whose default is basic only.
+   * PSMB Act's definition, basic plus fixed allowances, which is also the
+   * setting's default; a run always passes the employer's own answer.
    */
   hrdLevyBase?: 'BASIC_ONLY' | 'BASIC_PLUS_FIXED_ALLOWANCES';
   /**

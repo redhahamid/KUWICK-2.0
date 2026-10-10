@@ -70,7 +70,7 @@ export function LegalEmployersPage() {
   const [editing, setEditing] = useState<LegalEmployerRow | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
   // Two settings the employer answers (UAT, 10 October 2026).
-  const [levyBase, setLevyBase] = useState<LegalEmployerRow['hrdLevyBase']>('BASIC_ONLY');
+  const [levyBase, setLevyBase] = useState<LegalEmployerRow['hrdLevyBase']>('BASIC_PLUS_FIXED_ALLOWANCES');
   const [zakat, setZakat] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Same shape as the rule set drawer: scrolling body, pinned footer.
@@ -84,7 +84,7 @@ export function LegalEmployersPage() {
 
   function edit(row: LegalEmployerRow | null) {
     setEditing(row);
-    setLevyBase(row?.hrdLevyBase ?? 'BASIC_ONLY');
+    setLevyBase(row?.hrdLevyBase ?? 'BASIC_PLUS_FIXED_ALLOWANCES');
     setZakat(row?.zakatThroughPayroll ?? false);
     setForm(
       row
@@ -219,7 +219,7 @@ export function LegalEmployersPage() {
                     {row.hrdRegistration !== 'NOT_REGISTERED' ? (
                       <span className="hr-faint hr-small">
                         {' '}
-                        · levy on {row.hrdLevyBase === 'BASIC_PLUS_FIXED_ALLOWANCES' ? 'basic + fixed allowances' : 'basic salary only'}
+                        · levy on {row.hrdLevyBase === 'BASIC_ONLY' ? 'basic salary only' : 'basic + allowances marked HRD'}
                       </span>
                     ) : null}
                   </span>
@@ -344,14 +344,14 @@ export function LegalEmployersPage() {
               onChange={setLevyBase}
               style={{ width: '100%' }}
               options={[
+                { value: 'BASIC_PLUS_FIXED_ALLOWANCES', label: 'Basic + allowances marked HRD (PSMB Act)' },
                 { value: 'BASIC_ONLY', label: 'Basic salary only' },
-                { value: 'BASIC_PLUS_FIXED_ALLOWANCES', label: 'Basic + fixed allowances' },
               ]}
             />
             <div className="hr-small hr-muted" style={{ marginTop: 4 }}>
               {levyBase === 'BASIC_ONLY'
                 ? 'The levy is worked out on basic salary, less unpaid leave. No allowance counts, whatever its item says.'
-                : 'Basic salary plus every allowance marked HRD in Payroll items, which is how the PSMB Act defines wages.'}
+                : 'Basic salary, less unpaid leave, plus every allowance marked HRD in Payroll items. This is how the PSMB Act defines wages.'}
             </div>
           </label>
           <div>

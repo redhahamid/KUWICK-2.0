@@ -6,11 +6,56 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 26 — 10 Oktober 2026 — Asas levi HRD kembali kepada takrif Akta PSMB secara lalai
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 25 (`7e649b8`). Komit: komit yang menambah bahagian ini (hash dalam
+laporan). **Migrasi: `20261010130000_hrd_levy_base_default_psmb`** — lajur
+`hrd_levy_base` pada `legal_employers` digugurkan dan ditambah semula dengan
+lalai `BASIC_PLUS_FIXED_ALLOWANCES`, dalam satu transaksi. Dijalankan di
+staging dengan *Migrate only* dari cawangan ini **sebelum** master dimajukan.
+
+### Keputusan anda (10 Oktober 2026)
+
+- `[D]` "HRD levy base: revert the default to follow the PSMB Act (basic +
+  allowances marked HRD). Keep 'Basic salary only' as an option."
+
+### Apa yang berubah
+
+- `[D]` Lalai asas levi HRD kini **Basic + allowances marked HRD (PSMB
+  Act)**: gaji pokok tolak cuti tanpa gaji, campur setiap elaun yang suis
+  HRD-nya hidup di *Payroll items*. *Basic salary only* kekal sebagai pilihan.
+- `[D]` **Setiap majikan sedia ada** berpindah ke lalai baharu. Tiada majikan
+  yang memilih *Basic salary only*; itu hanya lalai lajur selama kira-kira
+  sejam di staging.
+- `[D]` Kenapa gugur dan tambah semula, bukan `UPDATE`: setiap jadual ialah
+  FORCE ROW LEVEL SECURITY, dan `UPDATE` oleh peranan migrasi tanpa konteks
+  tenant boleh tidak mengena sebarang baris secara senyap. DDL tidak ditapis
+  oleh row security, dan transaksi bermakna tiada permintaan melihat jadual
+  tanpa lajur itu. Diuji pada pangkalan data tempatan: 2 majikan
+  `BASIC_ONLY` menjadi `BASIC_PLUS_FIXED_ALLOWANCES`.
+- `[D]` Penerangan lajur **HRD** di *Payroll items* dan baris majikan
+  ("levy on basic + allowances marked HRD") dikemas kini.
+- `[D]` **Ujian**: e2e `payroll-hrd-base-and-zakat` kini bermula pada RM85.00
+  (RM8,000 + elaun RM500) dan RM80.00 selepas memilih *Basic salary only*;
+  web `legalEmployersPage` bermula pada takrif Akta.
+
+### Uji di staging
+
+1. *Settings → Company & statutory → Edit*: **HRD levy base** = *Basic +
+   allowances marked HRD (PSMB Act)*.
+2. Bulan payroll bagi majikan berdaftar dengan pekerja demo yang ada elaun
+   bertanda HRD: levi = 1% daripada gaji pokok campur elaun itu.
+
+---
+
 ## Batch 25 — 10 Oktober 2026 — Zakat melalui payroll, dan asas levi HRD (Bahagian 4)
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
-Batch 24 (`b555678`). Komit: komit yang menambah bahagian ini (hash dalam
-laporan). **Migrasi: `20261010120000_legal_employer_hrd_base_and_zakat`** —
+Batch 24 (`b555678`). Komit: `7e649b8`; migrasi dijalankan di staging
+dengan *Migrate only* run #15 sebelum master dimajukan, status selepas
+"Database schema is up to date!". **Migrasi:
+`20261010120000_legal_employer_hrd_base_and_zakat`** —
 satu jenis enum baharu `HrdLevyBase` dan dua lajur pada `legal_employers`
 (`hrd_levy_base` lalai `BASIC_ONLY`, `zakat_through_payroll` lalai `false`);
 tiada pernyataan data, tiada jadual baharu. Dijalankan di staging dengan
