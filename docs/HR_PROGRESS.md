@@ -48,9 +48,11 @@ yang menambah bahagian ini. **Tiada migrasi.**
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. Komit: komit
 yang menambah bahagian ini. **Migrasi**
 `20261010150000_pay_component_pay_date_month`: satu lajur
-`pay_date_month_offset` (SMALLINT, lalai 0) pada `pay_components`. Dijalankan
-di staging dengan *Migrate only* SEBELUM master digerakkan (run dalam
-laporan).
+`pay_date_month_offset` (SMALLINT, lalai 0) pada `pay_components`. `[D]`
+Dijalankan di staging dengan *Migrate only* run #18 (38046073291) dari
+cawangan ini SEBELUM master digerakkan: "Applying migration
+`20261010150000_pay_component_pay_date_month`", kemudian "Database schema is
+up to date!".
 
 ### Keputusan anda (10 Oktober 2026)
 
