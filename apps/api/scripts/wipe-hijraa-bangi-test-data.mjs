@@ -37,6 +37,10 @@
 //     exactly. Anybody else with an employee record in the branch is kept and
 //     reported; WIPE_ALSO_EMPLOYEE_NOS adds an employee by number, only when
 //     the owner has said so.
+//   * Second run (owner, 10 October 2026): "Yes, remove employee no. 1036 too,
+//     same way (staging, logged, nothing else touched)." The three named are
+//     gone by then; a name that is absent is accepted only when this
+//     script's own audit row for the branch says an earlier run removed it.
 //
 // Environment: DATABASE_URL (the OWNER connection: every table is FORCE ROW
 // LEVEL SECURITY, so the application role cannot see what it must remove),
@@ -170,10 +174,24 @@ async function main() {
       `  - ${chosen.includes(person) ? 'REMOVE' : 'keep  '} staff ${person.id} · ${person.role} · ${person.employment_status} · employee no ${person.employee_no ?? '-'} · login ${person.user_id ? 'yes' : 'no'} · ${label}`,
     );
   }
+  // An earlier run of this script for this branch, by its own audit row.
+  const earlierRuns = Number(
+    (
+      await client.query(
+        `SELECT count(*)::int AS n FROM audit_logs WHERE tenant_id = $1 AND entity_id = $2 AND action = 'admin.branchTestDataWiped'`,
+        [tenantId, clinicId],
+      )
+    ).rows[0].n,
+  );
   for (const name of AGREED) {
     const n = employees.filter((person) => norm(person.full_name) === name).length;
+    if (n === 0 && earlierRuns > 0) {
+      say(`  ${name}: already removed by an earlier run (${earlierRuns} audit row(s) for this branch).`);
+      continue;
+    }
     if (n !== 1) return stop(`Expected exactly one employee named ${name} in the branch; found ${n}. Nothing was changed.`);
   }
+  if (chosen.length === 0) return stop('Nobody to remove. Nothing was changed.');
   for (const no of ALSO) {
     const n = employees.filter((person) => String(person.employee_no ?? '') === no).length;
     if (n !== 1) return stop(`Expected exactly one employee numbered ${no} in the branch; found ${n}. Nothing was changed.`);
@@ -467,7 +485,9 @@ async function main() {
         employeesInBranch: employeesLeft,
         keptNotInAgreedList: kept.length,
         runsIn2026: runsLeft,
-        _reason: 'One-off wipe of the branch test data, agreed with the clinic owner on 10 October 2026.',
+        _reason:
+          'One-off wipe of the branch test data, agreed with the clinic owner on 10 October 2026' +
+          (ALSO.length ? `; employee no ${ALSO.join(', ')} added by the owner the same day.` : '.'),
         _source: 'scripts/wipe-hijraa-bangi-test-data.mjs',
       }),
     ],
