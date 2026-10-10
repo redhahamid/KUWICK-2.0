@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Payroll — Staff month</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#ECEEF5;font-family:'Figtree',system-ui,-apple-system,'Segoe UI',sans-serif;color:#1B1E33;-webkit-font-smoothing:antialiased}
+a{color:#3A3EA8;text-decoration:none}a:hover{color:#262A7A}
+.nav{padding:9px 14px;border-radius:12px;color:#454A60;font-size:16px;font-weight:500}
+.nav.on{background:#E1E3F7;color:#32369A;font-weight:700}
+.sub{padding:9px 16px;border-radius:999px;color:#454A60;font-size:15px;font-weight:600}
+.sub.on{background:#fff;color:#32369A;box-shadow:0 1px 3px rgba(20,24,60,.12)}
+.card{background:#fff;border-radius:22px;box-shadow:0 1px 2px rgba(20,24,60,.05),0 6px 20px rgba(20,24,60,.05)}
+.tile{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;flex:none}
+.t-indigo{background:#5B5FD6}.t-blue{background:#3D8BE0}.t-green{background:#2C9C5E}.t-orange{background:#E0842A}.t-purple{background:#8C6BE0}.t-teal{background:#1F9E95}.t-pink{background:#DB5579}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:13px;font-weight:600;white-space:nowrap}
+.c-green{background:#DDF3E6;color:#17703F}.c-orange{background:#FCEBD9;color:#8F4309}.c-red{background:#FBE3E3;color:#A42626}.c-indigo{background:#E4E5F8;color:#32369A}.c-grey{background:#EEF0F4;color:#474C60}.c-blue{background:#DFEDFB;color:#1D5E9E}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.btn{font:inherit;font-weight:600;font-size:15px;border-radius:12px;padding:0 18px;min-height:44px;border:1px solid #D9DCE7;background:#fff;color:#1B1E33;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;white-space:nowrap}
+.btn-primary{background:#4B4FC4;border-color:#4B4FC4;color:#fff}
+.muted{color:#5B6075}
+.label{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#5B6075;font-weight:700}
+.row{display:flex;align-items:center;gap:12px}
+.ln{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:13px 0;border-top:1px solid #EEF0F5;font-size:15px;font-variant-numeric:tabular-nums}
+.ln small{display:block;font-size:13px;color:#5B6075;margin-top:2px}
+.kv{display:flex;justify-content:space-between;gap:16px;padding:11px 0;border-top:1px solid #EEF0F5;font-size:15px;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<div style="min-height:100vh;background:#ECEEF5">
+<header style="background:#F7F8FB;border-bottom:1px solid #E1E4EE">
+<div style="max-width:1440px;margin:0 auto;padding:14px 32px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 28px;box-sizing:border-box">
+<a href="Main.html" style="font-weight:800;letter-spacing:.16em;font-size:22px;color:#262A7A">KUWICK</a>
+<nav aria-label="Main" style="display:flex;flex-wrap:wrap;gap:4px;flex:1 1 560px">
+<a class="nav" href="#">Dashboard</a><a class="nav" href="#">Appointments</a><a class="nav" href="#">Patients</a><a class="nav" href="#">Queue</a><a class="nav on" href="Main.html">HR</a><a class="nav" href="#">Finance</a><a class="nav" href="#">e-Invoice LHDN</a>
+</nav>
+<span style="border:1px solid #D9DCE7;background:#fff;border-radius:12px;padding:10px 16px;font-size:15px">Klinik Perubatan Hijraa Bangi</span>
+</div>
+</header>
+<main style="max-width:1440px;margin:0 auto;padding:18px 32px 48px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box">
+<nav aria-label="HR" style="display:flex;flex-wrap:wrap;gap:6px;background:#E3E5EE;border-radius:999px;padding:5px;align-self:flex-start;max-width:100%;box-sizing:border-box">
+<a class="sub" href="#">Overview</a><a class="sub" href="Staff.html">Staff</a><a class="sub" href="#">Leave</a><a class="sub" href="#">Attendance</a><a class="sub" href="#">Claims</a><a class="sub on" href="Main.html">Payroll</a><a class="sub" href="Settings.html">Settings</a>
+</nav>
+
+<div class="card" style="padding:20px 22px;display:flex;flex-wrap:wrap;align-items:center;gap:16px">
+<a class="btn" href="Main.html" aria-label="Back to payroll" style="padding:0 12px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"></path></svg></a>
+<span style="width:56px;height:56px;border-radius:50%;background:#E4E5F8;color:#32369A;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;flex:none">HR</span>
+<div style="flex:1 1 320px">
+<div class="row" style="flex-wrap:wrap;gap:10px"><h1 style="margin:0;font-size:26px;font-weight:800">Dr Hafiz bin Rahman</h1><span class="chip c-green"><span class="dot"></span>Ready</span></div>
+<div class="muted" style="font-size:15px;margin-top:4px">Resident Doctor · Permanent · Joined 1 Jan 2026 · EPF 11% · SOCSO Cat 1 · PCB resident, category 3</div>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+<div style="display:flex;align-items:center;border:1px solid #D9DCE7;border-radius:12px;overflow:hidden"><a href="#" style="padding:11px 12px;color:#454A60">‹ Previous</a><span style="padding:11px 12px;background:#F2F3F8;font-weight:700">1 of 5</span><a href="#" style="padding:11px 12px;color:#454A60">Next ›</a></div>
+<button class="btn" type="button">Payslip PDF</button>
+<button class="btn btn-primary" type="button">Mark as checked</button>
+</div>
+</div>
+
+<div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start">
+<div style="flex:999 1 640px;min-width:0;display:flex;flex-direction:column;gap:20px">
+
+<div class="card" style="overflow:hidden">
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:18px 22px">
+<span class="tile t-purple"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg></span>
+<div style="flex:1"><div style="font-weight:800;font-size:18px">May 2026</div><div class="muted" style="font-size:13px">1 – 31 May · 26-day divisor · 7.5-hour day · Doctors rule set</div></div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:0 32px;padding:0 22px 8px">
+<div>
+<div class="label" style="padding:8px 0">Earnings</div>
+<div class="ln"><span>Basic pay</span><span>9,750.00</span></div>
+<div class="ln"><span>Director's fee <span class="chip c-blue" style="margin-left:6px">Earned April 2026</span><small>Added by hand · paid one month in arrears</small></span><span>6,001.36</span></div>
+<div class="ln"><span>Incentive procedure <span class="chip c-indigo" style="margin-left:6px">Recurring</span></span><span>2,000.00</span></div>
+<div class="ln" style="font-weight:800"><span>Total earnings</span><span>17,751.36</span></div>
+</div>
+<div>
+<div class="label" style="padding:8px 0">Deductions</div>
+<div class="ln"><span>EPF<small>11% of RM9,750.00 · basic salary only</small></span><span>1,078.00</span></div>
+<div class="ln"><span>SOCSO<small>Category 1 · wage ceiling RM6,000</small></span><span>29.75</span></div>
+<div class="ln"><span>EIS<small>0.2% · wage ceiling RM6,000</small></span><span>11.90</span></div>
+<div class="ln"><span>PCB · computed<small>MTD 2026, resident, category 3</small></span><span>2,825.40</span></div>
+<div class="ln"><span>PCB · additional<small>None on the statutory standing</small></span><span class="muted">0.00</span></div>
+<div class="ln" style="font-weight:800"><span>Total deductions</span><span>3,945.05</span></div>
+</div>
+</div>
+<div style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;padding:20px 22px;background:#F3F3FD">
+<div><div class="muted" style="font-size:14px">Net pay · to RHB ·· 5143</div><div style="font-size:40px;font-weight:800;color:#3A3EA8;font-variant-numeric:tabular-nums">RM13,806.31</div></div>
+<div style="text-align:right"><div class="muted" style="font-size:14px">April net pay RM14,181.41</div><span class="chip c-grey" style="margin-top:6px">−2.6% vs April</span></div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));border-top:1px solid #EEF0F5">
+<div style="padding:16px 22px"><div class="muted" style="font-size:13px">Clinic EPF</div><div style="font-weight:700;font-size:17px">RM1,176.00</div></div>
+<div style="padding:16px 22px"><div class="muted" style="font-size:13px">Clinic SOCSO</div><div style="font-weight:700;font-size:17px">RM104.15</div></div>
+<div style="padding:16px 22px"><div class="muted" style="font-size:13px">Clinic EIS</div><div style="font-weight:700;font-size:17px">RM11.90</div></div>
+<div style="padding:16px 22px"><div class="muted" style="font-size:13px">Cost to clinic</div><div style="font-weight:800;font-size:17px;color:#3A3EA8">RM19,043.41</div></div>
+</div>
+</div>
+
+<div class="card" style="padding:20px 22px">
+<div class="row" style="flex-wrap:wrap"><span class="tile t-teal"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 5L5 19"></path><circle cx="7" cy="7" r="2.5"></circle><circle cx="17" cy="17" r="2.5"></circle></svg></span><h2 style="margin:0;font-size:18px;font-weight:800;flex:1">How PCB was worked out</h2><span class="chip c-grey">HASiL computerised method · month 5</span></div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0 32px;margin-top:10px">
+<div>
+<div class="kv"><span class="muted">Chargeable income for the year (P)</span><span>RM178,452.06</span></div>
+<div class="kv"><span class="muted">Reliefs</span><span>RM9,000.00</span></div>
+<div class="kv"><span class="muted">EPF relief spread (K2)</span><span>RM1,078.00</span></div>
+<div class="kv"><span class="muted">Months left after this one</span><span>7</span></div>
+</div>
+<div>
+<div class="kv"><span class="muted">PCB paid Jan – Apr</span><span>RM12,371.75</span></div>
+<div class="kv"><span>Computed MTD this month</span><span>2,825.40</span></div>
+<div class="kv"><span>Additional PCB</span><span>0.00</span></div>
+<div class="kv" style="font-weight:800"><span>PCB this month</span><span>2,825.40</span></div>
+</div>
+</div>
+<div style="margin-top:10px"><a href="#" style="font-weight:600">Show EPF, SOCSO and EIS working</a></div>
+</div>
+
+</div>
+
+<div style="flex:1 1 340px;min-width:0;display:flex;flex-direction:column;gap:20px">
+<div class="card" style="padding:20px 22px">
+<div class="row"><span class="tile t-blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg></span><h2 style="margin:0;font-size:18px;font-weight:800">What fed this month</h2></div>
+<div style="margin-top:10px">
+<div class="kv"><span class="muted">Pay type</span><span>Monthly salary</span></div>
+<div class="kv"><span class="muted">Unpaid leave</span><span>0 days</span></div>
+<div class="kv"><span class="muted">Paid leave taken</span><span>0 days</span></div>
+<div class="kv"><span class="muted">Overtime approved</span><span>0.0 h</span></div>
+<div class="kv"><span class="muted">Claims approved</span><span>RM0.00</span></div>
+</div>
+</div>
+<div class="card" style="padding:20px 22px">
+<div class="row"><span class="tile t-green"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"></path></svg></span><div><h2 style="margin:0;font-size:18px;font-weight:800">Year to date</h2><div class="muted" style="font-size:13px">Jan – Apr 2026 · before this month</div></div></div>
+<div style="margin-top:10px">
+<div class="kv"><span class="muted">Gross</span><span>RM75,288.84</span></div>
+<div class="kv"><span class="muted">EPF (staff)</span><span>RM4,312.00</span></div>
+<div class="kv"><span class="muted">PCB paid</span><span>RM12,371.75</span></div>
+<div class="kv"><span class="muted">Months on record</span><span>4</span></div>
+</div>
+</div>
+<div class="card" style="padding:20px 22px;display:flex;flex-direction:column;gap:10px">
+<div class="row"><span class="tile t-orange"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg></span><h2 style="margin:0;font-size:18px;font-weight:800">Adjust this month</h2></div>
+<button class="btn" type="button" style="justify-content:flex-start">This month's items</button>
+<button class="btn" type="button" style="justify-content:flex-start">Override PCB</button>
+<p class="muted" style="margin:4px 0 0;font-size:13px">Applies to May 2026 only and is logged with your name.</p>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body>
+</html>

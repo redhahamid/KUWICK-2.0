@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings — first-time setup</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#ECEEF5;font-family:'Figtree',system-ui,-apple-system,'Segoe UI',sans-serif;color:#1B1E33;-webkit-font-smoothing:antialiased}
+a{color:#3A3EA8;text-decoration:none}a:hover{color:#262A7A}
+.nav{padding:9px 14px;border-radius:12px;color:#454A60;font-size:16px;font-weight:500}
+.nav.on{background:#E1E3F7;color:#32369A;font-weight:700}
+.sub{padding:9px 16px;border-radius:999px;color:#454A60;font-size:15px;font-weight:600}
+.sub.on{background:#fff;color:#32369A;box-shadow:0 1px 3px rgba(20,24,60,.12)}
+.card{background:#fff;border-radius:22px;box-shadow:0 1px 2px rgba(20,24,60,.05),0 6px 20px rgba(20,24,60,.05)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:13px;font-weight:600;white-space:nowrap}
+.c-green{background:#DDF3E6;color:#17703F}.c-orange{background:#FCEBD9;color:#8F4309}.c-grey{background:#EEF0F4;color:#474C60}.c-indigo{background:#E4E5F8;color:#32369A}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.btn{font:inherit;font-weight:600;font-size:15px;border-radius:12px;padding:0 18px;min-height:44px;border:1px solid #D9DCE7;background:#fff;color:#1B1E33;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;white-space:nowrap}
+.btn-sm{min-height:36px;font-size:14px;padding:0 12px;border-radius:10px}
+.btn-primary{background:#4B4FC4;border-color:#4B4FC4;color:#fff}
+.muted{color:#5B6075}
+.row{display:flex;align-items:center;gap:12px}
+.step{display:flex;gap:14px;align-items:flex-start;padding:14px;border-radius:16px;color:#1B1E33}
+.step.on{background:#EEEFFC}
+.sn{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex:none}
+.fld{display:flex;flex-direction:column;gap:6px}
+.fld label{font-weight:600;font-size:14px}
+.fld input{font:inherit;font-size:15px;min-height:46px;border:1px solid #D9DCE7;border-radius:12px;padding:0 14px;background:#fff;color:#1B1E33;box-sizing:border-box;width:100%}
+.fld small{font-size:13px;color:#5B6075}
+</style>
+</head>
+<body>
+<div style="min-height:100vh;background:#ECEEF5">
+<header style="background:#F7F8FB;border-bottom:1px solid #E1E4EE">
+<div style="max-width:1440px;margin:0 auto;padding:14px 32px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 28px;box-sizing:border-box">
+<a href="Main.html" style="font-weight:800;letter-spacing:.16em;font-size:22px;color:#262A7A">KUWICK</a>
+<nav aria-label="Main" style="display:flex;flex-wrap:wrap;gap:4px;flex:1 1 560px">
+<a class="nav" href="#">Dashboard</a><a class="nav" href="#">Appointments</a><a class="nav" href="#">Patients</a><a class="nav" href="#">Queue</a><a class="nav on" href="Main.html">HR</a><a class="nav" href="#">Finance</a><a class="nav" href="#">e-Invoice LHDN</a>
+</nav>
+<span style="border:1px solid #D9DCE7;background:#fff;border-radius:12px;padding:10px 16px;font-size:15px">Klinik Perubatan Hijraa Bangi</span>
+</div>
+</header>
+<main style="max-width:1440px;margin:0 auto;padding:18px 32px 48px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box">
+<nav aria-label="HR" style="display:flex;flex-wrap:wrap;gap:6px;background:#E3E5EE;border-radius:999px;padding:5px;align-self:flex-start;max-width:100%;box-sizing:border-box">
+<a class="sub" href="#">Overview</a><a class="sub" href="Staff.html">Staff</a><a class="sub" href="#">Leave</a><a class="sub" href="#">Attendance</a><a class="sub" href="#">Claims</a><a class="sub" href="Main.html">Payroll</a><a class="sub on" href="SettingsHome.html">Settings</a>
+</nav>
+
+<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px">
+<div><h1 style="margin:0;font-size:34px;font-weight:800">Set up payroll</h1><p class="muted" style="margin:6px 0 0;font-size:15px">Five steps, once. The rest of Settings opens when these are done.</p></div>
+<div class="row"><span style="width:56px;height:56px;border-radius:50%;background:conic-gradient(#4B4FC4 0 80%,#E3E5EE 80% 100%);display:flex;align-items:center;justify-content:center"><span style="width:44px;height:44px;border-radius:50%;background:#ECEEF5;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px">4/5</span></span><div><div style="font-weight:700">One step left</div><div class="muted" style="font-size:14px">Payroll can't go live until it's done</div></div></div>
+</div>
+
+<div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start">
+
+<nav aria-label="Setup steps" class="card" style="flex:1 1 320px;padding:12px;display:flex;flex-direction:column;gap:4px">
+<a class="step on" href="#"><span class="sn" style="background:#4B4FC4;color:#fff">1</span><span><span style="display:block;font-weight:700">Company &amp; statutory numbers</span><span class="chip c-orange" style="margin-top:6px"><span class="dot"></span>2 numbers missing</span></span></a>
+<a class="step" href="#"><span class="sn" style="background:#2C9C5E;color:#fff">✓</span><span><span style="display:block;font-weight:700">Pay rules</span><span class="muted" style="font-size:14px">Calendar-day proration · OT on 26 days</span></span></a>
+<a class="step" href="#"><span class="sn" style="background:#2C9C5E;color:#fff">✓</span><span><span style="display:block;font-weight:700">Payroll items</span><span class="muted" style="font-size:14px">22 in use · 3 pay dates</span></span></a>
+<a class="step" href="Staff.html"><span class="sn" style="background:#2C9C5E;color:#fff">✓</span><span><span style="display:block;font-weight:700">Staff</span><span class="muted" style="font-size:14px">28 staff · opens the Staff page</span></span></a>
+<a class="step" href="#"><span class="sn" style="background:#2C9C5E;color:#fff">✓</span><span><span style="display:block;font-weight:700">Check statutory rates</span><span class="muted" style="font-size:14px">Checked 5 Oct 2026</span></span></a>
+<div style="border-top:1px solid #EEF0F5;margin:6px 8px 0;padding:12px 6px 4px" class="muted"><span style="font-size:14px">Optional later: bank payment file</span></div>
+</nav>
+
+<section class="card" style="flex:999 1 640px;min-width:0;padding:26px">
+<div class="muted" style="font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase">Step 1 of 5</div>
+<h2 style="margin:6px 0 4px;font-size:24px;font-weight:800">Company &amp; statutory numbers</h2>
+<p class="muted" style="margin:0 0 22px;font-size:15px">The employer that pays the staff. These numbers print on payslips and filing listings.</p>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px">
+<div class="fld" style="grid-column:1/-1"><label for="emp">Employer name</label><input id="emp" value="Hijraa Bangi Healthcare Sdn. Bhd."></div>
+<div class="fld"><label for="epf">EPF employer no.</label><input id="epf" value="514545"><small style="color:#17703F;font-weight:600">✓ On file</small></div>
+<div class="fld"><label for="socso">SOCSO employer code</label><input id="socso" placeholder="e.g. A3100012345X" style="border-color:#E0A56E"><small>Needed for the PERKESO listing</small></div>
+<div class="fld"><label for="lhdn">LHDN employer no. (E)</label><input id="lhdn" placeholder="e.g. E 1234567890" style="border-color:#E0A56E"><small>Needed for the PCB listing</small></div>
+<div class="fld"><label>HRD Corp registration</label>
+<div style="display:flex;flex-wrap:wrap;gap:8px"><button class="btn btn-sm" type="button" style="background:#E4E5F8;border-color:#4B4FC4;color:#32369A">Mandatory · s.14</button><button class="btn btn-sm" type="button">Optional · s.15</button><button class="btn btn-sm" type="button">Not registered</button></div>
+</div>
+</div>
+
+<div style="margin-top:22px;padding:16px;border-radius:16px;background:#F7F8FB;display:flex;flex-wrap:wrap;gap:12px 24px">
+<div style="flex:1 1 240px"><div style="font-weight:700">Zakat through payroll</div><div class="muted" style="font-size:14px">Off: staff pay zakat themselves</div></div>
+<div style="flex:1 1 240px"><div style="font-weight:700">HRD levy on</div><div class="muted" style="font-size:14px">Basic + allowances marked HRD (the Act)</div></div>
+</div>
+
+<div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;margin-top:24px;border-top:1px solid #EEF0F5;padding-top:20px">
+<button class="btn" type="button">Save for later</button>
+<button class="btn btn-primary" type="button">Save &amp; finish setup</button>
+</div>
+</section>
+
+</div>
+</main>
+</div>
+</body>
+</html>
