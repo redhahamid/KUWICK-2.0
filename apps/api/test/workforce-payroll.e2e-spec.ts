@@ -1274,8 +1274,11 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         .set('Authorization', bearer)
         .expect(200);
 
+      // Not on the run at all (UAT, 10 October 2026): a month's run is for the
+      // people employed in that month, so a July leaver is not August's to
+      // pay, nor to warn about.
       const exceptions = calculated.body.exceptions as { name: string; issue: string }[];
-      expect(exceptions.some((row) => /not employed during this month/i.test(row.issue))).toBe(true);
+      expect(exceptions.some((row) => row.name === 'Left In July')).toBe(false);
       const detail = await request(app.getHttpServer())
         .get(`/workforce/payroll/runs/${run.body.id}`)
         .set('Authorization', bearer)
