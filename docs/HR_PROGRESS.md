@@ -6,13 +6,48 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 37 — 10 Oktober 2026 — Import item bulan dari CSV (skrin)
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada
+migrasi.**
+
+### Apa yang berubah
+
+- `[D]` Langkah Prepare, bulan draf sahaja: butang **Import items (CSV)** dan
+  **Download template** (lajur: Employee No. · Item code · Amount (RM) ·
+  Earned in (YYYY-MM, optional) · PCB type (normal / additional) · Note
+  (optional); contoh baris demo sahaja).
+- `[D]` Selepas memilih fail: setiap baris disemak dan ditunjuk (baris yang
+  perlu dibaiki di atas, dengan sebabnya); "N rows need fixing. Nothing has
+  been saved."; butang **Add N lines** hanya aktif apabila semua lulus.
+  Jika bulan itu sudah ada import, notis "Replaces the N lines imported
+  earlier". Senarai kod yang dibenarkan di bawah *Item codes you can use*.
+- `[D]` Selepas *Add N lines*: bulan dikira semula. Baris yang diimport
+  menunjukkan asal "Imported" dalam laci item setiap orang.
+- `[D]` **Ujian**: web baharu `itemsImport` (5).
+
+### Uji di staging
+
+1. Payroll → Januari 2026 (draf) → *Download template*.
+2. Isi beberapa baris (Employee No. sebenar klinik, kod daripada senarai),
+   tambah satu baris dengan Employee No. yang salah → *Import items (CSV)*:
+   baris itu ditanda *Fix*, tiada apa disimpan.
+3. Betulkan dan pilih semula → *Add N lines* → grid dikira semula; buka
+   item seseorang: asal "Imported".
+4. Import fail kedua untuk bulan yang sama: notis "Replaces …"; selepas
+   simpan, hanya baris fail kedua yang tinggal.
+
+---
+
 ## Batch 36 — 10 Oktober 2026 — Import item bulan dari CSV (API)
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi**
 `20261010170000_payroll_input_quantity`: satu lajur `quantity`
 (DECIMAL(6,2), boleh kosong) pada `payroll_input_entries`, untuk hari cuti
-tanpa gaji yang diimport. Dijalankan di staging dengan *Migrate only*
-sebelum master digerakkan (run dalam laporan).
+tanpa gaji yang diimport. `[D]` Dijalankan di staging dengan *Migrate only*
+run #19 (38062059498) dari cawangan ini sebelum master digerakkan: "Applying
+migration `20261010170000_payroll_input_quantity`", kemudian "Database
+schema is up to date!".
 
 ### Keputusan anda (10 Oktober 2026)
 

@@ -26,6 +26,7 @@ import { HrPage, Panel, PanelHead, SegControl, StatCard, StatRow, StatusChip, To
 import { IconDownload, IconHistory, IconPayroll } from './ui/icons';
 import { downloadCsv } from './ui/csv';
 import type { PayrollJourney } from '../types';
+import { ItemsImport } from './ItemsImport';
 
 /** The query's own error, as a sentence, or nothing. */
 const errorText = (query: { error: unknown }) => (query.error instanceof Error ? query.error.message : null);
@@ -378,6 +379,12 @@ function PrepareStep({
             { value: 'blocked', label: `Blocked ${blocked.length + leftOut.length}` },
             { value: 'check', label: `Needs attention ${check.length}` },
           ]}
+        />
+        {/* Past months moved in from the old payroll, one file a month (UAT, 10 October 2026). */}
+        <ItemsImport
+          runId={runId}
+          period={data.run.period}
+          canImport={canEdit && (data.run.status === 'DRAFT' || data.run.status === 'CALCULATED')}
         />
       </Toolbar>
 

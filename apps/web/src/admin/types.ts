@@ -3925,3 +3925,47 @@ export interface StatutoryFiling {
   notASubmission: string;
   agencies: FilingAgencyBlock[];
 }
+
+/** A row of a month's items file, as text (UAT, 10 October 2026). */
+export interface ItemsImportRowInput {
+  employeeNo?: string;
+  itemCode?: string;
+  amount?: string;
+  earnedIn?: string;
+  pcbType?: string;
+  note?: string;
+}
+
+export interface ItemsImportCodes {
+  codes: { code: string; name: string; addsOrDeducts: "ADDS" | "DEDUCTS"; pcbType: "normal" | "additional"; unit: "RM" | "days" }[];
+}
+
+export interface ItemsImportRowResult {
+  row: number;
+  employeeNo: string;
+  itemCode: string;
+  ok: boolean;
+  problems: string[];
+  name?: string;
+  staffId?: string;
+  itemName?: string;
+  addsOrDeducts?: "ADDS" | "DEDUCTS";
+  amount?: string | null;
+  days?: string | null;
+  earnedIn?: string | null;
+  pcbType?: "normal" | "additional";
+  note?: string | null;
+  replaces?: string | null;
+}
+
+export interface ItemsImportResult {
+  runId: string;
+  period: string;
+  committed: boolean;
+  rows: ItemsImportRowResult[];
+  passed: number;
+  failed: number;
+  previousImport: number;
+  replaced: number;
+  added: number;
+}

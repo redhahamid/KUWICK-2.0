@@ -1162,6 +1162,32 @@ a.hr-advanced__row:hover {
   margin: 0 14px 12px;
 }
 
+/* ── Import a month's items (CSV) ─────────────────────────────────────── */
+.hr-importItems {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 20px 20px;
+}
+.hr-importItems__problem {
+  color: var(--hr-red);
+  margin-top: 4px;
+  max-width: 420px;
+}
+.hr-importItems__codes {
+  columns: 2 280px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 14px;
+}
+.hr-importItems__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid var(--hr-line);
+  padding-top: 14px;
+}
+
 /* ── Drawer ───────────────────────────────────────────────────────────────── */
 .hr-drawer {
   position: fixed;

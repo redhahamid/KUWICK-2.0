@@ -3,6 +3,9 @@ import { apiClient, uploadFile } from "../../core/api-client";
 import type {
   EmployeeIntakeResult,
   EmployeeIntakeRowDto,
+  ItemsImportCodes,
+  ItemsImportResult,
+  ItemsImportRowInput,
   JobTitleRow,
   StatutoryFiling,
 } from "../types";
@@ -1609,6 +1612,24 @@ export function usePayrollInputs(params: {
       ),
     enabled: Boolean(params.period),
   });
+}
+
+/** The codes a month's items file may use (UAT, 10 October 2026). */
+export function useItemsImportCodes(enabled = true) {
+  return useQuery({
+    queryKey: ["admin-hr", "items-import-codes"],
+    queryFn: () => apiClient.get<ItemsImportCodes>("/workforce/payroll/items-import/codes"),
+    enabled,
+  });
+}
+
+/** Check a month's items file (`commit` absent), or save it when every row passes. */
+export function useImportItems() {
+  return useAdminMutation(
+    ({ runId, ...body }: { runId: string; rows: ItemsImportRowInput[]; fileName?: string; commit?: boolean }) =>
+      apiClient.post<ItemsImportResult>(`/workforce/payroll/runs/${runId}/items-import`, body),
+    ["admin-hr"],
+  );
 }
 
 export function useUpsertPayrollInput() {
