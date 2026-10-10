@@ -11,8 +11,10 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi**
 `20261010180000_legal_employer_default_epf_basis`: satu lajur
 `default_epf_basis` (ContributionBasisMode, lalai `ALL_APPLICABLE`) pada
-`legal_employers`. Dijalankan di staging dengan *Migrate only* sebelum master
-digerakkan (run dalam laporan). Tiada perubahan pada pengiraan EPF: run masih
+`legal_employers`. `[D]` Dijalankan di staging dengan *Migrate only* run
+#20 (38067637647) dari cawangan ini sebelum master digerakkan: "Applying
+migration `20261010180000_legal_employer_default_epf_basis`", kemudian
+"Database schema is up to date!". Tiada perubahan pada pengiraan EPF: run masih
 membaca rekod asas EPF bertarikh setiap orang.
 
 ### Keputusan anda (10 Oktober 2026)
