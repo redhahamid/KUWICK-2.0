@@ -37,6 +37,8 @@ test('an item with its own column is typed into the grid, saved once, and carrie
 
   // 1. Settings: two layout switches, no date and no reason asked.
   await page.goto('/admin/hr/settings/payroll-items');
+  // The switches are in the item's panel, opened from its row (UAT, 10 October 2026).
+  await page.getByRole('button', { name: "Director's fee", exact: true }).click();
   const own = page.getByRole('switch', { name: "Own column for Director's fee" });
   await expect(own).toBeVisible();
   const ownWasOn = (await own.getAttribute('aria-checked')) === 'true';
@@ -140,6 +142,7 @@ test('an item with its own column is typed into the grid, saved once, and carrie
   await page.screenshot({ path: `${SHOTS}/09-cleared-folded-again.png` });
 
   await page.goto('/admin/hr/settings/payroll-items');
+  await page.getByRole('button', { name: "Director's fee", exact: true }).click();
   if (!ownWasOn) {
     await page.getByRole('switch', { name: "Own column for Director's fee" }).click();
     await expect(page.getByText("Director's fee is back in Other income on the payroll grid.")).toBeVisible();

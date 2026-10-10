@@ -177,9 +177,40 @@ const mount = (data: PayComponentList = list) => {
   );
 };
 
+/** The table shows each item in one line; its switches are in the panel the row opens. */
+const openItem = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
+
+describe('the table, one line per item (UAT, 10 October 2026)', () => {
+  it('says what each item counts towards and when it is paid, with no switches on the row', () => {
+    mount({
+      ...list,
+      components: [
+        component(),
+        component({ id: 'c-ot', code: 'OVERTIME', name: 'Overtime', type: 'OVERTIME', category: 'REMUNERATION', payDay: 15, paidInArrears: true }),
+        component({ id: 'c-uniform', code: 'UNIFORM', name: 'Uniform deduction', type: 'DEDUCTION', category: 'PAYROLL_DEDUCTION', epfLiable: false, socsoLiable: false, eisLiable: false, pcbLiable: false, active: false }),
+      ],
+    });
+    expect(screen.getByText('EPF · SOCSO · EIS · PCB · paid 30th')).toBeTruthy();
+    expect(screen.getByText('EPF · SOCSO · EIS · PCB · paid 15th, a month in arrears')).toBeTruthy();
+    expect(screen.getByText('Taken from net pay')).toBeTruthy();
+    expect(screen.getAllByText('In use', { selector: '.hr-chip' })).toHaveLength(2);
+    expect(screen.getByText('Off')).toBeTruthy();
+    expect(screen.queryByRole('switch')).toBeNull();
+  });
+
+  it('opens the item’s panel when the row is clicked', () => {
+    mount();
+    openItem('Allowance');
+    expect(screen.getByRole('dialog', { name: 'Allowance' })).toBeTruthy();
+    expect(screen.getByLabelText('EPF for Allowance')).toBeTruthy();
+    expect(screen.getByLabelText('Allowance in use')).toBeChecked();
+  });
+});
+
 describe('the statutory treatment of a payroll item', () => {
   it('is editable on a SYSTEM item, which it was not before', () => {
     mount();
+    openItem('Allowance');
     // ALLOWANCE is systemControlled. Its EPF switch used to be drawn disabled
     // with "A system item keeps its statutory treatment"; a real clinic needs
     // exactly this switch, because it contributes EPF on basic pay only.
@@ -189,6 +220,7 @@ describe('the statutory treatment of a payroll item', () => {
 
   it('still refuses to be changed without a date and a reason', () => {
     mount();
+    openItem('Allowance');
     fireEvent.click(screen.getByLabelText('EPF for Allowance'));
 
     // The switch does not save on its own: it opens the question of when, and why.
@@ -197,11 +229,13 @@ describe('the statutory treatment of a payroll item', () => {
     expect(screen.getByText(/months already priced keep the old one/i)).toBeTruthy();
   });
 
-  it('says whose decision a changed row was, and why, on the row', () => {
+  it('says whose decision a changed row was on the row, and why in its panel', () => {
     mount();
     // Not in an audit log: on the screen, next to the figure it explains.
     // Two rows carry it now — the one in force and the one still a plan.
-    expect(screen.getAllByText('Your clinic')).toHaveLength(2);
+    expect(screen.getAllByText(/your clinic’s setting/)).toHaveLength(2);
+    openItem('Mileage / travelling allowance');
+    expect(screen.getByText('Your clinic')).toBeTruthy();
     expect(screen.getByText('Reimbursement of travel actually incurred.')).toBeTruthy();
     expect(screen.getByText(/from 1 Aug 2026/)).toBeTruthy();
   });
@@ -216,6 +250,7 @@ describe('the statutory treatment of a payroll item', () => {
 describe('the reason, which stays mandatory but need not be typed', () => {
   it('offers the reasons a clinic actually gives', () => {
     mount();
+    openItem('Allowance');
     fireEvent.click(screen.getByLabelText('EPF for Allowance'));
     // Mandatory, and the owner agreed it should stay mandatory — but typing one
     // on a phone every time a switch is touched is a tax on doing the right
@@ -225,6 +260,7 @@ describe('the reason, which stays mandatory but need not be typed', () => {
 
   it('keeps the free-text box, because a picked sentence is a starting point', () => {
     mount();
+    openItem('Allowance');
     fireEvent.click(screen.getByLabelText('EPF for Allowance'));
     const box = screen.getByLabelText('Why') as HTMLInputElement;
     expect(box).toBeTruthy();
@@ -234,6 +270,7 @@ describe('the reason, which stays mandatory but need not be typed', () => {
 
   it('will not save with the reason left empty', () => {
     mount();
+    openItem('Allowance');
     fireEvent.click(screen.getByLabelText('EPF for Allowance'));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(upsertMutate).not.toHaveBeenCalled();
@@ -244,6 +281,7 @@ describe('the reason, which stays mandatory but need not be typed', () => {
 describe('a version that has not started yet', () => {
   it('says it will be REPLACED, not stacked on', () => {
     mount();
+    openItem('Bonus');
     fireEvent.click(screen.getByLabelText('EPF for Bonus'));
     // The owner mis-tapped, saved from a future date, and could not undo it.
     // The screen must not keep calling that "a new version".
@@ -252,6 +290,7 @@ describe('a version that has not started yet', () => {
 
   it('still calls a change to a version in force a new version', () => {
     mount();
+    openItem('Mileage / travelling allowance');
     fireEvent.click(screen.getByLabelText('EPF for Mileage / travelling allowance'));
     expect(screen.getByText(/months already priced keep the old one/)).toBeTruthy();
   });
@@ -260,7 +299,8 @@ describe('a version that has not started yet', () => {
 describe('the history of one item', () => {
   it('shows each version with its dates and what it changed', async () => {
     mount();
-    fireEvent.click(screen.getAllByRole('button', { name: 'History' })[1]);
+    openItem('Mileage / travelling allowance');
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
 
     await waitFor(() => expect(screen.getByText(/every version/)).toBeTruthy());
     expect(screen.getByText(/1 Oct 2026 onwards/)).toBeTruthy();
@@ -271,7 +311,8 @@ describe('the history of one item', () => {
 
   it('keeps Kuwick’s guess and the clinic’s decision apart', async () => {
     mount();
-    fireEvent.click(screen.getAllByRole('button', { name: 'History' })[1]);
+    openItem('Mileage / travelling allowance');
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
 
     await waitFor(() => expect(screen.getByText(/every version/)).toBeTruthy());
     // The version the clinic chose names the person who chose it.
@@ -362,6 +403,7 @@ describe('a component the clinic makes itself', () => {
 describe('a version that has not started', () => {
   it('offers its date for correction on its own', () => {
     mount();
+    openItem('Bonus');
     // MILEAGE is the clinic-overridden row; BONUS is the one dated 2099.
     expect(screen.getAllByRole('button', { name: /Change the month/i }).length).toBeGreaterThan(0);
   });
@@ -369,6 +411,7 @@ describe('a version that has not started', () => {
   it('sends the same treatment with a new date, and no invented flag', async () => {
     mount();
     upsertMutate.mockClear();
+    openItem('Bonus');
     fireEvent.click(screen.getAllByRole('button', { name: /Change the month/i })[0]);
     fireEvent.change(screen.getByLabelText(/Why/i), { target: { value: 'The month was wrong.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -383,6 +426,7 @@ describe('a version that has not started', () => {
   it('will not save the move without a reason, because it is kept with the version', async () => {
     mount();
     upsertMutate.mockClear();
+    openItem('Bonus');
     fireEvent.click(screen.getAllByRole('button', { name: /Change the month/i })[0]);
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.getByText(/Say why/i)).toBeTruthy());
@@ -399,6 +443,7 @@ describe('how an item sits on the payroll grid', () => {
   it('switches own column and carry forward in place, with no date and no reason', () => {
     upsertMutate.mockReset();
     mount();
+    openItem('Allowance');
     fireEvent.click(screen.getByLabelText('Own column for Allowance'));
     expect(upsertMutate).toHaveBeenCalledTimes(1);
     const body = upsertMutate.mock.calls[0][0] as Record<string, unknown>;
@@ -416,8 +461,10 @@ describe('how an item sits on the payroll grid', () => {
       ...list,
       components: [...list.components, component({ id: 'c-ot', code: 'OVERTIME', name: 'Overtime', type: 'OVERTIME', category: 'REMUNERATION', handKeyed: false })],
     });
+    openItem('Overtime');
     expect(screen.queryByLabelText('Own column for Overtime')).toBeNull();
     expect(screen.queryByLabelText('Carry forward for Overtime')).toBeNull();
+    openItem('Allowance');
     expect(screen.getByLabelText('Own column for Allowance')).toBeTruthy();
   });
 });
@@ -431,6 +478,7 @@ describe('who an item is for', () => {
   it('names the employees an item is for, and saves the list in place', () => {
     upsertMutate.mockReset();
     mount();
+    openItem('Allowance');
     fireEvent.click(screen.getByRole('button', { name: 'Who Allowance is for' }));
     expect(screen.getByRole('dialog', { name: 'Who Allowance is for' })).toBeTruthy();
     fireEvent.click(screen.getByLabelText('Selected employees only'));
@@ -449,6 +497,7 @@ describe('who an item is for', () => {
       ...list,
       components: [component({ appliesTo: 'SELECTED', appliesToStaffIds: ['s-doctor'], appliesToStaff: [{ staffId: 's-doctor', fullName: 'Dr Demo Doktor', active: true }] })],
     });
+    openItem('Allowance');
     const button = screen.getByRole('button', { name: 'Who Allowance is for' });
     expect(button).toHaveTextContent('1 employee');
     fireEvent.click(button);
@@ -464,6 +513,7 @@ describe('who an item is for', () => {
       ...list,
       components: [component({ id: 'c-ot', code: 'OVERTIME', name: 'Overtime', type: 'OVERTIME', category: 'REMUNERATION', handKeyed: false, audienceEditable: false })],
     });
+    openItem('Overtime');
     expect(screen.queryByRole('button', { name: 'Who Overtime is for' })).toBeNull();
   });
 });
@@ -483,8 +533,10 @@ describe('when an item is paid', () => {
         component({ id: 'c-ot', code: 'OVERTIME', name: 'Overtime', type: 'OVERTIME', category: 'REMUNERATION', payDay: 15, paidInArrears: true }),
       ],
     });
-    expect(screen.getByRole('button', { name: 'When Allowance is paid: 30th' })).toHaveTextContent('30th');
+    openItem('Overtime');
     expect(screen.getByRole('button', { name: 'When Overtime is paid: 15th · a month in arrears' })).toBeTruthy();
+    openItem('Allowance');
+    expect(screen.getByRole('button', { name: 'When Allowance is paid: 30th' })).toHaveTextContent('30th');
 
     fireEvent.click(screen.getByRole('button', { name: 'When Allowance is paid: 30th' }));
     const popover = screen.getByRole('dialog', { name: 'When Allowance is paid' });
@@ -502,8 +554,10 @@ describe('when an item is paid', () => {
         component({ id: 'c-uniform', code: 'UNIFORM', name: 'Uniform deduction', type: 'DEDUCTION', category: 'PAYROLL_DEDUCTION', includeIn: 'NET_ONLY' }),
       ],
     });
+    openItem('Uniform deduction');
     expect(screen.getByText('From the salary payment')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /When Uniform deduction is paid/ })).toBeNull();
+    openItem('Allowance');
 
     fireEvent.click(screen.getByRole('button', { name: 'When Allowance is paid: 30th' }));
     const popover = screen.getByRole('dialog', { name: 'When Allowance is paid' });
@@ -516,6 +570,7 @@ describe('when an item is paid', () => {
   it('never offers basic pay a month in arrears', () => {
     setPayDateMutate.mockReset();
     mount({ ...list, components: [component({ id: 'c-basic', code: 'BASIC', name: 'Basic pay', category: 'REMUNERATION' })] });
+    openItem('Basic pay');
     fireEvent.click(screen.getByRole('button', { name: 'When Basic pay is paid: 30th' }));
     const popover = screen.getByRole('dialog', { name: 'When Basic pay is paid' });
     expect(within(popover).queryByRole('switch', { name: 'A month in arrears' })).toBeNull();
@@ -531,7 +586,9 @@ describe('when an item is paid', () => {
         component({ id: 'c-fee', code: 'DIRECTOR_FEE', name: "Director's fee", payDay: 1, paidFollowingMonth: true }),
       ],
     });
+    openItem("Director's fee");
     expect(screen.getByRole('button', { name: "When Director's fee is paid: 1st of the following month" })).toBeTruthy();
+    openItem('Basic pay');
 
     fireEvent.click(screen.getByRole('button', { name: 'When Basic pay is paid: 30th' }));
     const popover = screen.getByRole('dialog', { name: 'When Basic pay is paid' });

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { App, DatePicker, Input, Radio, Select, Switch, Tooltip } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -6,15 +6,16 @@ import { useCan } from '../../core/hooks/useCan';
 import { useEmployees, usePayComponentHistory, usePayComponents, useSeedPayComponents, useUpsertPayComponent } from '../hooks/useAdmin';
 import { Drawer, HrPage, Panel, StatusChip } from './ui';
 import { Table } from './ui/Table';
-import { PayDateCell } from './PayDateCell';
+import { PayDateCell, ordinal } from './PayDateCell';
 import { IconLock } from './ui/icons';
 import type { PayComponentRow, PayComponentVersion } from '../types';
 
 /**
  * PAYROLL ITEMS — what a clinic can pay or deduct, and what each one counts
- * towards. Now with the switches on the row.
+ * towards. The table says each item in one line; clicking the row opens its
+ * panel, where the switches are (UAT, 10 October 2026).
  *
- * Eight of them, one per column, each backed by a real field on the
+ * Eight treatment switches, each backed by a real field on the
  * component: EPF · SOCSO · EIS · PCB · HRD · Prorate · OT base · Unpaid-leave
  * base. Flipping one is NOT an edit. The calculation resolves this catalogue
  * by period, so overwriting the row would reprice every month not yet
@@ -166,6 +167,21 @@ const moved = (version: PayComponentVersion, previous: PayComponentVersion | und
 /** Has this version begun? A plan and a record are corrected differently. */
 const notStarted = (row: PayComponentRow) => dayjs(row.effectiveFrom).isAfter(dayjs(), 'day');
 
+/** The schemes an item counts towards, in the order a payslip lists them. */
+const STATUTORY: Flag[] = ['epfLiable', 'socsoLiable', 'eisLiable', 'pcbLiable', 'hrdLiable'];
+
+/**
+ * THE ROW IN ONE LINE (UAT, 10 October 2026): "EPF · SOCSO · EIS · PCB · paid
+ * 15th, a month in arrears". Every switch behind it is in the item's panel.
+ */
+export const itemSummary = (row: PayComponentRow): string => {
+  const schemes = FLAGS.filter((flag) => STATUTORY.includes(flag.key) && row[flag.key]).map((flag) => flag.title);
+  if (row.type === 'DEDUCTION') return schemes.length > 0 ? `Reduces ${schemes.join(' · ')}` : 'Taken from net pay';
+  const paid = `paid ${ordinal(row.payDay)}${row.paidFollowingMonth ? ' of the following month' : ''}${row.paidInArrears ? ', a month in arrears' : ''}`;
+  const head = row.includeIn === 'NET_ONLY' ? 'Reimbursement' : schemes.length > 0 ? schemes.join(' · ') : 'No EPF, SOCSO, EIS or PCB';
+  return `${head} · ${paid}`;
+};
+
 export function PayrollItemsPage() {
   const { message } = App.useApp();
   const components = usePayComponents();
@@ -199,6 +215,12 @@ export function PayrollItemsPage() {
   const [addProblem, setAddProblem] = useState<string | null>(null);
   /** The item whose people are being chosen. */
   const [audienceOf, setAudienceOf] = useState<PayComponentRow | null>(null);
+  /**
+   * The item open in its panel, by code: a dated change saves a new version
+   * with a new id, and the panel should stay on the item.
+   */
+  const [openCode, setOpenCode] = useState<string | null>(null);
+  const openRow = openCode ? (rows.find((row) => row.code === openCode) ?? null) : null;
 
   /** Who an item is for is audience, not treatment: saved in place like the two layout switches. */
   const saveAudience = (row: PayComponentRow, appliesTo: 'EVERYONE' | 'SELECTED', appliesToStaffIds: string[]) =>
@@ -245,6 +267,15 @@ export function PayrollItemsPage() {
     setPending(null);
     setReason('');
     setProblem(null);
+  };
+
+  const openItem = (row: PayComponentRow) => {
+    cancel();
+    setOpenCode(row.code);
+  };
+  const closeItem = () => {
+    cancel();
+    setOpenCode(null);
   };
 
   const save = () => {
@@ -302,8 +333,6 @@ export function PayrollItemsPage() {
   /** What a row IS, read off the row: nothing a person sets here. */
   const kinds = (row: PayComponentRow) =>
     row.type === 'ADDITION' && row.includeIn === 'NET_ONLY' ? [<StatusChip key="r" tone="info">Reimbursement</StatusChip>] : [];
-  /** A seeded catalogue has no reimbursement, and a column of dashes says nothing — so it is not drawn. */
-  const showKind = rows.some((row) => kinds(row).length > 0);
 
   /**
    * ONE VERDICT FOR THE LIST, not one per row. Every seeded row is DRAFT
@@ -377,279 +406,100 @@ export function PayrollItemsPage() {
           searchLabel="Search pay items"
           emptyText="No pay items are set up yet."
           emptyHint="Seed the standard Malaysian set, then adjust what each item counts towards."
+          onRow={(row) => ({ onClick: () => openItem(row) })}
           columns={[
             {
               title: 'Item',
               dataIndex: 'name',
               render: (value: string, row) => (
                 <div>
-                  <div className="hr-strong">
+                  <button type="button" className="hr-linkButton hr-strong" onClick={(event) => { event.stopPropagation(); openItem(row); }}>
                     {value}
-                    {row.systemControlled ? (
-                      <Tooltip title="System item: what it IS cannot be changed — the calculation reads its type, and its category is kept for the year-end forms (not used yet; the EA form is a later piece). What it counts towards is yours to set.">
-                        <span className="hr-lock" role="img" aria-label="System item: its kind is fixed, its treatment is not">
-                          <IconLock />
-                        </span>
-                      </Tooltip>
-                    ) : null}
-                  </div>
-                  <span className="hr-faint hr-small">{row.code}</span>
-                  {row.clinicOverride ? (
-                    <div className="hr-small hr-decided">
-                      <StatusChip tone="info">Your clinic</StatusChip>
-                      <span className="hr-faint">from {dayjs(row.effectiveFrom).format('D MMM YYYY')}</span>
-                      {/*
-                        A PLAN'S DATE IS EDITABLE ON ITS OWN. Where the switches
-                        already say what the clinic wants and only the month is
-                        wrong, there was no way through: the date rode along
-                        with a treatment change, so the route was to save a flag
-                        at a value nobody wanted and then correct it — two
-                        versions, and a decision in the log that was never made.
-                      */}
-                      {notStarted(row) ? (
-                        <button
-                          type="button"
-                          className="hr-historyLink"
-                          onClick={() => {
-                            setPending({ row, flag: null, next: false });
-                            setFrom(dayjs(row.effectiveFrom).startOf('month'));
-                            setReason('');
-                            setProblem(null);
-                          }}
-                        >
-                          Change the month
-                        </button>
-                      ) : null}
-                      {pending?.row.id === row.id && pending.flag === null ? (
-                        <div className="hr-popover" role="dialog" aria-label={`Change when ${row.name} starts`}>
-                          <div className="hr-small">
-                            This change has not started yet, so its date can move without becoming a second version.
-                            The treatment stays exactly as it is.
-                          </div>
-                          <label htmlFor={`movefrom-${row.id}`}>From which month</label>
-                          <DatePicker
-                            id={`movefrom-${row.id}`}
-                            picker="month"
-                            value={from}
-                            allowClear={false}
-                            format="MMM YYYY"
-                            style={{ width: '100%' }}
-                            onChange={(value) => value && setFrom(value.startOf('month'))}
-                          />
-                          <label htmlFor={`movewhy-${row.id}`}>Why</label>
-                          <Input
-                            id={`movewhy-${row.id}`}
-                            value={reason}
-                            placeholder="Kept with this version"
-                            maxLength={500}
-                            onChange={(event) => setReason(event.target.value)}
-                            onPressEnter={save}
-                          />
-                          {problem ? <div className="hr-small" style={{ color: 'var(--hr-red)', marginTop: 6 }}>{problem}</div> : null}
-                          <div className="hr-popover__actions">
-                            <button type="button" className="hr-btn hr-btn--sm" onClick={cancel}>
-                              Cancel
-                            </button>
-                            <button type="button" className="hr-btn hr-btn--sm hr-btn--primary" onClick={save} disabled={upsert.isPending}>
-                              Save
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-                      {row.changeReason ? <span className="hr-decided__why">{row.changeReason}</span> : null}
-                    </div>
-                  ) : null}
-                  <button type="button" className="hr-historyLink" onClick={() => setHistoryOf(row.code)}>
-                    History
                   </button>
+                  {row.systemControlled ? (
+                    <span className="hr-lock" role="img" aria-label="System item: its kind is fixed, its treatment is not">
+                      <IconLock />
+                    </span>
+                  ) : null}
+                  <div className="hr-faint hr-small">
+                    {row.code}
+                    {row.clinicOverride ? ' · your clinic’s setting' : ''}
+                  </div>
                 </div>
               ),
             },
             {
               title: 'Adds or deducts',
               dataIndex: 'type',
-              width: 120,
+              width: 140,
               render: (value: string) => (
                 <StatusChip tone={value === 'DEDUCTION' ? 'attn' : 'info'}>
                   {value === 'DEDUCTION' ? 'Deducts' : value === 'OVERTIME' ? 'Overtime' : 'Adds'}
                 </StatusChip>
               ),
             },
-            ...FLAGS.map((flag) => ({
-              title: flag.hint ? (
-                <Tooltip title={flag.hint}>
-                  <span style={{ borderBottom: '1px dotted currentColor' }}>{flag.title}</span>
-                </Tooltip>
-              ) : (
-                flag.title
-              ),
-              dataIndex: flag.key,
-              width: flag.width,
-              align: 'center' as const,
-              render: (_: unknown, row: PayComponentRow) => {
-                const isPending = pending?.row.id === row.id && pending.flag === flag.key;
-                return (
-                  <span className="hr-anchor">
-                    <Switch
-                      size="small"
-                      checked={isPending ? pending.next : row[flag.key]}
-                      disabled={!mayManage || upsert.isPending}
-                      aria-label={`${flag.title} for ${row.name}`}
-                      onChange={(next) => {
-                        setPending({ row, flag: flag.key, next });
-                        setFrom(dayjs().add(1, 'month').startOf('month'));
-                        setReason('');
-                        setProblem(null);
-                      }}
-                    />
-                    {isPending ? (
-                      <div className="hr-popover" role="dialog" aria-label="When does this take effect?">
-                        <div className="hr-popover__title">
-                          {flag.title} {pending.next ? 'on' : 'off'} for {row.name}
-                        </div>
-                        <div className="hr-popover__hint">
-                          {/*
-                            * TELL THE TRUTH ABOUT WHICH OF THE TWO THIS IS.
-                            * A version that has not begun is a plan, and editing
-                            * it replaces it; one already in force is history, and
-                            * changing it can only mean a new version from a later
-                            * month. Saying "a new version" for both left an owner
-                            * unable to undo a mis-tap.
-                            */}
-                          {notStarted(row)
-                            ? `This change has not started yet, so editing it replaces it — no third version, and nothing has been paid under it.`
-                            : 'A changed treatment is a new version, not an edit — months already priced keep the old one.'}
-                        </div>
-                        <label htmlFor={`from-${row.id}`}>From which month</label>
-                        <DatePicker
-                          id={`from-${row.id}`}
-                          picker="month"
-                          value={from}
-                          allowClear={false}
-                          format="MMM YYYY"
-                          style={{ width: '100%' }}
-                          onChange={(value) => value && setFrom(value.startOf('month'))}
-                        />
-                        <label htmlFor={`reason-${row.id}`}>Why</label>
-                        <Select
-                          aria-label="Common reasons"
-                          placeholder="Pick a common reason"
-                          style={{ width: '100%', marginBottom: 6 }}
-                          value={COMMON_REASONS.includes(reason) ? reason : undefined}
-                          options={COMMON_REASONS.map((value) => ({ value, label: value }))}
-                          onChange={(value) => setReason(value)}
-                        />
-                        <Input
-                          id={`reason-${row.id}`}
-                          value={reason}
-                          placeholder="or write your own"
-                          maxLength={500}
-                          onChange={(event) => setReason(event.target.value)}
-                          onPressEnter={save}
-                        />
-                        {problem ? <div className="hr-small" style={{ color: 'var(--hr-red)', marginTop: 6 }}>{problem}</div> : null}
-                        <div className="hr-popover__actions">
-                          <button type="button" className="hr-btn hr-btn--sm" onClick={cancel}>
-                            Cancel
-                          </button>
-                          <button type="button" className="hr-btn hr-btn--sm hr-btn--primary" onClick={save} disabled={upsert.isPending}>
-                            Save
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </span>
-                );
-              },
-            })),
             {
-              // When the money goes out (UAT, 10 October 2026): each date is its own transfer.
-              title: 'Paid on',
-              key: 'payDate',
-              width: 140,
-              render: (_: unknown, row: PayComponentRow) => <PayDateCell row={row} disabled={!mayManage} />,
-            },
-            ...(showKind
-              ? [
-                  {
-                    title: 'Kind',
-                    key: 'kind',
-                    width: 130,
-                    render: (_: unknown, row: PayComponentRow) =>
-                      kinds(row).length > 0 ? <span style={{ display: 'inline-flex', gap: 4 }}>{kinds(row)}</span> : <span className="hr-faint">—</span>,
-                  },
-                ]
-              : []),
-            ...LAYOUT.map((layout) => ({
-              title: layout.title,
-              dataIndex: layout.key,
-              width: layout.width,
-              align: 'center' as const,
-              render: (value: boolean, row: PayComponentRow) =>
-                row.handKeyed ? (
-                  <Switch
-                    size="small"
-                    checked={value}
-                    disabled={!mayManage || upsert.isPending || !row.active}
-                    aria-label={`${layout.title} for ${row.name}`}
-                    onChange={(next) => toggleLayout(row, layout.key, next)}
-                  />
-                ) : (
-                  <span className="hr-faint" title="This item's amount comes from records, so it has a column of its own already.">
-                    —
-                  </span>
-                ),
-            })),
-            {
-              title: 'Applies to',
-              key: 'appliesTo',
-              width: 150,
-              render: (_: unknown, row: PayComponentRow) =>
-                row.audienceEditable ? (
-                  <button
-                    type="button"
-                    className="hr-linkButton"
-                    disabled={!mayManage || upsert.isPending}
-                    aria-label={`Who ${row.name} is for`}
-                    onClick={() => setAudienceOf(row)}
-                  >
-                    {row.appliesTo === 'SELECTED'
-                      ? `${row.appliesToStaffIds.length} ${row.appliesToStaffIds.length === 1 ? 'employee' : 'employees'}`
-                      : 'Everyone'}
-                  </button>
-                ) : (
-                  <span className="hr-faint" title="This item is worked out from the records, so it applies to whoever the records say.">
-                    Everyone
-                  </span>
-                ),
+              title: 'What it counts towards',
+              key: 'summary',
+              render: (_: unknown, row: PayComponentRow) => <span className="hr-itemSummary">{itemSummary(row)}</span>,
             },
             {
               title: 'In use',
               dataIndex: 'active',
-              width: 80,
-              align: 'center' as const,
-              render: (active: boolean, row: PayComponentRow) => (
-                <Switch
-                  size="small"
-                  checked={active}
-                  disabled={!mayManage || upsert.isPending}
-                  aria-label={`${row.name} in use`}
-                  onChange={(next) => toggleActive(row, next)}
-                />
-              ),
+              width: 110,
+              render: (active: boolean) => <StatusChip tone={active ? 'done' : 'muted'}>{active ? 'In use' : 'Off'}</StatusChip>,
             },
           ]}
         />
         <div className="hr-panelNote">
+          Click an item to change what it counts towards, when it is paid, who it is for, or switch it off.
+          <details className="hr-details">
+            <summary>Details</summary>
           <strong>Own column</strong> gives the item a column of its own on the payroll grid, between Basic and Other income, typed
           straight in. <strong>Carry forward</strong> starts each new month with last month’s amount for each person, marked as
           carried until it is edited or cleared; a line earned in the month before is carried with its earned-in month moved on
           by one, and a one-off late payment is not carried. <strong>Applies to</strong> says who the item is for: everyone, or
           the employees you name, who alone get its column, its line in the items drawer and its carried amount. All three are
           layout, not treatment: they need no date or reason.
+          </details>
         </div>
         {components.data ? <div className="hr-panelNote">{components.data.verificationNotice.statement}</div> : null}
       </Panel>
+
+      {openRow ? (
+        <Drawer open title={openRow.name} sub={`${openRow.code} · ${itemSummary(openRow)}`} onClose={closeItem}>
+          <ItemPanel
+            row={openRow}
+            mayManage={mayManage}
+            saving={upsert.isPending}
+            pending={pending?.row.code === openRow.code ? pending : null}
+            from={from}
+            reason={reason}
+            problem={problem}
+            kinds={kinds(openRow)}
+            onFlag={(flag, next) => {
+              setPending({ row: openRow, flag, next });
+              setFrom(dayjs().add(1, 'month').startOf('month'));
+              setReason('');
+              setProblem(null);
+            }}
+            onMoveMonth={() => {
+              setPending({ row: openRow, flag: null, next: false });
+              setFrom(dayjs(openRow.effectiveFrom).startOf('month'));
+              setReason('');
+              setProblem(null);
+            }}
+            onFrom={setFrom}
+            onReason={setReason}
+            onCancel={cancel}
+            onSave={save}
+            onLayout={(key, next) => toggleLayout(openRow, key, next)}
+            onActive={(next) => toggleActive(openRow, next)}
+            onAudience={() => setAudienceOf(openRow)}
+            onHistory={() => setHistoryOf(openRow.code)}
+          />
+        </Drawer>
+      ) : null}
 
       {audienceOf ? (
         <AudienceDrawer
@@ -831,6 +681,241 @@ export function PayrollItemsPage() {
         </Drawer>
       ) : null}
     </HrPage>
+  );
+}
+
+/**
+ * ONE ITEM, EVERY SWITCH (UAT, 10 October 2026). The table shows the item in
+ * one line; this panel, opened by clicking the row, is where it changes. The
+ * rules are the ones the row had: a treatment switch asks for the month it
+ * takes effect and why, and is a new version (or replaces a plan that has not
+ * started); pay date, grid layout, audience and in-use save at once.
+ */
+function ItemPanel({
+  row,
+  mayManage,
+  saving,
+  pending,
+  from,
+  reason,
+  problem,
+  kinds,
+  onFlag,
+  onMoveMonth,
+  onFrom,
+  onReason,
+  onCancel,
+  onSave,
+  onLayout,
+  onActive,
+  onAudience,
+  onHistory,
+}: {
+  row: PayComponentRow;
+  mayManage: boolean;
+  saving: boolean;
+  pending: { row: PayComponentRow; flag: Flag | null; next: boolean } | null;
+  from: Dayjs;
+  reason: string;
+  problem: string | null;
+  kinds: ReactNode[];
+  onFlag: (flag: Flag, next: boolean) => void;
+  onMoveMonth: () => void;
+  onFrom: (value: Dayjs) => void;
+  onReason: (value: string) => void;
+  onCancel: () => void;
+  onSave: () => void;
+  onLayout: (key: Layout, next: boolean) => void;
+  onActive: (next: boolean) => void;
+  onAudience: () => void;
+  onHistory: () => void;
+}) {
+  const ask = (label: string, hint: ReactNode, withCommon: boolean) => (
+    <div className="hr-popover hr-popover--inline" role="dialog" aria-label={label}>
+      {hint}
+      <label htmlFor={`from-${row.id}`}>From which month</label>
+      <DatePicker
+        id={`from-${row.id}`}
+        picker="month"
+        value={from}
+        allowClear={false}
+        format="MMM YYYY"
+        style={{ width: '100%' }}
+        onChange={(value) => value && onFrom(value.startOf('month'))}
+      />
+      <label htmlFor={`reason-${row.id}`}>Why</label>
+      {withCommon ? (
+        <Select
+          aria-label="Common reasons"
+          placeholder="Pick a common reason"
+          style={{ width: '100%', marginBottom: 6 }}
+          value={COMMON_REASONS.includes(reason) ? reason : undefined}
+          options={COMMON_REASONS.map((value) => ({ value, label: value }))}
+          onChange={(value) => onReason(value)}
+        />
+      ) : null}
+      <Input
+        id={`reason-${row.id}`}
+        value={reason}
+        placeholder={withCommon ? 'or write your own' : 'Kept with this version'}
+        maxLength={500}
+        onChange={(event) => onReason(event.target.value)}
+        onPressEnter={onSave}
+      />
+      {problem ? <div className="hr-small" style={{ color: 'var(--hr-red)', marginTop: 6 }}>{problem}</div> : null}
+      <div className="hr-popover__actions">
+        <button type="button" className="hr-btn hr-btn--sm" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="button" className="hr-btn hr-btn--sm hr-btn--primary" onClick={onSave} disabled={saving}>
+          Save
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="hr-itemPanel">
+      {row.systemControlled ? (
+        <div className="hr-small hr-faint">
+          <IconLock /> System item: what it is cannot be changed, because the calculation reads its type. What it counts towards
+          is yours to set.
+        </div>
+      ) : null}
+
+      {row.clinicOverride ? (
+        <div className="hr-small hr-decided">
+          <StatusChip tone="info">Your clinic</StatusChip>
+          <span className="hr-faint">from {dayjs(row.effectiveFrom).format('D MMM YYYY')}</span>
+          {/*
+            A PLAN'S DATE IS EDITABLE ON ITS OWN: where the switches already
+            say what the clinic wants and only the month is wrong.
+          */}
+          {notStarted(row) ? (
+            <button type="button" className="hr-historyLink" onClick={onMoveMonth}>
+              Change the month
+            </button>
+          ) : null}
+          {row.changeReason ? <span className="hr-decided__why">{row.changeReason}</span> : null}
+        </div>
+      ) : null}
+      {pending && pending.flag === null
+        ? ask(
+            `Change when ${row.name} starts`,
+            <div className="hr-small">
+              This change has not started yet, so its date can move without becoming a second version. The treatment stays
+              exactly as it is.
+            </div>,
+            false,
+          )
+        : null}
+
+      <section className="hr-fld">
+        <h3 className="hr-itemPanel__head">What it counts towards</h3>
+        <div className="hr-itemFlags">
+          {FLAGS.map((flag) => {
+            const isPending = pending?.flag === flag.key;
+            return (
+              <div key={flag.key} className="hr-itemFlag">
+                <div className="hr-itemFlag__row">
+                  <span>
+                    {flag.hint ? (
+                      <Tooltip title={flag.hint}>
+                        <span style={{ borderBottom: '1px dotted currentColor' }}>{flag.title}</span>
+                      </Tooltip>
+                    ) : (
+                      flag.title
+                    )}
+                  </span>
+                  <Switch
+                    size="small"
+                    checked={isPending ? pending.next : row[flag.key]}
+                    disabled={!mayManage || saving}
+                    aria-label={`${flag.title} for ${row.name}`}
+                    onChange={(next) => onFlag(flag.key, next)}
+                  />
+                </div>
+                {isPending
+                  ? ask(
+                      'When does this take effect?',
+                      <>
+                        <div className="hr-popover__title">
+                          {flag.title} {pending.next ? 'on' : 'off'} for {row.name}
+                        </div>
+                        <div className="hr-popover__hint">
+                          {/* A version that has not begun is a plan, and editing it replaces it; one in force is history. */}
+                          {notStarted(row)
+                            ? `This change has not started yet, so editing it replaces it — no third version, and nothing has been paid under it.`
+                            : 'A changed treatment is a new version, not an edit — months already priced keep the old one.'}
+                        </div>
+                      </>,
+                      true,
+                    )
+                  : null}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="hr-fld">
+        <h3 className="hr-itemPanel__head">Paid on</h3>
+        <PayDateCell row={row} disabled={!mayManage} />
+        {kinds.length > 0 ? <span style={{ display: 'inline-flex', gap: 4, marginLeft: 8 }}>{kinds}</span> : null}
+      </section>
+
+      {row.handKeyed ? (
+        <section className="hr-fld">
+          <h3 className="hr-itemPanel__head">On the payroll grid</h3>
+          {LAYOUT.map((layout) => (
+            <div key={layout.key} className="hr-itemFlag__row">
+              <span>{layout.title}</span>
+              <Switch
+                size="small"
+                checked={row[layout.key]}
+                disabled={!mayManage || saving || !row.active}
+                aria-label={`${layout.title} for ${row.name}`}
+                onChange={(next) => onLayout(layout.key, next)}
+              />
+            </div>
+          ))}
+          <span className="hr-faint hr-small">
+            Own column: typed straight into the grid, between Basic and Other income. Carry forward: each new month starts with
+            last month’s amount for each person, marked as carried until edited or cleared.
+          </span>
+        </section>
+      ) : null}
+
+      <section className="hr-fld">
+        <h3 className="hr-itemPanel__head">Applies to</h3>
+        {row.audienceEditable ? (
+          <button
+            type="button"
+            className="hr-linkButton"
+            disabled={!mayManage || saving}
+            aria-label={`Who ${row.name} is for`}
+            onClick={onAudience}
+          >
+            {row.appliesTo === 'SELECTED'
+              ? `${row.appliesToStaffIds.length} ${row.appliesToStaffIds.length === 1 ? 'employee' : 'employees'}`
+              : 'Everyone'}
+          </button>
+        ) : (
+          <span className="hr-faint">Everyone the records say: this item is worked out from them.</span>
+        )}
+      </section>
+
+      <section className="hr-fld">
+        <div className="hr-itemFlag__row">
+          <h3 className="hr-itemPanel__head">In use</h3>
+          <Switch size="small" checked={row.active} disabled={!mayManage || saving} aria-label={`${row.name} in use`} onChange={onActive} />
+        </div>
+      </section>
+
+      <button type="button" className="hr-historyLink" onClick={onHistory}>
+        History
+      </button>
+    </div>
   );
 }
 

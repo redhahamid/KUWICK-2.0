@@ -1116,6 +1116,48 @@ a.hr-advanced__row:hover {
   background: var(--hr-canvas);
 }
 
+/* ── Payroll items: one line per row, every switch in the item's panel ─── */
+.hr-itemSummary {
+  color: var(--hr-ink2);
+}
+.hr-itemPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.hr-itemPanel__head {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.hr-itemFlags {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--hr-line);
+  border-radius: 14px;
+}
+.hr-itemFlag + .hr-itemFlag {
+  border-top: 1px solid var(--hr-line);
+}
+.hr-itemFlag .hr-itemFlag__row {
+  padding: 10px 14px;
+}
+.hr-itemFlag__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+}
+.hr-itemFlag__row .hr-itemPanel__head {
+  margin: 0;
+}
+.hr-popover--inline {
+  position: static;
+  width: auto;
+  margin: 0 14px 12px;
+}
+
 /* ── Drawer ───────────────────────────────────────────────────────────────── */
 .hr-drawer {
   position: fixed;
