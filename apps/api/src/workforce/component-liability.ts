@@ -1,4 +1,5 @@
 import { ComponentKind, ComponentLiability } from "./payroll-calculation";
+import { DEFAULT_PAY_DATE, PayDateRule } from './pay-dates';
 
 /**
  * WHAT A COMPONENT IS LIABLE TO — from the catalogue, and only from there.
@@ -55,6 +56,8 @@ export interface ResolvedComponent {
   /** How well the statutory treatment above is evidenced. */
   readonly verification: string;
   readonly sourceRef: string | null;
+  /** When the item is paid. Payment, not treatment: it moves money between transfers, never between figures. */
+  readonly payDate: PayDateRule;
   /**
    * WHETHER THE CLINIC STILL OFFERS THIS, which is not the same question as
    * whether it resolves. Carried so a screen that OFFERS components can leave
@@ -74,6 +77,9 @@ export interface CatalogueRow extends LiabilityFlags {
   readonly effectiveTo: Date | null;
   readonly verificationStatus: string;
   readonly sourceRef: string | null;
+  /** Absent on rows read before pay dates existed: the 30th of the payroll month. */
+  readonly payDay?: number;
+  readonly payMonthOffset?: number;
 }
 
 /**
@@ -130,6 +136,10 @@ export function catalogueFor(
       verification: row.verificationStatus,
       sourceRef: row.sourceRef,
       active: row.active,
+      payDate: {
+        payDay: row.payDay ?? DEFAULT_PAY_DATE.payDay,
+        payMonthOffset: row.payMonthOffset ?? DEFAULT_PAY_DATE.payMonthOffset,
+      },
     });
   }
   return resolved;

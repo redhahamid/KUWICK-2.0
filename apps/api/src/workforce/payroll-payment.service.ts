@@ -1,13 +1,57 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { CSV_BOM, csvCell, csvTextCell } from './csv';
 import { compareByEmployeeName } from './employee-order';
 import { PaymentBatchStatus, PayrollRunStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
-import { actorCan, requirePermission, withAdminTx } from '../finance/admin-actor';
+import { AdminTx, actorCan, requirePermission, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { currentTenantId } from '../core/tenant-context';
 import { SnapshotPayload, verifySnapshot } from './payroll-snapshot';
+import { DEFAULT_PAY_DATE, scheduledPayDate } from './pay-dates';
+
+/** One date's money for everybody on the run: who, and how much on that date. */
+export interface ScheduledPayment {
+  /** YYYY-MM-DD, or null for a record approved before pay dates existed: one payment for the whole net. */
+  date: string | null;
+  people: { staffId: string; name: string; amountCents: number }[];
+  totalCents: number;
+}
+
+/**
+ * THE MONTH'S PAYMENTS, FROM THE APPROVED RECORD. A record written with pay
+ * dates says what each person is paid on each date; an older one is one
+ * payment of everybody's net, exactly as before.
+ */
+export function scheduleOf(payload: SnapshotPayload): ScheduledPayment[] {
+  const split = payload.employees.every((employee) => Array.isArray(employee.payments));
+  if (!split) {
+    const people = payload.employees.map((employee) => ({ staffId: employee.staffId, name: employee.name, amountCents: employee.netCents }));
+    return [{ date: null, people, totalCents: people.reduce((sum, person) => sum + person.amountCents, 0) }];
+  }
+  const byDate = new Map<string, ScheduledPayment>();
+  for (const employee of payload.employees) {
+    for (const payment of employee.payments ?? []) {
+      const entry = byDate.get(payment.date) ?? { date: payment.date, people: [], totalCents: 0 };
+      entry.people.push({ staffId: employee.staffId, name: employee.name, amountCents: payment.netCents });
+      entry.totalCents += payment.netCents;
+      byDate.set(payment.date, entry);
+    }
+  }
+  return [...byDate.values()]
+    // A date nobody is paid anything on has nothing to transfer.
+    .filter((entry) => entry.people.some((person) => person.amountCents !== 0))
+    .sort((a, b) => (a.date! < b.date! ? -1 : 1));
+}
+
+/** The date the salary is paid on: the date basic pay goes out, from the record's own catalogue. */
+export function salaryDateOf(payload: SnapshotPayload): string | null {
+  const basic = payload.components?.find((component) => component.code === 'BASIC');
+  if (!basic?.payDate) return null;
+  return scheduledPayDate(new Date(`${payload.period.slice(0, 10)}T00:00:00.000Z`), basic.payDate ?? DEFAULT_PAY_DATE);
+}
+
+const dateKey = (date: Date | null) => (date ? date.toISOString().slice(0, 10) : null);
 
 /**
  * PAYMENT PREPARATION — and exactly what it may claim.
@@ -18,15 +62,25 @@ import { SnapshotPayload, verifySnapshot } from './payroll-snapshot';
  * portal. No verified bank file format is on record, so nothing here is
  * presented as one (the register's position on export formats stands).
  *
- * The status model is the honesty model:
+ * ONE LISTING PER PAY DATE (UAT, 10 October 2026). A month whose items are paid
+ * on more than one date — salary on the 30th, a director's fee on the 1st,
+ * overtime and claims on the 15th — is paid in that many transfers, each with
+ * its own listing and its own recorded transfer. The approved record says what
+ * each person is paid on each date; a record approved before pay dates existed
+ * is one listing for the whole month, as before.
+ *
+ * The status model is the honesty model, per date:
  *   GENERATED      a document exists
  *   DOWNLOADED     somebody took it
  *   RECORDED_PAID  a human recorded that money moved — date and reference —
  *                  and ONLY this state claims a transfer
  *   SUPERSEDED     regenerated after a correction or a bank-detail fix
  *
+ * The run reads PAID once every date is recorded. The payslip reaches the
+ * employee's portal once the salary transfer is.
+ *
  * AMOUNTS ARE FROZEN, ACCOUNTS ARE NOT. The amount somebody is owed is the
- * approved snapshot's net, and a batch stores the snapshot version and hash it
+ * approved snapshot's, and a batch stores the snapshot version and hash it
  * paid. The account it goes to is on-file master data at generation — paying
  * an old account because it was frozen with the run would send real money to
  * a closed account — so the listing is labelled "details as at generation"
@@ -50,56 +104,79 @@ export class PayrollPaymentService {
       select: { id: true, status: true, netTotal: true, paidAt: true },
     });
     if (!run) throw new NotFoundException('Payroll run not found');
-    const batch = await this.prisma.payrollPaymentBatch.findFirst({
+    const current = await this.prisma.payrollPaymentBatch.findMany({
       where: { payrollRunId: runId, status: { not: PaymentBatchStatus.SUPERSEDED } },
-      orderBy: { version: 'desc' },
-      include: {
-        createdBy: { select: { fullName: true } },
-        lines: true,
-      },
+      orderBy: [{ payDate: 'asc' }, { version: 'desc' }],
+      include: { createdBy: { select: { fullName: true } }, lines: true },
     });
-    // The one order every payroll list uses: by name, the excluded where their
-    // name falls, marked rather than moved (employee-order.ts).
-    batch?.lines.sort(compareByEmployeeName);
+    // The record's own schedule, so the screen can say "paid on three dates"
+    // before anything is prepared.
+    const snapshot = await this.prisma.payrollSnapshot.findFirst({
+      where: { payrollRunId: runId },
+      orderBy: { version: 'desc' },
+      select: { payload: true },
+    });
+    const payload = snapshot ? (snapshot.payload as unknown as SnapshotPayload) : null;
+    const schedule = payload ? scheduleOf(payload) : [];
+    const salaryDate = payload ? salaryDateOf(payload) : null;
     const mayPrepare = actorCan(actor, 'hr.payroll.export.bank');
+    const batches = current.map((batch) => {
+      // The one order every payroll list uses: by name, the excluded where their
+      // name falls, marked rather than moved (employee-order.ts).
+      batch.lines.sort(compareByEmployeeName);
+      return {
+        id: batch.id,
+        /** The date this listing pays, or null for a month approved before pay dates existed. */
+        payDate: dateKey(batch.payDate),
+        /** The salary goes out on this date; recording it releases the payslip to the employee. */
+        carriesSalary: batch.payDate === null || dateKey(batch.payDate) === salaryDate,
+        version: batch.version,
+        status: batch.status,
+        snapshotVersion: batch.snapshotVersion,
+        totalCents: batch.totalCents,
+        includedCount: batch.includedCount,
+        excludedCount: batch.excludedCount,
+        createdBy: batch.createdBy.fullName,
+        createdAt: batch.createdAt.toISOString(),
+        downloadedAt: batch.downloadedAt?.toISOString() ?? null,
+        paidRecordedAt: batch.paidRecordedAt?.toISOString() ?? null,
+        paymentDate: batch.paymentDate?.toISOString().slice(0, 10) ?? null,
+        paymentReference: batch.paymentReference,
+        lines: batch.lines.map((line) => ({
+          staffId: line.staffId,
+          name: line.name,
+          bankName: line.bankName,
+          /** Last four only on the status read; the full number is in the export. */
+          accountEnding: line.bankAccountNo ? line.bankAccountNo.slice(-4) : null,
+          amountCents: line.amountCents,
+          included: line.included,
+          exclusionReason: line.exclusionReason,
+        })),
+      };
+    });
     return {
       runStatus: run.status,
       runPaidAt: run.paidAt?.toISOString() ?? null,
       mayPrepare,
-      batch: batch
-        ? {
-            id: batch.id,
-            version: batch.version,
-            status: batch.status,
-            snapshotVersion: batch.snapshotVersion,
-            totalCents: batch.totalCents,
-            includedCount: batch.includedCount,
-            excludedCount: batch.excludedCount,
-            createdBy: batch.createdBy.fullName,
-            createdAt: batch.createdAt.toISOString(),
-            downloadedAt: batch.downloadedAt?.toISOString() ?? null,
-            paidRecordedAt: batch.paidRecordedAt?.toISOString() ?? null,
-            paymentDate: batch.paymentDate?.toISOString().slice(0, 10) ?? null,
-            paymentReference: batch.paymentReference,
-            lines: batch.lines.map((line) => ({
-              staffId: line.staffId,
-              name: line.name,
-              bankName: line.bankName,
-              /** Last four only on the status read; the full number is in the export. */
-              accountEnding: line.bankAccountNo ? line.bankAccountNo.slice(-4) : null,
-              amountCents: line.amountCents,
-              included: line.included,
-              exclusionReason: line.exclusionReason,
-            })),
-          }
-        : null,
+      /** The dates the approved record pays this month on, and how much on each. */
+      schedule: schedule.map((entry) => ({
+        payDate: entry.date,
+        totalCents: entry.totalCents,
+        people: entry.people.filter((person) => person.amountCents !== 0).length,
+      })),
+      salaryDate,
+      batches,
+      /** The first listing, for a month paid on one date. Kept for older readers of this route. */
+      batch: batches[0] ?? null,
     };
   }
 
   /**
-   * Compose a batch from the latest approved snapshot. Refuses an unapproved
-   * run, an unverifiable snapshot, and — the reconciliation — a batch whose
-   * included and excluded lines do not together equal the approved net total.
+   * Compose the listings from the latest approved snapshot, one per pay date.
+   * Refuses an unapproved run, an unverifiable snapshot, and — the
+   * reconciliation — a listing whose included and excluded lines do not
+   * together equal what the record pays on that date. A date already recorded
+   * as paid is left exactly as it is.
    */
   async prepare(runId: string) {
     await withAdminTx(this.rawPrisma, 'hr.payroll.export.bank', async (tx, actor) => {
@@ -124,6 +201,17 @@ export class PayrollPaymentService {
             verification.reason,
         );
       }
+      const schedule = scheduleOf(payload);
+
+      // THE WHOLE MONTH FIRST. However many dates, together they must pay the
+      // approved net to the sen, or nothing is stored.
+      const scheduled = schedule.reduce((sum, entry) => sum + entry.totalCents, 0);
+      if (scheduled !== payload.totals.netCents) {
+        throw new ConflictException(
+          `The pay dates do not add up: RM${(scheduled / 100).toFixed(2)} across ${schedule.length} date(s) is not the ` +
+            `approved net RM${(payload.totals.netCents / 100).toFixed(2)}. Nothing was stored.`,
+        );
+      }
 
       // Bank details as on file NOW, labelled so. The amounts are frozen.
       const staffIds = payload.employees.map((employee) => employee.staffId);
@@ -133,120 +221,152 @@ export class PayrollPaymentService {
       });
       const bankByStaff = new Map(profiles.map((profile) => [profile.staffId, profile]));
 
-      const lines = payload.employees.map((employee) => {
-        const bank = bankByStaff.get(employee.staffId);
-        const missing = !bank?.bankName || !bank?.bankAccountNo;
-        const zero = employee.netCents <= 0;
-        return {
-          staffId: employee.staffId,
-          name: employee.name,
-          bankName: bank?.bankName ?? null,
-          bankAccountNo: bank?.bankAccountNo ?? null,
-          amountCents: employee.netCents,
-          included: !missing && !zero,
-          exclusionReason: missing
-            ? 'No bank account is on file. Pay them another way, record it, and fix the employee record for next month.'
-            : zero
-              ? 'Net pay is nil, so there is nothing to transfer.'
-              : null,
-        };
-      });
-
-      const included = lines.filter((line) => line.included);
-      const excluded = lines.filter((line) => !line.included);
-      const totalCents = included.reduce((sum, line) => sum + line.amountCents, 0);
-      const excludedCents = excluded.reduce((sum, line) => sum + line.amountCents, 0);
-
-      // THE RECONCILIATION. Included plus excluded must be the approved net —
-      // to the cent — or the batch is refused. A listing that quietly covers
-      // less than the payroll is how somebody goes unpaid without anyone
-      // noticing until they say so.
-      if (totalCents + excludedCents !== payload.totals.netCents) {
-        throw new ConflictException(
-          `This batch does not reconcile: included RM${(totalCents / 100).toFixed(2)} plus excluded ` +
-            `RM${(excludedCents / 100).toFixed(2)} is not the approved net RM${(payload.totals.netCents / 100).toFixed(2)}. ` +
-            'Nothing was stored.',
-        );
-      }
-
-      // Supersede any standing batch rather than overwriting it: the record of
-      // what was generated earlier is part of the payment story.
-      const standing = await tx.payrollPaymentBatch.findFirst({
+      const standing = await tx.payrollPaymentBatch.findMany({
         where: { payrollRunId: runId, status: { not: PaymentBatchStatus.SUPERSEDED } },
-        orderBy: { version: 'desc' },
       });
-      if (standing?.status === PaymentBatchStatus.RECORDED_PAID) {
+      const standingFor = (date: string | null) => standing.find((batch) => dateKey(batch.payDate) === date);
+      const open = schedule.filter((entry) => standingFor(entry.date)?.status !== PaymentBatchStatus.RECORDED_PAID);
+      if (open.length === 0) {
         throw new ConflictException(
-          'A payment has already been recorded against this run. Preparing another batch would set up a double ' +
+          'Every payment of this month has already been recorded. Preparing another listing would set up a double ' +
             'payment; reopen and correct the run instead if the figures are wrong.',
         );
       }
-      if (standing) {
-        await tx.payrollPaymentBatch.update({
-          where: { id: standing.id },
-          data: { status: PaymentBatchStatus.SUPERSEDED },
-        });
+
+      // A listing for a date the record no longer pays on is withdrawn, not
+      // left standing to be paid by mistake.
+      const dates = new Set(schedule.map((entry) => entry.date));
+      for (const stale of standing.filter((batch) => batch.status !== PaymentBatchStatus.RECORDED_PAID && !dates.has(dateKey(batch.payDate)))) {
+        await tx.payrollPaymentBatch.update({ where: { id: stale.id }, data: { status: PaymentBatchStatus.SUPERSEDED } });
       }
 
-      const version = (await tx.payrollPaymentBatch.count({ where: { payrollRunId: runId } })) + 1;
-      const batch = await tx.payrollPaymentBatch.create({
-        data: {
-          tenantId: currentTenantId(),
-          payrollRunId: runId,
-          version,
-          snapshotVersion: snapshot.version,
-          snapshotHash: snapshot.hash,
-          totalCents,
-          includedCount: included.length,
-          excludedCount: excluded.length,
-          createdByStaffId: actor.id,
-          lines: {
-            create: lines.map((line) => ({
-              tenantId: currentTenantId(),
-              staffId: line.staffId,
-              name: line.name,
-              bankName: line.bankName,
-              bankAccountNo: line.bankAccountNo,
-              amountCents: line.amountCents,
-              included: line.included,
-              exclusionReason: line.exclusionReason,
-            })),
-          },
-        },
-      });
+      let version = await tx.payrollPaymentBatch.count({ where: { payrollRunId: runId } });
+      for (const entry of open) {
+        const lines = entry.people.map((person) => {
+          const bank = bankByStaff.get(person.staffId);
+          const missing = !bank?.bankName || !bank?.bankAccountNo;
+          const zero = person.amountCents <= 0;
+          return {
+            staffId: person.staffId,
+            name: person.name,
+            bankName: bank?.bankName ?? null,
+            bankAccountNo: bank?.bankAccountNo ?? null,
+            amountCents: person.amountCents,
+            included: !missing && !zero,
+            exclusionReason: missing
+              ? 'No bank account is on file. Pay them another way, record it, and fix the employee record for next month.'
+              : zero
+                ? entry.date
+                  ? 'Nothing is paid to them on this date.'
+                  : 'Net pay is nil, so there is nothing to transfer.'
+                : null,
+          };
+        });
+        const included = lines.filter((line) => line.included);
+        const excluded = lines.filter((line) => !line.included);
+        const totalCents = included.reduce((sum, line) => sum + line.amountCents, 0);
+        const excludedCents = excluded.reduce((sum, line) => sum + line.amountCents, 0);
 
-      await recordAudit(tx, actor, {
-        action: 'payrollPayment.batchPrepared',
-        entityType: 'PayrollPaymentBatch',
-        entityId: batch.id,
-        after: {
-          runId,
-          version,
-          snapshotVersion: snapshot.version,
-          totalCents,
-          included: included.length,
-          excluded: excluded.length,
-        },
-        source: 'hr.payroll',
-      });
+        // THE RECONCILIATION, per date. Included plus excluded must be what the
+        // record pays on this date — to the cent — or the listing is refused. A
+        // listing that quietly covers less than the payroll is how somebody goes
+        // unpaid without anyone noticing until they say so.
+        if (totalCents + excludedCents !== entry.totalCents) {
+          throw new ConflictException(
+            `The listing${entry.date ? ` for ${entry.date}` : ''} does not reconcile: included RM${(totalCents / 100).toFixed(2)} ` +
+              `plus excluded RM${(excludedCents / 100).toFixed(2)} is not the RM${(entry.totalCents / 100).toFixed(2)} ` +
+              'the approved record pays. Nothing was stored.',
+          );
+        }
+
+        // Supersede the standing batch rather than overwriting it: the record of
+        // what was generated earlier is part of the payment story.
+        const previous = standingFor(entry.date);
+        if (previous) {
+          await tx.payrollPaymentBatch.update({ where: { id: previous.id }, data: { status: PaymentBatchStatus.SUPERSEDED } });
+        }
+
+        version += 1;
+        const batch = await tx.payrollPaymentBatch.create({
+          data: {
+            tenantId: currentTenantId(),
+            payrollRunId: runId,
+            version,
+            payDate: entry.date ? new Date(`${entry.date}T00:00:00.000Z`) : null,
+            snapshotVersion: snapshot.version,
+            snapshotHash: snapshot.hash,
+            totalCents,
+            includedCount: included.length,
+            excludedCount: excluded.length,
+            createdByStaffId: actor.id,
+            lines: {
+              create: lines.map((line) => ({
+                tenantId: currentTenantId(),
+                staffId: line.staffId,
+                name: line.name,
+                bankName: line.bankName,
+                bankAccountNo: line.bankAccountNo,
+                amountCents: line.amountCents,
+                included: line.included,
+                exclusionReason: line.exclusionReason,
+              })),
+            },
+          },
+        });
+
+        await recordAudit(tx, actor, {
+          action: 'payrollPayment.batchPrepared',
+          entityType: 'PayrollPaymentBatch',
+          entityId: batch.id,
+          after: {
+            runId,
+            version,
+            payDate: entry.date,
+            snapshotVersion: snapshot.version,
+            totalCents,
+            included: included.length,
+            excluded: excluded.length,
+          },
+          source: 'hr.payroll',
+        });
+      }
     });
     // Read back OUTSIDE the transaction: a status read inside it sees the
     // pre-commit rows and reports a state the caller is about to falsify.
     return this.status(runId);
   }
 
+  /** The standing listing for a date, or the only one when the month is paid on one date. */
+  private async standingBatch(tx: AdminTx, runId: string, payDate: string | undefined) {
+    const standing = await tx.payrollPaymentBatch.findMany({
+      where: { payrollRunId: runId, status: { not: PaymentBatchStatus.SUPERSEDED } },
+      orderBy: { payDate: 'asc' },
+      include: { lines: true, payrollRun: true },
+    });
+    if (standing.length === 0) {
+      throw new NotFoundException('No payment listing has been prepared for this run. Prepare it, make the transfer, then record it.');
+    }
+    if (payDate) {
+      const found = standing.find((batch) => dateKey(batch.payDate) === payDate.slice(0, 10));
+      if (!found) throw new NotFoundException(`No payment listing for ${payDate.slice(0, 10)} is standing on this run.`);
+      return { batch: found, standing };
+    }
+    if (standing.length > 1) {
+      throw new BadRequestException(
+        `This month is paid on ${standing.length} dates (${standing.map((batch) => dateKey(batch.payDate)).join(', ')}). Say which one.`,
+      );
+    }
+    return { batch: standing[0], standing };
+  }
+
   /**
-   * The instruction listing, as CSV. Not a bank file, and it says so in its
-   * name and header — no verified bank format is on record to produce.
+   * The instruction listing for one pay date, as CSV. Not a bank file, and it
+   * says so in its name and header — no verified bank format is on record to
+   * produce.
    */
-  async download(runId: string) {
+  async download(runId: string, payDate?: string) {
     return withAdminTx(this.rawPrisma, 'hr.payroll.export.bank', async (tx, actor) => {
-      const batch = await tx.payrollPaymentBatch.findFirst({
-        where: { payrollRunId: runId, status: { not: PaymentBatchStatus.SUPERSEDED } },
-        orderBy: { version: 'desc' },
-        include: { lines: true, payrollRun: true },
-      });
-      if (!batch) throw new NotFoundException('No payment batch has been prepared for this run.');
+      const { batch } = await this.standingBatch(tx, runId, payDate);
       // Same order as the screen and the payslips (employee-order.ts).
       batch.lines.sort(compareByEmployeeName);
 
@@ -256,11 +376,12 @@ export class PayrollPaymentService {
           data: { status: PaymentBatchStatus.DOWNLOADED, downloadedAt: new Date(), downloadedByStaffId: actor.id },
         });
       }
+      const paysOn = dateKey(batch.payDate);
       await recordAudit(tx, actor, {
         action: 'payrollPayment.listingDownloaded',
         entityType: 'PayrollPaymentBatch',
         entityId: batch.id,
-        after: { runId, version: batch.version, totalCents: batch.totalCents },
+        after: { runId, version: batch.version, payDate: paysOn, totalCents: batch.totalCents },
         source: 'hr.payroll',
       });
 
@@ -282,15 +403,15 @@ export class PayrollPaymentService {
         ['TOTAL TO PAY', '', '', (batch.totalCents / 100).toFixed(2), '', ''].join(','),
       ];
       return {
-        fileName: `payment-instruction-listing-${period}-batch${batch.version}.csv`,
+        fileName: `payment-instruction-listing-${period}${paysOn ? `-paid-${paysOn}` : ''}-batch${batch.version}.csv`,
         // The first line inside the file restates what this is, so a copy
         // found on a desktop a year later cannot be mistaken for a bank file.
         content:
           CSV_BOM +
           csvCell(
-            `# Payment instruction listing — ${period}, batch ${batch.version}, from approved record ` +
-              `${batch.snapshotHash.slice(0, 16)}… This is NOT a bank file: no verified bank format is on record. ` +
-              'Key these payments in your bank portal and record the transfer in Kuwick afterwards.',
+            `# Payment instruction listing — ${period}${paysOn ? `, paid on ${paysOn}` : ''}, batch ${batch.version}, ` +
+              `from approved record ${batch.snapshotHash.slice(0, 16)}… This is NOT a bank file: no verified bank format ` +
+              'is on record. Key these payments in your bank portal and record the transfer in Kuwick afterwards.',
           ) +
           '\n' +
           rows.join('\n'),
@@ -299,12 +420,12 @@ export class PayrollPaymentService {
   }
 
   /**
-   * A human records that money moved. The only path to RECORDED_PAID — and,
-   * since the unreconciled `markPaid` endpoint was removed, the only path to
-   * a run reading PAID at all. It demands the two facts a reconciliation
-   * needs: when, and under what reference.
+   * A human records that money moved, for one pay date. The only path to
+   * RECORDED_PAID — and the only path to a run reading PAID at all, which it
+   * does once every date is recorded. It demands the two facts a
+   * reconciliation needs: when, and under what reference.
    */
-  async recordPaid(runId: string, body: { paymentDate: string; reference: string; note?: string }) {
+  async recordPaid(runId: string, body: { payDate?: string; paymentDate: string; reference: string; note?: string }) {
     await withAdminTx(this.rawPrisma, 'hr.payroll.approve', async (tx, actor) => {
       // Validated INSIDE the permission boundary: an unauthorised caller gets
       // the 403 the permission owes them, not a validation hint.
@@ -314,18 +435,11 @@ export class PayrollPaymentService {
       if (!body.paymentDate || Number.isNaN(new Date(body.paymentDate).getTime())) {
         throw new ConflictException('Recording a payment needs the date the money actually left.');
       }
-      const batch = await tx.payrollPaymentBatch.findFirst({
-        where: { payrollRunId: runId, status: { not: PaymentBatchStatus.SUPERSEDED } },
-        orderBy: { version: 'desc' },
-      });
-      if (!batch) {
-        throw new NotFoundException(
-          'No payment batch exists for this run. Prepare the batch, make the transfer, then record it.',
-        );
-      }
+      const { batch, standing } = await this.standingBatch(tx, runId, body.payDate);
       if (batch.status === PaymentBatchStatus.RECORDED_PAID) {
-        throw new ConflictException('This batch is already recorded as paid.');
+        throw new ConflictException('This listing is already recorded as paid.');
       }
+      const paymentDate = new Date(`${body.paymentDate.slice(0, 10)}T00:00:00.000Z`);
 
       await tx.payrollPaymentBatch.update({
         where: { id: batch.id },
@@ -333,7 +447,7 @@ export class PayrollPaymentService {
           status: PaymentBatchStatus.RECORDED_PAID,
           paidRecordedAt: new Date(),
           paidRecordedByStaffId: actor.id,
-          paymentDate: new Date(`${body.paymentDate}T00:00:00.000Z`),
+          paymentDate,
           paymentReference: body.reference.trim(),
           note: body.note?.trim() || null,
         },
@@ -343,25 +457,44 @@ export class PayrollPaymentService {
         where: { id: runId },
         include: { lines: { select: { staffId: true } } },
       });
-      const paymentDate = new Date(`${body.paymentDate}T00:00:00.000Z`);
+      const snapshot = await tx.payrollSnapshot.findFirst({
+        where: { payrollRunId: runId, version: batch.snapshotVersion },
+        select: { payload: true },
+      });
+      const payload = snapshot ? (snapshot.payload as unknown as SnapshotPayload) : null;
+      const paysOn = dateKey(batch.payDate);
+      const carriesSalary = paysOn === null || (payload !== null && paysOn === salaryDateOf(payload));
+      const everyDateRecorded = standing.every((other) => other.id === batch.id || other.status === PaymentBatchStatus.RECORDED_PAID);
+
       if (run.status === PayrollRunStatus.APPROVED) {
         await tx.payrollRun.update({
           where: { id: runId },
-          // `paidAt` is when it was recorded; `paymentDate` is the day the
-          // money left, which is the date a payslip and the portal show.
-          data: { status: PayrollRunStatus.PAID, paidAt: new Date(), paymentDate },
+          data: {
+            // `paymentDate` is the day the SALARY left, which is the date a
+            // payslip and the portal show, and what releases the payslip to
+            // the employee. `paidAt` is when the last transfer was recorded.
+            ...(carriesSalary || run.paymentDate === null ? { paymentDate } : {}),
+            ...(everyDateRecorded ? { status: PayrollRunStatus.PAID, paidAt: new Date() } : {}),
+          },
         });
       }
 
-      // A claim that rode on this run's lines has now been paid with the
-      // salary. Say so on the claim, so the employee's portal and the claims
-      // queue stop calling it "approved, will be paid with your salary".
+      // A claim that rode on this run's lines has now been paid — on the date
+      // its item is paid. Say so on the claim, so the employee's portal and the
+      // claims queue stop calling it "approved, will be paid with your salary".
+      const claimDate = (staffId: string) =>
+        payload?.employees
+          .find((employee) => employee.staffId === staffId)
+          ?.payslip?.componentLines.find((line) => line.code === 'CLAIM_REIMBURSEMENT')?.payDate ?? null;
+      const paidStaff = run.lines
+        .map((line) => line.staffId)
+        .filter((staffId) => paysOn === null || claimDate(staffId) === paysOn || (claimDate(staffId) === null && carriesSalary));
       const paidClaims = await tx.staffClaim.updateMany({
         where: {
           payoutStatus: 'IN_PAYROLL',
           paymentRoute: 'PAYROLL',
           payrollPeriod: run.period,
-          staffId: { in: run.lines.map((line) => line.staffId) },
+          staffId: { in: paidStaff },
         },
         data: { payoutStatus: 'PAID', paidAt: paymentDate },
       });
@@ -373,10 +506,12 @@ export class PayrollPaymentService {
         after: {
           runId,
           version: batch.version,
+          payDate: paysOn,
           paymentDate: body.paymentDate,
           reference: body.reference.trim(),
           totalCents: batch.totalCents,
           claimsPaidWithSalary: paidClaims.count,
+          runPaid: everyDateRecorded,
         },
         source: 'hr.payroll',
       });

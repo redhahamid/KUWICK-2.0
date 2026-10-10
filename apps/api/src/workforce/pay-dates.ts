@@ -43,3 +43,76 @@ export function scheduledPayDate(period: Date, rule: PayDateRule): string {
   const day = Math.min(Math.max(1, rule.payDay), lastDay);
   return new Date(Date.UTC(year, month, day)).toISOString().slice(0, 10);
 }
+
+/** One payslip line, as the split reads it: earnings carry money to a date, everything else is taken off. */
+export interface PaySplitLine {
+  readonly code: string;
+  /** EARNING, WAGE_REDUCTION or DEDUCTION (`ComponentKind`). */
+  readonly kind: string;
+  /** Always positive; `kind` carries the sign. */
+  readonly amountCents: number;
+}
+
+/** What one date pays one person. `netCents` is the transfer. */
+export interface PaySplit {
+  readonly date: string;
+  readonly earningsCents: number;
+  readonly deductionCents: number;
+  readonly netCents: number;
+}
+
+/**
+ * ONE PERSON'S NET PAY, SPLIT ACROSS THE DATES THEIR ITEMS ARE PAID ON.
+ *
+ * Each earning goes to its item's date. Everything taken off the month — the
+ * statutory deductions, wage reductions such as unpaid leave and the
+ * deductions after statutory — is taken from the SALARY payment first, the
+ * date basic pay is paid on, because the statutory figures are worked out on
+ * the whole month and the salary is where a clinic withholds them. If the
+ * salary payment cannot carry all of it, the rest comes off the other dates in
+ * date order, so no transfer is ever negative while the month's net is not.
+ *
+ * The total taken off is earnings less the approved net, not a sum of its
+ * parts recomputed here, so the dates add up to the net to the sen whatever
+ * the engine withheld.
+ */
+export function splitByPayDate(args: {
+  period: Date;
+  lines: readonly PaySplitLine[];
+  netCents: number;
+  ruleOf: (code: string) => PayDateRule;
+}): { lineDates: (string | null)[]; payments: PaySplit[] } {
+  const dateOf = (code: string) => scheduledPayDate(args.period, args.ruleOf(code));
+  const lineDates = args.lines.map((line) => (line.kind === 'EARNING' ? dateOf(line.code) : null));
+
+  const earnings = new Map<string, number>();
+  args.lines.forEach((line, index) => {
+    const date = lineDates[index];
+    if (date !== null) earnings.set(date, (earnings.get(date) ?? 0) + line.amountCents);
+  });
+  const basic = args.lines.findIndex((line) => line.code === 'BASIC' && line.kind === 'EARNING');
+  const dates = [...earnings.keys()].sort();
+  const salaryDate =
+    basic >= 0 ? lineDates[basic]! : (dates.find((date) => (earnings.get(date) ?? 0) > 0) ?? dateOf('BASIC'));
+  if (!earnings.has(salaryDate)) earnings.set(salaryDate, 0);
+
+  const totalEarnings = [...earnings.values()].reduce((sum, cents) => sum + cents, 0);
+  let toTake = totalEarnings - args.netCents;
+  const taken = new Map<string, number>();
+  for (const date of [salaryDate, ...[...earnings.keys()].filter((date) => date !== salaryDate).sort()]) {
+    const take = toTake > 0 ? Math.min(toTake, Math.max(0, earnings.get(date) ?? 0)) : 0;
+    taken.set(date, take);
+    toTake -= take;
+  }
+  // A month whose deductions exceed its earnings (or that pays back more than
+  // it earns) settles on the salary date: the run blocks a negative net, and
+  // the sum still has to be the net.
+  if (toTake !== 0) taken.set(salaryDate, (taken.get(salaryDate) ?? 0) + toTake);
+
+  const payments = [...earnings.keys()].sort().map((date) => {
+    const earningsCents = earnings.get(date) ?? 0;
+    const deductionCents = taken.get(date) ?? 0;
+    return { date, earningsCents, deductionCents, netCents: earningsCents - deductionCents };
+  });
+  return { lineDates, payments };
+}

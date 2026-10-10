@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { AttendanceCorrectionStatus, LeaveStatus, LeaveType, PayrollRunStatus } from '@prisma/client';
+import { AttendanceCorrectionStatus, LeaveStatus, LeaveType } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentStaffId, currentTenantId } from '../core/tenant-context';
@@ -9,6 +9,7 @@ import { clinicDateKey } from '../appointment/time.util';
 import { AttendanceRecordService } from '../workforce/attendance-record.service';
 import { LeaveService } from '../workforce/leave.service';
 import { PayrollPayslipService } from '../workforce/payroll-payslip.service';
+import { PAYSLIP_RELEASED } from '../workforce/payslip-release';
 import { StaffFileService } from '../workforce/staff-file.service';
 import { ClaimPolicyService } from '../workforce/claim-policy.service';
 import { assertReceiptRule, priceClaim } from '../workforce/claim-pricing';
@@ -205,11 +206,12 @@ export class MeService {
       actor.clinicId
         ? this.prisma.clinic.findUnique({ where: { id: actor.clinicId }, select: { name: true } })
         : Promise.resolve(null),
-      // PAID months only. An approved month can still be reopened and
-      // corrected; a paid one is what reached the bank, and that is the
-      // payslip an employee keeps (prompt §7: the PDF appears at Paid).
+      // Months whose salary has gone out. An approved month nobody has paid
+      // can still be reopened and corrected; one whose salary reached the
+      // bank cannot, and that is the payslip an employee keeps (prompt §7:
+      // the PDF appears at Paid; a month paid on several dates, at its salary).
       this.prisma.payrollLine.findMany({
-        where: { staffId: actor.id, payrollRun: { status: PayrollRunStatus.PAID } },
+        where: { staffId: actor.id, payrollRun: PAYSLIP_RELEASED },
         orderBy: { payrollRun: { period: 'desc' } },
         take: 3,
         select: {
@@ -848,7 +850,7 @@ export class MeService {
     const lines = await this.prisma.payrollLine.findMany({
       where: {
         staffId: actor.id,
-        payrollRun: { status: PayrollRunStatus.PAID },
+        payrollRun: PAYSLIP_RELEASED,
       },
       orderBy: { payrollRun: { period: 'desc' } },
       include: { payrollRun: { select: { id: true, period: true, status: true, paymentDate: true } } },
@@ -878,16 +880,43 @@ export class MeService {
       where: {
         payrollRunId: runId,
         staffId: actor.id,
-        payrollRun: { status: PayrollRunStatus.PAID },
+        payrollRun: PAYSLIP_RELEASED,
       },
       include: { payrollRun: { select: { id: true, period: true, status: true, paymentDate: true } } },
     });
     if (!line) throw new NotFoundException('No payslip of yours for that month.');
+    // WHEN IT IS PAID, from the approved record (UAT, 10 October 2026): a
+    // month paid on several dates says what goes out when, and which of those
+    // transfers have gone.
+    const approved = await this.prisma.payrollSnapshot.findFirst({
+      where: { payrollRunId: runId },
+      orderBy: { version: 'desc' },
+      select: { payload: true },
+    });
+    const mine = (approved?.payload as { employees?: { staffId: string; payments?: { date: string; netCents: number }[] }[] } | undefined)
+      ?.employees?.find((employee) => employee.staffId === actor.id);
+    const recorded = mine?.payments
+      ? await this.prisma.payrollPaymentBatch.findMany({
+          where: { payrollRunId: runId, status: 'RECORDED_PAID' },
+          select: { payDate: true, paymentDate: true },
+        })
+      : [];
+    const payments =
+      mine?.payments?.map((payment) => ({
+        date: payment.date,
+        amountCents: payment.netCents,
+        paidOn:
+          recorded
+            .find((batch) => batch.payDate === null || batch.payDate.toISOString().slice(0, 10) === payment.date)
+            ?.paymentDate?.toISOString()
+            .slice(0, 10) ?? null,
+      })) ?? null;
     return {
       runId: line.payrollRun.id,
       period: line.payrollRun.period,
       runStatus: line.payrollRun.status,
       paymentDate: line.payrollRun.paymentDate,
+      payments,
       staffId: actor.id,
       fullName: actor.fullName,
       // EARNINGS, then what came off, then what the employer paid on top —

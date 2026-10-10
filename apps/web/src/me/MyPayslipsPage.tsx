@@ -65,7 +65,7 @@ export function MyPayslipsPage() {
         <PanelHead title="Every paid month" />
         {isLoading ? null : (data?.length ?? 0) === 0 ? (
           <PortalEmpty title="No payslips yet">
-            A payslip appears here once a month's payroll has been paid. A month still being worked on is not
+            A payslip appears here once a month's salary has been paid. A month still being worked on is not
             shown, because the figures in it can still change.
           </PortalEmpty>
         ) : (
@@ -123,6 +123,22 @@ export function MyPayslipsPage() {
             <div className="hr-kv">{lines(slip.earnings)}</div>
             <PanelHead title="Deductions" />
             <div className="hr-kv">{lines(slip.deductions)}</div>
+            {slip.payments && slip.payments.length > 1 ? (
+              <>
+                {/* A month paid on several dates: what goes out when (UAT, 10 October 2026). */}
+                <PanelHead title="When it is paid" />
+                <div className="hr-kv" data-testid="my-pay-dates">
+                  {slip.payments.map((payment) => (
+                    <span key={payment.date} style={{ display: 'contents' }}>
+                      <span className="hr-kv__k">
+                        {dayjs(payment.paidOn ?? payment.date).format('D MMM YYYY')} · {payment.paidOn ? 'paid' : 'due'}
+                      </span>
+                      <span className="hr-kv__v">{rm(payment.amountCents / 100)}</span>
+                    </span>
+                  ))}
+                </div>
+              </>
+            ) : null}
             <PanelHead title="Paid by the clinic on top of your salary" />
             <div className="hr-kv">{lines(slip.employer)}</div>
             <div className="hr-portal__empty">

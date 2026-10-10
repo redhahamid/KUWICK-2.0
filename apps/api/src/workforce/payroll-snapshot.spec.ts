@@ -205,6 +205,32 @@ describe('verifySnapshot', () => {
   });
 
   /*
+   * VERSION 4: a month paid on several dates must pay its net, to the sen,
+   * across them (UAT, 10 October 2026).
+   */
+  it('catches pay dates that do not add up to the net, and passes ones that do', () => {
+    const split = (fifteenth: number) =>
+      payload({
+        schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+        employees: [
+          line({
+            payments: [
+              { date: '2026-07-30', earningsCents: 280000, deductionCents: 35065, netCents: 244935 },
+              { date: '2026-08-15', earningsCents: 20000, deductionCents: 0, netCents: fifteenth },
+            ],
+          }),
+        ],
+        totals: { grossCents: 300000, deductionCents: 35065, netCents: 264935, employerCostCents: 344755, employeeCount: 1 },
+      });
+    const good = split(20000);
+    expect(verifySnapshot(good, snapshotHash(good)).verdict).toBe('VERIFIED');
+    const bad = split(19999);
+    const result = verifySnapshot(bad, snapshotHash(bad));
+    expect(result.verdict).toBe('INCONSISTENT');
+    expect(result.violations.map((v) => v.code)).toContain('SNAPSHOT_PAYMENTS_VS_NET');
+  });
+
+  /*
    * A version-1 payload recorded no per-employee deduction or employer
    * contribution, so its arithmetic cannot be re-derived. Reporting it VERIFIED
    * on the strength of an intact hash would claim a check that never ran.

@@ -240,6 +240,8 @@ export interface MyPayslip extends MyPayslipSummary {
   employer: Record<string, string | null>;
   workedDays: string | null;
   unpaidDays: string | null;
+  /** What is paid on each date, from the approved record; `paidOn` once that transfer is recorded. */
+  payments?: { date: string; amountCents: number; paidOn: string | null }[] | null;
 }
 
 const MY = ['my-kuwick'];

@@ -487,10 +487,13 @@ export function renderApprovedPayslipHtml(slip: PayslipDoc, printedBy?: string |
     );
   }
 
+  // A month paid on more than one date says which date each amount goes out on.
+  const manyDates = (slip.payments?.length ?? 0) > 1;
+  const onDay = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
   const earnings = slip.itemised
     ? (slip.earnings ?? [])
         .filter((item) => item.amountCents !== 0)
-        .map((item) => row(item.label, rm(item.amountCents)))
+        .map((item) => row(manyDates && item.payDate ? `${item.label} (paid ${onDay(item.payDate)})` : item.label, rm(item.amountCents)))
         .concat(
           (slip.wageReductions ?? [])
             .filter((item) => item.amountCents !== 0)
@@ -663,6 +666,22 @@ ${overtimeSection}
   <h2>Net pay</h2>
   <table><tr><th class="strong">Net pay</th>${netCell}</tr></table>
 </div>
+
+${
+  manyDates
+    ? `<div class="section">
+  <h2>When it is paid</h2>
+  <table>${slip
+    .payments!.map((payment) =>
+      row(
+        payment.paidOn ? `${onDay(payment.paidOn)} — paid` : `${onDay(payment.date)} — due`,
+        rm(payment.amountCents),
+      ),
+    )
+    .join('')}</table>
+</div>`
+    : ''
+}
 
 <div class="section">
   <h2>Employer contributions — not deducted from your pay</h2>

@@ -7062,3 +7062,7 @@ button.kw-stage__button:hover { background: var(--kw-surface-2); }
 .kw-canvas2 .ant-input-number {
   border-radius: var(--kw-c-radius-control) !important;
 }
+
+/* ONE LISTING PER PAY DATE (UAT, 10 October 2026): each date of a month is its own block. */
+.kw-payDate + .kw-payDate { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--kw-border); }
+.kw-payDate__title { margin: 0 0 10px; font-size: 14px; font-weight: 600; }

@@ -1222,7 +1222,12 @@ export class PayrollReportService {
     });
     const personOf = new Map(people.map((row) => [row.id, row.fullName]));
 
-    const current = batches.find((batch) => batch.status !== 'SUPERSEDED') ?? null;
+    // ONE STANDING LISTING PER PAY DATE (UAT, 10 October 2026): a month paid
+    // on several dates has several, none of them superseded.
+    const standing = batches
+      .filter((batch) => batch.status !== 'SUPERSEDED')
+      .sort((a, b) => (a.payDate?.getTime() ?? 0) - (b.payDate?.getTime() ?? 0));
+    const current = standing[0] ?? null;
     const describe = (status: string) =>
       status === 'RECORDED_PAID'
         ? 'A person recorded that this payment was made. That record — not the file — is the evidence.'
@@ -1232,46 +1237,48 @@ export class PayrollReportService {
             ? 'A listing was prepared. No money has moved.'
             : 'Superseded by a newer listing after the run changed.';
 
+    const listing = (batch: (typeof batches)[number]) => ({
+      batchId: batch.id,
+      /** The date this listing pays; null for a month approved before pay dates existed. */
+      payDate: batch.payDate?.toISOString().slice(0, 10) ?? null,
+      version: batch.version,
+      status: batch.status,
+      statusMeans: describe(batch.status),
+      total: formatCents(batch.totalCents),
+      includedCount: batch.includedCount,
+      excludedCount: batch.excludedCount,
+      snapshotVersion: batch.snapshotVersion,
+      preparedBy: personOf.get(batch.createdByStaffId) ?? null,
+      preparedAt: batch.createdAt.toISOString(),
+      downloadedBy: batch.downloadedByStaffId ? (personOf.get(batch.downloadedByStaffId) ?? null) : null,
+      downloadedAt: batch.downloadedAt?.toISOString() ?? null,
+      paidRecordedBy: batch.paidRecordedByStaffId ? (personOf.get(batch.paidRecordedByStaffId) ?? null) : null,
+      paidRecordedAt: batch.paidRecordedAt?.toISOString() ?? null,
+      paymentDate: batch.paymentDate?.toISOString().slice(0, 10) ?? null,
+      paymentReference: batch.paymentReference,
+      lines: batch.lines
+        .map((line) => ({
+          staffId: line.staffId,
+          name: line.name,
+          bankName: line.bankName,
+          accountEnding: line.bankAccountNo ? line.bankAccountNo.slice(-4) : null,
+          amount: formatCents(line.amountCents),
+          included: line.included,
+          exclusionReason: line.exclusionReason,
+        }))
+        .sort(compareByEmployeeName),
+    });
+
     return {
       report: 'PAYMENT_STATUS',
       ...this.header(run),
       runPaidAt: run.paidAt?.toISOString() ?? null,
-      current:
-        current === null
-          ? null
-          : {
-              batchId: current.id,
-              version: current.version,
-              status: current.status,
-              statusMeans: describe(current.status),
-              total: formatCents(current.totalCents),
-              includedCount: current.includedCount,
-              excludedCount: current.excludedCount,
-              snapshotVersion: current.snapshotVersion,
-              preparedBy: personOf.get(current.createdByStaffId) ?? null,
-              preparedAt: current.createdAt.toISOString(),
-              downloadedBy: current.downloadedByStaffId ? (personOf.get(current.downloadedByStaffId) ?? null) : null,
-              downloadedAt: current.downloadedAt?.toISOString() ?? null,
-              paidRecordedBy: current.paidRecordedByStaffId
-                ? (personOf.get(current.paidRecordedByStaffId) ?? null)
-                : null,
-              paidRecordedAt: current.paidRecordedAt?.toISOString() ?? null,
-              paymentDate: current.paymentDate?.toISOString().slice(0, 10) ?? null,
-              paymentReference: current.paymentReference,
-              lines: current.lines
-                .map((line) => ({
-                  staffId: line.staffId,
-                  name: line.name,
-                  bankName: line.bankName,
-                  accountEnding: line.bankAccountNo ? line.bankAccountNo.slice(-4) : null,
-                  amount: formatCents(line.amountCents),
-                  included: line.included,
-                  exclusionReason: line.exclusionReason,
-                }))
-                .sort(compareByEmployeeName),
-            },
+      /** The first standing listing: the only one for a month paid on one date. */
+      current: current === null ? null : listing(current),
+      /** Every standing listing, one per pay date, earliest first. */
+      listings: standing.map(listing),
       supersededBatches: batches
-        .filter((batch) => batch.id !== current?.id)
+        .filter((batch) => batch.status === 'SUPERSEDED')
         .map((batch) => ({
           batchId: batch.id,
           version: batch.version,

@@ -187,6 +187,9 @@ export function renderPayslipPdf(slip: PayslipData): Promise<Buffer> {
 
   // --- Earnings and deductions, side by side -----------------------------------------
   const earnings: EarningRow[] = [];
+  // A month paid on more than one date says which date each amount goes out on.
+  const manyDates = (slip.payments?.length ?? 0) > 1;
+  const paidNote = (date: string | null | undefined) => (manyDates && date ? `paid ${dateOf(date)}` : null);
   if (slip.itemised && slip.earnings) {
     // One line per kind of extra day — Overtime, Public holiday pay, Rest day
     // pay — rather than one per day the engine priced.
@@ -198,13 +201,13 @@ export function renderPayslipPdf(slip: PayslipData): Promise<Buffer> {
         const entry = grouped.get(label);
         if (entry) entry.amountCents += item.amountCents;
         else {
-          const row = { label, amountCents: item.amountCents };
+          const row = { label, amountCents: item.amountCents, note: paidNote(item.payDate) };
           grouped.set(label, row);
           earnings.push(row);
         }
         continue;
       }
-      earnings.push({ label: item.label, amountCents: item.amountCents });
+      earnings.push({ label: item.label, amountCents: item.amountCents, note: paidNote(item.payDate) });
     }
     for (const reduction of slip.wageReductions ?? []) {
       if (reduction.amountCents === 0) continue;
@@ -302,7 +305,11 @@ export function renderPayslipPdf(slip: PayslipData): Promise<Buffer> {
   doc.save().roundedRect(left, y, width, netH, 8).lineWidth(1.1).strokeColor(SLATE).stroke().restore();
   doc.font('Helvetica').fontSize(9).fillColor(INK2).text('Net pay', left + 13, y + 10, { width: 200 });
   doc.font('Helvetica-Bold').fontSize(21).fillColor(SLATE).text(`RM ${RM(slip.figures.netCents)}`, left + 13, y + 22, { width: 240, characterSpacing: -0.3 });
-  const paidLine = [slip.employee.bankName ? `Paid to ${slip.employee.bankName}` : null, slip.paidAt ? `on ${dateOf(slip.paidAt)}` : null].filter(Boolean).join(' ');
+  const paidLine = manyDates
+    ? // THE MONTH IN ITS TRANSFERS, each with its date: the day it went, or the day it is due.
+      `Paid in ${slip.payments!.length} parts${slip.employee.bankName ? ` to ${slip.employee.bankName}` : ''}: ` +
+      slip.payments!.map((payment) => `${dateOf(payment.paidOn ?? payment.date)} RM ${RM(payment.amountCents)}`).join(' · ')
+    : [slip.employee.bankName ? `Paid to ${slip.employee.bankName}` : null, slip.paidAt ? `on ${dateOf(slip.paidAt)}` : null].filter(Boolean).join(' ');
   doc.font('Helvetica').fontSize(8).fillColor(INK2).text(`${slip.netInWords ?? ''}${paidLine ? `\n${paidLine}` : ''}`, right - 13 - 240, y + 12, {
     width: 240,
     align: 'right',

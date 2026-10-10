@@ -6,15 +6,105 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 23 — 10 Oktober 2026 — Satu bulan payroll, tiga tarikh bayar (Bahagian 1)
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 22 (`5348779`). Komit: komit yang menambah bahagian ini (hash dalam
+laporan). **Migrasi: `20261010100000_payment_batch_pay_date`** — satu lajur
+boleh-null `pay_date` pada `payroll_payment_batches`; tiada pernyataan data,
+tiada jadual baharu. Dijalankan di staging dengan *Migrate only* dari cawangan
+ini **sebelum** master dimajukan. **Tiada logik pengiraan statutori diubah**:
+EPF, SOCSO, EIS, PCB dan levi HRD masih dikira atas seluruh bulan, dan payslip
+masih satu bagi setiap bulan; hanya bayaran yang dipecah.
+
+### Apa yang berubah
+
+- `[D]` **Rekod lulus membekukan tarikh bayar** (`pay-dates.ts`
+  `splitByPayDate`, snapshot format 4): tarikh setiap item, tarikh pada
+  setiap baris pendapatan, dan berapa setiap orang dibayar pada setiap tarikh.
+  Setiap pendapatan pergi ke tarikh itemnya. Semua yang ditolak bulan itu
+  (statutori, cuti tanpa gaji, potongan selepas statutori) diambil daripada
+  **bayaran gaji dahulu** (tarikh item *Basic*); jika tidak cukup, bakinya
+  daripada tarikh lain mengikut urutan. Jumlah semua tarikh mesti sama dengan
+  gaji bersih hingga ke sen; pengesahan rekod menyemaknya
+  (`SNAPSHOT_PAYMENTS_VS_NET`).
+- `[D]` ***Paying this month*** (`PaymentPanel.tsx`): notis "This month is
+  paid on 3 dates: 30 Oct 2026 RM… · 1 Nov 2026 RM… · 15 Nov 2026 RM…", satu
+  senarai bayaran dan satu butang **Record the transfer** bagi setiap tarikh,
+  dan tarikh gaji ditanda "· the salary". CSV dimuat turun bagi satu tarikh
+  (`…-paid-2026-11-15-batchN.csv`, baris pertama menyebut tarikhnya). Pada
+  telefon, tag status kini berbalut dan tidak terpotong.
+- `[D]` **Status run**: kekal APPROVED sehingga pemindahan terakhir direkod,
+  kemudian PAID. **Payslip sampai ke portal pekerja apabila pemindahan gaji
+  direkod** (`payslip-release.ts`), bukan menunggu tarikh 15hb. Tuntutan
+  pekerja ditanda dibayar pada tarikh item tuntutan.
+- `[D]` **Payslip** (cetak, PDF, portal): setiap pendapatan dengan tarikh
+  bayarnya, dan bahagian **When it is paid**: setiap tarikh, jumlahnya, dan
+  "paid" (tarikh sebenar) atau "due". Bulan yang dibayar pada satu tarikh
+  kelihatan seperti dahulu.
+- `[D]` **Buka semula**: bulan yang sudah ada mana-mana pemindahan direkod
+  ditolak (409, "A transfer for this month was recorded on …"). Bulan yang
+  dibuka semula sebelum itu: senarai bayarannya ditarik balik (SUPERSEDED,
+  disimpan), supaya tiada senarai dengan angka lama atau tarikh lama yang
+  boleh dibayar. Senarai bagi tarikh yang tidak lagi dibayar juga ditarik
+  balik semasa *Prepare*.
+- `[D]` **Laporan *Payment status*** menunjukkan satu blok bagi setiap tarikh.
+  **Suapan Finance** (`/workforce/payroll/finance/liabilities`) menganggap
+  bulan itu dibayar hanya apabila semua pemindahan direkod ("1 of the 3
+  transfers … are recorded … Treat the rest of the net pay liability as
+  outstanding"), dengan senarai `transfers` bagi setiap tarikh.
+- `[D]` Rekod yang diluluskan sebelum batch ini: satu senarai dan satu
+  pemindahan, tepat seperti dahulu.
+- `[D]` **Ujian**: API unit +9 (`pay-dates` +5, `payroll-payment-schedule`
+  +3, `payroll-snapshot` +1), e2e +5 (`payroll-pay-dates`: pecahan, satu
+  senarai bagi setiap tarikh, muat turun, buka semula, rekod dan laporan),
+  web +2 (`paymentPanel`).
+- `[D]` **Semakan pelayar** (klinik UAT sintetik, Oktober 2026, pekerja demo
+  sahaja): 30 Okt RM43,684.87 untuk 8 orang, 1 Nov RM1,000.00 untuk 1 orang,
+  15 Nov RM835.00 untuk 2 orang. Payslip cetak Dr Meera Kaur (demo): gaji
+  bersih 10,647.60 = 8,897.60 + 1,000.00 + 750.00. Portal telefon Puteri
+  Balqis (demo): "15 Nov 2026 · due RM 85.00". Tiada skrol mendatar pada
+  telefon.
+
+### Uji di staging (ikut urutan)
+
+1. *Settings → Payroll items*, lajur **Paid on**: Overtime, Locum fee,
+   Housecall, Claim reimbursement dan Panel claim → **15th, next month**;
+   Director's fee → **1st, next month** (jika belum dibuat selepas Batch 22).
+2. *Payroll* → bulan baharu → *Work out* → *Approve*.
+3. Langkah *Complete* → *Paying this month*: notis tiga tarikh. Tekan
+   **Prepare the payment listings**; tiga blok muncul, 30hb bertanda "the
+   salary".
+4. Muat turun CSV bagi 15hb; semak nama fail dan jumlahnya.
+5. **Record the transfer** pada blok 30hb. Log masuk sebagai pekerja: payslip
+   bulan itu kini kelihatan, dengan **When it is paid**.
+6. Cuba **Reopen** bulan itu: ditolak, kerana wang sudah keluar.
+7. Rekod blok 1hb dan 15hb: run menjadi **PAID**. *Reports → Payment
+   status* menunjukkan tiga blok.
+
+### Keputusan terbuka
+
+- `[A]` **Tarikh gaji ialah tarikh item *Basic***, dan semua potongan bulan
+  itu diambil daripada bayaran gaji dahulu. Jika klinik mahu potongan
+  tertentu (contohnya *Hutang medical claim*) diambil daripada bayaran 15hb,
+  beritahu: itu peraturan berasingan bagi setiap potongan.
+- `[A]` Tafsiran "1 month in arrears" daripada Batch 22 kekal: dibayar pada
+  bulan selepas bulan payroll, dikira daripada rekod bulan itu sendiri.
+- `[A]` *Date the money left* dalam dialog rakaman bermula pada tarikh bayar
+  jika tarikh itu sudah lepas, atau hari ini jika belum.
+
+---
+
 ## Batch 22 — 10 Oktober 2026 — Settings: tarikh bayar bagi setiap item, dan item klinik yang belum ada (Bahagian 2, dan asas Bahagian 1)
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
-Batch 21 (`bc85fe7`). Komit: komit yang menambah bahagian ini (hash dalam
-laporan). **Migrasi: `20261010090000_pay_component_pay_dates`** — dua lajur
+Batch 21 (`bc85fe7`). Komit: `5348779`. **Migrasi:
+`20261010090000_pay_component_pay_dates`** — dua lajur
 dengan nilai lalai pada `pay_components` (`pay_day` 30, `pay_month_offset` 0)
 dan dua semakan julat; tiada pernyataan data, tiada jadual baharu. Dijalankan
-di staging dengan *Migrate only* dari cawangan ini **sebelum** master
-dimajukan. **Tiada logik pengiraan statutori diubah.**
+di staging dengan *Migrate only* run #12 dari cawangan ini **sebelum** master
+dimajukan; status selepas: "Database schema is up to date!". **Tiada logik
+pengiraan statutori diubah.**
 
 ### Apa yang berubah
 

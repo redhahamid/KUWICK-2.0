@@ -1688,7 +1688,8 @@ function PaymentStatusReport({ runId }: { runId: string }) {
   const query = usePayrollPaymentStatusReport(runId);
   if (!query.data) return null;
   const data = query.data;
-  type Line = NonNullable<PayrollPaymentStatusReport['current']>['lines'][number];
+  type Listing = NonNullable<PayrollPaymentStatusReport['current']>;
+  type Line = Listing['lines'][number];
 
   if (!data.current) {
     return (
@@ -1698,14 +1699,13 @@ function PaymentStatusReport({ runId }: { runId: string }) {
       </AdminSection>
     );
   }
-  const current = data.current;
+  // One listing per pay date (UAT, 10 October 2026); a month paid on one date has one.
+  const listings: Listing[] = data.listings?.length ? data.listings : [data.current];
+  const many = listings.length > 1;
 
-  return (
-    <AdminSection
-      title="Payment status"
-      description="Where the money stands, in the language of the evidence — a downloaded listing is not a payment."
-    >
-      <ReportHeader header={data} />
+  const listing = (current: Listing) => (
+    <div key={current.batchId} className="kw-payDate" data-testid={`payment-status-${current.payDate ?? 'month'}`}>
+      {many && current.payDate ? <h4 className="kw-payDate__title">Paid on {dayjs(current.payDate).format('D MMM YYYY')}</h4> : null}
       <AdminNotice tone={current.status === 'RECORDED_PAID' ? 'info' : 'warn'}>
         <strong>
           {current.status === 'RECORDED_PAID'
@@ -1784,6 +1784,21 @@ function PaymentStatusReport({ runId }: { runId: string }) {
           />
         )}
       />
+    </div>
+  );
+
+  return (
+    <AdminSection
+      title="Payment status"
+      description="Where the money stands, in the language of the evidence — a downloaded listing is not a payment."
+    >
+      <ReportHeader header={data} />
+      {many ? (
+        <AdminNotice tone="info">
+          This month is paid on {listings.length} dates, each with its own listing. Only a recorded transfer says that money moved.
+        </AdminNotice>
+      ) : null}
+      {listings.map(listing)}
       {data.supersededBatches.length > 0 ? (
         <p className="kw-muted" style={{ marginTop: 10, marginBottom: 0 }}>
           {data.supersededBatches.length} earlier listing{data.supersededBatches.length === 1 ? ' was' : 's were'}{' '}

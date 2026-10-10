@@ -1964,6 +1964,8 @@ export function useRecordPaymentPaid() {
   return useAdminMutation(
     (input: {
       runId: string;
+      /** Which pay date's listing this transfer pays; absent for a month paid on one date. */
+      payDate?: string;
       paymentDate: string;
       reference: string;
       note?: string;
@@ -1971,6 +1973,7 @@ export function useRecordPaymentPaid() {
       apiClient.post<PaymentStatus>(
         `/workforce/payroll/runs/${input.runId}/payment/record-paid`,
         {
+          payDate: input.payDate,
           paymentDate: input.paymentDate,
           reference: input.reference,
           note: input.note,

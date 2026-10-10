@@ -1020,7 +1020,10 @@ export interface PayslipDoc {
     overtimeHours: number | null;
   } | null;
   itemised: boolean;
-  earnings: { code: string; label: string; amountCents: number }[] | null;
+  /** `payDate`: the date the amount is paid on (records approved since pay dates existed). */
+  earnings: { code: string; label: string; amountCents: number; payDate?: string | null }[] | null;
+  /** What is paid on each date, adding up to the net; `paidOn` once that transfer is recorded. */
+  payments?: { date: string; amountCents: number; paidOn: string | null }[] | null;
   wageReductions: { code: string; label: string; amountCents: number }[] | null;
   otherDeductionLines:
     | { code: string; label: string; amountCents: number }[]
@@ -1094,26 +1097,40 @@ export interface PaymentBatchLine {
   exclusionReason: string | null;
 }
 
+/** One payment listing: the money a month pays on one date. */
+export interface PaymentBatch {
+  id: string;
+  /** The date this listing pays, or null for a month approved before pay dates existed. */
+  payDate: string | null;
+  /** The salary goes out on this date; recording it releases the payslip to the employee. */
+  carriesSalary: boolean;
+  version: number;
+  status: "GENERATED" | "DOWNLOADED" | "RECORDED_PAID" | "SUPERSEDED";
+  snapshotVersion: number;
+  totalCents: number;
+  includedCount: number;
+  excludedCount: number;
+  createdBy: string;
+  createdAt: string;
+  downloadedAt: string | null;
+  paidRecordedAt: string | null;
+  paymentDate: string | null;
+  paymentReference: string | null;
+  lines: PaymentBatchLine[];
+}
+
 export interface PaymentStatus {
   runStatus: string;
   runPaidAt: string | null;
   mayPrepare: boolean;
-  batch: {
-    id: string;
-    version: number;
-    status: "GENERATED" | "DOWNLOADED" | "RECORDED_PAID" | "SUPERSEDED";
-    snapshotVersion: number;
-    totalCents: number;
-    includedCount: number;
-    excludedCount: number;
-    createdBy: string;
-    createdAt: string;
-    downloadedAt: string | null;
-    paidRecordedAt: string | null;
-    paymentDate: string | null;
-    paymentReference: string | null;
-    lines: PaymentBatchLine[];
-  } | null;
+  /** The dates the approved record pays this month on, and how much on each. */
+  schedule?: { payDate: string | null; totalCents: number; people: number }[];
+  /** The date the salary goes out. */
+  salaryDate?: string | null;
+  /** One listing per pay date, in date order. */
+  batches?: PaymentBatch[];
+  /** The first listing, for a month paid on one date. */
+  batch: PaymentBatch | null;
 }
 
 export interface IncentiveRunRow {
@@ -3225,8 +3242,11 @@ export interface PayrollExceptionsReport extends PayrollReportHeader {
 export interface PayrollPaymentStatusReport extends PayrollReportHeader {
   report: "PAYMENT_STATUS";
   runPaidAt: string | null;
+  /** The first standing listing: the only one for a month paid on one date. */
   current: {
     batchId: string;
+    /** The date this listing pays; null for a month approved before pay dates existed. */
+    payDate: string | null;
     version: number;
     status: string;
     statusMeans: string;
@@ -3252,6 +3272,8 @@ export interface PayrollPaymentStatusReport extends PayrollReportHeader {
       exclusionReason: string | null;
     }[];
   } | null;
+  /** Every standing listing, one per pay date, earliest first. */
+  listings: NonNullable<PayrollPaymentStatusReport["current"]>[];
   supersededBatches: {
     batchId: string;
     version: number;

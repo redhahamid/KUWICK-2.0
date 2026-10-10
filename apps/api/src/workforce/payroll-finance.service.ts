@@ -63,10 +63,14 @@ export class PayrollFinanceService {
     for (const snapshot of snapshots) {
       if (!latestSnapshot.has(snapshot.payrollRunId)) latestSnapshot.set(snapshot.payrollRunId, snapshot);
     }
-    const currentBatch = new Map<string, (typeof batches)[number]>();
+    // ONE STANDING LISTING PER PAY DATE (UAT, 10 October 2026): a month whose
+    // items are paid on several dates is paid in that many transfers.
+    const standingBatches = new Map<string, (typeof batches)[number][]>();
     for (const batch of batches) {
-      if (batch.status !== 'SUPERSEDED') currentBatch.set(batch.payrollRunId, batch);
+      if (batch.status === 'SUPERSEDED') continue;
+      standingBatches.set(batch.payrollRunId, [...(standingBatches.get(batch.payrollRunId) ?? []), batch]);
     }
+    const progress: Record<string, number> = { GENERATED: 0, DOWNLOADED: 1, RECORDED_PAID: 2 };
     const submissionsByRun = new Map<string, (typeof submissions)[number][]>();
     for (const submission of submissions) {
       submissionsByRun.set(submission.payrollRunId, [
@@ -177,7 +181,17 @@ export class PayrollFinanceService {
             ],
           };
 
-      const batch = currentBatch.get(run.id) ?? null;
+      const standing = (standingBatches.get(run.id) ?? []).sort(
+        (a, b) => (a.payDate?.getTime() ?? 0) - (b.payDate?.getTime() ?? 0),
+      );
+      // The month stands where its least advanced transfer stands: it is paid
+      // when the last one is recorded, never when the first one is.
+      const batch = standing.reduce<(typeof standing)[number] | null>(
+        (least, candidate) => (least === null || progress[candidate.status] < progress[least.status] ? candidate : least),
+        null,
+      );
+      const recorded = standing.filter((candidate) => candidate.status === 'RECORDED_PAID');
+      const single = standing.length === 1 ? standing[0] : null;
       return {
         ...base,
         snapshot: { version: snapshot.version, hash: snapshot.hash, verdict: verification.verdict },
@@ -196,12 +210,36 @@ export class PayrollFinanceService {
             batch === null
               ? 'No payment listing has been prepared. The net pay liability is fully outstanding.'
               : batch.status === 'RECORDED_PAID'
-                ? 'A person recorded that the employees were paid, with a date and reference. That record is the evidence.'
-                : 'A listing exists but nobody has recorded that money moved. Treat the net pay liability as outstanding.',
-          totalCents: batch?.totalCents ?? null,
-          excludedCount: batch?.excludedCount ?? 0,
-          paymentDate: batch?.paymentDate?.toISOString().slice(0, 10) ?? null,
-          paymentReference: batch?.paymentReference ?? null,
+                ? standing.length > 1
+                  ? `A person recorded each of the ${standing.length} transfers this month is paid in, with a date and reference. Those records are the evidence.`
+                  : 'A person recorded that the employees were paid, with a date and reference. That record is the evidence.'
+                : recorded.length > 0
+                  ? `${recorded.length} of the ${standing.length} transfers this month is paid in are recorded, with a date and reference. Treat the rest of the net pay liability as outstanding.`
+                  : 'A listing exists but nobody has recorded that money moved. Treat the net pay liability as outstanding.',
+          totalCents: standing.length > 0 ? standing.reduce((sum, candidate) => sum + candidate.totalCents, 0) : null,
+          excludedCount: standing.reduce((sum, candidate) => sum + candidate.excludedCount, 0),
+          // One transfer: its date and reference. Several: the last date once all are recorded, and each reference.
+          paymentDate: single
+            ? (single.paymentDate?.toISOString().slice(0, 10) ?? null)
+            : batch?.status === 'RECORDED_PAID'
+              ? (recorded
+                  .map((candidate) => candidate.paymentDate?.toISOString().slice(0, 10) ?? '')
+                  .sort()
+                  .pop() ?? null)
+              : null,
+          paymentReference: single
+            ? single.paymentReference
+            : recorded.length > 0
+              ? recorded.map((candidate) => candidate.paymentReference).join(' · ')
+              : null,
+          /** Each transfer the month is paid in, earliest first. One for a month paid on one date. */
+          transfers: standing.map((candidate) => ({
+            payDate: candidate.payDate?.toISOString().slice(0, 10) ?? null,
+            state: candidate.status,
+            totalCents: candidate.totalCents,
+            paymentDate: candidate.paymentDate?.toISOString().slice(0, 10) ?? null,
+            paymentReference: candidate.paymentReference,
+          })),
         },
         /** Statutory filings a person has recorded, per scheme. Absence means not filed. */
         submissions: (submissionsByRun.get(run.id) ?? []).map((submission) => ({

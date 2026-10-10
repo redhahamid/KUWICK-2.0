@@ -1,0 +1,12 @@
+-- ONE PAYMENT LISTING PER PAY DATE.
+--
+-- A payroll month whose items are paid on more than one date (salary on the
+-- 30th, a director's fee on the 1st of the next month, overtime and claims on
+-- the 15th) is paid in that many transfers, each with its own listing and its
+-- own recorded transfer. A listing now says which date it pays.
+--
+-- Nullable and unfilled: every listing prepared before this column existed
+-- paid a whole month on one date, and reads exactly as it did. No data
+-- statement and no new table, so the application role's existing table grants
+-- already cover it.
+ALTER TABLE "payroll_payment_batches" ADD COLUMN "pay_date" DATE;

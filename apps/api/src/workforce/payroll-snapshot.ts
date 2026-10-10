@@ -35,8 +35,13 @@ import { EmployeeFigures, InvariantViolation, RunTotals, checkPayrollInvariants 
  * cannot be itemised, rather than borrowing rows from the mutable run.
  * Version 2 remains fully verifiable: the fields the arithmetic check reads
  * are unchanged.
+ *
+ * Version 4 adds WHEN THE MONEY IS PAID (UAT, 10 October 2026): each item's
+ * pay date, the date on every earning line, and what each person is paid on
+ * each date, which must add up to their net. The figures are untouched; only
+ * the transfer is split.
  */
-export const SNAPSHOT_SCHEMA_VERSION = 3;
+export const SNAPSHOT_SCHEMA_VERSION = 4;
 
 /** The statutory standing the payslip was computed on, frozen. */
 export interface SnapshotClassification {
@@ -94,6 +99,8 @@ export interface SnapshotComponent {
   };
   verification: string;
   sourceRef: string | null;
+  /** Version 4+. When the item is paid, as the month was approved. */
+  payDate?: { payDay: number; payMonthOffset: number };
 }
 
 /** One schedule the run was calculated against. Mirrors `ScheduleStamp`. */
@@ -174,7 +181,14 @@ export interface SnapshotPayslipDetail {
     otherDeductionsCents: number;
   };
   /** Every calculation line: earnings, wage reductions and deductions. */
-  componentLines: { code: string; label: string; kind: string; amountCents: number }[];
+  componentLines: {
+    code: string;
+    label: string;
+    kind: string;
+    amountCents: number;
+    /** Version 4+. The date an earning is paid; null for anything taken off. */
+    payDate?: string | null;
+  }[];
   /** Why a statutory figure is what it is — or why it is absent. Verbatim. */
   /** How each statutory figure was worked out, as rows. Absent on rows frozen before the field existed. */
   workings?: {
@@ -279,6 +293,11 @@ export interface SnapshotEmployeeLine {
   employerContributionCents: number;
   netCents: number;
   employerCostCents: number;
+  /**
+   * Version 4+. What this person is paid on each date. Adds up to `netCents`:
+   * the month's deductions come off the salary payment first.
+   */
+  payments?: { date: string; earningsCents: number; deductionCents: number; netCents: number }[];
 }
 
 export interface SnapshotPayload {
@@ -588,6 +607,20 @@ export function verifySnapshot(payload: SnapshotPayload, storedHash: string): Sn
       }
     }
 
+    // The transfers must pay the net, to the sen: a month split across pay
+    // dates that pays more or less than was approved is not the month approved.
+    if (line.payments) {
+      const paid = line.payments.reduce((sum, payment) => sum + payment.netCents, 0);
+      if (paid !== line.netCents) {
+        violations.push({
+          code: 'SNAPSHOT_PAYMENTS_VS_NET',
+          staffId: line.staffId,
+          message: `${line.name}: the pay dates pay ${(paid / 100).toFixed(2)}, but the frozen net is ${(line.netCents / 100).toFixed(2)}.`,
+          expectedCents: line.netCents,
+          actualCents: paid,
+        });
+      }
+    }
   }
 
   if (violations.length > 0) {

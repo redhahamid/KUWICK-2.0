@@ -8632,6 +8632,12 @@ model PayrollPaymentBatch {
 
   status PaymentBatchStatus @default(GENERATED)
 
+  /// THE DATE THIS LISTING PAYS. A month whose items are paid on several
+  /// dates has one listing, and one recorded transfer, per date. NULL on a
+  /// listing for a month approved before pay dates existed: one payment of
+  /// the whole net.
+  payDate DateTime? @map("pay_date") @db.Date
+
   /// Sum of the INCLUDED lines, reconciled against the snapshot's net total
   /// plus exclusions at generation — a batch that does not reconcile is
   /// refused, not stored.

@@ -1,4 +1,5 @@
 import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { payslipReleased } from './payslip-release';
 import { compareByEmployeeName } from './employee-order';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
@@ -119,16 +120,17 @@ export class PayrollPayslipService {
    * THE EMPLOYEE'S OWN PAYSLIP, for the portal.
    *
    * No HR permission: the check is identity — the line must be theirs — and
-   * the run must be PAID, because the portal shows a payslip once the money
-   * has gone out, not while a corrected revision may still follow approval.
+   * the salary must have gone out (`payslip-release.ts`), because the portal
+   * shows a payslip once the money has, not while a corrected revision may
+   * still follow approval.
    * Audited like every other download, with the employee as the actor.
    */
   async payslipForSelf(runId: string, staffId: string) {
     return withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
       if (actor.id !== staffId) throw new ForbiddenException('That payslip is not yours.');
-      const run = await tx.payrollRun.findUnique({ where: { id: runId }, select: { status: true } });
-      if (!run || run.status !== 'PAID') throw new NotFoundException('No payslip of yours for that month.');
+      const run = await tx.payrollRun.findUnique({ where: { id: runId }, select: { status: true, paymentDate: true } });
+      if (!run || !payslipReleased(run)) throw new NotFoundException('No payslip of yours for that month.');
       const line = await tx.payrollLine.findFirst({ where: { payrollRunId: runId, staffId }, select: { id: true } });
       if (!line) throw new NotFoundException('No payslip of yours for that month.');
       const composed = await this.compose(runId, staffId, undefined);
@@ -237,6 +239,18 @@ export class PayrollPayslipService {
     const detail = line.payslip ?? null;
     const statutoryRows = this.statutoryRows(line);
 
+    // WHICH OF THE MONTH'S TRANSFERS HAVE GONE: a payment the payslip lists
+    // says the day it was paid once that transfer is recorded, and the day it
+    // is due until then.
+    const recorded = await this.prisma.payrollPaymentBatch.findMany({
+      where: { payrollRunId: runId, status: 'RECORDED_PAID' },
+      select: { payDate: true, paymentDate: true },
+    });
+    const paidOn = (date: string) =>
+      recorded.find((batch) => batch.payDate === null || batch.payDate.toISOString().slice(0, 10) === date)?.paymentDate
+        ?.toISOString()
+        .slice(0, 10) ?? null;
+
     // THE SLIP CHECKS ITSELF, from the snapshot's own frozen figures: wages,
     // less everything withheld, must equal the net that was approved. The
     // snapshot was verified above with the run's own invariants, so a failure
@@ -339,7 +353,15 @@ export class PayrollPayslipService {
       earnings: detail
         ? detail.componentLines
             .filter((row) => row.kind === 'EARNING')
-            .map((row) => ({ code: row.code, label: row.label, amountCents: row.amountCents }))
+            // The date each amount is paid on (version 4+); null on an older record.
+            .map((row) => ({ code: row.code, label: row.label, amountCents: row.amountCents, payDate: row.payDate ?? null }))
+        : null,
+      /**
+       * WHAT IS PAID ON EACH DATE (version 4+), adding up to the net. One
+       * entry for a month paid on one date; null on an older record.
+       */
+      payments: line.payments
+        ? line.payments.map((payment) => ({ date: payment.date, amountCents: payment.netCents, paidOn: paidOn(payment.date) }))
         : null,
       wageReductions: detail
         ? detail.componentLines

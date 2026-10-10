@@ -10,6 +10,7 @@ import {
 import { ActingStaff } from '../clinical/clinical-actor';
 import { computeInputStamps, diffInputStamps, storedInputStamps } from './payroll-input-stamps';
 import { byEmployeeName } from './employee-order';
+import { DEFAULT_PAY_DATE, splitByPayDate } from './pay-dates';
 import {
   PayrollApprovalMode as PayrollApprovalModeEnum,
   PayrollException,
@@ -3495,6 +3496,7 @@ export class PayrollService {
           },
           verification: resolved.verification,
           sourceRef: resolved.sourceRef,
+          payDate: resolved.payDate,
         };
       });
 
@@ -3555,6 +3557,16 @@ export class PayrollService {
         kind: string;
         amount: unknown;
       }[];
+      // WHEN EACH LINE IS PAID, and what each date pays this person — by the
+      // item's own pay date, with the month's deductions taken from the salary
+      // payment first. Frozen here, so the listings and the payslip read the
+      // dates the month was approved with whatever Settings says later.
+      const split = splitByPayDate({
+        period: run.period,
+        lines: componentRows.map((row) => ({ code: row.code, kind: row.kind, amountCents: toCents(row.amount as never) })),
+        netCents,
+        ruleOf: (code) => resolvedCatalogue.get(code)?.payDate ?? DEFAULT_PAY_DATE,
+      });
       const statutoryNoteRows = (breakdown.statutoryNotes ?? {}) as Record<string, string | null>;
       const overtimeRows = (breakdown.overtimeTiers ?? []) as {
         label: string;
@@ -3586,11 +3598,12 @@ export class PayrollService {
           unpaidLeaveCents: toCents(line.unpaidLeaveDeduction),
           otherDeductionsCents: toCents(line.otherDeductions),
         },
-        componentLines: componentRows.map((row) => ({
+        componentLines: componentRows.map((row, index) => ({
           code: row.code,
           label: row.label,
           kind: row.kind,
           amountCents: toCents(row.amount as never),
+          payDate: split.lineDates[index],
         })),
         statutoryNotes: {
           epf: statutoryNoteRows.epf ?? null,
@@ -3665,6 +3678,7 @@ export class PayrollService {
         employerContributionCents: employerCostCents - grossCents,
         netCents,
         employerCostCents,
+        payments: split.payments,
       };
     });
 
@@ -3804,6 +3818,26 @@ export class PayrollService {
       if (!reason || reason.trim().length < 5) {
         throw new BadRequestException('Say why this run is being reopened. It becomes part of the payroll record.');
       }
+      // A MONTH PAID IN PARTS IS PAID once any part has gone. The run still
+      // reads APPROVED until its last transfer is recorded, so the status
+      // check above lets it through; the money that left does not.
+      const transferred = await tx.payrollPaymentBatch.findFirst({
+        where: { payrollRunId: runId, status: 'RECORDED_PAID' },
+        orderBy: { paymentDate: 'asc' },
+      });
+      if (transferred) {
+        throw new ConflictException(
+          `A transfer for this month was recorded on ${transferred.paymentDate?.toISOString().slice(0, 10) ?? 'an earlier date'}. ` +
+            'Money has left the clinic; correct it with an adjustment rather than reopening it.',
+        );
+      }
+      // The listings go with the figures they were composed from: none was
+      // paid (above), and one left standing would pay last approval's amounts,
+      // or a date the corrected month no longer pays on. Kept, superseded.
+      const withdrawn = await tx.payrollPaymentBatch.updateMany({
+        where: { payrollRunId: runId, status: { not: 'SUPERSEDED' } },
+        data: { status: 'SUPERSEDED' },
+      });
 
       const latest = await tx.payrollSnapshot.findFirst({
         where: { payrollRunId: runId },
@@ -3846,6 +3880,7 @@ export class PayrollService {
           snapshotVersion: latest?.version ?? null,
           snapshotHash: latest?.hash ?? null,
           approvalsHeld: cleared.count,
+          paymentListingsWithdrawn: withdrawn.count,
         },
         after: { status: PayrollRunStatus.CALCULATED, approvalsHeld: 0 },
         reason,

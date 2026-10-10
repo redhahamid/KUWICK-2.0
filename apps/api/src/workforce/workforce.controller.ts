@@ -1024,8 +1024,8 @@ export class WorkforceController {
 
   /** A CSV instruction listing for keying into a bank portal. NOT a bank file. */
   @Get('payroll/runs/:id/payment/listing')
-  async paymentListing(@Param('id') id: string, @Res() res: Response) {
-    const file = await this.payments.download(id);
+  async paymentListing(@Param('id') id: string, @Query('payDate') payDate: string | undefined, @Res() res: Response) {
+    const file = await this.payments.download(id, payDate);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
     res.send(file.content);
@@ -1034,7 +1034,7 @@ export class WorkforceController {
   @Post('payroll/runs/:id/payment/record-paid')
   recordPaymentPaid(
     @Param('id') id: string,
-    @Body() body: { paymentDate: string; reference: string; note?: string },
+    @Body() body: { payDate?: string; paymentDate: string; reference: string; note?: string },
   ) {
     return this.payments.recordPaid(id, body);
   }
