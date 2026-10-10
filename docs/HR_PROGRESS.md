@@ -12,7 +12,8 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 Batch 27 (`14afc50`). Komit: komit yang menambah bahagian ini (hash dalam
 laporan). **Migrasi** `20261010140000_payroll_run_pay_dates`: satu lajur
 `pay_dates` (JSONB, boleh kosong) pada `payroll_runs`. Dijalankan di staging
-dengan "Migrate only" SEBELUM master digerakkan (run dalam laporan).
+dengan *Migrate only* run #17 dari cawangan pada `3d41f10` SEBELUM master
+digerakkan: satu migrasi tertunggak, digunakan, 154 migrasi terkini.
 
 ### Keputusan anda (10 Oktober 2026)
 
