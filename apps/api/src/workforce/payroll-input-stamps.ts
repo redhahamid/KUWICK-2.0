@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
+import { employedInMonth } from './employed-in-month';
 
 /**
  * WHAT A DRAFT WAS WORKED OUT FROM, AS A FINGERPRINT.
@@ -136,7 +137,7 @@ export async function computeInputStamps(db: StampDb, run: { clinicId: string | 
   const employees = await db.employeeProfile.findMany({
     where: {
       engagement: 'EMPLOYEE',
-      employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
+      ...employedInMonth(period, periodEnd),
       ...(run.clinicId ? { staff: { clinicId: run.clinicId } } : {}),
     },
     include: { staff: { select: { fullName: true, active: true, clinicId: true } } },

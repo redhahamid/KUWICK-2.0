@@ -19,6 +19,7 @@ import { statutoryStatusOf } from './statutory';
 import { toClassificationRow } from './statutory-classification.service';
 import { columnItems, monthBefore, monthLabel, itemAppliesTo } from './payroll-register-columns';
 import { hrdAdviceFor } from './hrd-advice';
+import { employedInMonth, paidThisMonth } from './employed-in-month';
 
 function monthStart(value: string | Date): Date {
   const date = typeof value === 'string' ? new Date(`${value.slice(0, 7)}-01T00:00:00.000Z`) : value;
@@ -94,7 +95,7 @@ export class PayrollJourneyService {
       this.prisma.employeeProfile.findMany({
         where: {
           engagement: 'EMPLOYEE',
-          employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
+          ...employedInMonth(period, periodEnd),
           ...staffScope,
         },
         include: { staff: { select: { fullName: true, active: true } } },
@@ -102,7 +103,7 @@ export class PayrollJourneyService {
       this.prisma.employeeProfile.count({
         where: {
           engagement: 'CONTRACTOR',
-          employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
+          ...employedInMonth(period, periodEnd),
           ...staffScope,
         },
       }),
@@ -135,7 +136,7 @@ export class PayrollJourneyService {
             ? ('APPROVED' as const)
             : ('PAID' as const);
 
-    const active = employees.filter((e) => e.staff.active);
+    const active = employees.filter(paidThisMonth);
     const staffIds = active.map((e) => e.staffId);
 
     const [salaryRows, inputs, attendance, leave, incentives, claims, classificationRows] = await Promise.all([
@@ -373,7 +374,7 @@ export class PayrollJourneyService {
       this.prisma.employeeProfile.findMany({
         where: {
           engagement: 'EMPLOYEE',
-          employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
+          ...employedInMonth(period, periodEnd),
           ...(run.clinicId ? { staff: { clinicId: run.clinicId } } : {}),
         },
         include: {
@@ -385,7 +386,7 @@ export class PayrollJourneyService {
       this.prisma.employeeProfile.findMany({
         where: {
           engagement: 'CONTRACTOR',
-          employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
+          ...employedInMonth(period, periodEnd),
           ...(run.clinicId ? { staff: { clinicId: run.clinicId } } : {}),
         },
         include: { staff: { select: { fullName: true, active: true } } },
@@ -395,7 +396,7 @@ export class PayrollJourneyService {
     // grid, the attendance step and an employee's previous/next agree with
     // the payslips and the bank listing.
     const active = employees
-      .filter((e) => e.staff.active)
+      .filter(paidThisMonth)
       .sort(byEmployeeName((e) => ({ name: e.staff.fullName, staffId: e.staffId })));
     const staffIds = active.map((e) => e.staffId);
 
@@ -1089,7 +1090,7 @@ export class PayrollJourneyService {
         // Named on the screen so the run accounts for everybody the clinic
         // pays, not only everybody it payrolls.
         contractors: contractors
-          .filter((c) => c.staff.active)
+          .filter(paidThisMonth)
           .map((c) => ({ staffId: c.staffId, name: c.staff.fullName })),
       },
       attendance: {

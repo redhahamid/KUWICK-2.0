@@ -6,6 +6,67 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 35 — 10 Oktober 2026 — Payroll bulan lepas: semua yang bekerja dalam bulan itu
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada
+migrasi.** Formula gaji tidak berubah: pengiraan sebahagian bulan (hari
+kalendar) yang sedia ada kini sampai kepada mereka yang patut.
+
+### Keputusan anda (10 Oktober 2026)
+
+- `[D]` "A month's run must include everyone employed at any point in THAT
+  month: start date on or before the month's last day, AND no end date or
+  end date on or after the month's first day. Part-month people are
+  prorated." Pekerja yang bermula selepas bulan itu tidak muncul langsung.
+  Amaran bulan tanpa payroll guna peraturan yang sama. Tarikh berhenti
+  ditunjuk di kepala rekod dan senarai staf.
+
+### Punca
+
+- `[D]` Setiap senarai payroll (run, grid Prepare, readiness, cap perubahan,
+  carry-forward) memilih status HARI INI (ACTIVE/PROBATION/NOTICE), dan
+  pengiraan melangkau sesiapa yang log masuknya dimatikan. Jadi Januari 2026
+  hanya menyenaraikan staf aktif hari ini, dan staf yang bermula Ogos
+  muncul sebagai "Blocked: Salary setup is incomplete".
+
+### Apa yang berubah
+
+- `[D]` Satu peraturan, `employed-in-month.ts`, dipakai oleh run, grid
+  Prepare, readiness, cap perubahan dan carry-forward: tarikh mula ≤ hari
+  terakhir bulan, dan tiada tarikh akhir atau tarikh akhir ≥ hari pertama.
+  Pekerja yang telah berhenti (RESIGNED/TERMINATED) termasuk sehingga tarikh
+  akhirnya; log masuk yang dimatikan tidak lagi menyingkirkan mereka.
+- `[D]` Bulan tanpa payroll dikira dari tarikh mula hingga tarikh akhir
+  setiap orang.
+- `[D]` Kepala rekod pekerja dan lajur *Type* dalam senarai: "Resigned ·
+  7 Jan 2026".
+- `[D]` **Ujian**: e2e baharu `payroll-employed-in-month` (2: Januari
+  membayar yang kekal, yang berhenti 7 Jan (7/31 = RM700 daripada RM3,100)
+  dan yang berhenti 25 Ogos; tidak termasuk yang berhenti Dis 2025, yang
+  bermula 17 Ogos dan yang berhenti tanpa tarikh; readiness sama). Gagal pada
+  kod lama, lulus pada kod baharu. Unit `payroll-readiness` +1, web
+  `leftLabel` (2).
+
+### Andaian, dilaporkan
+
+- `[A]` Pekerja RESIGNED/TERMINATED tanpa tarikh akhir tidak dimasukkan ke
+  mana-mana bulan, kerana bila mereka berhenti tidak direkod. Isikan tarikh
+  akhir dan mereka akan muncul dalam bulan yang betul.
+- `[A]` SUSPENDED kekal tidak termasuk, seperti dahulu.
+- `[A]` Amaran bulan tanpa payroll mengira orang dalam bulan yang sedang
+  disediakan; bagi setiap orang, hanya bulan mereka bekerja dikira.
+
+### Uji di staging
+
+1. Payroll → Januari 2026 → *Discard draft*, kemudian mulakan semula.
+2. Semak: no. 43 (berhenti 7 Jan) dan no. 20 (berhenti 10 Jan) ada, dengan
+   gaji sebahagian bulan; no. 46 (berhenti 25 Ogos) ada untuk sebulan penuh;
+   no. 63 (mula 17 Ogos 2026) tiada.
+3. Buka rekod no. 43: kepala menunjukkan "Resigned · 7 Jan 2026"; senarai
+   staf (*Resigned*) juga.
+
+---
+
 ## Batch 34 — 10 Oktober 2026 — Payroll items: satu baris, suis dalam panel
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada

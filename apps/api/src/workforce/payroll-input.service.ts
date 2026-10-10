@@ -18,6 +18,7 @@ import {
   originOf,
   placeOnRegister,
 } from './payroll-register-columns';
+import { employedInMonthOf } from './employed-in-month';
 
 export type CarriedForward = {
   /** "January 2026" — the month the lines came from. */
@@ -327,7 +328,7 @@ export class PayrollInputService {
     const employees = await tx.employeeProfile.findMany({
       where: {
         engagement: 'EMPLOYEE',
-        employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
+        ...employedInMonthOf(params.period),
         ...(params.clinicId ? { staff: { clinicId: params.clinicId } } : {}),
       },
       select: { staffId: true, staff: { select: { clinicId: true } } },

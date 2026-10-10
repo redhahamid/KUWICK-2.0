@@ -12,6 +12,7 @@ import { IconCalendar, IconDownload, IconEdit, IconEmployees, IconInfo, IconMore
 import { downloadCsv } from './ui/csv';
 import { CompleteProfileDrawer } from './CompleteProfileDrawer';
 import { MarkResignedModal } from './MarkResignedModal';
+import { leftLabel } from './leftLabel';
 import { DeleteEmployeeModal } from './DeleteEmployeeModal';
 import { BenefitsView } from './BenefitsView';
 import { JobTitlesDrawer } from './JobTitlesDrawer';
@@ -324,11 +325,11 @@ export function EmployeesPage() {
                 {
                   title: 'Type',
                   dataIndex: 'employmentType',
-                  width: 120,
+                  width: 180,
                   render: (value: string | null, row) =>
                     row.hasProfile ? (
                       <StatusChip tone={GONE.has(row.employmentStatus ?? '') ? 'block' : 'muted'}>
-                        {GONE.has(row.employmentStatus ?? '') ? 'Resigned' : (TYPE_LABEL[value ?? ''] ?? value ?? '—')}
+                        {GONE.has(row.employmentStatus ?? '') ? leftLabel(row.endDate) : (TYPE_LABEL[value ?? ''] ?? value ?? '—')}
                       </StatusChip>
                     ) : (
                       <StatusChip tone="attn">No record</StatusChip>

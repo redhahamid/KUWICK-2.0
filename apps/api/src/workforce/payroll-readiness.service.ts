@@ -8,6 +8,7 @@ import { resolveClassificationForPayroll } from './statutory-classification';
 import { toClassificationRow } from './statutory-classification.service';
 import { buildPayrollReadiness, monthRanges, monthsWithoutPay } from './payroll-readiness';
 import { LINDUNG_EFFECTIVE_FROM } from '../statutory/lindung-24-jam';
+import { employedInMonth, paidThisMonth } from './employed-in-month';
 
 function monthStart(value: string | Date): Date {
   const date = typeof value === 'string' ? new Date(`${value.slice(0, 7)}-01T00:00:00.000Z`) : value;
@@ -52,7 +53,7 @@ export class PayrollReadinessService {
     const employees = await this.prisma.employeeProfile.findMany({
       where: {
         engagement: 'EMPLOYEE',
-        employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
+        ...employedInMonth(period, periodEnd),
         // Salary-bearing rows filter by the actor's BRANCH SCOPE — a
         // requested branch is validated, and nothing requested means the
         // branches this account manages, never the whole tenant by default.
@@ -64,7 +65,7 @@ export class PayrollReadinessService {
       },
       orderBy: { staffId: 'asc' },
     });
-    const active = employees.filter((e) => e.staff.active);
+    const active = employees.filter(paidThisMonth);
     const staffIds = active.map((e) => e.staffId);
 
     const [salaryRows, classificationRows, pcbInputs, ytdRows, employers] = await Promise.all([
@@ -110,7 +111,13 @@ export class PayrollReadinessService {
     const gapsByStaff = new Map(
       active.map((employee) => [
         employee.staffId,
-        monthsWithoutPay({ periodMonth: month, taxYear, startDate: employee.startDate, recordedMonths: ytdMonthsByStaff.get(employee.staffId) ?? [] }),
+        monthsWithoutPay({
+          periodMonth: month,
+          taxYear,
+          startDate: employee.startDate,
+          endDate: employee.endDate,
+          recordedMonths: ytdMonthsByStaff.get(employee.staffId) ?? [],
+        }),
       ]),
     );
 

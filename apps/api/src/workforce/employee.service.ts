@@ -456,6 +456,7 @@ export class EmployeeService {
                   periodMonth: period.getUTCMonth() + 1,
                   taxYear: period.getUTCFullYear(),
                   startDate: profile.startDate,
+                  endDate: profile.endDate,
                   recordedMonths: priorYtdMonths.map((row) => row.month),
                 }),
               },

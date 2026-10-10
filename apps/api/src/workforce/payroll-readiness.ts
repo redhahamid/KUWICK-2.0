@@ -133,7 +133,8 @@ export function monthRanges(months: readonly number[]): string {
 
 /**
  * THE EARLIER MONTHS OF THE YEAR WITH NO PAY ON RECORD (UAT, 10 October 2026):
- * the months before this one in which the person was employed here and no
+ * the months before this one in which the person was employed here (from
+ * their start date to their end date, the rule every payroll list uses) and no
  * approved payroll or imported opening balance put anything on record.
  * Monthly tax is cumulative over the year, so each one is a month PCB is
  * worked out as though nothing was paid. A start date not on record asks
@@ -143,15 +144,20 @@ export function monthsWithoutPay(args: {
   periodMonth: number;
   taxYear: number;
   startDate: Date | null;
+  /** Their last day, when on record: no month after it is theirs. */
+  endDate?: Date | null;
   recordedMonths: readonly number[];
 }): number[] {
   if (!args.startDate) return [];
   const startYear = args.startDate.getUTCFullYear();
   if (startYear > args.taxYear) return [];
   const firstMonth = startYear < args.taxYear ? 1 : args.startDate.getUTCMonth() + 1;
+  const endYear = args.endDate ? args.endDate.getUTCFullYear() : null;
+  if (endYear !== null && endYear < args.taxYear) return [];
+  const lastMonth = endYear === args.taxYear ? args.endDate!.getUTCMonth() + 1 : 12;
   const recorded = new Set(args.recordedMonths);
   const missing: number[] = [];
-  for (let month = firstMonth; month < args.periodMonth; month += 1) if (!recorded.has(month)) missing.push(month);
+  for (let month = firstMonth; month < args.periodMonth && month <= lastMonth; month += 1) if (!recorded.has(month)) missing.push(month);
   return missing;
 }
 

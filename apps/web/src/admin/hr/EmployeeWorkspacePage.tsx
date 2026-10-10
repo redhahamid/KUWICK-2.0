@@ -20,6 +20,7 @@ import { EmployeeEditDrawer, type EditSection } from './EmployeeEditDrawer';
 import { MarkResignedModal } from './MarkResignedModal';
 import { DeleteEmployeeModal } from './DeleteEmployeeModal';
 import type { EmployeeRecord } from '../types';
+import { leftLabel } from './leftLabel';
 
 /**
  * THE EMPLOYEE RECORD — four tabs, as the mockup draws them.
@@ -144,7 +145,7 @@ export function EmployeeWorkspacePage() {
               <span className="hr-facts" style={{ display: 'block', fontWeight: 400, marginTop: 2 }}>
                 {[
                   data.employment.position,
-                  gone ? 'Resigned' : TYPE_LABEL[data.employment.employmentType] ?? humanise(data.employment.employmentType),
+                  gone ? leftLabel(data.employment.endDate) : TYPE_LABEL[data.employment.employmentType] ?? humanise(data.employment.employmentType),
                   data.employment.employeeNo,
                   data.employment.startDate ? `Joined ${date(data.employment.startDate)}` : null,
                   data.employment.clinicName ?? 'All branches',

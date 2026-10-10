@@ -268,6 +268,14 @@ describe('the earlier months of the year with no pay on record', () => {
     expect(monthsWithoutPay({ periodMonth: 1, taxYear: 2026, startDate: new Date('2020-01-01T00:00:00.000Z'), recordedMonths: [] })).toEqual([]);
   });
 
+  // UAT, 10 October 2026: up to the end date too, the rule every payroll list uses.
+  it('stops at the month the person left', () => {
+    const start = new Date('2024-01-01T00:00:00.000Z');
+    expect(monthsWithoutPay({ periodMonth: 10, taxYear: 2026, startDate: start, endDate: new Date('2026-08-25T00:00:00.000Z'), recordedMonths: [1] })).toEqual([2, 3, 4, 5, 6, 7, 8]);
+    expect(monthsWithoutPay({ periodMonth: 10, taxYear: 2026, startDate: start, endDate: new Date('2025-12-31T00:00:00.000Z'), recordedMonths: [] })).toEqual([]);
+    expect(monthsWithoutPay({ periodMonth: 10, taxYear: 2026, startDate: start, endDate: new Date('2026-12-31T00:00:00.000Z'), recordedMonths: [] })).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  });
+
   it('joins runs of months and keeps the rest apart', () => {
     expect(monthRanges([2, 6, 7, 8, 9])).toBe('Feb, Jun–Sep');
     expect(monthRanges([3])).toBe('Mar');

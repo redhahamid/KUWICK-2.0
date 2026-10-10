@@ -133,6 +133,7 @@ import {
   checkPayrollInvariants,
   describeViolations,
 } from './payroll-invariants';
+import { employedInMonth, paidThisMonth } from './employed-in-month';
 
 function monthStart(value: string | Date): Date {
   const date = typeof value === 'string' ? new Date(`${value.slice(0, 7)}-01T00:00:00.000Z`) : value;
@@ -514,7 +515,8 @@ export class PayrollService {
       const employers = await tx.employeeProfile.findMany({
         where: {
           engagement: 'EMPLOYEE',
-          employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
+          // Who works this month, not who works today (UAT, 10 October 2026).
+          ...employedInMonth(period, monthEnd(period)),
           ...(dto.clinicId ? { staff: { clinicId: dto.clinicId } } : {}),
         },
         select: { legalEmployerId: true, legalEmployer: { select: { name: true } } },
@@ -559,7 +561,8 @@ export class PayrollService {
       const forDivisors = await tx.employeeProfile.findMany({
         where: {
           engagement: 'EMPLOYEE',
-          employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
+          // Who works this month, not who works today (UAT, 10 October 2026).
+          ...employedInMonth(period, monthEnd(period)),
           ...(dto.clinicId ? { staff: { clinicId: dto.clinicId } } : {}),
           ...(legalEmployerId ? { legalEmployerId } : {}),
         },
@@ -801,7 +804,7 @@ export class PayrollService {
       const employees = await tx.employeeProfile.findMany({
         where: {
           engagement: 'EMPLOYEE',
-          employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
+          ...employedInMonth(period, periodEnd),
           ...(run.clinicId ? { staff: { clinicId: run.clinicId } } : {}),
         },
         include: {
@@ -817,7 +820,7 @@ export class PayrollService {
       const contractors = await tx.employeeProfile.findMany({
         where: {
           engagement: 'CONTRACTOR',
-          employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
+          ...employedInMonth(period, periodEnd),
           ...(run.clinicId ? { staff: { clinicId: run.clinicId } } : {}),
         },
         include: { staff: { select: { fullName: true, active: true } } },
@@ -834,10 +837,10 @@ export class PayrollService {
         ? await tx.employeeProfile.findMany({
             where: {
               engagement: 'EMPLOYEE',
-              employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
-              staff: { clinicId: null, active: true },
+              ...employedInMonth(period, periodEnd),
+              staff: { clinicId: null },
             },
-            include: { staff: { select: { id: true, fullName: true } } },
+            include: { staff: { select: { id: true, fullName: true, active: true } } },
             orderBy: { staffId: 'asc' },
           })
         : [];
@@ -1045,7 +1048,7 @@ export class PayrollService {
         employerIdsToResolve.add(run.legalEmployerId);
       } else {
         for (const employee of employees) {
-          if (employee.staff.active && employee.legalEmployerId) {
+          if (paidThisMonth(employee) && employee.legalEmployerId) {
             employerIdsToResolve.add(employee.legalEmployerId);
           }
         }
@@ -1136,7 +1139,7 @@ export class PayrollService {
       }
 
       for (const employee of employees) {
-        if (!employee.staff.active) continue;
+        if (!paidThisMonth(employee)) continue;
 
         /*
          * A RUN BELONGS TO AN EMPLOYING COMPANY, AND THE SELECTION ABOVE ASKS
@@ -2569,7 +2572,7 @@ export class PayrollService {
         ...checkMembership(
           paidEmployees.map((e) => e.staffId),
           excluded,
-          employees.filter((e) => e.staff.active).map((e) => e.staffId),
+          employees.filter(paidThisMonth).map((e) => e.staffId),
         ),
       ];
       if (violations.length > 0) {
@@ -2580,7 +2583,7 @@ export class PayrollService {
       }
 
       for (const contractor of contractors) {
-        if (!contractor.staff.active) continue;
+        if (!paidThisMonth(contractor)) continue;
         exceptions.push({
           ...buildException('CONTRACTOR_EXCLUDED', contractor.staffId, {
             staffId: contractor.staffId,
@@ -2591,7 +2594,7 @@ export class PayrollService {
         });
       }
 
-      for (const orphan of branchless) {
+      for (const orphan of branchless.filter(paidThisMonth)) {
         exceptions.push({
           ...buildException('EMPLOYEE_IN_NO_BRANCH', orphan.staffId, {
             staffId: orphan.staffId,
