@@ -2458,6 +2458,8 @@ export interface PayrollReadiness {
     withBlockers: number;
     withAdvisories: number;
     withoutEmployer: number;
+    /** Earlier months of the year, while employed, with no payroll on record. */
+    monthsWithoutPay?: { people: number; months: number[]; text: string | null; taxYear: number };
   };
   employers: {
     id: string;
@@ -2478,6 +2480,8 @@ export interface PayrollReadiness {
     legalEmployerId: string | null;
     employerName: string | null;
     startDate: string | null;
+    /** "Jun–Sep": earlier months of the year, while employed here, with no payroll on record. */
+    monthsWithoutPay?: string | null;
     readiness: {
       items: PayrollReadinessItem[];
       done: number;

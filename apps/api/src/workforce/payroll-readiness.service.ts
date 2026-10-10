@@ -6,7 +6,7 @@ import { toCents } from '../finance/money';
 import { resolveSalaryForPayroll, SalaryRow } from './salary-resolution';
 import { resolveClassificationForPayroll } from './statutory-classification';
 import { toClassificationRow } from './statutory-classification.service';
-import { buildPayrollReadiness } from './payroll-readiness';
+import { buildPayrollReadiness, monthRanges, monthsWithoutPay } from './payroll-readiness';
 import { LINDUNG_EFFECTIVE_FROM } from '../statutory/lindung-24-jam';
 
 function monthStart(value: string | Date): Date {
@@ -75,7 +75,7 @@ export class PayrollReadinessService {
       }),
       this.prisma.employeeYtd.findMany({
         where: { staffId: { in: staffIds }, taxYear, month: { lt: month } },
-        select: { staffId: true },
+        select: { staffId: true, month: true },
       }),
       this.prisma.legalEmployer.findMany({
         select: {
@@ -105,6 +105,14 @@ export class PayrollReadinessService {
     const classificationsByStaff = group(classificationRows);
     const pcbByStaff = new Map(pcbInputs.map((row) => [row.staffId, row]));
     const ytdStaff = new Set(ytdRows.map((row) => row.staffId));
+    const ytdMonthsByStaff = new Map<string, number[]>();
+    for (const row of ytdRows) ytdMonthsByStaff.set(row.staffId, [...(ytdMonthsByStaff.get(row.staffId) ?? []), row.month]);
+    const gapsByStaff = new Map(
+      active.map((employee) => [
+        employee.staffId,
+        monthsWithoutPay({ periodMonth: month, taxYear, startDate: employee.startDate, recordedMonths: ytdMonthsByStaff.get(employee.staffId) ?? [] }),
+      ]),
+    );
 
     const rows = active.map((employee) => {
       const salary = resolveSalaryForPayroll(
@@ -161,8 +169,10 @@ export class PayrollReadinessService {
           taxYear,
           hasPriorMonths: ytdStaff.has(employee.staffId),
           employedBeforePeriod: Boolean(employee.startDate && employee.startDate < period),
+          missingMonths: gapsByStaff.get(employee.staffId) ?? [],
         },
       });
+      const gaps = gapsByStaff.get(employee.staffId) ?? [];
       return {
         staffId: employee.staffId,
         name: employee.staff.fullName,
@@ -170,6 +180,8 @@ export class PayrollReadinessService {
         legalEmployerId: employee.legalEmployer?.id ?? null,
         employerName: employee.legalEmployer?.name ?? null,
         startDate: employee.startDate?.toISOString().slice(0, 10) ?? null,
+        /** "Jun–Sep": earlier months of the year, while employed here, with no payroll on record. */
+        monthsWithoutPay: gaps.length ? monthRanges(gaps) : null,
         readiness,
       };
     });
@@ -218,6 +230,15 @@ export class PayrollReadinessService {
           (row) => row.readiness.ready && row.readiness.items.some((item) => !item.done),
         ).length,
         withoutEmployer: rows.filter((row) => row.legalEmployerId === null).length,
+        /**
+         * EARLIER MONTHS WITH NO PAYROLL, across everybody (UAT, 10 October
+         * 2026): said before the month is worked out, never a block.
+         */
+        monthsWithoutPay: (() => {
+          const people = active.filter((employee) => (gapsByStaff.get(employee.staffId) ?? []).length > 0).length;
+          const months = [...new Set([...gapsByStaff.values()].flat())].sort((a, b) => a - b);
+          return { people, months, text: months.length ? monthRanges(months) : null, taxYear };
+        })(),
       },
       employers: employerRows,
       employees: rows,

@@ -55,6 +55,8 @@ export function PayrollStartGate({
    */
   const canStart = salaryOnRecord > 0;
   const blocked = data?.employees.filter((row) => !row.readiness.ready) ?? [];
+  const gaps = data?.summary.monthsWithoutPay;
+  const withGaps = data?.employees.filter((row) => row.monthsWithoutPay) ?? [];
 
   return (
     <>
@@ -77,6 +79,40 @@ export function PayrollStartGate({
             sub="The month can be worked out now; it cannot be approved until these are sorted."
           />
           <BlockedList rows={blocked} />
+        </Panel>
+      ) : null}
+
+      {/*
+       * EARLIER MONTHS WITH NO PAYROLL (UAT, 10 October 2026): said before the
+       * month is worked out, because monthly tax is cumulative over the year.
+       * A warning, never a block.
+       */}
+      {gaps && gaps.people > 0 && gaps.text ? (
+        <Panel className="hr-mt">
+          <div data-testid="months-without-pay">
+            <PanelHead
+              title={`${gaps.text} ${gaps.months.length === 1 ? 'has' : 'have'} no payroll run — PCB may be understated`}
+              sub={`For ${gaps.people} ${gaps.people === 1 ? 'person' : 'people'} employed then. The month can still be worked out.`}
+            />
+            <details className="hr-details">
+              <summary>Details</summary>
+              <p className="hr-small">
+                Monthly tax is cumulative over the year, so it is worked out as though nothing was paid in those months. If this
+                employer paid them before Kuwick did, import the opening balances; if a previous employer paid them, record their
+                Form TP3.
+              </p>
+              <ul className="hr-small">
+                {withGaps.map((row) => (
+                  <li key={row.staffId}>
+                    <Link className="hr-link" to={`/admin/hr/employees/${row.staffId}?tab=statutory&focus=tax`}>
+                      {row.name}
+                    </Link>
+                    : {row.monthsWithoutPay} {gaps.taxYear}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          </div>
         </Panel>
       ) : null}
     </>

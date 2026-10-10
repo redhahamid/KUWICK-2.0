@@ -108,7 +108,51 @@ export interface ReadinessFacts {
     hasPriorMonths: boolean;
     /** Whether the employee was employed before this period began. */
     employedBeforePeriod: boolean;
+    /**
+     * The months of the year before this one, while employed here, with no
+     * pay on record (`monthsWithoutPay`). Where given, the advisory names them.
+     */
+    missingMonths?: readonly number[];
   } | null;
+}
+
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "Jun–Sep", "Feb, Jun–Sep", "Mar": months of one year, runs of them joined. */
+export function monthRanges(months: readonly number[]): string {
+  const sorted = [...new Set(months)].filter((month) => month >= 1 && month <= 12).sort((a, b) => a - b);
+  const parts: string[] = [];
+  for (let index = 0; index < sorted.length; ) {
+    let end = index;
+    while (end + 1 < sorted.length && sorted[end + 1] === sorted[end] + 1) end += 1;
+    parts.push(end > index ? `${MONTH_NAMES[sorted[index] - 1]}–${MONTH_NAMES[sorted[end] - 1]}` : MONTH_NAMES[sorted[index] - 1]);
+    index = end + 1;
+  }
+  return parts.join(', ');
+}
+
+/**
+ * THE EARLIER MONTHS OF THE YEAR WITH NO PAY ON RECORD (UAT, 10 October 2026):
+ * the months before this one in which the person was employed here and no
+ * approved payroll or imported opening balance put anything on record.
+ * Monthly tax is cumulative over the year, so each one is a month PCB is
+ * worked out as though nothing was paid. A start date not on record asks
+ * nothing, as the advisory always has.
+ */
+export function monthsWithoutPay(args: {
+  periodMonth: number;
+  taxYear: number;
+  startDate: Date | null;
+  recordedMonths: readonly number[];
+}): number[] {
+  if (!args.startDate) return [];
+  const startYear = args.startDate.getUTCFullYear();
+  if (startYear > args.taxYear) return [];
+  const firstMonth = startYear < args.taxYear ? 1 : args.startDate.getUTCMonth() + 1;
+  const recorded = new Set(args.recordedMonths);
+  const missing: number[] = [];
+  for (let month = firstMonth; month < args.periodMonth; month += 1) if (!recorded.has(month)) missing.push(month);
+  return missing;
 }
 
 const longDate = (value: Date) =>
@@ -256,7 +300,25 @@ export function buildPayrollReadiness(facts: ReadinessFacts): ReadinessResult {
   // this month is not wrong — but monthly tax is cumulative, and computing it
   // as though January onwards paid nothing is a decision somebody should make
   // knowingly, not a default they never saw.
-  if (facts.ytd && facts.ytd.periodMonth > 1 && facts.ytd.employedBeforePeriod && !facts.ytd.hasPriorMonths) {
+  //
+  // NAMED BY MONTH where the caller knows which months (UAT, 10 October 2026):
+  // "Jun–Sep have no payroll run — PCB may be understated". Never a block.
+  const missing = facts.ytd?.missingMonths;
+  if (facts.ytd && missing !== undefined && missing.length > 0) {
+    const months = monthRanges(missing);
+    items.push({
+      key: 'ytdOpening',
+      link: '?tab=statutory&focus=tax',
+      label: 'Pay history for the year',
+      severity: 'ADVISORY',
+      done: false,
+      detail:
+        `${months} ${facts.ytd.taxYear} ${missing.length === 1 ? 'has' : 'have'} no payroll run on record — PCB may be understated. ` +
+        'Monthly tax is cumulative over the year, so it is worked out as though nothing was paid in those months. If this ' +
+        'employer paid them before this system did, import the opening balances; if a previous employer paid them, ' +
+        'record their Form TP3.',
+    });
+  } else if (facts.ytd && missing === undefined && facts.ytd.periodMonth > 1 && facts.ytd.employedBeforePeriod && !facts.ytd.hasPriorMonths) {
     items.push({
       key: 'ytdOpening',
       link: '?tab=statutory&focus=tax',

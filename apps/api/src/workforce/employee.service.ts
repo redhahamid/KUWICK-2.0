@@ -12,7 +12,7 @@ import { formatCents, fromCents, toCents } from '../finance/money';
 import { resolveSalaryForPayroll } from './salary-resolution';
 import { resolveClassificationForPayroll } from './statutory-classification';
 import { toClassificationRow } from './statutory-classification.service';
-import { buildPayrollReadiness } from './payroll-readiness';
+import { buildPayrollReadiness, monthsWithoutPay } from './payroll-readiness';
 import { LINDUNG_EFFECTIVE_FROM } from '../statutory/lindung-24-jam';
 import { credentialedClinicianFields } from '../core/credentialing';
 
@@ -231,8 +231,9 @@ export class EmployeeService {
       // Whether any pay for the tax year is on record before this month —
       // approved runs or an opening import both count. Feeds the readiness
       // item that says monthly tax would treat the earlier months as unpaid.
-      this.prisma.employeeYtd.count({
+      this.prisma.employeeYtd.findMany({
         where: { staffId, taxYear: period.getUTCFullYear(), month: { lt: period.getUTCMonth() + 1 } },
+        select: { month: true },
       }),
     ]);
 
@@ -449,8 +450,14 @@ export class EmployeeService {
               ytd: {
                 periodMonth: period.getUTCMonth() + 1,
                 taxYear: period.getUTCFullYear(),
-                hasPriorMonths: priorYtdMonths > 0,
+                hasPriorMonths: priorYtdMonths.length > 0,
                 employedBeforePeriod: Boolean(profile.startDate && profile.startDate < period),
+                missingMonths: monthsWithoutPay({
+                  periodMonth: period.getUTCMonth() + 1,
+                  taxYear: period.getUTCFullYear(),
+                  startDate: profile.startDate,
+                  recordedMonths: priorYtdMonths.map((row) => row.month),
+                }),
               },
             }),
       /**

@@ -6,6 +6,43 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 31 — 10 Oktober 2026 — Amaran bulan awal tahun tanpa payroll
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. Komit: komit
+yang menambah bahagian ini. **Tiada migrasi.**
+
+### Keputusan anda (10 Oktober 2026)
+
+- `[D]` A2: "Warn before working out a month when earlier months of the year
+  have no payroll run for staff who were employed then (e.g. 'Jun–Sep have no
+  payroll run — PCB may be understated'). Do not block."
+
+### Apa yang berubah
+
+- `[D]` Langkah Prepare, sebelum bulan dikira: notis "Jun–Sep have no payroll
+  run — PCB may be understated" dengan bilangan orang, dan senarai nama serta
+  bulan setiap orang di bawah *Details*. Butang kira tidak disekat.
+- `[D]` Bulan dikira hanya ketika orang itu bekerja di sini (dari tarikh
+  mula), dan "ada rekod" bermaksud bulan yang diluluskan atau baki pembukaan
+  yang diimport. Tarikh mula tiada: tidak ditanya (seperti dahulu).
+- `[D]` Rekod pekerja (*Pay history for the year*) kini menamakan bulan yang
+  sama, bukan hanya "tiada langsung".
+- `[D]` **Ujian**: unit `payroll-readiness` +4; web baharu
+  `payrollStartGate` (2).
+
+### Andaian, dilaporkan
+
+- `[A]` Bulan yang ada run tetapi belum diluluskan dikira "tiada payroll",
+  kerana PCB hanya membaca bulan yang diluluskan.
+
+### Uji di staging
+
+1. Pekerja demo bermula Januari, hanya Jan–Mei diluluskan. Buka run Oktober:
+   notis "Jun–Sep have no payroll run — PCB may be understated"; butang kira
+   masih boleh ditekan.
+
+---
+
 ## Batch 30 — 10 Oktober 2026 — "Paid on": hari bulan ini atau bulan berikutnya
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. Komit: komit

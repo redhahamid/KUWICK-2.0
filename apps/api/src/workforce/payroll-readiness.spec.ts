@@ -1,4 +1,4 @@
-import { buildPayrollReadiness, ReadinessFacts } from './payroll-readiness';
+import { buildPayrollReadiness, monthRanges, monthsWithoutPay, ReadinessFacts } from './payroll-readiness';
 
 /**
  * THE READINESS CHECKLIST IS THE RUN'S OWN VIEW, IN ADVANCE.
@@ -245,5 +245,37 @@ describe('severity follows the run — this page promises blocking means the run
     const statutory = result.items.find((item) => item.key === 'statutory')!;
     expect(statutory.done).toBe(true);
     expect(statutory.severity).toBe('ADVISORY');
+  });
+});
+
+// UAT, 10 October 2026: "Jun–Sep have no payroll run — PCB may be understated". Do not block.
+describe('the earlier months of the year with no pay on record', () => {
+  it('names the months while employed that have none, and never blocks', () => {
+    const missing = monthsWithoutPay({ periodMonth: 10, taxYear: 2026, startDate: new Date('2025-03-01T00:00:00.000Z'), recordedMonths: [1, 2, 3, 4, 5] });
+    expect(missing).toEqual([6, 7, 8, 9]);
+    expect(monthRanges(missing)).toBe('Jun–Sep');
+    const result = buildPayrollReadiness({ ...COMPLETE, ytd: { periodMonth: 10, taxYear: 2026, hasPriorMonths: true, employedBeforePeriod: true, missingMonths: missing } });
+    const item = result.items.find((row) => row.key === 'ytdOpening')!;
+    expect(item.detail).toMatch(/^Jun–Sep 2026 have no payroll run on record — PCB may be understated\./);
+    expect(item.severity).toBe('ADVISORY');
+    expect(result.ready).toBe(true);
+  });
+
+  it('counts only the months the person was employed here', () => {
+    expect(monthsWithoutPay({ periodMonth: 10, taxYear: 2026, startDate: new Date('2026-08-15T00:00:00.000Z'), recordedMonths: [] })).toEqual([8, 9]);
+    expect(monthsWithoutPay({ periodMonth: 10, taxYear: 2026, startDate: new Date('2026-10-01T00:00:00.000Z'), recordedMonths: [] })).toEqual([]);
+    expect(monthsWithoutPay({ periodMonth: 10, taxYear: 2026, startDate: null, recordedMonths: [] })).toEqual([]);
+    expect(monthsWithoutPay({ periodMonth: 1, taxYear: 2026, startDate: new Date('2020-01-01T00:00:00.000Z'), recordedMonths: [] })).toEqual([]);
+  });
+
+  it('joins runs of months and keeps the rest apart', () => {
+    expect(monthRanges([2, 6, 7, 8, 9])).toBe('Feb, Jun–Sep');
+    expect(monthRanges([3])).toBe('Mar');
+    expect(monthRanges([1, 3, 5])).toBe('Jan, Mar, May');
+  });
+
+  it('says nothing once every month while employed is on record', () => {
+    const result = buildPayrollReadiness({ ...COMPLETE, ytd: { periodMonth: 10, taxYear: 2026, hasPriorMonths: true, employedBeforePeriod: true, missingMonths: [] } });
+    expect(result.items.find((row) => row.key === 'ytdOpening')).toBeUndefined();
   });
 });
