@@ -1,4 +1,4 @@
-import { IsBoolean, IsNumber, IsOptional, IsString, Length, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, Length, Max, Min } from 'class-validator';
 
 export class UpsertLegalEmployerDto {
   @IsOptional() @IsString() id?: string;
@@ -25,4 +25,8 @@ export class UpsertLegalEmployerDto {
   @IsOptional() @IsString() bankAccountNo?: string;
   @IsOptional() @IsString() bankAccountName?: string;
   @IsOptional() @IsBoolean() active?: boolean;
+  /** What the HRD levy is worked out on. Absent keeps what the employer has. */
+  @IsOptional() @IsIn(['BASIC_ONLY', 'BASIC_PLUS_FIXED_ALLOWANCES']) hrdLevyBase?: 'BASIC_ONLY' | 'BASIC_PLUS_FIXED_ALLOWANCES';
+  /** Whether zakat is deducted through payroll. Absent keeps what the employer has. */
+  @IsOptional() @IsBoolean() zakatThroughPayroll?: boolean;
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { App, DatePicker, Input, Select } from 'antd';
+import { App, DatePicker, Input, Select, Switch } from 'antd';
 import dayjs from 'dayjs';
 import { Link } from 'react-router-dom';
 import { useLegalEmployers, useRecordEmployerHrd, useUpsertLegalEmployer } from '../hooks/useAdmin';
@@ -69,6 +69,9 @@ export function LegalEmployersPage() {
   const elsewhere = clinicId ? allRows.filter((row) => row.employeeCount === 0) : [];
   const [editing, setEditing] = useState<LegalEmployerRow | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
+  // Two settings the employer answers (UAT, 10 October 2026).
+  const [levyBase, setLevyBase] = useState<LegalEmployerRow['hrdLevyBase']>('BASIC_ONLY');
+  const [zakat, setZakat] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Same shape as the rule set drawer: scrolling body, pinned footer.
   useProblemFocus(error);
@@ -81,6 +84,8 @@ export function LegalEmployersPage() {
 
   function edit(row: LegalEmployerRow | null) {
     setEditing(row);
+    setLevyBase(row?.hrdLevyBase ?? 'BASIC_ONLY');
+    setZakat(row?.zakatThroughPayroll ?? false);
     setForm(
       row
         ? {
@@ -119,6 +124,8 @@ export function LegalEmployersPage() {
         ...(editing ? { id: editing.id } : {}),
         ...rest,
         ...(bankAccountNo && bankAccountNo.trim() !== '' ? { bankAccountNo: bankAccountNo.trim() } : {}),
+        hrdLevyBase: levyBase,
+        zakatThroughPayroll: zakat,
       });
       message.success('Saved.');
       setOpen(false);
@@ -209,6 +216,12 @@ export function LegalEmployersPage() {
                     {HRD_LABELS[row.hrdRegistration] ?? row.hrdRegistration}
                     {/* A class is a fact with a date: a payroll month before it gets no levy. */}
                     {row.hrdEffectiveFrom ? <span className="hr-faint hr-small"> · from {dayjs(row.hrdEffectiveFrom).format('D MMM YYYY')}</span> : null}
+                    {row.hrdRegistration !== 'NOT_REGISTERED' ? (
+                      <span className="hr-faint hr-small">
+                        {' '}
+                        · levy on {row.hrdLevyBase === 'BASIC_PLUS_FIXED_ALLOWANCES' ? 'basic + fixed allowances' : 'basic salary only'}
+                      </span>
+                    ) : null}
                   </span>
                 ) : (
                   <StatusChip tone="attn">Not recorded</StatusChip>
@@ -323,6 +336,35 @@ export function LegalEmployersPage() {
               />
             </label>
           ))}
+          <label>
+            <div className="hr-small hr-muted" style={{ marginBottom: 4 }}>HRD levy base</div>
+            <Select
+              aria-label="HRD levy base"
+              value={levyBase}
+              onChange={setLevyBase}
+              style={{ width: '100%' }}
+              options={[
+                { value: 'BASIC_ONLY', label: 'Basic salary only' },
+                { value: 'BASIC_PLUS_FIXED_ALLOWANCES', label: 'Basic + fixed allowances' },
+              ]}
+            />
+            <div className="hr-small hr-muted" style={{ marginTop: 4 }}>
+              {levyBase === 'BASIC_ONLY'
+                ? 'The levy is worked out on basic salary, less unpaid leave. No allowance counts, whatever its item says.'
+                : 'Basic salary plus every allowance marked HRD in Payroll items, which is how the PSMB Act defines wages.'}
+            </div>
+          </label>
+          <div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <Switch checked={zakat} onChange={setZakat} aria-label="Deduct zakat through payroll" />
+              <span>Deduct zakat through payroll</span>
+            </div>
+            <div className="hr-small hr-muted" style={{ marginTop: 4 }}>
+              {zakat
+                ? 'Each person’s monthly zakat, a Zakat item on their record, comes off net pay and is rebated against their PCB.'
+                : 'Off: no zakat is taken from pay. Staff who pay zakat themselves can still claim it on their TP1.'}
+            </div>
+          </div>
         </div>
       </Drawer>
 

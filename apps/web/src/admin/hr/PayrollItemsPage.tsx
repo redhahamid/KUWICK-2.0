@@ -41,12 +41,18 @@ import type { PayComponentRow, PayComponentVersion } from '../types';
  */
 type Flag = 'epfLiable' | 'socsoLiable' | 'eisLiable' | 'pcbLiable' | 'hrdLiable' | 'prorated' | 'includeInOrpBase' | 'includeInUnpaidLeaveBase';
 
-const FLAGS: { key: Flag; title: string; width: number }[] = [
+const FLAGS: { key: Flag; title: string; width: number; hint?: string }[] = [
   { key: 'epfLiable', title: 'EPF', width: 70 },
   { key: 'socsoLiable', title: 'SOCSO', width: 78 },
   { key: 'eisLiable', title: 'EIS', width: 70 },
   { key: 'pcbLiable', title: 'PCB', width: 70 },
-  { key: 'hrdLiable', title: 'HRD', width: 70 },
+  {
+    key: 'hrdLiable',
+    title: 'HRD',
+    width: 70,
+    // The employer's levy base decides whether an allowance's switch counts (UAT, 10 October 2026).
+    hint: 'Counts toward the HRD levy where the employer’s levy base is “Basic + fixed allowances” (Settings → Company & statutory). On “Basic salary only”, the default, no allowance counts.',
+  },
   { key: 'prorated', title: 'Prorate', width: 84 },
   { key: 'includeInOrpBase', title: 'OT base', width: 84 },
   { key: 'includeInUnpaidLeaveBase', title: 'Unpaid-leave base', width: 130 },
@@ -470,7 +476,13 @@ export function PayrollItemsPage() {
               ),
             },
             ...FLAGS.map((flag) => ({
-              title: flag.title,
+              title: flag.hint ? (
+                <Tooltip title={flag.hint}>
+                  <span style={{ borderBottom: '1px dotted currentColor' }}>{flag.title}</span>
+                </Tooltip>
+              ) : (
+                flag.title
+              ),
               dataIndex: flag.key,
               width: flag.width,
               align: 'center' as const,

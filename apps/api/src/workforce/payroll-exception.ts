@@ -470,6 +470,25 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    * Act's calendar-day figure. This is the record, as with a clinic rate below
    * the Act — who, which month, and by how much — not an obstacle.
    */
+  /*
+   * A ZAKAT ITEM WHERE THE EMPLOYER DOES NOT DEDUCT ZAKAT (UAT, 10 October
+   * 2026). Blocking, because both ways out are somebody's money: taken
+   * against the setting, or quietly not taken while the employee thinks it
+   * is being paid for them.
+   */
+  ZAKAT_THROUGH_PAYROLL_OFF: {
+    code: 'ZAKAT_THROUGH_PAYROLL_OFF',
+    title: 'Zakat on record, not deducted',
+    severity: 'BLOCKING',
+    overridable: false,
+    cause: (c) =>
+      `RM${String(c.amount)} of zakat is on their record for this month, but ${String(c.employerName)} does not deduct zakat through payroll.`,
+    consequence:
+      'It has not been taken from their pay or rebated against their PCB. If they expect it to be paid for them, it is not being paid.',
+    remediation:
+      'Turn on “Deduct zakat through payroll” for the employer in Settings → Company & statutory and work the month out again, or end the Zakat item on their record.',
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=employment`,
+  },
   PART_MONTH_BELOW_STATUTORY: {
     code: 'PART_MONTH_BELOW_STATUTORY',
     title: 'Part month below the Act’s calendar days',

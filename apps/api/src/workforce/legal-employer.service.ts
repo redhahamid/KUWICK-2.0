@@ -115,6 +115,10 @@ export class LegalEmployerService {
       bankAccountLastFour: row.bankAccountNo ? row.bankAccountNo.slice(-4) : null,
       bankAccountName: row.bankAccountName,
       active: row.active,
+      /** What the HRD levy is worked out on: basic salary only, or basic plus fixed allowances. */
+      hrdLevyBase: row.hrdLevyBase,
+      /** Whether zakat is deducted through payroll. */
+      zakatThroughPayroll: row.zakatThroughPayroll,
       employeeCount: row._count.employees,
       payrollRunCount: row._count.runs,
       /**
@@ -224,6 +228,9 @@ export class LegalEmployerService {
           dto.bankAccountNo === undefined ? (existing?.bankAccountNo ?? null) : dto.bankAccountNo || null,
         bankAccountName: dto.bankAccountName ?? null,
         active: dto.active ?? true,
+        // Absent keeps what the employer has; a new one starts on the defaults.
+        ...(dto.hrdLevyBase === undefined ? {} : { hrdLevyBase: dto.hrdLevyBase }),
+        ...(dto.zakatThroughPayroll === undefined ? {} : { zakatThroughPayroll: dto.zakatThroughPayroll }),
       };
 
       const saved = existing

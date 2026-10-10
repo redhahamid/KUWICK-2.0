@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { App as AntApp } from 'antd';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
@@ -37,11 +37,12 @@ const employer = (over: Record<string, unknown>) => ({
   ...over,
 });
 let clinicId: string | undefined = 'clinic-a';
+const upsertMutate = vi.fn().mockResolvedValue({});
 const rows = [employer({}), employer({ id: 'e-2', name: 'Cawangan Sdn Bhd', employeeCount: 0 }), employer({ id: 'e-3', name: 'Dormant Sdn Bhd', employeeCount: 0 })];
 
 vi.mock('../hooks/useAdmin', () => ({
   useLegalEmployers: () => ({ data: rows, isLoading: false }),
-  useUpsertLegalEmployer: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpsertLegalEmployer: () => ({ mutateAsync: upsertMutate, isPending: false }),
   useRecordEmployerHrd: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('../../core/hooks/useCan', () => ({ useCan: () => true }));
@@ -76,5 +77,25 @@ describe('the companies, with one branch picked', () => {
     mount();
     expect(screen.getByText('Cawangan Sdn Bhd')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /other employers/ })).toBeNull();
+  });
+});
+
+describe('the two employer settings (UAT, 10 October 2026)', () => {
+  it('starts on basic salary only with zakat off, and saves what the clinic picks', async () => {
+    clinicId = undefined;
+    mount();
+    fireEvent.click(screen.getAllByRole('button', { name: /Edit/ })[0]);
+    expect(screen.getByText(/worked out on basic salary, less unpaid leave/)).toBeTruthy();
+    const zakat = screen.getByRole('switch', { name: 'Deduct zakat through payroll' });
+    expect(zakat).toHaveAttribute('aria-checked', 'false');
+
+    fireEvent.mouseDown(screen.getByLabelText('HRD levy base'));
+    fireEvent.click(screen.getByTitle('Basic + fixed allowances'));
+    fireEvent.click(zakat);
+    expect(screen.getByText(/comes off net pay and is rebated against their PCB/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(upsertMutate).toHaveBeenCalledTimes(1));
+    expect(upsertMutate.mock.calls[0][0]).toMatchObject({ id: 'e-1', hrdLevyBase: 'BASIC_PLUS_FIXED_ALLOWANCES', zakatThroughPayroll: true });
   });
 });

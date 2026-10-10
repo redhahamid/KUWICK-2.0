@@ -993,9 +993,12 @@ export class PayrollService {
       );
 
       // Employing companies by id, for the sentence an excluded employee gets.
-      const employerNames = new Map<string, string>(
-        (await tx.legalEmployer.findMany({ select: { id: true, name: true } })).map((row) => [row.id, row.name]),
-      );
+      const employerRows = await tx.legalEmployer.findMany({
+        select: { id: true, name: true, hrdLevyBase: true, zakatThroughPayroll: true },
+      });
+      const employerNames = new Map<string, string>(employerRows.map((row) => [row.id, row.name]));
+      // Two settings the employing company answers (UAT, 10 October 2026).
+      const employerSettings = new Map(employerRows.map((row) => [row.id, row]));
 
       const lastDayOfPeriod = new Date(periodEnd.getTime() - 86400000);
 
@@ -1855,8 +1858,19 @@ export class PayrollService {
         const pcbInput = materialised.find((row) => row.componentCode === 'PCB');
         const pcbOverrideCents = pcbInput ? toCents(pcbInput.amount) : null;
 
+        // ZAKAT GOES THROUGH PAYROLL ONLY WHERE THE EMPLOYER SAYS SO. A Zakat
+        // item on somebody's record while the setting is off is not taken, and
+        // the month stops until the clinic decides which of the two is right.
+        const zakatEmployerId = run.legalEmployerId ?? employee.legalEmployerId;
+        const zakatOn = zakatEmployerId ? (employerSettings.get(zakatEmployerId)?.zakatThroughPayroll ?? false) : false;
+        let zakatHeldCents = 0;
+
         for (const input of materialised) {
           if (input.componentCode === 'PCB') continue;
+          if (input.componentCode === 'ZAKAT' && !zakatOn) {
+            zakatHeldCents += toCents(input.amount);
+            continue;
+          }
           const component = catalogue.get(input.componentCode);
           if (!component) {
             // An input naming a component the CATALOGUE does not cover for this
@@ -1875,6 +1889,13 @@ export class PayrollService {
             kind: amountCents < 0 ? 'DEDUCTION' : component.kind,
             amount: fromCents(Math.abs(amountCents)),
             liability: component.liability,
+          });
+        }
+
+        if (zakatHeldCents !== 0) {
+          raise('ZAKAT_THROUGH_PAYROLL_OFF', employee, {
+            amount: formatCents(zakatHeldCents),
+            employerName: zakatEmployerId ? (employerNames.get(zakatEmployerId) ?? 'their employer') : 'their employer',
           });
         }
 
@@ -1995,6 +2016,7 @@ export class PayrollService {
             // staff qualify; part-timers, interns (apprentice contracts are
             // on the guideline's excluded list) and locums do not.
             hrdRegistration,
+            hrdLevyBase: levyEmployerId ? employerSettings.get(levyEmployerId)?.hrdLevyBase : undefined,
             hrdFullTimeEmployment:
               employee.employmentType === 'PERMANENT' || employee.employmentType === 'CONTRACT',
           },

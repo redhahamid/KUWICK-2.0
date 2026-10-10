@@ -76,7 +76,8 @@ describe('Synthetic payroll month (e2e)', () => {
     const employer = await request(server())
       .post('/workforce/legal-employers')
       .set('Authorization', bearer)
-      .send({ name: 'Synthetic Sdn Bhd' })
+      // Zakat through payroll on: the cast includes somebody whose zakat is taken from pay.
+      .send({ name: 'Synthetic Sdn Bhd', zakatThroughPayroll: true })
       .expect(201);
     legalEmployerId = employer.body.id;
     // Section 14: the mandatory 1% class, so the levy is a real employer cost.

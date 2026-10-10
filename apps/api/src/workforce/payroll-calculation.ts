@@ -279,6 +279,21 @@ export function computeBases(lines: PayrollComponentLine[]): BasesResult {
   };
 }
 
+/**
+ * THE HRD LEVY ON BASIC SALARY ONLY (UAT, 10 October 2026): the HRD base
+ * above with basic pay the only earning in it. What comes off basic, such as
+ * unpaid leave, still comes off; no allowance goes in, whatever its item says.
+ */
+export function basicOnlyHrdCents(lines: PayrollComponentLine[]): number {
+  let hrd = 0;
+  for (const line of lines) {
+    if (!line.liability.hrd) continue;
+    if (line.kind === 'EARNING' && line.code !== 'BASIC') continue;
+    hrd += (line.kind === 'EARNING' ? 1 : -1) * toCents(line.amount);
+  }
+  return Math.max(0, hrd);
+}
+
 // ---------------------------------------------------------------------------
 // Ordinary Rate of Pay, overtime, unpaid leave
 // ---------------------------------------------------------------------------
@@ -683,7 +698,8 @@ export function computePayslip(
   // leviable wages, so it rides in the employer contribution — which is what
   // keeps invariant 3, employerCost = gross + employerContribution, true
   // without a side channel.
-  const hrd = hrdLevyForPayslip(bases.hrdCents, context, profile);
+  // On the employer's chosen base: basic only, or basic plus fixed allowances.
+  const hrd = hrdLevyForPayslip(profile.hrdLevyBase === 'BASIC_ONLY' ? basicOnlyHrdCents(lines) : bases.hrdCents, context, profile);
 
   const employerContributionCents =
     (statutory.epf.employerCents ?? 0) +

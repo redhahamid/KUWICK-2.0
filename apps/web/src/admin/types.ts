@@ -1967,6 +1967,10 @@ export interface LegalEmployerRow {
   hrdLevyRatePercent: number | null;
   /** From when the class in force today applies (ISO date); a payroll month before it gets no levy. */
   hrdEffectiveFrom: string | null;
+  /** What the HRD levy is worked out on. */
+  hrdLevyBase: "BASIC_ONLY" | "BASIC_PLUS_FIXED_ALLOWANCES";
+  /** Whether zakat is deducted through payroll. */
+  zakatThroughPayroll: boolean;
   addressLine1: string | null;
   city: string | null;
   state: string | null;

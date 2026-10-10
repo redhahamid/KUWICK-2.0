@@ -6,15 +6,80 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 25 — 10 Oktober 2026 — Zakat melalui payroll, dan asas levi HRD (Bahagian 4)
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 24 (`b555678`). Komit: komit yang menambah bahagian ini (hash dalam
+laporan). **Migrasi: `20261010120000_legal_employer_hrd_base_and_zakat`** —
+satu jenis enum baharu `HrdLevyBase` dan dua lajur pada `legal_employers`
+(`hrd_levy_base` lalai `BASIC_ONLY`, `zakat_through_payroll` lalai `false`);
+tiada pernyataan data, tiada jadual baharu. Dijalankan di staging dengan
+*Migrate only* dari cawangan ini **sebelum** master dimajukan.
+
+### Perubahan angka, dilaporkan
+
+- `[D]` **Levi HRD sebelum ini** dikira atas gaji pokok tolak cuti tanpa gaji
+  **campur** setiap elaun yang suis HRD-nya hidup di *Payroll items* (item
+  *Allowance* standard hidup secara lalai). Itu takrif "wages" Akta PSMB.
+  Arahan anda menjadikan **Basic salary only** sebagai lalai, jadi bagi majikan
+  sedia ada yang membayar elaun bertanda HRD, levi dari pengiraan seterusnya
+  akan **lebih rendah**. Bulan yang sudah diluluskan tidak berubah.
+  `[A]` Semak dengan HRD Corp; jika pendaftaran anda mengira elaun tetap
+  sebagai gaji, pilih *Basic + fixed allowances*.
+- `[D]` **Zakat**: Kuwick sudah lama memotong item *Zakat* dan menolaknya
+  daripada PCB. Kini ia hanya berlaku apabila tetapan dihidupkan (lalai
+  mati). Pekerja yang ada item Zakat ketika tetapan mati: bulan itu
+  **disekat** (`ZAKAT_THROUGH_PAYROLL_OFF`), bukan dipotong atau diabaikan
+  secara senyap. `[A]` Jika mana-mana klinik di production sudah memotong
+  zakat melalui item Zakat, hidupkan tetapan itu sebelum run seterusnya.
+
+### Apa yang berubah
+
+- `[D]` *Settings → Company & statutory → Edit*: **HRD levy base** (*Basic
+  salary only*, lalai, atau *Basic + fixed allowances*) dan suis **Deduct
+  zakat through payroll** (lalai mati), dengan penerangan di bawah setiap
+  satu. Baris majikan berdaftar menunjukkan "levy on basic salary only".
+- `[D]` **Levi atas gaji pokok sahaja** (`basicOnlyHrdCents`): gaji pokok
+  tolak cuti tanpa gaji; tiada elaun, apa pun suis itemnya. Lajur **HRD** di
+  *Payroll items* kini ada penerangan bahawa suis itu hanya dikira jika asas
+  levi majikan ialah *Basic + fixed allowances*.
+- `[D]` **Zakat hidup**: jumlah bulanan setiap pekerja ialah item berulang
+  *Zakat* pada rekod mereka (*Employment & salary → Recurring items*), dipotong
+  daripada gaji bersih dan ditolak daripada PCB bulan itu, ringgit untuk
+  ringgit selagi ada PCB. **Zakat mati**: item Zakat tidak boleh ditambah
+  (mesej menyuruh hidupkan tetapan dahulu). Zakat yang dibayar sendiri
+  melalui TP1 tidak berubah.
+- `[D]` **Ujian**: API unit +1 (`basicOnlyHrdCents`), e2e +5
+  (`payroll-hrd-base-and-zakat`: RM80.00 atas RM8,000, RM85.00 dengan elaun
+  RM500, item Zakat ditolak ketika mati, PCB turun RM100 dan gaji bersih kekal
+  ketika hidup, bulan disekat bila dimatikan semula), web +1
+  (`legalEmployersPage`). Ujian *synthetic month* kini menghidupkan zakat
+  bagi majikannya kerana pelakonnya membayar zakat melalui payroll.
+
+### Uji di staging (ikut urutan)
+
+1. *Settings → Company & statutory → Edit* majikan: **HRD levy base** =
+   *Basic salary only*, **Deduct zakat through payroll** mati.
+2. Bulan payroll bagi majikan berdaftar s.14 dengan pekerja demo yang ada
+   item *Allowance*: levi = 1% gaji pokok. Tukar kepada *Basic + fixed
+   allowances*, kira semula: levi termasuk elaun.
+3. Cuba tambah item berulang *Zakat* pada pekerja demo: ditolak dengan mesej.
+4. Hidupkan zakat, tambah *Zakat* RM100 sebulan, kira semula: baris Zakat
+   pada payslip, PCB turun RM100, gaji bersih sama.
+5. Matikan zakat, kira semula: sekatan **Zakat on record, not deducted**.
+
+---
+
 ## Batch 24 — 10 Oktober 2026 — Bulan separa: hari kalendar atau hari bekerja (Bahagian 3)
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
-Batch 23 (`0a2a92f`). Komit: komit yang menambah bahagian ini (hash dalam
-laporan). **Migrasi: `20261010110000_payroll_policy_part_month_basis`** —
-satu lajur `part_month_basis` pada `payroll_policies` (lalai `CALENDAR_DAYS`)
-dan satu semakan (hanya `CALENDAR_DAYS` atau `WORKING_DAYS`); tiada pernyataan
-data, tiada jadual baharu. Dijalankan di staging dengan *Migrate only* dari
-cawangan ini **sebelum** master dimajukan.
+Batch 23 (`0a2a92f`). Komit: `b555678`. **Migrasi:
+`20261010110000_payroll_policy_part_month_basis`** — satu lajur
+`part_month_basis` pada `payroll_policies` (lalai `CALENDAR_DAYS`) dan satu
+semakan (hanya `CALENDAR_DAYS` atau `WORKING_DAYS`); tiada pernyataan data,
+tiada jadual baharu. Dijalankan di staging dengan *Migrate only* run #14 dari
+cawangan ini **sebelum** master dimajukan; status selepas: "Database schema
+is up to date!".
 
 ### Percanggahan dengan kod, dilaporkan
 

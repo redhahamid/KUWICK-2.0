@@ -127,6 +127,17 @@ export class EmployeeRecurringItemService {
       const component = await tx.payComponent.findFirst({ where: { code: dto.componentCode, effectiveTo: null } });
       if (!component) throw new BadRequestException(`"${dto.componentCode}" is not a pay item in this clinic's catalogue.`);
       if (!component.active) throw new BadRequestException(`"${component.name}" is switched off in Payroll items.`);
+      // Zakat is taken through payroll only where the employer says so.
+      if (component.code === 'ZAKAT') {
+        const employer = profile.legalEmployerId
+          ? await tx.legalEmployer.findFirst({ where: { id: profile.legalEmployerId }, select: { name: true, zakatThroughPayroll: true } })
+          : null;
+        if (!employer?.zakatThroughPayroll) {
+          throw new BadRequestException(
+            `${employer?.name ?? 'Their employer'} does not deduct zakat through payroll. Turn on “Deduct zakat through payroll” in Settings → Company & statutory first.`,
+          );
+        }
+      }
       if (DERIVED_BY_THE_RUN.has(component.code)) {
         throw new BadRequestException(
           `${component.name} is worked out by the payroll run from the records; it cannot be a recurring item.`,

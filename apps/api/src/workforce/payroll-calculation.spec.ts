@@ -2,6 +2,7 @@ import {
   DEFAULT_COMPONENT_LIABILITY,
   LIABILITY_BY_STATUS_CODE,
   PayrollComponentLine,
+  basicOnlyHrdCents,
   computeBases,
   computeOvertime,
   projectedFutureNormalCents,
@@ -920,5 +921,22 @@ describe('the employer-selected EPF basis — a preference, never an assessment'
     // figure survives inside epfBasis for the comparison surfaces.
     expect(slip.statutory.bases.epfCents).toBe(300000);
     expect(slip.epfBasis?.assessedEpfCents).toBe(350000);
+  });
+});
+
+describe('the HRD levy on basic salary only (UAT, 10 October 2026)', () => {
+  const leviable = { ...LIABILITY_BY_STATUS_CODE['2'], hrd: true };
+  const line = (code: string, kind: PayrollComponentLine['kind'], amount: number): PayrollComponentLine => ({
+    code,
+    label: code,
+    kind,
+    amount,
+    liability: leviable,
+  });
+
+  it('counts basic less what comes off it and no allowance, where the full base counts both', () => {
+    const lines = [line('BASIC', 'EARNING', 3000), line('ALLOWANCE', 'EARNING', 200), line('UNPAID_LEAVE', 'WAGE_REDUCTION', 100)];
+    expect(basicOnlyHrdCents(lines)).toBe(290000);
+    expect(computeBases(lines).hrdCents).toBe(310000);
   });
 });

@@ -148,6 +148,12 @@ export interface EmployeeStatutoryProfile {
    */
   hrdRegistration?: 'MANDATORY_SECTION_14' | 'OPTIONAL_SECTION_15' | 'NOT_REGISTERED' | null;
   /**
+   * WHAT THE LEVY IS WORKED OUT ON, the employer's setting. Absent is the
+   * PSMB Act's definition, basic plus fixed allowances; a run always passes
+   * the employer's own answer, whose default is basic only.
+   */
+  hrdLevyBase?: 'BASIC_ONLY' | 'BASIC_PLUS_FIXED_ALLOWANCES';
+  /**
    * Section 2 covers FULL-TIME employment, contract or permanent. Derived by
    * the caller from the employment type — PERMANENT and CONTRACT qualify;
    * part-timers, interns (apprentice contracts are on the guideline's own
