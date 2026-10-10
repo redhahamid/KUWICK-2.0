@@ -8,7 +8,7 @@ import { AdminTx, actorCan, requirePermission, withAdminTx } from '../finance/ad
 import { recordAudit } from '../finance/admin-audit';
 import { currentTenantId } from '../core/tenant-context';
 import { SnapshotPayload, verifySnapshot } from './payroll-snapshot';
-import { DEFAULT_PAY_DATE, scheduledPayDate } from './pay-dates';
+import { chosenPayDate, DEFAULT_PAY_DATE, PayDateChoices, payDateChoicesOf, scheduledPayDate } from './pay-dates';
 
 /** One date's money for everybody on the run: who, and how much on that date. */
 export interface ScheduledPayment {
@@ -16,26 +16,34 @@ export interface ScheduledPayment {
   date: string | null;
   people: { staffId: string; name: string; amountCents: number }[];
   totalCents: number;
+  /** The record's own dates paid on this one: more than one where the owner moved two onto one day. */
+  defaultDates: string[];
 }
 
 /**
  * THE MONTH'S PAYMENTS, FROM THE APPROVED RECORD. A record written with pay
  * dates says what each person is paid on each date; an older one is one
- * payment of everybody's net, exactly as before.
+ * payment of everybody's net, exactly as before. The owner's dates for this
+ * run move a date, or put two on one day, without touching an amount.
  */
-export function scheduleOf(payload: SnapshotPayload): ScheduledPayment[] {
+export function scheduleOf(payload: SnapshotPayload, choices: PayDateChoices = {}): ScheduledPayment[] {
   const split = payload.employees.every((employee) => Array.isArray(employee.payments));
   if (!split) {
     const people = payload.employees.map((employee) => ({ staffId: employee.staffId, name: employee.name, amountCents: employee.netCents }));
-    return [{ date: null, people, totalCents: people.reduce((sum, person) => sum + person.amountCents, 0) }];
+    return [{ date: null, people, totalCents: people.reduce((sum, person) => sum + person.amountCents, 0), defaultDates: [] }];
   }
   const byDate = new Map<string, ScheduledPayment>();
   for (const employee of payload.employees) {
     for (const payment of employee.payments ?? []) {
-      const entry = byDate.get(payment.date) ?? { date: payment.date, people: [], totalCents: 0 };
-      entry.people.push({ staffId: employee.staffId, name: employee.name, amountCents: payment.netCents });
+      const date = chosenPayDate(choices, payment.date);
+      const entry = byDate.get(date) ?? { date, people: [], totalCents: 0, defaultDates: [] };
+      // Two of somebody's payments moved onto one day are one transfer to them.
+      const person = entry.people.find((row) => row.staffId === employee.staffId);
+      if (person) person.amountCents += payment.netCents;
+      else entry.people.push({ staffId: employee.staffId, name: employee.name, amountCents: payment.netCents });
       entry.totalCents += payment.netCents;
-      byDate.set(payment.date, entry);
+      if (!entry.defaultDates.includes(payment.date)) entry.defaultDates.push(payment.date);
+      byDate.set(date, entry);
     }
   }
   return [...byDate.values()]
@@ -44,11 +52,61 @@ export function scheduleOf(payload: SnapshotPayload): ScheduledPayment[] {
     .sort((a, b) => (a.date! < b.date! ? -1 : 1));
 }
 
-/** The date the salary is paid on: the date basic pay goes out, from the record's own catalogue. */
-export function salaryDateOf(payload: SnapshotPayload): string | null {
+/** The date the salary is paid on: the date basic pay goes out, from the record's own catalogue and the owner's dates. */
+export function salaryDateOf(payload: SnapshotPayload, choices: PayDateChoices = {}): string | null {
   const basic = payload.components?.find((component) => component.code === 'BASIC');
   if (!basic?.payDate) return null;
-  return scheduledPayDate(new Date(`${payload.period.slice(0, 10)}T00:00:00.000Z`), { payDay: basic.payDate.payDay ?? DEFAULT_PAY_DATE.payDay });
+  return chosenPayDate(
+    choices,
+    scheduledPayDate(new Date(`${payload.period.slice(0, 10)}T00:00:00.000Z`), { payDay: basic.payDate.payDay ?? DEFAULT_PAY_DATE.payDay }),
+  );
+}
+
+/** One of the record's own dates, from Payroll items: what is paid on it, and the date it goes out on for this run. */
+export interface PayDateRow {
+  defaultDate: string;
+  payDate: string;
+  /** The items paid on it, as the payslip names them. */
+  items: string[];
+  totalCents: number;
+}
+
+/**
+ * THE RECORD'S OWN DATES, each with the date the owner chose for this run. A
+ * record approved before pay dates existed has none: it is paid on one date.
+ */
+export function payDateRowsOf(payload: SnapshotPayload, choices: PayDateChoices = {}): PayDateRow[] {
+  if (!payload.employees.every((employee) => Array.isArray(employee.payments))) return [];
+  const rows = new Map<string, PayDateRow & { paid: boolean }>();
+  for (const employee of payload.employees) {
+    for (const payment of employee.payments ?? []) {
+      const row = rows.get(payment.date) ?? {
+        defaultDate: payment.date,
+        payDate: chosenPayDate(choices, payment.date),
+        items: [],
+        totalCents: 0,
+        paid: false,
+      };
+      row.totalCents += payment.netCents;
+      row.paid ||= payment.netCents !== 0;
+      rows.set(payment.date, row);
+    }
+    for (const line of employee.payslip?.componentLines ?? []) {
+      const row = line.kind === 'EARNING' && line.payDate ? rows.get(line.payDate) : undefined;
+      if (row && line.amountCents !== 0 && !row.items.includes(line.label)) row.items.push(line.label);
+    }
+  }
+  return [...rows.values()]
+    .filter((row) => row.paid)
+    .sort((a, b) => (a.defaultDate < b.defaultDate ? -1 : 1))
+    .map(({ defaultDate, payDate, items, totalCents }) => ({ defaultDate, payDate, items, totalCents }));
+}
+
+/** A date for this run is kept between the first day of its month and the last day of the next. */
+export function payDateRangeOf(period: Date): { from: string; to: string } {
+  const first = new Date(Date.UTC(period.getUTCFullYear(), period.getUTCMonth(), 1));
+  const last = new Date(Date.UTC(period.getUTCFullYear(), period.getUTCMonth() + 2, 0));
+  return { from: first.toISOString().slice(0, 10), to: last.toISOString().slice(0, 10) };
 }
 
 const dateKey = (date: Date | null) => (date ? date.toISOString().slice(0, 10) : null);
@@ -101,9 +159,10 @@ export class PayrollPaymentService {
     const actor = await requirePermission(this.rawPrisma, 'hr.payroll.view');
     const run = await this.prisma.payrollRun.findUnique({
       where: { id: runId },
-      select: { id: true, status: true, netTotal: true, paidAt: true },
+      select: { id: true, status: true, period: true, netTotal: true, paidAt: true, payDates: true },
     });
     if (!run) throw new NotFoundException('Payroll run not found');
+    const choices = payDateChoicesOf(run.payDates);
     const current = await this.prisma.payrollPaymentBatch.findMany({
       where: { payrollRunId: runId, status: { not: PaymentBatchStatus.SUPERSEDED } },
       orderBy: [{ payDate: 'asc' }, { version: 'desc' }],
@@ -117,8 +176,8 @@ export class PayrollPaymentService {
       select: { payload: true },
     });
     const payload = snapshot ? (snapshot.payload as unknown as SnapshotPayload) : null;
-    const schedule = payload ? scheduleOf(payload) : [];
-    const salaryDate = payload ? salaryDateOf(payload) : null;
+    const schedule = payload ? scheduleOf(payload, choices) : [];
+    const salaryDate = payload ? salaryDateOf(payload, choices) : null;
     const mayPrepare = actorCan(actor, 'hr.payroll.export.bank');
     const batches = current.map((batch) => {
       // The one order every payroll list uses: by name, the excluded where their
@@ -158,9 +217,27 @@ export class PayrollPaymentService {
       runStatus: run.status,
       runPaidAt: run.paidAt?.toISOString() ?? null,
       mayPrepare,
-      /** The dates the approved record pays this month on, and how much on each. */
+      /** Whether the owner may still move a date: an approved run, by somebody who may prepare its listings. */
+      mayChooseDates: mayPrepare && run.status === PayrollRunStatus.APPROVED,
+      /** The dates a payment of this run may be moved to. */
+      payDateRange: payDateRangeOf(run.period),
+      /**
+       * THE RECORD'S OWN DATES, from Payroll items, each with the date it goes
+       * out on for this run. A date stands once its listing is prepared.
+       */
+      payDates: (payload ? payDateRowsOf(payload, choices) : []).map((row) => ({
+        ...row,
+        locked: batches.some((batch) => batch.payDate === row.payDate),
+      })),
+      /** The dates this run pays on, and how much on each. */
       schedule: schedule.map((entry) => ({
         payDate: entry.date,
+        /** The record's own date for it, from Payroll items. */
+        defaultDates: entry.defaultDates,
+        /** Moved for this run by the owner. */
+        moved: entry.date !== null && entry.defaultDates.some((date) => date !== entry.date),
+        /** Its listing is prepared, so the date stands. */
+        locked: batches.some((batch) => batch.payDate === entry.date),
         totalCents: entry.totalCents,
         people: entry.people.filter((person) => person.amountCents !== 0).length,
       })),
@@ -201,7 +278,7 @@ export class PayrollPaymentService {
             verification.reason,
         );
       }
-      const schedule = scheduleOf(payload);
+      const schedule = scheduleOf(payload, payDateChoicesOf(run.payDates));
 
       // THE WHOLE MONTH FIRST. However many dates, together they must pay the
       // approved net to the sen, or nothing is stored.
@@ -336,6 +413,81 @@ export class PayrollPaymentService {
     return this.status(runId);
   }
 
+  /**
+   * THE OWNER MOVES A DATE FOR THIS RUN (UAT, 10 October 2026): "the
+   * component's Paid on is only the default date within that run's month, and
+   * can be changed on the Pay step for each run before the listing is
+   * prepared."
+   *
+   * Every payment the record puts on `defaultDate` goes out on `payDate`
+   * instead, for this run alone; choosing the default again clears the choice,
+   * and choosing a date the run already pays on makes the two one transfer.
+   * No amount moves. Refused once the listing for either date is prepared: a
+   * prepared listing is a document somebody may already have keyed at the
+   * bank. A date is kept between the first day of the run's month and the last
+   * day of the next, which catches a mistyped year without second-guessing the
+   * clinic.
+   */
+  async choosePayDate(runId: string, body: { defaultDate: string; payDate: string }) {
+    const changed = await withAdminTx(this.rawPrisma, 'hr.payroll.export.bank', async (tx, actor) => {
+      const run = await tx.payrollRun.findUnique({ where: { id: runId } });
+      if (!run) throw new NotFoundException('Payroll run not found');
+      if (run.status !== PayrollRunStatus.APPROVED) {
+        throw new ConflictException(
+          run.status === PayrollRunStatus.PAID
+            ? 'This run is paid. Its dates are the dates the money went.'
+            : 'Pay dates are chosen for an approved run, on its Pay step.',
+        );
+      }
+      const snapshot = await tx.payrollSnapshot.findFirst({
+        where: { payrollRunId: runId },
+        orderBy: { version: 'desc' },
+        select: { payload: true },
+      });
+      if (!snapshot) throw new ConflictException('This run has no approved record to pay from.');
+      const choices = payDateChoicesOf(run.payDates);
+      const defaultDate = body.defaultDate.slice(0, 10);
+      const payDate = body.payDate.slice(0, 10);
+      const row = payDateRowsOf(snapshot.payload as unknown as SnapshotPayload, choices).find((entry) => entry.defaultDate === defaultDate);
+      if (!row) {
+        throw new BadRequestException(`Nothing in this run is due on ${defaultDate}. Choose one of the dates it pays on.`);
+      }
+      const range = payDateRangeOf(run.period);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(payDate) || payDate < range.from || payDate > range.to) {
+        throw new BadRequestException(`Choose a date from ${range.from} to ${range.to}: within this run's month or the month after it.`);
+      }
+      if (payDate === row.payDate) return false;
+      const prepared = await tx.payrollPaymentBatch.findFirst({
+        where: {
+          payrollRunId: runId,
+          status: { not: PaymentBatchStatus.SUPERSEDED },
+          payDate: { in: [new Date(`${row.payDate}T00:00:00.000Z`), new Date(`${payDate}T00:00:00.000Z`)] },
+        },
+      });
+      if (prepared) {
+        throw new ConflictException(
+          `The listing for ${dateKey(prepared.payDate)} is prepared, so that date stands. A date can be changed until its listing is prepared.`,
+        );
+      }
+
+      const next: Record<string, string> = { ...choices };
+      if (payDate === defaultDate) delete next[defaultDate];
+      else next[defaultDate] = payDate;
+      await tx.payrollRun.update({ where: { id: runId }, data: { payDates: next } });
+      await recordAudit(tx, actor, {
+        action: 'payrollPayment.payDateChosen',
+        entityType: 'PayrollRun',
+        entityId: runId,
+        before: { defaultDate, payDate: row.payDate },
+        after: { defaultDate, payDate, totalCents: row.totalCents },
+        reason: `For this run, payments due on ${defaultDate} go out on ${payDate}.`,
+        source: 'hr.payroll',
+      });
+      return true;
+    });
+    return { changed, ...(await this.status(runId)) };
+  }
+
   /** The standing listing for a date, or the only one when the month is paid on one date. */
   private async standingBatch(tx: AdminTx, runId: string, payDate: string | undefined) {
     const standing = await tx.payrollPaymentBatch.findMany({
@@ -463,7 +615,8 @@ export class PayrollPaymentService {
       });
       const payload = snapshot ? (snapshot.payload as unknown as SnapshotPayload) : null;
       const paysOn = dateKey(batch.payDate);
-      const carriesSalary = paysOn === null || (payload !== null && paysOn === salaryDateOf(payload));
+      const choices = payDateChoicesOf(run.payDates);
+      const carriesSalary = paysOn === null || (payload !== null && paysOn === salaryDateOf(payload, choices));
       const everyDateRecorded = standing.every((other) => other.id === batch.id || other.status === PaymentBatchStatus.RECORDED_PAID);
 
       if (run.status === PayrollRunStatus.APPROVED) {
@@ -482,10 +635,12 @@ export class PayrollPaymentService {
       // A claim that rode on this run's lines has now been paid — on the date
       // its item is paid. Say so on the claim, so the employee's portal and the
       // claims queue stop calling it "approved, will be paid with your salary".
-      const claimDate = (staffId: string) =>
-        payload?.employees
+      const claimDate = (staffId: string) => {
+        const date = payload?.employees
           .find((employee) => employee.staffId === staffId)
-          ?.payslip?.componentLines.find((line) => line.code === 'CLAIM_REIMBURSEMENT')?.payDate ?? null;
+          ?.payslip?.componentLines.find((line) => line.code === 'CLAIM_REIMBURSEMENT')?.payDate;
+        return date ? chosenPayDate(choices, date) : null;
+      };
       const paidStaff = run.lines
         .map((line) => line.staffId)
         .filter((staffId) => paysOn === null || claimDate(staffId) === paysOn || (claimDate(staffId) === null && carriesSalary));

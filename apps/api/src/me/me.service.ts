@@ -10,6 +10,7 @@ import { AttendanceRecordService } from '../workforce/attendance-record.service'
 import { LeaveService } from '../workforce/leave.service';
 import { PayrollPayslipService } from '../workforce/payroll-payslip.service';
 import { PAYSLIP_RELEASED } from '../workforce/payslip-release';
+import { payDateChoicesOf, paymentsOnChosenDates } from '../workforce/pay-dates';
 import { StaffFileService } from '../workforce/staff-file.service';
 import { ClaimPolicyService } from '../workforce/claim-policy.service';
 import { assertReceiptRule, priceClaim } from '../workforce/claim-pricing';
@@ -882,7 +883,7 @@ export class MeService {
         staffId: actor.id,
         payrollRun: PAYSLIP_RELEASED,
       },
-      include: { payrollRun: { select: { id: true, period: true, status: true, paymentDate: true } } },
+      include: { payrollRun: { select: { id: true, period: true, status: true, paymentDate: true, payDates: true } } },
     });
     if (!line) throw new NotFoundException('No payslip of yours for that month.');
     // WHEN IT IS PAID, from the approved record (UAT, 10 October 2026): a
@@ -901,8 +902,10 @@ export class MeService {
           select: { payDate: true, paymentDate: true },
         })
       : [];
+    // On the dates this run pays on: the owner may have moved a default date on the Pay step.
+    const onChosenDates = mine?.payments ? paymentsOnChosenDates(mine.payments, payDateChoicesOf(line.payrollRun.payDates)) : null;
     const payments =
-      mine?.payments?.map((payment) => ({
+      onChosenDates?.map((payment) => ({
         date: payment.date,
         amountCents: payment.netCents,
         paidOn:

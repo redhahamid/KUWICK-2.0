@@ -1,5 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { SetPayDateDto } from './dto/set-pay-date.dto';
+import { ChoosePayDateDto } from './dto/choose-pay-date.dto';
 import { AcknowledgeExceptionsDto } from './dto/acknowledge-exceptions.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -1029,6 +1030,12 @@ export class WorkforceController {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
     res.send(file.content);
+  }
+
+  /** The owner moves a pay date for this run, before its listing is prepared. */
+  @Patch('payroll/runs/:id/payment/dates')
+  choosePayDate(@Param('id') id: string, @Body() dto: ChoosePayDateDto) {
+    return this.payments.choosePayDate(id, dto);
   }
 
   @Post('payroll/runs/:id/payment/record-paid')

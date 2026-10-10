@@ -1119,11 +1119,30 @@ export interface PaymentBatch {
   lines: PaymentBatchLine[];
 }
 
+/** One of the approved record's own pay dates, and the date it goes out on for this run. */
+export interface PayDateChoiceRow {
+  /** From the item's "Paid on" in Payroll items. */
+  defaultDate: string;
+  /** The date it goes out on for this run: the default, or the owner's choice. */
+  payDate: string;
+  /** The items paid on it, as the payslip names them. */
+  items: string[];
+  totalCents: number;
+  /** Its listing is prepared, so the date stands. */
+  locked: boolean;
+}
+
 export interface PaymentStatus {
   runStatus: string;
   runPaidAt: string | null;
   mayPrepare: boolean;
-  /** The dates the approved record pays this month on, and how much on each. */
+  /** Whether the owner may still change a date for this run. */
+  mayChooseDates?: boolean;
+  /** The dates a payment of this run may be moved to. */
+  payDateRange?: { from: string; to: string };
+  /** The record's own dates, each with the date it goes out on for this run. */
+  payDates?: PayDateChoiceRow[];
+  /** The dates this run pays on, and how much on each. */
   schedule?: { payDate: string | null; totalCents: number; people: number }[];
   /** The date the salary goes out. */
   salaryDate?: string | null;

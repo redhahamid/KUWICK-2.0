@@ -1,4 +1,14 @@
-import { DEFAULT_PAY_DATE, describePayDate, ordinal, PayDateRule, scheduledPayDate, splitByPayDate } from './pay-dates';
+import {
+  chosenPayDate,
+  DEFAULT_PAY_DATE,
+  describePayDate,
+  ordinal,
+  PayDateRule,
+  payDateChoicesOf,
+  paymentsOnChosenDates,
+  scheduledPayDate,
+  splitByPayDate,
+} from './pay-dates';
 
 describe('pay dates', () => {
   const october = new Date('2026-10-01T00:00:00.000Z');
@@ -97,5 +107,32 @@ describe('one person’s net pay, split across the dates their items are paid on
     // Every date is taken to nil first; what is still owed sits on the salary date.
     expect(payments.find((payment) => payment.date === '2026-10-30')).toMatchObject({ netCents: -2_000 });
     expect(payments.find((payment) => payment.date === '2026-10-15')).toMatchObject({ netCents: 0 });
+  });
+});
+
+describe("the owner's dates for one run", () => {
+  it('reads only a day for a day from what the run stored', () => {
+    expect(payDateChoicesOf({ '2026-10-01': '2026-10-03', '2026-10-15': 'Friday', later: '2026-10-20' })).toEqual({ '2026-10-01': '2026-10-03' });
+    expect(payDateChoicesOf(null)).toEqual({});
+    expect(payDateChoicesOf(['2026-10-01'])).toEqual({});
+  });
+
+  it('pays a date the owner did not move on its own day', () => {
+    const choices = { '2026-10-01': '2026-10-03' };
+    expect(chosenPayDate(choices, '2026-10-01')).toBe('2026-10-03');
+    expect(chosenPayDate(choices, '2026-10-30')).toBe('2026-10-30');
+  });
+
+  it('makes two of one person’s payments moved onto one day one payment, in date order', () => {
+    const payments = [
+      { date: '2026-10-01', netCents: 50_000 },
+      { date: '2026-10-15', netCents: 12_000 },
+      { date: '2026-10-30', netCents: 250_000 },
+    ];
+    expect(paymentsOnChosenDates(payments, { '2026-10-15': '2026-10-30', '2026-10-01': '2026-10-28' })).toEqual([
+      { date: '2026-10-28', netCents: 50_000 },
+      { date: '2026-10-30', netCents: 262_000 },
+    ]);
+    expect(paymentsOnChosenDates(payments, {})).toEqual(payments);
   });
 });

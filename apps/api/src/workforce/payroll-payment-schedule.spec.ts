@@ -1,5 +1,5 @@
 import { SnapshotPayload } from './payroll-snapshot';
-import { salaryDateOf, scheduleOf } from './payroll-payment.service';
+import { payDateRangeOf, payDateRowsOf, salaryDateOf, scheduleOf } from './payroll-payment.service';
 
 /*
  * THE MONTH'S PAYMENTS, READ FROM THE APPROVED RECORD (UAT, 10 October
@@ -28,6 +28,7 @@ describe('the payments an approved record makes', () => {
           { staffId: 'b', name: 'Badrul', amountCents: 250_000 },
         ],
         totalCents: 550_000,
+        defaultDates: [],
       },
     ]);
   });
@@ -57,5 +58,58 @@ describe('the payments an approved record makes', () => {
     const basic = { code: 'BASIC', payDate: { payDay: 25, payMonthOffset: 0 } } as unknown as NonNullable<SnapshotPayload['components']>[number];
     expect(salaryDateOf(payload([], [basic]))).toBe('2026-10-25');
     expect(salaryDateOf(payload([]))).toBeNull();
+  });
+
+  /*
+   * THE OWNER'S DATES FOR ONE RUN (UAT, 10 October 2026): a default date moved
+   * on the Pay step moves every payment on it, and two dates on one day are
+   * one transfer to each person.
+   */
+  it('pays on the dates the owner chose for this run, putting two dates on one day into one transfer', () => {
+    const dated = payload([
+      employee('a', 'Ana', 350_000, [
+        { date: '2026-10-01', netCents: 50_000 },
+        { date: '2026-10-15', netCents: 20_000 },
+        { date: '2026-10-30', netCents: 280_000 },
+      ]),
+      employee('b', 'Badrul', 250_000, [{ date: '2026-10-30', netCents: 250_000 }]),
+    ]);
+    const schedule = scheduleOf(dated, { '2026-10-01': '2026-10-03', '2026-10-15': '2026-10-30' });
+    expect(schedule.map((entry) => [entry.date, entry.totalCents, entry.defaultDates])).toEqual([
+      ['2026-10-03', 50_000, ['2026-10-01']],
+      ['2026-10-30', 550_000, ['2026-10-15', '2026-10-30']],
+    ]);
+    expect(schedule[1].people).toEqual([
+      { staffId: 'a', name: 'Ana', amountCents: 300_000 },
+      { staffId: 'b', name: 'Badrul', amountCents: 250_000 },
+    ]);
+
+    const basic = { code: 'BASIC', payDate: { payDay: 30 } } as unknown as NonNullable<SnapshotPayload['components']>[number];
+    expect(salaryDateOf(payload([], [basic]), { '2026-10-30': '2026-10-31' })).toBe('2026-10-31');
+  });
+
+  it('lists the record’s own dates with what is paid on each, and the dates a run may be moved within', () => {
+    const line = (code: string, label: string, amountCents: number, payDate: string) => ({ code, label, kind: 'EARNING', amountCents, payDate });
+    const withLines = (row: SnapshotPayload['employees'][number], lines: ReturnType<typeof line>[]) =>
+      ({ ...row, payslip: { componentLines: lines } }) as unknown as SnapshotPayload['employees'][number];
+    const rows = payDateRowsOf(
+      payload([
+        withLines(
+          employee('a', 'Ana', 330_000, [
+            { date: '2026-10-01', netCents: 50_000 },
+            { date: '2026-10-30', netCents: 280_000 },
+          ]),
+          [line('DIRECTOR_FEE', "Director's fee (September 2026)", 50_000, '2026-10-01'), line('BASIC', 'Basic salary', 300_000, '2026-10-30')],
+        ),
+        withLines(employee('b', 'Badrul', 250_000, [{ date: '2026-10-30', netCents: 250_000 }]), [line('BASIC', 'Basic salary', 250_000, '2026-10-30')]),
+      ]),
+      { '2026-10-01': '2026-10-03' },
+    );
+    expect(rows).toEqual([
+      { defaultDate: '2026-10-01', payDate: '2026-10-03', items: ["Director's fee (September 2026)"], totalCents: 50_000 },
+      { defaultDate: '2026-10-30', payDate: '2026-10-30', items: ['Basic salary'], totalCents: 530_000 },
+    ]);
+    expect(payDateRowsOf(payload([employee('a', 'Ana', 300_000)]))).toEqual([]);
+    expect(payDateRangeOf(new Date('2026-12-01T00:00:00.000Z'))).toEqual({ from: '2026-12-01', to: '2027-01-31' });
   });
 });

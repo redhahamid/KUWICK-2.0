@@ -172,6 +172,8 @@ export type AuditAction =
   | 'payrollPayment.batchPrepared'
   | 'payrollPayment.listingDownloaded'
   | 'payrollPayment.recordedPaid'
+  /// The owner moved a pay date for one run, before its listing was prepared.
+  | 'payrollPayment.payDateChosen'
   // Statutory outputs: a listing leaving, and a human recording that a filing
   // was actually made at the authority's portal — the only "submitted" there is.
   | 'payrollStatutory.listingDownloaded'

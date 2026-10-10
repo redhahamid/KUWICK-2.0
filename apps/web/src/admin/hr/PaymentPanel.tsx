@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { App, Button, DatePicker, Input, Modal, Steps, Tag, Tooltip } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { AdminNotice, AdminSection } from '../components/AdminShell';
 import { DataTable, money } from '../components/DataTable';
 import { downloadFile } from '../../core/api-client';
-import { usePaymentStatus, usePreparePayment, useRecordPaymentPaid } from '../hooks/useAdmin';
-import type { PaymentBatch, PaymentBatchLine } from '../types';
+import { useChoosePayDate, usePaymentStatus, usePreparePayment, useRecordPaymentPaid } from '../hooks/useAdmin';
+import type { PaymentBatch, PaymentBatchLine, PayDateChoiceRow } from '../types';
 
 /** "30 Oct 2026". */
 const day = (iso: string) => dayjs(iso).format('D MMM YYYY');
@@ -24,6 +24,10 @@ const day = (iso: string) => dayjs(iso).format('D MMM YYYY');
  * each date walks the three states on its own. The run reads PAID once every
  * date is recorded; the employee sees the payslip once the salary is.
  *
+ * THE OWNER'S DATES FOR THIS RUN (UAT, 10 October 2026). An item's "Paid on"
+ * in Payroll items is only the default date within the run's month; the owner
+ * changes it here, for this run alone, until its listing is prepared.
+ *
  * Everyone a listing does NOT cover is on the screen with the reason — an
  * employee with no bank account is paid another way, not forgotten.
  */
@@ -32,6 +36,9 @@ export function PaymentPanel({ runId }: { runId: string }) {
   const query = usePaymentStatus(runId);
   const prepare = usePreparePayment();
   const record = useRecordPaymentPaid();
+  const choose = useChoosePayDate();
+  // The date picker can report one choice twice (typed, then Enter): it is asked for once.
+  const asked = useRef<string | null>(null);
   const [recording, setRecording] = useState<PaymentBatch | null>(null);
   const [paymentDate, setPaymentDate] = useState<Dayjs | null>(dayjs());
   const [reference, setReference] = useState('');
@@ -43,6 +50,32 @@ export function PaymentPanel({ runId }: { runId: string }) {
   const batches = data.batches ?? (data.batch ? [data.batch] : []);
   const schedule = data.schedule ?? [];
   const manyDates = schedule.length > 1 || batches.length > 1;
+  const payDates = data.payDates ?? [];
+  const range = data.payDateRange;
+  const choosing = Boolean(data.mayChooseDates) && payDates.some((row) => !row.locked);
+
+  const changeDate = (row: PayDateChoiceRow, value: Dayjs | null) => {
+    if (!value) return;
+    const payDate = value.format('YYYY-MM-DD');
+    const key = `${row.defaultDate}:${payDate}`;
+    if (payDate === row.payDate || asked.current === key) return;
+    asked.current = key;
+    choose.mutate(
+      { runId, defaultDate: row.defaultDate, payDate },
+      {
+        onSuccess: () =>
+          message.success(
+            payDate === row.defaultDate
+              ? `Back to ${day(payDate)}, the date in Payroll items.`
+              : `For this run, what is due on ${day(row.defaultDate)} goes out on ${day(payDate)}.`,
+          ),
+        onError: (e: Error) => message.error(e.message),
+        onSettled: () => {
+          asked.current = null;
+        },
+      },
+    );
+  };
 
   const download = async (batch: PaymentBatch) => {
     setBusy(batch.id);
@@ -180,6 +213,64 @@ export function PaymentPanel({ runId }: { runId: string }) {
             date has its own listing and its own recorded transfer. The statutory figures and the payslip stay on the whole month.
           </span>
         </AdminNotice>
+      ) : null}
+
+      {choosing ? (
+        <div className="kw-payDate kw-runPayDates" data-testid="run-pay-dates">
+          <h4 className="kw-payDate__title">Pay dates for this run</h4>
+          <p className="kw-muted" style={{ marginTop: 0 }}>
+            Each date starts from the item&apos;s &ldquo;Paid on&rdquo; in Payroll items. Change it here for this run, before its
+            listing is prepared. The amounts and the statutory figures stay as approved.
+          </p>
+          {payDates.map((row) => (
+            // One row per date; on a phone the date wraps under what is paid on it.
+            <div key={row.defaultDate} className="kw-runPayDates__row" data-testid={`run-pay-date-${row.defaultDate}`}>
+              <div className="kw-runPayDates__what">
+                <div>{row.items.length > 0 ? row.items.join(' · ') : 'Net pay'}</div>
+                <div className="kw-muted" style={{ fontSize: 12.5 }}>
+                  {money(row.totalCents / 100)} · {day(row.defaultDate)} in Payroll items
+                </div>
+              </div>
+              <div className="kw-runPayDates__when">
+                {row.locked ? (
+                  <span>
+                    {day(row.payDate)} <span className="kw-muted">· listing prepared</span>
+                  </span>
+                ) : (
+                  <>
+                    <DatePicker
+                      aria-label={`Pay on, for what is due ${day(row.defaultDate)}`}
+                      value={dayjs(row.payDate)}
+                      format="D MMM YYYY"
+                      allowClear={false}
+                      disabled={choose.isPending}
+                      disabledDate={(date) =>
+                        range ? date.isBefore(dayjs(range.from), 'day') || date.isAfter(dayjs(range.to), 'day') : false
+                      }
+                      onChange={(value) => changeDate(row, value)}
+                    />
+                    {row.payDate !== row.defaultDate ? (
+                      <span className="kw-muted" style={{ fontSize: 12.5 }}>
+                        Changed for this run.{' '}
+                        <Button
+                          type="link"
+                          size="small"
+                          style={{ padding: 0, height: 'auto' }}
+                          disabled={choose.isPending}
+                          onClick={() => changeDate(row, dayjs(row.defaultDate))}
+                        >
+                          Back to {day(row.defaultDate)}
+                        </Button>
+                      </span>
+                    ) : dayjs(row.payDate).isBefore(dayjs(), 'day') ? (
+                      <span style={{ fontSize: 12.5, color: '#b45309' }}>This date has passed. Change it if the money has not gone.</span>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       ) : null}
 
       {batches.length === 0 ? (

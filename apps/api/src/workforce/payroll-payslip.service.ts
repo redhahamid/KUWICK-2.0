@@ -1,5 +1,6 @@
 import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { payslipReleased } from './payslip-release';
+import { chosenPayDate, payDateChoicesOf, paymentsOnChosenDates } from './pay-dates';
 import { compareByEmployeeName } from './employee-order';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
@@ -246,6 +247,8 @@ export class PayrollPayslipService {
       where: { payrollRunId: runId, status: 'RECORDED_PAID' },
       select: { payDate: true, paymentDate: true },
     });
+    // The owner's dates for this run, where a default date was moved on the Pay step.
+    const choices = payDateChoicesOf(run.payDates);
     const paidOn = (date: string) =>
       recorded.find((batch) => batch.payDate === null || batch.payDate.toISOString().slice(0, 10) === date)?.paymentDate
         ?.toISOString()
@@ -354,14 +357,23 @@ export class PayrollPayslipService {
         ? detail.componentLines
             .filter((row) => row.kind === 'EARNING')
             // The date each amount is paid on (version 4+); null on an older record.
-            .map((row) => ({ code: row.code, label: row.label, amountCents: row.amountCents, payDate: row.payDate ?? null }))
+            .map((row) => ({
+              code: row.code,
+              label: row.label,
+              amountCents: row.amountCents,
+              payDate: row.payDate ? chosenPayDate(choices, row.payDate) : null,
+            }))
         : null,
       /**
        * WHAT IS PAID ON EACH DATE (version 4+), adding up to the net. One
        * entry for a month paid on one date; null on an older record.
        */
       payments: line.payments
-        ? line.payments.map((payment) => ({ date: payment.date, amountCents: payment.netCents, paidOn: paidOn(payment.date) }))
+        ? paymentsOnChosenDates(line.payments, choices).map((payment) => ({
+            date: payment.date,
+            amountCents: payment.netCents,
+            paidOn: paidOn(payment.date),
+          }))
         : null,
       wageReductions: detail
         ? detail.componentLines

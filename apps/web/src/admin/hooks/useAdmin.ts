@@ -1960,6 +1960,15 @@ export function usePreparePayment() {
   );
 }
 
+/** The owner changes one of the record's pay dates for this run, before its listing is prepared. */
+export function useChoosePayDate() {
+  return useAdminMutation(
+    ({ runId, defaultDate, payDate }: { runId: string; defaultDate: string; payDate: string }) =>
+      apiClient.patch<PaymentStatus>(`/workforce/payroll/runs/${runId}/payment/dates`, { defaultDate, payDate }),
+    ["admin-hr"],
+  );
+}
+
 export function useRecordPaymentPaid() {
   return useAdminMutation(
     (input: {

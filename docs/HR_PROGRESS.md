@@ -6,6 +6,68 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 28 — 10 Oktober 2026 — Pemilik memilih tarikh bayar bagi setiap run, pada langkah Pay
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 27 (`14afc50`). Komit: komit yang menambah bahagian ini (hash dalam
+laporan). **Migrasi** `20261010140000_payroll_run_pay_dates`: satu lajur
+`pay_dates` (JSONB, boleh kosong) pada `payroll_runs`. Dijalankan di staging
+dengan "Migrate only" SEBELUM master digerakkan (run dalam laporan).
+
+### Keputusan anda (10 Oktober 2026)
+
+- `[D]` "Pay date: the owner chooses it per run. The component's 'Paid on'
+  (e.g. 15th, 1st) is only the default date within that run's month, and can
+  be changed on the Pay step for each run before the listing is prepared."
+
+### Apa yang berubah
+
+- `[D]` **"Pay dates for this run"** pada langkah Pay (*Paying this month*):
+  satu baris bagi setiap tarikh dalam rekod lulus, dengan item yang dibayar
+  pada tarikh itu, jumlahnya, tarikh dalam *Payroll items*, dan pemilih
+  tarikh *Pay on*. Tarikh yang diubah berkata "Changed for this run" dengan
+  pautan "Back to <tarikh asal>". Tarikh yang sudah lepas diberi amaran.
+- `[D]` **Untuk run ini sahaja** (`payroll-payment.service.ts`
+  `choosePayDate`, `PATCH /workforce/payroll/runs/:id/payment/dates`):
+  *Payroll items* kekal dengan hari mereka. Tiada amaun berubah: statutori,
+  payslip dan rekod lulus kekal seperti diluluskan; hanya tarikh pemindahan
+  berubah. Disimpan pada run (`pay_dates`), diaudit
+  (`payrollPayment.payDateChosen`).
+- `[D]` **Dua tarikh pada satu hari ialah satu pemindahan**, dan dipisahkan
+  semula dengan memilih tarikh asal.
+- `[D]` **Dikunci apabila senarai disediakan**: selepas *Prepare the payment
+  listings*, tarikh itu kekal. Run yang PAID tidak boleh diubah. Hanya run
+  APPROVED, oleh orang yang boleh menyediakan senarai (`hr.payroll.export.bank`).
+- `[D]` **Yang mengikut tarikh pilihan**: senarai bank bagi setiap tarikh,
+  tarikh gaji (yang melepaskan payslip kepada pekerja), tarikh tuntutan
+  dibayar, payslip (*Paid on* setiap item dan bahagian pembayaran), dan
+  portal pekerja.
+- `[D]` **Ujian**: e2e baharu `payroll-run-pay-dates` (6); unit
+  `pay-dates` +3 dan `payroll-payment-schedule` +2; web `paymentPanel` +2.
+
+### Andaian, dilaporkan
+
+- `[A]` Tarikh pilihan mesti dalam bulan run atau bulan berikutnya (contoh run
+  Ogos: 1 Ogos hingga 30 September). Ini menangkap tahun yang tersalah taip.
+- `[A]` Pilihan tarikh kekal pada run jika run dibuka semula dan diluluskan
+  semula; tarikh yang tiada lagi dalam rekod baharu diabaikan.
+- `[A]` Semua tarikh dikunci serentak kerana *Prepare* menyediakan senarai
+  bagi setiap tarikh sekali gus.
+
+### Uji di staging (ikut urutan)
+
+1. Run demo yang APPROVED tetapi senarai belum disediakan → *Paying this
+   month*: bahagian "Pay dates for this run" dengan tarikh 1hb, 15hb, 30hb.
+2. Tukar tarikh 1hb kepada 28hb → baris berkata "Changed for this run";
+   notis atas menunjukkan 28hb. Buka payslip pekerja demo: *Paid on* yuran
+   pengarah ialah 28hb.
+3. Klik "Back to 1 …" → kembali ke tarikh asal.
+4. *Prepare the payment listings* → tarikh kini "listing prepared" dan tiada
+   pemilih.
+5. *Settings → Payroll items*: hari bayar item tidak berubah.
+
+---
+
 ## Batch 27 — 10 Oktober 2026 — Item tertunggak sebulan masuk run bulan berikutnya; tarikh bayar dalam bulan run
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas

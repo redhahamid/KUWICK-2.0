@@ -23,6 +23,45 @@ export interface PayDateRule {
 /** What every item was before pay dates existed: one date, the 30th. */
 export const DEFAULT_PAY_DATE: PayDateRule = { payDay: 30 };
 
+/**
+ * THE OWNER'S DATES FOR ONE RUN (UAT, 10 October 2026): the approved record's
+ * default date for a payment to the date chosen on the Pay step. Anything that
+ * is not a day for a day is ignored rather than trusted.
+ */
+export type PayDateChoices = Readonly<Record<string, string>>;
+
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+export function payDateChoicesOf(value: unknown): PayDateChoices {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).filter(
+      (entry): entry is [string, string] => ISO_DAY.test(entry[0]) && typeof entry[1] === 'string' && ISO_DAY.test(entry[1]),
+    ),
+  );
+}
+
+/** The date a payment the record put on `date` goes out on, for this run. */
+export function chosenPayDate(choices: PayDateChoices, date: string): string {
+  return choices[date] ?? date;
+}
+
+/**
+ * One person's payments on the dates this run pays on: two default dates the
+ * owner moved onto one day are one payment.
+ */
+export function paymentsOnChosenDates<P extends { date: string; netCents: number }>(
+  payments: readonly P[],
+  choices: PayDateChoices,
+): { date: string; netCents: number }[] {
+  const byDate = new Map<string, number>();
+  for (const payment of payments) {
+    const date = chosenPayDate(choices, payment.date);
+    byDate.set(date, (byDate.get(date) ?? 0) + payment.netCents);
+  }
+  return [...byDate.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([date, netCents]) => ({ date, netCents }));
+}
+
 /** "1st", "2nd", "3rd", "11th", "21st", "30th". */
 export function ordinal(day: number): string {
   const teen = day % 100 >= 11 && day % 100 <= 13;

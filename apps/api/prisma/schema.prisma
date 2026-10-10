@@ -7442,6 +7442,11 @@ model PayrollRun {
   sequence        Int            @default(1)
   /// When the money is actually paid. Distinct from the period it is for.
   paymentDate     DateTime?      @map("payment_date") @db.Date
+  /// THE OWNER'S PAY DATES FOR THIS RUN (UAT, 10 October 2026): the approved
+  /// record's default date for a payment, from Payroll items, to the date the
+  /// owner chose on the Pay step, as { "2026-10-01": "2026-10-31" }. A date
+  /// can be moved until its listing is prepared. Empty: the defaults stand.
+  payDates        Json?          @map("pay_dates")
 
   statutoryStatus    StatutoryStatus @default(NOT_CONFIGURED) @map("statutory_status")
   statutoryRuleSetId String?         @map("statutory_rule_set_id")

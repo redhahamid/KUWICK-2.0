@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App as AntApp } from 'antd';
 import { describe, expect, it, vi } from 'vitest';
-import type { PaymentBatch, PaymentStatus } from '../types';
+import type { PayDateChoiceRow, PaymentBatch, PaymentStatus } from '../types';
 
 /*
  * PAYING A MONTH ON THREE DATES (UAT, 10 October 2026): one listing and one
@@ -10,12 +10,14 @@ import type { PaymentBatch, PaymentStatus } from '../types';
  * date looking exactly as it did.
  */
 const recordMutate = vi.fn();
+const chooseMutate = vi.fn();
 let served: PaymentStatus;
 
 vi.mock('../hooks/useAdmin', () => ({
   usePaymentStatus: () => ({ data: served, refetch: vi.fn() }),
   usePreparePayment: () => ({ mutate: vi.fn(), isPending: false }),
   useRecordPaymentPaid: () => ({ mutate: recordMutate, isPending: false }),
+  useChoosePayDate: () => ({ mutate: chooseMutate, isPending: false }),
 }));
 
 const { PaymentPanel } = await import('./PaymentPanel');
@@ -89,5 +91,75 @@ describe('paying a month on its pay dates', () => {
     expect(screen.queryByTestId('pay-schedule')).toBeNull();
     expect(screen.queryByRole('heading', { name: /Paid on/ })).toBeNull();
     expect(screen.getByText(/Batch total/)).toBeTruthy();
+  });
+});
+
+/*
+ * THE OWNER'S DATES FOR ONE RUN (UAT, 10 October 2026): an item's "Paid on"
+ * is only the default; the owner changes it here, for this run, until its
+ * listing is prepared.
+ */
+describe('choosing the pay dates for one run', () => {
+  const row = (defaultDate: string, over: Partial<PayDateChoiceRow> = {}): PayDateChoiceRow => ({
+    defaultDate,
+    payDate: defaultDate,
+    items: ['Basic salary'],
+    totalCents: 100_000,
+    locked: false,
+    ...over,
+  });
+  const choosing = (payDates: PayDateChoiceRow[], over: Partial<PaymentStatus> = {}): PaymentStatus => ({
+    runStatus: 'APPROVED',
+    runPaidAt: null,
+    mayPrepare: true,
+    mayChooseDates: true,
+    payDateRange: { from: '2026-10-01', to: '2026-11-30' },
+    payDates,
+    schedule: [],
+    salaryDate: '2026-10-30',
+    batches: [],
+    batch: null,
+    ...over,
+  });
+
+  it('offers a date for each of the record’s dates, sends the one picked, and goes back to the default in one click', async () => {
+    chooseMutate.mockReset();
+    mount(
+      choosing([
+        row('2026-10-01', { items: ["Director's fee (September 2026)"], totalCents: 300_000 }),
+        row('2026-10-15', { payDate: '2026-10-16', items: ['Overtime (September 2026)', 'Claim reimbursement'], totalCents: 42_000 }),
+        row('2026-10-30'),
+      ]),
+    );
+    const block = screen.getByTestId('run-pay-dates');
+    expect(within(block).getByRole('heading')).toHaveTextContent('Pay dates for this run');
+    expect(block).toHaveTextContent("Director's fee (September 2026)");
+    expect(block).toHaveTextContent('Overtime (September 2026) · Claim reimbursement');
+
+    const first = screen.getByLabelText('Pay on, for what is due 1 Oct 2026');
+    fireEvent.mouseDown(first);
+    fireEvent.change(first, { target: { value: '3 Oct 2026' } });
+    fireEvent.keyDown(first, { key: 'Enter', keyCode: 13 });
+    await waitFor(() => expect(chooseMutate).toHaveBeenCalled());
+    expect(chooseMutate.mock.calls[0][0]).toEqual({ runId: 'run-1', defaultDate: '2026-10-01', payDate: '2026-10-03' });
+
+    const fifteenth = screen.getByTestId('run-pay-date-2026-10-15');
+    expect(fifteenth).toHaveTextContent('Changed for this run.');
+    fireEvent.click(within(fifteenth).getByRole('button', { name: 'Back to 15 Oct 2026' }));
+    expect(chooseMutate.mock.calls[1][0]).toEqual({ runId: 'run-1', defaultDate: '2026-10-15', payDate: '2026-10-15' });
+  });
+
+  it('keeps a date whose listing is prepared, flags a date that has passed, and offers nothing once every date stands', () => {
+    const some = mount(choosing([row('2020-01-01'), row('2026-10-30', { locked: true })], { payDateRange: { from: '2020-01-01', to: '2020-02-29' } }));
+    expect(screen.getByTestId('run-pay-date-2026-10-30')).toHaveTextContent('30 Oct 2026 · listing prepared');
+    expect(screen.queryByLabelText('Pay on, for what is due 30 Oct 2026')).toBeNull();
+    expect(screen.getByTestId('run-pay-date-2020-01-01')).toHaveTextContent('This date has passed');
+    some.unmount();
+
+    const every = mount(choosing([row('2026-10-30', { locked: true })]));
+    expect(screen.queryByTestId('run-pay-dates')).toBeNull();
+    every.unmount();
+    mount(choosing([row('2026-10-30')], { mayChooseDates: false }));
+    expect(screen.queryByTestId('run-pay-dates')).toBeNull();
   });
 });
