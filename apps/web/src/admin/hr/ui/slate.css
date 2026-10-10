@@ -813,6 +813,309 @@
   background: var(--hr-canvas);
 }
 
+/* ── Settings: the setup wizard (docs/hr-mockup/SetupWizard.html) ──────── */
+.hr-ring--wiz {
+  width: 56px;
+  height: 56px;
+}
+.hr-ring--wiz i {
+  width: 44px;
+  height: 44px;
+  font-size: 15px;
+  font-weight: 800;
+  background: var(--hr-canvas);
+}
+.hr-wiz {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: flex-start;
+}
+.hr-wiz__steps {
+  flex: 1 1 320px;
+  background: var(--hr-surface);
+  border-radius: var(--kw-c-radius-card);
+  box-shadow: var(--hr-shadow);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hr-wizStep {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  font: inherit;
+  color: var(--hr-ink);
+  text-align: left;
+  cursor: pointer;
+}
+.hr-wizStep:hover {
+  background: var(--hr-canvas);
+}
+.hr-wizStep.is-open {
+  background: var(--hr-action-soft);
+}
+.hr-wizStep__num {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  background: var(--hr-gold-soft);
+  color: var(--hr-gold);
+}
+.hr-wizStep__num.is-done {
+  background: #2c9c5e;
+  color: #fff;
+}
+.hr-wizStep__num.is-open {
+  background: var(--hr-action);
+  color: #fff;
+}
+.hr-wizStep__title {
+  display: block;
+  font-weight: 700;
+}
+.hr-wizStep .hr-chip {
+  margin-top: 6px;
+}
+.hr-wizStep__sum {
+  display: block;
+  color: var(--hr-ink2);
+  font-size: 14px;
+}
+.hr-wiz__later {
+  border-top: 1px solid var(--hr-line);
+  margin: 6px 8px 0;
+  padding: 12px 6px 4px;
+  color: var(--hr-ink2);
+  font-size: 14px;
+}
+.hr-wiz__card {
+  flex: 999 1 640px;
+  min-width: 0;
+  background: var(--hr-surface);
+  border-radius: var(--kw-c-radius-card);
+  box-shadow: var(--hr-shadow);
+  padding: 26px;
+}
+.hr-wiz__count {
+  color: var(--hr-ink2);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.hr-wiz__card h2 {
+  margin: 6px 0 4px;
+  font-size: 24px;
+  font-weight: 800;
+}
+.hr-wiz__card > .hr-sub {
+  margin: 0 0 22px;
+}
+.hr-wizForm {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+}
+.hr-wizField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hr-wizField--wide {
+  grid-column: 1 / -1;
+}
+.hr-wizField__label {
+  font-weight: 600;
+  font-size: 14px;
+}
+.hr-wizField .ant-input {
+  min-height: 44px;
+}
+.hr-wizField__help {
+  color: var(--hr-ink2);
+  font-size: 13px;
+}
+.hr-wizField__ok {
+  color: var(--hr-green);
+  font-weight: 600;
+  font-size: 13px;
+}
+.hr-wizChoice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 16px;
+}
+.hr-wizBox .hr-wizChoice {
+  margin: 8px 0 0;
+}
+.hr-btn.is-on {
+  background: var(--hr-action-soft);
+  border-color: var(--hr-action);
+  color: #32369a;
+}
+.hr-wizBox {
+  margin-top: 22px;
+  padding: 16px;
+  border-radius: 16px;
+  background: #f7f8fb;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+}
+.hr-wizBox > div {
+  flex: 1 1 240px;
+}
+.hr-wizBox__title {
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hr-wizBox .hr-sub {
+  font-size: 14px;
+}
+.hr-wiz__foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: 24px;
+  border-top: 1px solid var(--hr-line);
+  padding-top: 20px;
+}
+
+/* ── Settings home (docs/hr-mockup/SettingsHome.html) ─────────────────────── */
+.hr-setupDone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  margin-bottom: 20px;
+  background: var(--hr-surface);
+  border-radius: var(--kw-c-radius-card);
+  box-shadow: var(--hr-shadow);
+  color: var(--hr-ink);
+  text-decoration: none;
+}
+.hr-setupDone__tick {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #2c9c5e;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+}
+.hr-setupDone__link {
+  margin-left: auto;
+  font-weight: 600;
+  color: var(--hr-action);
+}
+.hr-areas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(400px, 100%), 1fr));
+  gap: 20px;
+}
+.hr-area {
+  background: var(--hr-surface);
+  border-radius: var(--kw-c-radius-card);
+  box-shadow: var(--hr-shadow);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  color: var(--hr-ink);
+  text-decoration: none;
+}
+.hr-area:hover {
+  box-shadow: 0 1px 2px rgba(20, 24, 60, 0.06), 0 10px 28px rgba(20, 24, 60, 0.1);
+}
+.hr-area__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.hr-area__head > div {
+  flex: 1;
+  min-width: 0;
+}
+.hr-area .hr-card__title {
+  font-size: 19px;
+  font-weight: 800;
+  margin: 0;
+}
+.hr-area__head .hr-sub {
+  font-size: 14px;
+}
+.hr-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hr-facts__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--hr-line);
+  padding-top: 8px;
+}
+.hr-facts__row > span {
+  color: var(--hr-ink2);
+}
+.hr-facts__row > b {
+  text-align: right;
+}
+.hr-advanced {
+  margin-top: 20px;
+  background: var(--hr-surface);
+  border-radius: var(--kw-c-radius-card);
+  box-shadow: var(--hr-shadow);
+}
+.hr-advanced__bar {
+  padding: 16px 20px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.hr-advanced__bar .hr-sub {
+  flex: 1 1 300px;
+  font-size: 14px;
+}
+.hr-advanced__rows {
+  border-top: 1px solid var(--hr-line);
+}
+.hr-advanced__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  align-items: baseline;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--hr-line);
+  color: var(--hr-ink);
+  text-decoration: none;
+}
+.hr-advanced__row:last-child {
+  border-bottom: 0;
+}
+a.hr-advanced__row:hover {
+  background: var(--hr-canvas);
+}
+
 /* ── Drawer ───────────────────────────────────────────────────────────────── */
 .hr-drawer {
   position: fixed;

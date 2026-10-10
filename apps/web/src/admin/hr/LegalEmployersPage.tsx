@@ -120,8 +120,19 @@ export function LegalEmployersPage() {
       // field is write-only, so blank is its resting state, and sending ''
       // would clear a number the operator never saw.
       const { bankAccountNo, ...rest } = form;
+      // The endpoint blanks every field it is not sent, and three it holds
+      // are not on this form. Send them back as they are, so a save here
+      // cannot clear an HRD number, a second address line or a postcode.
+      const unseen = editing
+        ? Object.fromEntries(
+            (['hrdRegistrationNo', 'addressLine2', 'postcode'] as const)
+              .filter((key) => editing[key])
+              .map((key) => [key, editing[key]]),
+          )
+        : {};
       await upsert.mutateAsync({
         ...(editing ? { id: editing.id } : {}),
+        ...unseen,
         ...rest,
         ...(bankAccountNo && bankAccountNo.trim() !== '' ? { bankAccountNo: bankAccountNo.trim() } : {}),
         hrdLevyBase: levyBase,

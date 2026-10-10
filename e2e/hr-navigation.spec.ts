@@ -117,7 +117,7 @@ test.describe('every URL the six sections absorbed', () => {
       // Settings moved into one place under HR, and Roles left for the one
       // home it should always have had.
       ['/admin/hr/employers', '/admin/hr/settings/company', 'Company & statutory'],
-      ['/admin/hr/settings/attendance', '/admin/hr/settings/attendance-leave', 'Attendance & leave policies'],
+      ['/admin/hr/settings/attendance', '/admin/hr/settings/attendance-leave', 'Attendance & leave'],
       ['/admin/hr/payroll/ytd-opening', '/admin/hr/settings/opening-balances', 'Opening balances'],
       ['/settings/hr/public-holidays', '/admin/hr/settings/public-holidays', 'Public holidays'],
       // Readiness was a page listing who was not ready; it is now a status on
@@ -167,46 +167,46 @@ test.describe('every URL the six sections absorbed', () => {
   });
 });
 
-test.describe('Settings is a landing, not a wall', () => {
-  test('opens on the setup checklist and the areas, with each area on its own page', async ({ page }) => {
+test.describe('Settings is the setup steps until setup is done', () => {
+  test('shows only the five steps, one open, each step opening the page it is settled on', async ({ page }) => {
     await loginAdmin(page);
     await gotoHr(page, '/admin/hr/settings');
 
-    // The checklist is the screen: a clinic that cannot see which of the six
-    // is outstanding discovers the answer on pay day.
-    await expect(page.locator('.hr-setupRow')).toHaveCount(6);
-
-    // SIX AREAS, each a thing decided once. They were four, and two of the six
-    // were not reachable from here at all: Public Holidays lived in Clinic
-    // Settings under a near-empty "HR & Attendance" category, and the pay
-    // components had no screen anywhere.
-    expect(
-      (await page.locator('.hr-card__title').allInnerTexts()).map((label) => label.trim()),
-    ).toEqual([
-      'Company & statutory',
+    // The seeded clinic has not checked the statutory tables, so setup is
+    // incomplete and Settings is the wizard and nothing else
+    // (docs/hr-mockup/SetupWizard.html). No cards, no Employees editor.
+    await expect(page.getByRole('heading', { name: 'Set up payroll', exact: true })).toBeVisible();
+    const steps = page.locator('.hr-wizStep .hr-wizStep__title');
+    expect((await steps.allInnerTexts()).map((label) => label.trim())).toEqual([
+      'Company & statutory numbers',
+      'Pay rules',
       'Payroll items',
-      'Payroll policies',
-      'Attendance & leave policies',
-      'Public holidays',
-      'Opening balances',
+      'Employees',
+      'Check statutory rates',
     ]);
+    await expect(page.locator('.hr-area')).toHaveCount(0);
+    await expect(page.locator('.hr-wiz__card h2')).toHaveText('Check statutory rates');
 
-    // Each card opens its own page, and the page calls itself what the card
-    // called it — so the card's label IS the heading to look for. They used to
-    // disagree: "Payroll policies" opened a page headed "Payroll rules".
-    for (const [name, path] of [
-      ['Payroll items', '/admin/hr/settings/payroll-items'],
-      ['Payroll policies', '/admin/hr/settings/payroll'],
-      ['Attendance & leave policies', '/admin/hr/settings/attendance-leave'],
-      ['Public holidays', '/admin/hr/settings/public-holidays'],
+    // Each step settled elsewhere opens that one page, still inside Settings.
+    for (const [step, link, path, heading, section] of [
+      ['Pay rules', 'Open Pay rules', '/admin/hr/settings/payroll', 'Pay rules', 'Settings'],
+      ['Payroll items', 'Open Payroll items', '/admin/hr/settings/payroll-items', 'Payroll items', 'Settings'],
+      // Employees are not a setting: the step leaves for the Employees page.
+      ['Employees', 'Open the Employees page', '/admin/hr/employees', 'Employees', 'Employees'],
     ] as const) {
       await gotoHr(page, '/admin/hr/settings');
-      await page.locator('.hr-card', { hasText: name }).first().click();
+      await page.locator('.hr-wizStep', { hasText: step }).click();
+      await expect(page.locator('.hr-wiz__card h2')).toHaveText(step);
+      await page.getByRole('link', { name: link, exact: true }).click();
       await expect(page).toHaveURL(new RegExp(`${path}$`));
-      await expect(page.getByRole('heading', { name, exact: true }).first()).toBeVisible();
-      // And you are still in Settings, not in the section the subject belongs to.
-      await expect(page.locator('.kw-hubRail__item.is-active .hr-side__label')).toHaveText('Settings');
+      await expect(page.getByRole('heading', { name: heading, exact: true }).first()).toBeVisible();
+      await expect(page.locator('.kw-hubRail__item.is-active .hr-side__label')).toHaveText(section);
     }
+
+    // Attendance & leave carries public holidays.
+    await gotoHr(page, '/admin/hr/settings/attendance-leave');
+    await expect(page.getByRole('heading', { name: 'Attendance & leave', exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Open public holidays' })).toBeVisible();
   });
 });
 

@@ -146,7 +146,7 @@ export function HrSetupJourney({
     },
     {
       key: "attendance",
-      title: "Attendance & leave policies",
+      title: "Attendance & leave",
       why: "A 24-hour clinic and a nine-to-five practice do not agree about when 09:06 is late.",
       state:
         attendance.data.hasOwnPolicy || attendance.data.hasGroupDefault

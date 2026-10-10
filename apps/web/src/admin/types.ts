@@ -1991,6 +1991,8 @@ export interface LegalEmployerRow {
   /** Whether zakat is deducted through payroll. */
   zakatThroughPayroll: boolean;
   addressLine1: string | null;
+  addressLine2: string | null;
+  postcode: string | null;
   city: string | null;
   state: string | null;
   bankName: string | null;

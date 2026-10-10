@@ -172,7 +172,7 @@ describe('the HR labels', () => {
 /**
  * A CARD IS A PROMISE ABOUT WHERE IT GOES.
  *
- * The six Settings cards were renamed for the restructure and the pages they
+ * The Settings cards were renamed for the restructure and the pages they
  * open were not: "Payroll policies" opened a page headed *Payroll rules*,
  * "Company & statutory" opened *Legal employers*, "Attendance & leave
  * policies" opened *Attendance rules*. Nobody is lost for long, but the card
@@ -202,15 +202,11 @@ describe('the Settings cards', () => {
     return { page, title: /title="([^"]+)"/.exec(body)?.[1] ?? null };
   };
 
-  it('are the six the restructure asked for', () => {
-    expect(cards.map((card) => card.title)).toEqual([
-      'Company & statutory',
-      'Payroll items',
-      'Payroll policies',
-      'Attendance & leave policies',
-      'Public holidays',
-      'Opening balances',
-    ]);
+  // Four since UAT on 10 October 2026 (docs/hr-mockup/SettingsHome.html):
+  // pay rules merged, public holidays inside Attendance & leave, and the
+  // rarely-touched pages under Advanced.
+  it('are the four the settings home asks for', () => {
+    expect(cards.map((card) => card.title)).toEqual(['Company & statutory', 'Pay rules', 'Payroll items', 'Attendance & leave']);
   });
 
   it('open a page that calls itself the same thing', () => {

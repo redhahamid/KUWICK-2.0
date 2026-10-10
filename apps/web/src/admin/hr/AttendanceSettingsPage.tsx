@@ -1,11 +1,13 @@
 import { Link } from 'react-router-dom';
-import { HrPage } from './ui';
+import dayjs from 'dayjs';
+import { HrPage, Panel, PanelHead } from './ui';
+import { usePublicHolidays } from '../../hr/hooks/usePublicHolidays';
 import { AttendanceRulesPanel } from './AttendanceRulesPanel';
 import { ClaimPolicyPanel } from './ClaimPolicyPanel';
 import { LeavePolicyPanel } from './LeavePolicyPanel';
 
 /**
- * ATTENDANCE & LEAVE POLICIES — its own settings area.
+ * ATTENDANCE & LEAVE — its own settings area, public holidays included.
  *
  * It was a panel two-thirds of the way down the old Settings wall, which is
  * an odd place for the answer to "why does this say I was late" — a question
@@ -18,13 +20,16 @@ import { LeavePolicyPanel } from './LeavePolicyPanel';
  * contract. A clinic may decide otherwise, on the record; the panel is where.
  */
 export function AttendanceSettingsPage() {
+  const holidays = usePublicHolidays();
+  const thisYear = dayjs().year();
+  const holidaysThisYear = (holidays.data ?? []).filter((row) => dayjs(row.date).year() === thisYear).length;
   return (
     <HrPage
-      title="Attendance & leave policies"
-      sub="What counts as late, what counts as a full day, and what a claim needs."
+      title="Attendance & leave"
+      sub="What counts as late, what counts as a full day, leave, public holidays and what a claim needs."
       crumb={
         <>
-          <Link to="/admin/hr/settings">Settings</Link> &nbsp;/&nbsp; Attendance &amp; leave policies
+          <Link to="/admin/hr/settings">Settings</Link> &nbsp;/&nbsp; Attendance &amp; leave
         </>
       }
     >
@@ -34,6 +39,22 @@ export function AttendanceSettingsPage() {
           whoever is already reading what counts as a full day. */}
       <div className="hr-mt">
         <LeavePolicyPanel />
+      </div>
+      {/* Public holidays are part of this area (Settings has four cards, not
+          six): attendance and leave both read from the one list, which keeps
+          its own page for the list itself. */}
+      <div className="hr-mt">
+        <Panel>
+          <PanelHead
+            title="Public holidays"
+            sub={`${holidaysThisYear} day${holidaysThisYear === 1 ? '' : 's'} for ${thisYear}. Days the clinic is closed; attendance and leave both read from this list.`}
+            actions={
+              <Link className="hr-btn" to="/admin/hr/settings/public-holidays">
+                Open public holidays
+              </Link>
+            }
+          />
+        </Panel>
       </div>
       {/* Claims sit with attendance and leave: the three things an employee
           sends from the portal, and the three rules a manager judges them by. */}

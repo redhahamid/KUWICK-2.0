@@ -471,10 +471,10 @@ export function PayrollSettingsPage() {
     <HrPage
       crumb={
         <>
-          <Link to="/admin/hr/settings">Settings</Link> &nbsp;/&nbsp; Payroll policies
+          <Link to="/admin/hr/settings">Settings</Link> &nbsp;/&nbsp; Pay rules
         </>
       }
-      title="Payroll policies"
+      title="Pay rules"
       sub="Who may approve a run, and how a day and an hour of pay are worked out."
       error={error instanceof Error ? error.message : null}
     >

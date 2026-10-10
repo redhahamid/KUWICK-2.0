@@ -593,7 +593,7 @@ export class PayrollService {
         throw new BadRequestException(
           'The rule sets covering this run disagree about how a monthly salary becomes a day and an hour: ' +
             `${named}. One run carries one ordinary rate, so overtime, rest days and public holidays would all be ` +
-            'priced from a divisor half these employees never agreed to. Make them match in Payroll policies, or run ' +
+            'priced from a divisor half these employees never agreed to. Make them match in Settings › Pay rules, or run ' +
             'these groups separately.',
         );
       }
