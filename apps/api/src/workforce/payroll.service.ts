@@ -72,7 +72,7 @@ import {
 } from './payroll-materialisation';
 import { computeLeaveBalance, leaveDaysInYear, proRateEntitlement } from './leave-balance';
 import { describeProration, partMonthPay, prorationFor, workingWeek } from './proration';
-import { classifyDay, describePricedDay, priceOvertime } from './overtime-pricing';
+import { classifyDay, combinePricing, describePricedDay, priceOvertime } from './overtime-pricing';
 import { clinicRatesOf, multipliersOf, pcbProjectionOf, resolvePayrollPolicy } from './payroll-policy-resolution';
 import { workforceCategoryOf } from './workforce-category';
 import { CatalogueRow, ResolvedComponent, catalogueFor, checkOrdinaryRateBase } from './component-liability';
@@ -748,6 +748,15 @@ export class PayrollService {
       });
       const publicHolidayDates = new Set(holidays.map((row) => row.date.toISOString().slice(0, 10)));
       const festiveHolidayDates = new Set(holidays.filter((row) => row.kind === 'FESTIVE').map((row) => row.date.toISOString().slice(0, 10)));
+      // LAST MONTH'S TOO, for overtime this run pays from last month: a day is
+      // priced as the kind of day it was when it was worked.
+      for (const row of await tx.publicHoliday.findMany({
+        where: { date: { gte: monthBefore(period), lt: period } },
+        select: { date: true, kind: true },
+      })) {
+        publicHolidayDates.add(row.date.toISOString().slice(0, 10));
+        if (row.kind === 'FESTIVE') festiveHolidayDates.add(row.date.toISOString().slice(0, 10));
+      }
 
       // The ordinary rate of pay, frozen onto the run. One divisor: unpaid
       // leave is priced on the month's actual days by s.18A, never on a
@@ -1597,12 +1606,13 @@ export class PayrollService {
         // put on clinic rates by being a doctor.
         const clinicRates =
           classification.overtimeContractPolicy === 'NOT_PAID' ? null : clinicRatesOf(policyResolution.policy);
-        const actScope = overtimeScope(fullMonthlyCents, statutoryResolutionDay, classification.overtimeContractPolicy);
         // A clinic-rate rule set IS the employer's undertaking for somebody the
         // Act does not reach, so the question OVERTIME_ENTITLEMENT_UNRECORDED
-        // asks is answered by the rule set.
-        const scope: OvertimeScope =
-          clinicRates && !actScope.withinFirstSchedule && actScope.basis === 'NONE'
+        // asks is answered by the rule set. Worked out per month's wages, so
+        // last month's overtime is judged on last month's.
+        const scopeFor = (monthlyCents: number, resolutionDay: Date): OvertimeScope => {
+          const actScope = overtimeScope(monthlyCents, resolutionDay, classification.overtimeContractPolicy);
+          return clinicRates && !actScope.withinFirstSchedule && actScope.basis === 'NONE'
             ? {
                 withinFirstSchedule: false,
                 basis: 'CONTRACTUAL',
@@ -1611,6 +1621,8 @@ export class PayrollService {
                   `Extra hours are paid at the clinic’s own rates under the "${clinicRates.ruleSet}" rule set.`,
               }
             : actScope;
+        };
+        const scope = scopeFor(fullMonthlyCents, statutoryResolutionDay);
         const workedAnyDay = attendance.some((row) => (row.workedMinutes ?? 0) > 0);
         if (!isBonusRun && workedAnyDay && !scope.withinFirstSchedule && !classification.overtimeContractPolicy && !clinicRates) {
           raise('OVERTIME_ENTITLEMENT_UNRECORDED', employee, {
@@ -1618,26 +1630,54 @@ export class PayrollService {
           });
         }
 
-        const pricing = priceOvertime(
-          attendance.map((row) => ({
-            attendanceId: row.id,
-            date: row.workDate,
-            workedMinutes: row.workedMinutes ?? 0,
-            overtimeMinutes: row.overtimeMinutes,
-            overtimeApproved: row.overtimeApproved,
-          })),
-          (date) => classifyDay(date, { publicHolidayDates, festiveHolidayDates, restDayOfWeek: classification.restDayOfWeek }),
-          {
-            basis: 'MONTHLY',
-            scope,
-            normalHoursPerDay: orpConfig.hoursPerDay,
-            dailyOrpCents: rates.overtimeDailyCents,
-            hourlyOrpCents: rates.overtimeHourlyCents,
-            clinicRates,
-            // The clinic's own multipliers where it set any, the Act's where it
-            // did not. Never below the Act's — refused before it is stored.
-            multipliers: multipliersOf(policyResolution.policy),
-          },
+        /*
+         * OVERTIME A MONTH IN ARREARS (UAT, 10 October 2026).
+         *
+         * With Overtime set "a month in arrears", this run pays last month's
+         * overtime, rest-day and public-holiday pay — September's in the
+         * October run — counted in this run's statutory figures and labelled
+         * as September's, priced on the salary in force when it was worked;
+         * this month's waits for the next run.
+         *
+         * NEVER TWICE, NEVER LOST. A day another month's run already carries
+         * is left out, which is what makes switching arrears on safe. Without
+         * arrears a run still picks up last month's days no run has paid —
+         * hours approved after last month was approved, or the month arrears
+         * was switched off — but only where last month was run here: a month
+         * paid elsewhere is not reached into.
+         */
+        const overtimeInArrears = !isBonusRun && (catalogue.get('OVERTIME')?.paidInArrears ?? false);
+        const lastMonth = monthBefore(period);
+        const lastMonthDays = isBonusRun ? [] : await unpaidDaysOfLastMonth(tx, employee.staffId, period, overtimeInArrears);
+        const lastMonthEnd = new Date(period.getTime() - 86_400_000);
+        const lastMonthSalary = resolveSalaryForPayroll(salaryByStaff.get(employee.staffId) ?? [], lastMonth, lastMonthEnd);
+        const lastMonthlyCents =
+          lastMonthSalary.kind === 'RESOLVED' && lastMonthSalary.row.basis === 'MONTHLY' ? lastMonthSalary.row.amountCents : fullMonthlyCents;
+        const priceDays = (rows: typeof attendance, monthRates: typeof rates, monthScope: OvertimeScope) =>
+          priceOvertime(
+            rows.map((row) => ({
+              attendanceId: row.id,
+              date: row.workDate,
+              workedMinutes: row.workedMinutes ?? 0,
+              overtimeMinutes: row.overtimeMinutes,
+              overtimeApproved: row.overtimeApproved,
+            })),
+            (date) => classifyDay(date, { publicHolidayDates, festiveHolidayDates, restDayOfWeek: classification.restDayOfWeek }),
+            {
+              basis: 'MONTHLY',
+              scope: monthScope,
+              normalHoursPerDay: orpConfig.hoursPerDay,
+              dailyOrpCents: monthRates.overtimeDailyCents,
+              hourlyOrpCents: monthRates.overtimeHourlyCents,
+              clinicRates,
+              // The clinic's own multipliers where it set any, the Act's where it
+              // did not. Never below the Act's — refused before it is stored.
+              multipliers: multipliersOf(policyResolution.policy),
+            },
+          );
+        const pricing = combinePricing(
+          priceDays(lastMonthDays, ordinaryRates(lastMonthlyCents, orpConfig, daysInMonth(lastMonth)), scopeFor(lastMonthlyCents, lastMonthEnd)),
+          priceDays(overtimeInArrears ? [] : attendance, rates, scope),
         );
         const overtimeHours = pricing.normalDayHours;
 
@@ -1678,6 +1718,8 @@ export class PayrollService {
               amountCents: row.totalCents,
               description: describePricedDay(row),
               approverName: overtimeApprover ? (approverNames.get(overtimeApprover) ?? null) : null,
+              // Worked last month: paid here, labelled with the month it was earned.
+              earnedPeriod: row.date < period ? lastMonth : null,
             })),
           ),
           materialiseUnpaidLeave(
@@ -3547,6 +3589,7 @@ export class PayrollService {
           verification: resolved.verification,
           sourceRef: resolved.sourceRef,
           payDate: resolved.payDate,
+          paidInArrears: resolved.paidInArrears,
         };
       });
 
@@ -4272,6 +4315,31 @@ export class PayrollService {
  * (January 2026)" paid in March is arrears, and the label is where the
  * employee reads that. Same month, same label as before.
  */
+/**
+ * LAST MONTH'S ATTENDANCE NO RUN HAS PAID YET, for a run that pays overtime a
+ * month in arrears or picks up what last month's run left. A day already
+ * carried by another month's run is never paid again. Without arrears, only a
+ * month this person was run for here is reached into.
+ */
+async function unpaidDaysOfLastMonth(tx: AdminTx, staffId: string, period: Date, inArrears: boolean) {
+  const lastMonth = monthBefore(period);
+  if (!inArrears) {
+    const ranLastMonth = await tx.payrollLine.count({ where: { staffId, payrollRun: { period: lastMonth, runType: 'REGULAR' } } });
+    if (ranLastMonth === 0) return [];
+  }
+  const earlier = await tx.attendanceRecord.findMany({
+    where: { staffId, workDate: { gte: lastMonth, lt: period } },
+    orderBy: { workDate: 'asc' },
+  });
+  if (earlier.length === 0) return [];
+  const carried = await tx.payrollInputEntry.findMany({
+    where: { componentCode: 'OVERTIME', sourceRecordId: { in: earlier.map((row) => row.id) }, NOT: { period } },
+    select: { sourceRecordId: true },
+  });
+  const paid = new Set(carried.map((row) => row.sourceRecordId));
+  return earlier.filter((row) => !paid.has(row.id));
+}
+
 function earnedInLabel(label: string, earnedPeriod: Date | null | undefined, period: Date): string {
   if (!earnedPeriod || earnedPeriod.getTime() === period.getTime()) return label;
   return `${label} (${earnedPeriod.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })})`;

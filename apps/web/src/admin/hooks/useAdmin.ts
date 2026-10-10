@@ -1583,8 +1583,8 @@ export function useUpsertPayComponent() {
 /** When an item is paid, on every version of it. Payment, not treatment: no date, no reason. */
 export function useSetPayDate() {
   return useAdminMutation(
-    ({ code, payDay, payMonthOffset }: { code: string; payDay: number; payMonthOffset: number }) =>
-      apiClient.patch(`/workforce/pay-components/${encodeURIComponent(code)}/pay-date`, { payDay, payMonthOffset }),
+    ({ code, payDay, paidInArrears }: { code: string; payDay: number; paidInArrears: boolean }) =>
+      apiClient.patch(`/workforce/pay-components/${encodeURIComponent(code)}/pay-date`, { payDay, paidInArrears }),
     ["admin-hr"],
   );
 }

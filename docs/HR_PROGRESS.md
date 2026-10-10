@@ -6,11 +6,88 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 27 — 10 Oktober 2026 — Item tertunggak sebulan masuk run bulan berikutnya; tarikh bayar dalam bulan run
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 26 (`7d3d9ba`). Komit: komit yang menambah bahagian ini (hash dalam
+laporan). **Tiada migrasi**: lajur `pay_month_offset` yang sedia ada kini
+bermaksud "sebulan tertunggak" (1) dan bukan lagi "dibayar bulan depan".
+
+### Keputusan anda (10 Oktober 2026)
+
+- `[D]` "September's overtime, locum and director's fee go INTO THE OCTOBER
+  RUN — counted in October's statutory, labelled 'earned September' (same as
+  the existing earned-in labels). Do not shift them a second month."
+- `[D]` "The component's 'Paid on' (e.g. 15th, 1st) is only the default date
+  within that run's month, and can be changed on the Pay step for each run
+  before the listing is prepared." Bahagian kedua (tukar pada langkah Pay)
+  ialah Batch 28.
+
+### Apa yang berubah
+
+- `[D]` **Setiap tarikh bayar kini dalam bulan run itu sendiri**
+  (`pay-dates.ts`): run Oktober membayar yuran pengarah pada 1 Okt, OT dan
+  tuntutan pada 15 Okt, gaji pada 30 Okt. Tiada lagi "bulan depan".
+- `[D]` **"A month in arrears"** di *Settings → Payroll items*, lajur *Paid
+  on*: suis di sebelah hari. Label lajur: "15th · a month in arrears". Gaji
+  pokok tidak boleh tertunggak (ditolak). Ditulis pada setiap versi item,
+  seperti hari bayar.
+- `[D]` **Overtime tertunggak** (`payroll.service.ts`
+  `unpaidDaysOfLastMonth`, `overtime-pricing.ts` `combinePricing`): run
+  Oktober membayar OT, gaji hari rehat dan cuti umum bulan September, dikira
+  dalam statutori Oktober, berlabel "Overtime (September 2026)" seperti label
+  earned-in sedia ada, dan **dinilai dengan gaji September** (bukan gaji
+  Oktober jika ada kenaikan). OT Oktober menunggu run November.
+- `[D]` **Tidak dibayar dua kali, tidak hilang**: hari yang sudah dibawa oleh
+  run bulan lain tidak dibayar semula, jadi menghidupkan tertunggak selamat.
+  Tanpa tertunggak, run masih mengambil hari bulan lepas yang belum dibayar
+  oleh mana-mana run — contohnya OT yang diluluskan selepas bulan lepas
+  diluluskan, atau bulan tertunggak dimatikan — tetapi hanya jika bulan lepas
+  dijalankan dalam Kuwick untuk pekerja itu.
+- `[D]` **Item yang dikunci dengan tangan** (Locum fee, Director's fee) yang
+  tertunggak: baris tanpa bulan dianggap bulan lepas ("earned September"). Di
+  laci input, *Earned in* diisi bulan lepas apabila item tertunggak dipilih;
+  boleh diubah atau dikosongkan.
+- `[D]` Rekod lulus format 5 merekod hari bayar dan "tertunggak" secara
+  berasingan. Rekod format 4 kekal seperti diluluskan.
+- `[D]` **Ujian**: e2e baharu `payroll-arrears` (5: OT bulan sendiri tanpa
+  tertunggak; hidupkan tertunggak tanpa bayar dua kali; OT Oktober dalam run
+  November pada kadar gaji Oktober RM3,000 walaupun gaji November RM3,600;
+  matikan tertunggak tanpa kehilangan OT November; item tangan tertunggak
+  dianggap bulan lepas); `payroll-pay-dates` dan `pay-component-pay-date`
+  dikemas kini; unit `pay-dates` ditulis semula; web `payrollItems` +1 dan
+  `payrollInputsDrawer` +1.
+
+### Andaian, dilaporkan
+
+- `[A]` OT tertunggak menggunakan hari rehat dan rule set pekerja pada bulan
+  run (bukan bulan kerja) — hanya gaji yang diambil daripada bulan kerja.
+- `[A]` Tanpa tertunggak, run mengambil OT bulan lepas yang belum dibayar.
+  Ini perubahan kecil: sebelum ini OT yang diluluskan lewat tidak pernah
+  dibayar secara automatik.
+- `[A]` Tarikh bayar 1hb untuk run yang diluluskan pada hujung bulan sudah
+  lepas; pemilik akan mengubahnya pada langkah Pay (Batch 28).
+
+### Uji di staging (ikut urutan)
+
+1. *Settings → Payroll items*: Overtime, Locum fee → **15th** dengan **A
+   month in arrears**; Director's fee → **1st** dengan **A month in
+   arrears**; Housecall, Claim reimbursement, Panel claim → **15th**.
+2. Pekerja demo dengan OT diluluskan pada bulan lepas: run bulan ini
+   menunjukkan baris "Overtime (<bulan lepas>)".
+3. Laci input pada run bulan ini: pilih *Director's fee*; *Earned in* terisi
+   bulan lepas.
+4. *Paying this month*: tarikh 1hb, 15hb dan 30hb semuanya dalam bulan run.
+
+---
+
 ## Batch 26 — 10 Oktober 2026 — Asas levi HRD kembali kepada takrif Akta PSMB secara lalai
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
-Batch 25 (`7e649b8`). Komit: komit yang menambah bahagian ini (hash dalam
-laporan). **Migrasi: `20261010130000_hrd_levy_base_default_psmb`** — lajur
+Batch 25 (`7e649b8`). Komit: `7d3d9ba`; migrasi dijalankan di staging
+dengan *Migrate only* run #16 sebelum master dimajukan, status selepas
+"Database schema is up to date!". **Migrasi:
+`20261010130000_hrd_levy_base_default_psmb`** — lajur
 `hrd_levy_base` pada `legal_employers` digugurkan dan ditambah semula dengan
 lalai `BASIC_PLUS_FIXED_ALLOWANCES`, dalam satu transaksi. Dijalankan di
 staging dengan *Migrate only* dari cawangan ini **sebelum** master dimajukan.

@@ -48,7 +48,7 @@ export function scheduleOf(payload: SnapshotPayload): ScheduledPayment[] {
 export function salaryDateOf(payload: SnapshotPayload): string | null {
   const basic = payload.components?.find((component) => component.code === 'BASIC');
   if (!basic?.payDate) return null;
-  return scheduledPayDate(new Date(`${payload.period.slice(0, 10)}T00:00:00.000Z`), basic.payDate ?? DEFAULT_PAY_DATE);
+  return scheduledPayDate(new Date(`${payload.period.slice(0, 10)}T00:00:00.000Z`), { payDay: basic.payDate.payDay ?? DEFAULT_PAY_DATE.payDay });
 }
 
 const dateKey = (date: Date | null) => (date ? date.toISOString().slice(0, 10) : null);

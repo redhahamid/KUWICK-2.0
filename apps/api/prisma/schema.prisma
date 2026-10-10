@@ -8295,15 +8295,16 @@ model PayComponent {
   gridColumn        Boolean              @default(false) @map("grid_column")
   /// Layout, not treatment: a new month starts with last month's hand-keyed amount for this item.
   carryForward      Boolean              @default(false) @map("carry_forward")
-  /// WHEN THIS ITEM IS PAID, as a day of the month and which month: the
-  /// payroll month itself (0) or the month after it (1). "30th" is (30, 0),
-  /// "1st of next month" (1, 1), "15th of next month" (15, 1). A day the
-  /// month does not have is paid on its last day. Payment, not treatment:
-  /// statutory figures and the payslip stay on the whole payroll month, and
-  /// only the money is split into one transfer per date. It changes in
-  /// place on every version of the item; an approved month keeps the dates
-  /// it was approved with. A deduction comes out of the salary payment, so
-  /// these are not read for one.
+  /// WHEN THIS ITEM IS PAID: `payDay` is the default day of the RUN'S OWN
+  /// month, which the owner can move for one run on its Pay step before that
+  /// date's listing is prepared. A day the month does not have is paid on its
+  /// last day. `payMonthOffset` 1 means a month in arrears: the run pays what
+  /// was earned the month before, counted in that run's statutory figures and
+  /// labelled with the month it was earned (UAT, 10 October 2026; it first
+  /// meant "paid in the next month", and the column kept its name). Payment,
+  /// not treatment: both change in place on every version of the item, and an
+  /// approved month keeps what it was approved with. A deduction comes out of
+  /// the salary payment, so these are not read for one.
   payDay            Int                  @default(30) @map("pay_day") @db.SmallInt
   payMonthOffset    Int                  @default(0) @map("pay_month_offset") @db.SmallInt
   /// WHO THE ITEM IS FOR. Everyone, or only the employees named below: the

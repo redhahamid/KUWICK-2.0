@@ -123,9 +123,10 @@ export class PayComponentService {
         employerSide: row.employerSide,
         gridColumn: row.gridColumn,
         carryForward: row.carryForward,
-        /** When it is paid: a day of the month, in the payroll month (0) or the month after (1). */
+        /** The default day of the run's month it is paid on. */
         payDay: row.payDay,
-        payMonthOffset: row.payMonthOffset,
+        /** Paid in the run after the month it was earned in: September's in the October run. */
+        paidInArrears: row.payMonthOffset === 1,
         /** Who the item is for: everybody, or the employees named below. */
         appliesTo: row.appliesTo,
         appliesToStaffIds: row.appliesToStaffIds,
@@ -287,14 +288,18 @@ export class PayComponentService {
   }
 
   /**
-   * WHEN AN ITEM IS PAID, written on every version of it.
+   * WHEN AN ITEM IS PAID, written on every version of it: the default day
+   * of the run's month, and whether the run pays what was earned the month
+   * before.
    *
    * Payment, not treatment: what the item is liable to does not move, so this
    * writes no version and asks for no reason, like the item's own column. It
    * goes on every version so that whichever version a month resolves to says
-   * the same date; an approved month keeps the dates it was approved with,
-   * because the approved record froze them. A deduction comes out of the
-   * salary payment, so it has no date of its own.
+   * the same; an approved month keeps what it was approved with, because the
+   * approved record froze it. A run never pays a month's work twice whichever
+   * way arrears is switched: overtime another month's run already carries is
+   * left out. A deduction comes out of the salary payment, so it has no date
+   * of its own; basic pay is the month's own salary, so never in arrears.
    */
   async setPayDate(code: string, dto: SetPayDateDto) {
     return withAdminTx(this.rawPrisma, 'hr.statutory.manage', async (tx, actor) => {
@@ -306,17 +311,20 @@ export class PayComponentService {
           `${open.name} is a deduction. It comes out of the salary payment, so it has no pay date of its own.`,
         );
       }
-      const rule = { payDay: dto.payDay, payMonthOffset: dto.payMonthOffset };
-      await tx.payComponent.updateMany({ where: { code }, data: rule });
+      const paidInArrears = dto.paidInArrears ?? open.payMonthOffset === 1;
+      if (paidInArrears && open.code === 'BASIC') {
+        throw new BadRequestException('Basic pay is the month’s own salary, so it is never paid a month in arrears.');
+      }
+      await tx.payComponent.updateMany({ where: { code }, data: { payDay: dto.payDay, payMonthOffset: paidInArrears ? 1 : 0 } });
       await recordAudit(tx, actor, {
         action: 'payComponent.payDateSet',
         entityType: 'PayComponent',
         entityId: open.id,
-        before: { payDay: open.payDay, payMonthOffset: open.payMonthOffset },
-        after: rule,
-        reason: `${open.code} is paid on the ${describePayDate(rule)}.`,
+        before: { payDay: open.payDay, paidInArrears: open.payMonthOffset === 1 },
+        after: { payDay: dto.payDay, paidInArrears },
+        reason: `${open.code} is paid on the ${describePayDate({ payDay: dto.payDay }, paidInArrears)}.`,
       });
-      return { code, ...rule };
+      return { code, payDay: dto.payDay, paidInArrears };
     });
   }
 
@@ -449,7 +457,7 @@ export class PayComponentService {
         // new version, and that version must not quietly move the item back to
         // the 30th.
         payDay: dto.payDay ?? open?.payDay ?? DEFAULT_PAY_DATE.payDay,
-        payMonthOffset: dto.payMonthOffset ?? open?.payMonthOffset ?? DEFAULT_PAY_DATE.payMonthOffset,
+        payMonthOffset: dto.paidInArrears === undefined ? (open?.payMonthOffset ?? 0) : dto.paidInArrears ? 1 : 0,
         appliesTo,
         appliesToStaffIds,
         active: dto.active ?? true,

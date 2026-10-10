@@ -58,6 +58,8 @@ export interface ResolvedComponent {
   readonly sourceRef: string | null;
   /** When the item is paid. Payment, not treatment: it moves money between transfers, never between figures. */
   readonly payDate: PayDateRule;
+  /** Paid in the run after the month it was earned in. */
+  readonly paidInArrears: boolean;
   /**
    * WHETHER THE CLINIC STILL OFFERS THIS, which is not the same question as
    * whether it resolves. Carried so a screen that OFFERS components can leave
@@ -77,8 +79,9 @@ export interface CatalogueRow extends LiabilityFlags {
   readonly effectiveTo: Date | null;
   readonly verificationStatus: string;
   readonly sourceRef: string | null;
-  /** Absent on rows read before pay dates existed: the 30th of the payroll month. */
+  /** Absent on rows read before pay dates existed: the 30th. */
   readonly payDay?: number;
+  /** 1: paid a month in arrears. The column kept its first name. */
   readonly payMonthOffset?: number;
 }
 
@@ -136,10 +139,8 @@ export function catalogueFor(
       verification: row.verificationStatus,
       sourceRef: row.sourceRef,
       active: row.active,
-      payDate: {
-        payDay: row.payDay ?? DEFAULT_PAY_DATE.payDay,
-        payMonthOffset: row.payMonthOffset ?? DEFAULT_PAY_DATE.payMonthOffset,
-      },
+      payDate: { payDay: row.payDay ?? DEFAULT_PAY_DATE.payDay },
+      paidInArrears: row.payMonthOffset === 1,
     });
   }
   return resolved;

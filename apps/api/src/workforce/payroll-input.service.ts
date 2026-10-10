@@ -193,9 +193,15 @@ export class PayrollInputService {
         source: 'MANUAL' as const,
         sourceRecordId: null,
         label: dto.label === undefined ? (existing?.label ?? null) : dto.label,
+        // An item paid a month in arrears was earned the month before the run,
+        // unless the request says otherwise (UAT, 10 October 2026).
         earnedPeriod:
           dto.earnedPeriod === undefined
-            ? (existing?.earnedPeriod ?? null)
+            ? existing
+              ? existing.earnedPeriod
+              : component.payMonthOffset === 1
+                ? monthBefore(period)
+                : null
             : dto.earnedPeriod === null
               ? null
               : new Date(`${dto.earnedPeriod}T00:00:00.000Z`),

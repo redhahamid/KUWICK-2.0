@@ -1,7 +1,10 @@
-import { IsIn, IsInt, Max, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, Max, Min } from 'class-validator';
 
-/** When a payroll item is paid: a day of the month, in the payroll month (0) or the month after it (1). */
+/**
+ * When a payroll item is paid: the default day of the run's month, and
+ * whether the run pays what was earned the month before. Absent keeps it.
+ */
 export class SetPayDateDto {
   @IsInt() @Min(1) @Max(31) payDay!: number;
-  @IsInt() @IsIn([0, 1]) payMonthOffset!: number;
+  @IsOptional() @IsBoolean() paidInArrears?: boolean;
 }

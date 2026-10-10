@@ -67,7 +67,7 @@ vi.mock('../hooks/useAdmin', () => ({
         { code: 'ALLOWANCE', name: 'Allowance', type: 'ADDITION', active: true },
         { code: 'DIRECTOR_FEE', name: "Director's fee", type: 'ADDITION', active: true },
         { code: 'LOCUM_FEE', name: 'Locum fee', type: 'ADDITION', active: true },
-        { code: 'BOD_FEE', name: 'BOD fee', type: 'ADDITION', active: true },
+        { code: 'BOD_FEE', name: 'BOD fee', type: 'ADDITION', active: true, paidInArrears: true },
         { code: 'ADVANCE_RECOVERY', name: 'Advance recovery', type: 'DEDUCTION', active: true },
         { code: 'RETIRED', name: 'Retired item', type: 'ADDITION', active: false },
       ],
@@ -310,5 +310,33 @@ describe('lines carried from last month', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(upsertMutate).toHaveBeenCalled());
     expect(upsertMutate.mock.calls[0][0]).toMatchObject({ componentCode: 'DIRECTOR_FEE', amount: '2000.00', reason: null, earnedPeriod: null });
+  });
+});
+
+/*
+ * AN ITEM PAID A MONTH IN ARREARS was earned the month before the run (UAT,
+ * 10 October 2026): picking it fills in "Earned in" with last month, picking
+ * another item takes that back, and either can still be changed by hand.
+ */
+describe('an item paid a month in arrears', () => {
+  it('fills in last month as the month it was earned, and sends it', async () => {
+    show();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a line' }));
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Item' }));
+    fireEvent.click(await screen.findByTitle('BOD fee (BOD_FEE)'));
+    expect(screen.getByRole('textbox', { name: 'Earned in' })).toHaveValue('2025-12');
+
+    // Another item that is not in arrears takes the month back.
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Item' }));
+    fireEvent.click(await screen.findByTitle('Allowance (ALLOWANCE)'));
+    expect(screen.getByRole('textbox', { name: 'Earned in' })).toHaveValue('');
+
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Item' }));
+    fireEvent.click(await screen.findByTitle('BOD fee (BOD_FEE)'));
+    expect(screen.getByRole('textbox', { name: 'Earned in' })).toHaveValue('2025-12');
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Amount' }), { target: { value: '1500' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add line' }));
+    await waitFor(() => expect(upsertMutate).toHaveBeenCalled());
+    expect(upsertMutate.mock.calls[0][0]).toMatchObject({ componentCode: 'BOD_FEE', amount: '1500.00', earnedPeriod: '2025-12-01' });
   });
 });

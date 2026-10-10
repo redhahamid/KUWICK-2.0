@@ -11,12 +11,14 @@ const randomId = () => crypto.randomUUID();
 /**
  * WHEN EACH PAYROLL ITEM IS PAID (UAT, 10 October 2026).
  *
- * One payroll month is paid on three dates: salary on the 30th, a director's
- * fee on the 1st of the next month, overtime, locum, housecall and claims on
- * the 15th. Which item goes on which date is the clinic's, set per item in
- * Settings — payment, not treatment, so it writes no version and asks for no
- * reason, and it is written on every version so whichever one a month
- * resolves to says the same date.
+ * A run is paid on up to three dates of its own month: salary on the 30th, a
+ * director's fee on the 1st, overtime, locum, housecall and claims on the
+ * 15th; overtime, locum and the fee are a month in arrears, paid in the run
+ * after the month they were earned. Which item goes on which date, and which
+ * are in arrears, is the clinic's, set per item in Settings — payment, not
+ * treatment, so it writes no version and asks for no reason, and it is
+ * written on every version so whichever one a month resolves to says the
+ * same.
  *
  * ITS OWN TENANTS: the treatment specs build on each other's versions.
  */
@@ -81,10 +83,10 @@ describe('when each payroll item is paid (e2e)', () => {
     await prisma.$disconnect();
   });
 
-  it('starts every item on the 30th of the payroll month, and brings the clinic’s items with its table', async () => {
+  it('starts every item on the 30th and none in arrears, and brings the clinic’s items with its table', async () => {
     const { components, missingPresets } = await listOf(bearer);
     expect(missingPresets).toEqual([]);
-    expect(components.every((row) => row.payDay === 30 && row.payMonthOffset === 0)).toBe(true);
+    expect(components.every((row) => row.payDay === 30 && row.paidInArrears === false)).toBe(true);
 
     const flags = (code: string) => {
       const row = components.find((item) => item.code === code)!;
@@ -110,17 +112,22 @@ describe('when each payroll item is paid (e2e)', () => {
     }).expect(201);
     expect(await versionsOf('OVERTIME')).toHaveLength(2);
 
-    const res = await setPayDate('OVERTIME', { payDay: 15, payMonthOffset: 1 }).expect(200);
-    expect(res.body).toEqual({ code: 'OVERTIME', payDay: 15, payMonthOffset: 1 });
+    const res = await setPayDate('OVERTIME', { payDay: 15, paidInArrears: true }).expect(200);
+    expect(res.body).toEqual({ code: 'OVERTIME', payDay: 15, paidInArrears: true });
 
     const versions = await versionsOf('OVERTIME');
     expect(versions).toHaveLength(2);
+    // The column kept its first name: 1 is a month in arrears.
     expect(versions.map((row) => [row.payDay, row.payMonthOffset])).toEqual([[15, 1], [15, 1]]);
-    expect(await find('OVERTIME')).toMatchObject({ payDay: 15, payMonthOffset: 1 });
+    expect(await find('OVERTIME')).toMatchObject({ payDay: 15, paidInArrears: true });
+
+    // The day moves on its own; arrears stays as it was.
+    await setPayDate('OVERTIME', { payDay: 16 }).expect(200);
+    expect(await find('OVERTIME')).toMatchObject({ payDay: 16, paidInArrears: true });
   });
 
   it('keeps the date through a later change of treatment', async () => {
-    await setPayDate('DIRECTOR_FEE', { payDay: 1, payMonthOffset: 1 }).expect(200);
+    await setPayDate('DIRECTOR_FEE', { payDay: 1, paidInArrears: true }).expect(200);
     const fee = await find('DIRECTOR_FEE');
     await sendTreatment(fee, {
       pcbLiable: !fee.pcbLiable,
@@ -132,14 +139,15 @@ describe('when each payroll item is paid (e2e)', () => {
     expect(versions[1]).toMatchObject({ payDay: 1, payMonthOffset: 1 });
   });
 
-  it('refuses a deduction, a day the calendar does not have, a third month, and an item that is not there', async () => {
-    const refused = await setPayDate('UNIFORM', { payDay: 15, payMonthOffset: 1 }).expect(400);
+  it('refuses a deduction, a day the calendar does not have, basic pay in arrears, and an item that is not there', async () => {
+    const refused = await setPayDate('UNIFORM', { payDay: 15 }).expect(400);
     expect(refused.body.message).toMatch(/comes out of the salary payment/);
-    await setPayDate('HOUSECALL', { payDay: 0, payMonthOffset: 1 }).expect(400);
-    await setPayDate('HOUSECALL', { payDay: 32, payMonthOffset: 1 }).expect(400);
-    await setPayDate('HOUSECALL', { payDay: 15, payMonthOffset: 2 }).expect(400);
-    await setPayDate('NOT_AN_ITEM', { payDay: 15, payMonthOffset: 1 }).expect(404);
-    expect(await find('HOUSECALL')).toMatchObject({ payDay: 30, payMonthOffset: 0 });
+    await setPayDate('HOUSECALL', { payDay: 0 }).expect(400);
+    await setPayDate('HOUSECALL', { payDay: 32 }).expect(400);
+    const salary = await setPayDate('BASIC', { payDay: 30, paidInArrears: true }).expect(400);
+    expect(salary.body.message).toMatch(/never paid a month in arrears/);
+    await setPayDate('NOT_AN_ITEM', { payDay: 15 }).expect(404);
+    expect(await find('HOUSECALL')).toMatchObject({ payDay: 30, paidInArrears: false });
   });
 
   it('does not offer a standard item again when the clinic made one by hand under its own code', async () => {

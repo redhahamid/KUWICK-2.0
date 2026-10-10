@@ -497,6 +497,23 @@ export interface OvertimePricing {
 }
 
 /**
+ * TWO MONTHS' PRICING AS ONE, for a run that pays last month's overtime beside
+ * this month's (UAT, 10 October 2026). Each month was priced on its own wages.
+ */
+export function combinePricing(...parts: OvertimePricing[]): OvertimePricing {
+  const total = (pick: (part: OvertimePricing) => number) => parts.reduce((sum, part) => sum + pick(part), 0);
+  return {
+    days: parts.flatMap((part) => part.days),
+    totalCents: total((part) => part.totalCents),
+    normalDayHours: total((part) => part.normalDayHours),
+    restDaysWorked: total((part) => part.restDaysWorked),
+    publicHolidaysWorked: total((part) => part.publicHolidaysWorked),
+    unapprovedExcessHours: total((part) => part.unapprovedExcessHours),
+    belowStatutoryFloor: parts.flatMap((part) => part.belowStatutoryFloor),
+  };
+}
+
+/**
  * A month of attendance, priced.
  *
  * Days with nothing to pay are dropped rather than carried as zeroes: a

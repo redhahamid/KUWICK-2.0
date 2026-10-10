@@ -79,6 +79,8 @@ type Form = {
   kind: 'RECURRING' | 'ADDITIONAL';
   reason: string;
   earnedIn: Dayjs | null;
+  /** Filled in from the item's arrears setting rather than picked, so changing the item can take it back. */
+  earnedAuto?: boolean;
 };
 
 const BLANK: Form = { componentCode: undefined, amount: undefined, kind: 'ADDITIONAL', reason: '', earnedIn: null };
@@ -424,7 +426,16 @@ export function PayrollInputsDrawer({
                     placeholder="Allowance, incentive, fee, PCB…"
                     options={options}
                     value={form.componentCode}
-                    onChange={(value) => setForm({ ...form, componentCode: value })}
+                    onChange={(value) => {
+                      // An item paid a month in arrears was earned the month
+                      // before this run (UAT, 10 October 2026), so the line
+                      // reads "earned September" before it is saved.
+                      const arrears = (components.data?.components ?? []).find((item) => item.code === value)?.paidInArrears ?? false;
+                      const lastMonth = dayjs(period).subtract(1, 'month').startOf('month');
+                      if (arrears && !form.earnedIn) setForm({ ...form, componentCode: value, earnedIn: lastMonth, earnedAuto: true });
+                      else if (!arrears && form.earnedAuto) setForm({ ...form, componentCode: value, earnedIn: null, earnedAuto: false });
+                      else setForm({ ...form, componentCode: value });
+                    }}
                     showSearch
                     optionFilterProp="label"
                     aria-label="Item"
@@ -471,7 +482,7 @@ export function PayrollInputsDrawer({
                 picker="month"
                 style={{ width: '100%' }}
                 value={form.earnedIn}
-                onChange={(value) => setForm({ ...form, earnedIn: value })}
+                onChange={(value) => setForm({ ...form, earnedIn: value, earnedAuto: false })}
                 aria-label="Earned in"
               />
               <div className="hr-small hr-muted">For work done in an earlier month and paid in this one, such as last month’s locum sessions.</div>

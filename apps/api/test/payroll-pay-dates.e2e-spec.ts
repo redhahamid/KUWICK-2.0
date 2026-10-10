@@ -11,8 +11,10 @@ const randomId = () => crypto.randomUUID();
 /**
  * ONE PAYROLL MONTH, PAID ON THREE DATES (UAT, 10 October 2026).
  *
- * Salary on the 30th, a director's fee on the 1st of the next month, locum
- * and claims on the 15th. The statutory figures and the payslip stay on the
+ * Salary on the 30th, a director's fee on the 1st, locum and claims on the
+ * 15th, every date inside the run's own month; the fee and the locum are paid
+ * a month in arrears, so keyed without a month they are last month's and say
+ * so. The statutory figures and the payslip stay on the
  * whole month; only the money is split: the approved record says what each
  * date pays each person, adding up to their net, with the month's deductions
  * taken from the salary payment. Each date gets its own listing and its own
@@ -31,8 +33,8 @@ describe('one payroll month paid on three dates (e2e)', () => {
 
   const PERIOD = '2026-08';
   const SALARY = '2026-08-30';
-  const FEE = '2026-09-01';
-  const FIFTEENTH = '2026-09-15';
+  const FEE = '2026-08-01';
+  const FIFTEENTH = '2026-08-15';
   const server = () => app.getHttpServer();
   const status = async () => (await request(server()).get(`/workforce/payroll/runs/${runId}/payment`).set('Authorization', bearer).expect(200)).body;
   const record = (payDate: string, reference: string) =>
@@ -62,8 +64,8 @@ describe('one payroll month paid on three dates (e2e)', () => {
     await request(server()).post('/workforce/pay-components/seed').set('Authorization', bearer).expect(201);
 
     // The clinic's dates, in Settings.
-    for (const [code, payDay, payMonthOffset] of [['DIRECTOR_FEE', 1, 1], ['LOCUM_FEE', 15, 1], ['PANEL_CLAIM', 15, 1]] as const) {
-      await request(server()).patch(`/workforce/pay-components/${code}/pay-date`).set('Authorization', bearer).send({ payDay, payMonthOffset }).expect(200);
+    for (const [code, payDay, paidInArrears] of [['DIRECTOR_FEE', 1, true], ['LOCUM_FEE', 15, true], ['PANEL_CLAIM', 15, false]] as const) {
+      await request(server()).patch(`/workforce/pay-components/${code}/pay-date`).set('Authorization', bearer).send({ payDay, paidInArrears }).expect(200);
     }
 
     const staff = await withTenantContext(prisma, tenantId, (tx) =>
@@ -127,18 +129,27 @@ describe('one payroll month paid on three dates (e2e)', () => {
     const dateOf = (code: string) => slip.earnings.find((line: { code: string }) => line.code === code).payDate;
     expect([dateOf('BASIC'), dateOf('DIRECTOR_FEE'), dateOf('LOCUM_FEE'), dateOf('PANEL_CLAIM')]).toEqual([SALARY, FEE, FIFTEENTH, FIFTEENTH]);
 
-    expect(slip.payments.map((payment: { date: string }) => payment.date)).toEqual([SALARY, FEE, FIFTEENTH]);
+    // Keyed with no month, the items a month in arrears are last month's, and say so.
+    const labelOf = (code: string) => slip.earnings.find((line: { code: string }) => line.code === code).label;
+    expect([labelOf('DIRECTOR_FEE'), labelOf('LOCUM_FEE'), labelOf('PANEL_CLAIM')]).toEqual([
+      "Director's fee (July 2026)",
+      'Locum fee (July 2026)',
+      'Panel claim',
+    ]);
+
+    expect(slip.payments.map((payment: { date: string }) => payment.date)).toEqual([FEE, FIFTEENTH, SALARY]);
     expect(slip.payments.reduce((sum: number, payment: { amountCents: number }) => sum + payment.amountCents, 0)).toBe(slip.figures.netCents);
     // The fee and the 15th are paid whole; everything the month withholds comes off the salary.
-    expect(slip.payments[1].amountCents).toBe(50_000);
-    expect(slip.payments[2].amountCents).toBe(42_000);
-    expect(slip.payments[0].amountCents).toBe(slip.figures.netCents - 92_000);
+    const paidOn = (date: string) => slip.payments.find((payment: { date: string }) => payment.date === date).amountCents;
+    expect(paidOn(FEE)).toBe(50_000);
+    expect(paidOn(FIFTEENTH)).toBe(42_000);
+    expect(paidOn(SALARY)).toBe(slip.figures.netCents - 92_000);
     expect(slip.payments.every((payment: { paidOn: string | null }) => payment.paidOn === null)).toBe(true);
   });
 
   it('prepares one reconciled listing per date, and says which carries the salary', async () => {
     const before = await status();
-    expect(before.schedule.map((entry: { payDate: string }) => entry.payDate)).toEqual([SALARY, FEE, FIFTEENTH]);
+    expect(before.schedule.map((entry: { payDate: string }) => entry.payDate)).toEqual([FEE, FIFTEENTH, SALARY]);
     expect(before.batches).toEqual([]);
 
     const prepared = (await request(server()).post(`/workforce/payroll/runs/${runId}/payment/prepare`).set('Authorization', bearer).expect(201)).body;
@@ -162,16 +173,16 @@ describe('one payroll month paid on three dates (e2e)', () => {
     await request(server()).patch(`/workforce/payroll/runs/${runId}/reopen`).set('Authorization', bearer).send({ reason: 'The panel claim goes with the salary' }).expect(200);
     expect((await status()).batches).toEqual([]);
 
-    await request(server()).patch('/workforce/pay-components/PANEL_CLAIM/pay-date').set('Authorization', bearer).send({ payDay: 30, payMonthOffset: 0 }).expect(200);
+    await request(server()).patch('/workforce/pay-components/PANEL_CLAIM/pay-date').set('Authorization', bearer).send({ payDay: 30 }).expect(200);
     await request(server()).patch(`/workforce/payroll/runs/${runId}/calculate`).set('Authorization', bearer).expect(200);
     await request(server()).patch(`/workforce/payroll/runs/${runId}/approve`).set('Authorization', bearer).send({ acknowledgeStatutoryGap: true }).expect(200);
 
     const prepared = (await request(server()).post(`/workforce/payroll/runs/${runId}/payment/prepare`).set('Authorization', bearer).expect(201)).body;
     const rows = prepared.batches.map((batch: { payDate: string; totalCents: number; snapshotVersion: number }) => [batch.payDate, batch.totalCents, batch.snapshotVersion]);
-    expect(rows.map((row: unknown[]) => row[0])).toEqual([SALARY, FEE, FIFTEENTH]);
+    expect(rows.map((row: unknown[]) => row[0])).toEqual([FEE, FIFTEENTH, SALARY]);
     // The 15th now carries the locum alone; the claim went to the salary.
-    expect(rows.slice(1)).toEqual([[FEE, 50_000, 2], [FIFTEENTH, 30_000, 2]]);
-    expect(rows[0][2]).toBe(2);
+    expect(rows.slice(0, 2)).toEqual([[FEE, 50_000, 2], [FIFTEENTH, 30_000, 2]]);
+    expect(rows[2][2]).toBe(2);
   });
 
   it('records each transfer on its own: the payslip goes out with the salary, PAID comes with the last', async () => {
@@ -188,26 +199,26 @@ describe('one payroll month paid on three dates (e2e)', () => {
     expect(mine.map((row) => row.runId)).toContain(runId);
     const onScreen = (await request(server()).get(`/me/payslips/${runId}`).set('Authorization', employee).expect(200)).body;
     expect(onScreen.payments.map((payment: { date: string; paidOn: string | null }) => [payment.date, payment.paidOn])).toEqual([
-      [SALARY, SALARY],
       [FEE, null],
       [FIFTEENTH, null],
+      [SALARY, SALARY],
     ]);
 
     // Money has left: the month cannot be reopened as though it had not.
     const refused = await request(server()).patch(`/workforce/payroll/runs/${runId}/reopen`).set('Authorization', bearer).send({ reason: 'Trying to reopen a part-paid month' }).expect(409);
     expect(refused.body.message).toMatch(/transfer for this month was recorded/);
 
-    await record(FEE, 'IBG-FEE-0901').expect(201);
+    await record(FEE, 'IBG-FEE-0801').expect(201);
     expect((await runStatus()).status).toBe('APPROVED');
     await record(FEE, 'IBG-FEE-AGAIN').expect(409);
 
-    await record(FIFTEENTH, 'IBG-FIFTEENTH-0915').expect(201);
+    await record(FIFTEENTH, 'IBG-FIFTEENTH-0815').expect(201);
     expect((await runStatus()).status).toBe('PAID');
     const after = await status();
     expect(after.batches.every((batch: { status: string }) => batch.status === 'RECORDED_PAID')).toBe(true);
 
     const slip = (await request(server()).get(`/workforce/payroll/runs/${runId}/payslips/${staffId}`).set('Authorization', bearer).expect(200)).body;
-    expect(slip.payments.map((payment: { paidOn: string | null }) => payment.paidOn)).toEqual([SALARY, FEE, FIFTEENTH]);
+    expect(slip.payments.map((payment: { paidOn: string | null }) => payment.paidOn)).toEqual([FEE, FIFTEENTH, SALARY]);
 
     // Every date is paid: nothing is left to prepare.
     await request(server()).post(`/workforce/payroll/runs/${runId}/payment/prepare`).set('Authorization', bearer).expect(409);
@@ -215,17 +226,17 @@ describe('one payroll month paid on three dates (e2e)', () => {
     // The payment status report: one listing per date, the ones withdrawn at the reopen kept as superseded.
     const report = (await request(server()).get(`/workforce/payroll/runs/${runId}/reports/payment-status`).set('Authorization', bearer).expect(200)).body;
     expect(report.listings.map((listing: { payDate: string; status: string }) => [listing.payDate, listing.status])).toEqual([
-      [SALARY, 'RECORDED_PAID'],
       [FEE, 'RECORDED_PAID'],
       [FIFTEENTH, 'RECORDED_PAID'],
+      [SALARY, 'RECORDED_PAID'],
     ]);
-    expect(report.current.payDate).toBe(SALARY);
+    expect(report.current.payDate).toBe(FEE);
 
     const paid = await financePayment();
     expect(paid.state).toBe('RECORDED_PAID');
-    expect(paid.transfers.map((transfer: { payDate: string }) => transfer.payDate)).toEqual([SALARY, FEE, FIFTEENTH]);
-    expect(paid.paymentReference).toBe('IBG-SALARY-0830 · IBG-FEE-0901 · IBG-FIFTEENTH-0915');
-    expect(paid.paymentDate).toBe(FIFTEENTH);
+    expect(paid.transfers.map((transfer: { payDate: string }) => transfer.payDate)).toEqual([FEE, FIFTEENTH, SALARY]);
+    expect(paid.paymentReference).toBe('IBG-FEE-0801 · IBG-FIFTEENTH-0815 · IBG-SALARY-0830');
+    expect(paid.paymentDate).toBe(SALARY);
     expect(report.supersededBatches.map((batch: { status: string }) => batch.status)).toEqual(['SUPERSEDED', 'SUPERSEDED', 'SUPERSEDED']);
   });
 });

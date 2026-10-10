@@ -40,8 +40,13 @@ import { EmployeeFigures, InvariantViolation, RunTotals, checkPayrollInvariants 
  * pay date, the date on every earning line, and what each person is paid on
  * each date, which must add up to their net. The figures are untouched; only
  * the transfer is split.
+ *
+ * Version 5 (UAT, 10 October 2026) records a component's pay date as a day of
+ * the run's own month and, beside it, whether the item is paid a month in
+ * arrears. A version 4 record's `payMonthOffset` moved a date into the next
+ * month; its frozen dates stand as they were approved.
  */
-export const SNAPSHOT_SCHEMA_VERSION = 4;
+export const SNAPSHOT_SCHEMA_VERSION = 5;
 
 /** The statutory standing the payslip was computed on, frozen. */
 export interface SnapshotClassification {
@@ -99,8 +104,10 @@ export interface SnapshotComponent {
   };
   verification: string;
   sourceRef: string | null;
-  /** Version 4+. When the item is paid, as the month was approved. */
-  payDate?: { payDay: number; payMonthOffset: number };
+  /** Version 4+. When the item is paid, as the month was approved. Version 4 also carried a month offset. */
+  payDate?: { payDay: number; payMonthOffset?: number };
+  /** Version 5+. Paid in the run after the month it was earned in. */
+  paidInArrears?: boolean;
 }
 
 /** One schedule the run was calculated against. Mirrors `ScheduleStamp`. */

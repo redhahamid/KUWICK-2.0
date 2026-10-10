@@ -67,6 +67,8 @@ export interface PricedDayFact {
   /** One line of plain English naming the section of the Act that priced it. */
   description: string;
   approverName: string | null;
+  /** Set when the day was worked in an earlier month than the run pays it in. */
+  earnedPeriod?: Date | null;
 }
 
 export interface LeaveFact {
@@ -127,7 +129,7 @@ export function materialiseOvertimeDays(days: readonly PricedDayFact[]): Materia
       amountCents: day.amountCents,
       source: 'ATTENDANCE' as const,
       sourceRecordId: day.attendanceId,
-      earnedPeriod: null,
+      earnedPeriod: day.earnedPeriod ?? null,
       provenance: day.description + (day.approverName ? ` Approved by ${day.approverName}.` : ''),
       approvedBy: day.approverName,
     }));
