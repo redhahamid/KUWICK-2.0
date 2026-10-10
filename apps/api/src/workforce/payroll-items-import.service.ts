@@ -371,7 +371,7 @@ export class PayrollItemsImportService {
             'PCB follows the item: change the item there, or leave the cell blank.',
         );
       }
-      result.pcbType = itemPcb;
+      if (item) result.pcbType = itemPcb;
 
       const note = (input.note ?? '').trim() || null;
       result.note = note;
