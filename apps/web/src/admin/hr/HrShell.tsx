@@ -17,7 +17,7 @@ import {
   IconSettings,
 } from './ui/icons';
 import { SectionTileContext, type SectionTile } from './ui/sectionTile';
-import { canvas, fontFamily } from '../../design-system/tokens';
+import { fontFamily } from '../../design-system/tokens';
 import './ui/slate.css';
 
 /**
@@ -133,9 +133,10 @@ export function HrShell() {
   return (
     <ConfigProvider
       theme={{
-        // antd inside HR follows the canvas tokens: indigo is the action
-        // colour, and the radius matches the hand-drawn components beside it.
-        token: { colorPrimary: canvas.indigo, colorLink: canvas.indigo, borderRadius: canvas.radiusControl, fontFamily },
+        // antd inside HR follows the HR look (UAT, 10 October 2026,
+        // docs/hr-mockup): the deeper indigo is the action colour, 15px text,
+        // and the radius of the hand-drawn controls beside it.
+        token: { colorPrimary: '#4b4fc4', colorLink: '#4b4fc4', borderRadius: 12, fontSize: 15, fontFamily },
       }}
     >
       <SectionTileContext.Provider value={sectionTile}>

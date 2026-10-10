@@ -54,6 +54,22 @@
   --hr-blue: var(--kw-c-blue);
   --hr-blue-soft: var(--kw-c-blue-bg);
   --hr-shadow: var(--kw-c-shadow-card);
+
+  /* THE PREMIUM LOOK (UAT, 10 October 2026; docs/hr-mockup): HR only, and
+     scoped like everything above, so the clinical canvas and the portal keep
+     their own values. The lavender page, the deeper indigo, the soft card
+     shadow, the larger card and control radii, and the mockups' chip pairs. */
+  --hr-canvas: #eceef5;
+  --hr-action: #4b4fc4;
+  --hr-action-soft: #e4e5f8;
+  --hr-green: #17703f;
+  --hr-green-soft: #ddf3e6;
+  --hr-gold: #8f4309;
+  --hr-gold-soft: #fcebd9;
+  --hr-shadow: 0 1px 2px rgba(20, 24, 60, 0.05), 0 6px 20px rgba(20, 24, 60, 0.05);
+  --kw-c-radius-card: 22px;
+  --kw-c-radius-control: 12px;
+  --kw-c-card-border: rgba(20, 24, 60, 0.04);
 }
 
 .kw-hrSlate {
@@ -62,7 +78,7 @@
   height: 100%;
   background: var(--hr-canvas);
   color: var(--hr-ink);
-  font: 14px/1.5 var(--kw-font);
+  font: 15px/1.5 var(--kw-font);
   /* Tabular figures everywhere: a column of money that does not line up is a
      column somebody adds by eye. */
   font-feature-settings: 'tnum' 1, 'cv11' 1;
@@ -154,9 +170,15 @@
 
 /* ── Page ─────────────────────────────────────────────────────────────────── */
 .hr-main {
-  padding: 28px 36px 56px;
+  padding: 28px 32px 56px;
   min-width: 0;
   overflow: auto;
+}
+/* One centred column at most 1440px wide, the mockups' measure. */
+.hr-main > * {
+  max-width: 1440px;
+  margin-left: auto;
+  margin-right: auto;
 }
 .hr-pageHead {
   display: flex;
@@ -170,16 +192,17 @@
   gap: 8px;
 }
 .kw-hrSlate h1 {
-  font-size: 26px;
-  font-weight: 700;
+  font-size: 34px;
+  font-weight: 800;
   letter-spacing: -0.02em;
+  line-height: 1.15;
 }
 .hr-sub {
   color: var(--hr-ink2);
 }
 .hr-sec {
-  font-size: 17px;
-  font-weight: 600;
+  font-size: 19px;
+  font-weight: 800;
   margin: 30px 0 12px;
 }
 /* A setting that saves and is not obeyed. The chip carries the word; this only
@@ -273,10 +296,12 @@
   border: 1px solid var(--hr-line2);
   background: var(--hr-surface);
   color: var(--hr-ink);
-  border-radius: var(--kw-c-radius-control);
-  padding: 7px 13px;
+  border-radius: 12px;
+  min-height: 44px;
+  padding: 0 18px;
+  justify-content: center;
   font: inherit;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   display: inline-flex;
@@ -302,11 +327,13 @@
   color: var(--hr-action);
 }
 .hr-btn--sm {
-  padding: 5px 11px;
-  font-size: 13px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 14px;
 }
 .hr-btn--icon {
-  padding: 6px 8px;
+  padding: 0 10px;
 }
 .hr-btn svg {
   width: 14px;
@@ -328,15 +355,16 @@
   align-items: center;
   gap: 6px;
   border-radius: 999px;
-  padding: 3px 10px;
-  font-size: 12px;
+  padding: 4px 10px;
+  font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
 }
 .hr-chip::before {
   content: '';
-  width: 6px;
-  height: 6px;
+  flex: none;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: currentColor;
 }
@@ -377,8 +405,8 @@
   border-bottom: 1px solid var(--hr-line);
 }
 .hr-panelHead h2 {
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 19px;
+  font-weight: 800;
 }
 /* The tile, then the words. */
 .hr-panelHead__title {
@@ -388,7 +416,26 @@
   min-width: 0;
 }
 .hr-panelHead .hr-sub {
-  font-size: 13px;
+  font-size: 14px;
+}
+/* The coloured tile on a card's header: 38px, radius 12. */
+.kw-hrSlate .kw-tile:not(.kw-tile--sm) {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  font-size: 17px;
+}
+/* LONG EXPLANATIONS BEHIND "DETAILS": the sentence a screen needs once, not
+   every visit. */
+.hr-details > summary {
+  cursor: pointer;
+  color: var(--hr-action);
+  font-weight: 600;
+  width: max-content;
+  max-width: 100%;
+}
+.hr-details[open] > summary {
+  margin-bottom: 8px;
 }
 .hr-panelHead--rule {
   border-top: 1px solid var(--hr-line);
@@ -411,7 +458,7 @@
   background: var(--hr-surface);
   border: 1px solid var(--kw-c-card-border);
   border-radius: var(--kw-c-radius-card);
-  padding: 14px 18px;
+  padding: 20px 22px;
   box-shadow: var(--hr-shadow);
 }
 .hr-stat__label {
@@ -434,8 +481,9 @@
 }
 .hr-stat__value {
   font-family: var(--kw-font);
-  font-size: 24px;
-  font-weight: 700;
+  font-size: 30px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
   margin-top: 2px;
 }
@@ -614,7 +662,7 @@
   background: var(--hr-surface);
   border: 1px solid var(--kw-c-card-border);
   border-radius: var(--kw-c-radius-card);
-  padding: 16px 18px 14px;
+  padding: 22px 24px 20px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -642,9 +690,9 @@
   gap: 11px;
 }
 .hr-card__icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
   background: var(--kw-c-tile-indigo);
   color: #fff;
   display: grid;
