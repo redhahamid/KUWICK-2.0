@@ -187,7 +187,8 @@ async function main() {
     await client.query(
       `SELECT r.id, to_char(r.period, 'YYYY-MM') AS period, r.status::text AS status, r.run_type::text AS run_type,
               r.clinic_id, (SELECT count(*)::int FROM payroll_lines l WHERE l.payroll_run_id = r.id) AS lines,
-              (SELECT count(*)::int FROM payroll_lines l WHERE l.payroll_run_id = r.id AND NOT (l.staff_id = ANY($2::text[]))) AS others
+              (SELECT count(*)::int FROM payroll_lines l WHERE l.payroll_run_id = r.id AND NOT (l.staff_id = ANY($2::text[]))) AS others,
+              (SELECT count(*)::int FROM payroll_lines l WHERE l.payroll_run_id = r.id AND l.staff_id = ANY($2::text[])) AS theirs
          FROM payroll_runs r
         WHERE r.tenant_id = $4 AND r.period >= make_date($3, 1, 1) AND r.period < make_date($3 + 1, 1, 1)
           AND (r.clinic_id = $1 OR r.clinic_id IS NULL)
@@ -195,15 +196,23 @@ async function main() {
       [clinicId, targets, YEAR, tenantId],
     )
   ).rows;
-  say(`\n== 3. ${YEAR} payroll runs of the branch: ${runs.length}`);
-  for (const run of runs) {
+  // A run for the whole tenant is the branch's only when it pays nobody but
+  // the test employees; one that pays none of them is another branch's month
+  // and is kept.
+  const inScope = runs.filter((run) => run.clinic_id !== null || run.theirs > 0);
+  const notTheirs = runs.filter((run) => !inScope.includes(run));
+  say(`\n== 3. ${YEAR} payroll runs of the branch: ${inScope.length}`);
+  for (const run of inScope) {
     say(`  - ${run.period} · ${run.status} · ${run.run_type}${run.clinic_id ? '' : ' · whole tenant'} · ${run.lines} payslip line(s)${run.others ? ` · ${run.others} of other people` : ''}`);
   }
+  for (const run of notTheirs) {
+    say(`  kept: ${run.period} · ${run.status} · whole tenant · ${run.lines} payslip line(s), none of the test employees`);
+  }
   const problems = [];
-  for (const run of runs.filter((r) => r.others > 0)) {
+  for (const run of inScope.filter((r) => r.others > 0)) {
     problems.push(`Run ${run.period} (${run.id}) carries ${run.others} payslip line(s) of people who are not the test employees.`);
   }
-  const scopeRuns = runs.map((run) => run.id);
+  const scopeRuns = inScope.map((run) => run.id);
 
   // ---- 4. Everything attached, asked of the database. ---------------------
   const fks = (
@@ -307,19 +316,31 @@ async function main() {
       problems.push(`${n} row(s) of ${fk.child}.${fk.child_col} point at ${fk.parent} being removed, and are outside the agreed scope (${effect}).`);
     }
   }
-  // Rows of a run outside the scope, and rows that are another person's.
+  // Rows of a run outside the scope, and rows that are another person's. The
+  // one exception: a calculation warning about a test employee in a month
+  // that is not approved is theirs, and that month works its warnings out
+  // again the next time it is calculated. In an approved month it is part of
+  // a locked record, and the script stops.
+  const draftWarnings = [];
   for (const [table, ids] of plan) {
     const columns = fks.filter((edge) => edge.child === table && edge.parent === 'payroll_runs').map((edge) => edge.child_col);
     for (const column of columns) {
-      const n = Number(
-        (
-          await client.query(
-            `SELECT count(*)::int AS n FROM ${q(table)} WHERE id = ANY($1::text[]) AND ${q(column)} IS NOT NULL AND NOT (${q(column)}::text = ANY($2::text[]))`,
-            [[...ids], scopeRuns],
-          )
-        ).rows[0].n,
-      );
-      if (n > 0) problems.push(`${n} row(s) of ${table} belong to a payroll run outside ${YEAR} or outside the branch.`);
+      const outside = (
+        await client.query(
+          `SELECT to_char(r.period, 'YYYY-MM') AS period, r.status::text AS status, r.clinic_id, count(*)::int AS n
+             FROM ${q(table)} t JOIN payroll_runs r ON r.id = t.${q(column)}
+            WHERE t.id = ANY($1::text[]) AND NOT (t.${q(column)}::text = ANY($2::text[]))
+            GROUP BY 1, 2, 3 ORDER BY 1`,
+          [[...ids], scopeRuns],
+        )
+      ).rows;
+      for (const row of outside) {
+        if (table === 'payroll_exceptions' && row.status !== 'APPROVED' && row.status !== 'PAID') {
+          draftWarnings.push(row);
+        } else {
+          problems.push(`${row.n} row(s) of ${table} belong to the ${row.period} ${row.status} run${row.clinic_id ? '' : ' for the whole tenant'}, which is not in the agreed scope.`);
+        }
+      }
     }
     const owner = OWNED_BY[table];
     if (owner) {
@@ -352,6 +373,12 @@ async function main() {
     )
   ).rows;
   say(`Triggers on these tables: ${triggers.map((t) => `${t.tbl}.${t.name}`).join(', ') || 'none'}.`);
+  for (const row of draftWarnings) {
+    say(
+      `Of the payroll_exceptions above, ${row.n} are warnings about the test employees in the ${row.period} ${row.status} run` +
+        `${row.clinic_id ? '' : ' for the whole tenant'}, which is kept; that month works its warnings out again when next calculated.`,
+    );
+  }
 
   say(`\n== 5. Out of scope`);
   if (problems.length) {
