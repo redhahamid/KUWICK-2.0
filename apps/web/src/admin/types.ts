@@ -2006,6 +2006,10 @@ export interface PayComponentRow {
   gridColumn: boolean;
   /** Layout, not treatment: a new month starts with last month's hand-keyed amount. */
   carryForward: boolean;
+  /** When it is paid: a day of the month (1–31)... */
+  payDay: number;
+  /** ...in the payroll month (0) or the month after it (1). */
+  payMonthOffset: number;
   /** Who the item is for: everybody, or the employees named below. */
   appliesTo: "EVERYONE" | "SELECTED";
   appliesToStaffIds: string[];

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App as AntApp } from 'antd';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
@@ -37,6 +37,8 @@ const component = (over: Partial<PayComponentRow> = {}): PayComponentRow => ({
   employerSide: false,
   gridColumn: false,
   carryForward: false,
+  payDay: 30,
+  payMonthOffset: 0,
   appliesTo: 'EVERYONE',
   appliesToStaffIds: [],
   appliesToStaff: [],
@@ -141,6 +143,7 @@ const history: PayComponentHistory = {
 };
 
 const upsertMutate = vi.fn();
+const setPayDateMutate = vi.fn();
 
 /** What `usePayComponents` returns for the test currently running. */
 let served: PayComponentList = list;
@@ -156,6 +159,7 @@ vi.mock('../hooks/useAdmin', () => ({
   usePayComponentHistory: (code: string | null) => ({ data: code ? history : undefined, isLoading: false }),
   useSeedPayComponents: () => ({ mutate: vi.fn(), isPending: false }),
   useUpsertPayComponent: () => ({ mutate: upsertMutate, isPending: false }),
+  useSetPayDate: () => ({ mutate: setPayDateMutate, isPending: false }),
 }));
 vi.mock('../../core/hooks/useCan', () => ({ useCan: () => true }));
 
@@ -460,5 +464,50 @@ describe('who an item is for', () => {
       components: [component({ id: 'c-ot', code: 'OVERTIME', name: 'Overtime', type: 'OVERTIME', category: 'REMUNERATION', handKeyed: false, audienceEditable: false })],
     });
     expect(screen.queryByRole('button', { name: 'Who Overtime is for' })).toBeNull();
+  });
+});
+
+/*
+ * WHEN AN ITEM IS PAID (UAT, 10 October 2026): one payroll month is paid on
+ * three dates, set per item. Payment, not treatment, so it saves at once
+ * with no date and no reason.
+ */
+describe('when an item is paid', () => {
+  it('shows each item’s pay date and moves one with a quick pick', () => {
+    setPayDateMutate.mockReset();
+    mount({
+      ...list,
+      components: [
+        component(),
+        component({ id: 'c-ot', code: 'OVERTIME', name: 'Overtime', type: 'OVERTIME', category: 'REMUNERATION', payDay: 15, payMonthOffset: 1 }),
+      ],
+    });
+    expect(screen.getByRole('button', { name: 'When Allowance is paid: 30th' })).toHaveTextContent('30th');
+    expect(screen.getByRole('button', { name: 'When Overtime is paid: 15th, next month' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'When Allowance is paid: 30th' }));
+    const popover = screen.getByRole('dialog', { name: 'When Allowance is paid' });
+    fireEvent.click(within(popover).getByRole('button', { name: '1st, next month' }));
+    expect(setPayDateMutate).toHaveBeenCalledTimes(1);
+    expect(setPayDateMutate.mock.calls[0][0]).toEqual({ code: 'ALLOWANCE', payDay: 1, payMonthOffset: 1 });
+  });
+
+  it('takes any other day, and says a deduction comes out of the salary payment', () => {
+    setPayDateMutate.mockReset();
+    mount({
+      ...list,
+      components: [
+        component(),
+        component({ id: 'c-uniform', code: 'UNIFORM', name: 'Uniform deduction', type: 'DEDUCTION', category: 'PAYROLL_DEDUCTION', includeIn: 'NET_ONLY' }),
+      ],
+    });
+    expect(screen.getByText('From the salary payment')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /When Uniform deduction is paid/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'When Allowance is paid: 30th' }));
+    const popover = screen.getByRole('dialog', { name: 'When Allowance is paid' });
+    fireEvent.change(within(popover).getByLabelText('Day of the month'), { target: { value: '25' } });
+    fireEvent.click(within(popover).getByRole('button', { name: 'Save' }));
+    expect(setPayDateMutate.mock.calls[0][0]).toEqual({ code: 'ALLOWANCE', payDay: 25, payMonthOffset: 0 });
   });
 });

@@ -6,6 +6,75 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 22 — 10 Oktober 2026 — Settings: tarikh bayar bagi setiap item, dan item klinik yang belum ada (Bahagian 2, dan asas Bahagian 1)
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 21 (`bc85fe7`). Komit: komit yang menambah bahagian ini (hash dalam
+laporan). **Migrasi: `20261010090000_pay_component_pay_dates`** — dua lajur
+dengan nilai lalai pada `pay_components` (`pay_day` 30, `pay_month_offset` 0)
+dan dua semakan julat; tiada pernyataan data, tiada jadual baharu. Dijalankan
+di staging dengan *Migrate only* dari cawangan ini **sebelum** master
+dimajukan. **Tiada logik pengiraan statutori diubah.**
+
+### Apa yang berubah
+
+- `[D]` **Tarikh bayar bagi setiap item** (`pay-dates.ts`,
+  `pay-component.service.ts`, `PayDateCell.tsx`): lajur baharu **Paid on**
+  pada *Settings → Payroll items*. Satu tekan untuk "30th", "1st, next month"
+  atau "15th, next month", atau mana-mana hari 1–31 "of the payroll month" /
+  "of the next month". Hari yang tiada dalam bulan dibayar pada hari
+  terakhirnya (30hb pada Februari → 28/29 Feb). Pembayaran, bukan rawatan
+  statutori: disimpan terus tanpa tarikh berkuat kuasa atau sebab, ditulis
+  pada **setiap versi** item itu (`PATCH /workforce/pay-components/:code/pay-date`),
+  dan diaudit (`payComponent.payDateSet`). Perubahan rawatan yang membuat
+  versi baharu membawa tarikh bayar bersama. Potongan tiada tarikh sendiri:
+  "From the salary payment" (pelayan menolak dengan 400).
+- `[D]` Semua item sedia ada bermula pada **30hb bulan payroll** — satu
+  tarikh untuk seluruh bulan, jadi setiap run, senarai bayaran dan angka
+  kekal seperti sebelum ini sehingga klinik menukar tarikh. Pemisahan bayaran
+  mengikut tarikh ialah Batch 23.
+- `[D]` **Item standard baharu** (`pay-component-catalogue.ts`), mengikut
+  jadual anda sebagai kedudukan permulaan (DRAFT, belum disahkan, seperti
+  semua baris lain): Night incentive, Marketing, Incentive procedure (BOD),
+  Incentive procedure (resident), Housecall — EPF/SOCSO/EIS/PCB ya, HRD
+  tidak; Panel claim, Refund medical checkup — tuntutan, tiada caruman dan
+  tidak bercukai; Hutang medical claim / overpaid, Medical checkup — potongan
+  selepas statutori (NET_ONLY). Ditambah melalui butang *Add N standard
+  items* yang sedia ada.
+- `[D]` Item standard tidak ditawarkan lagi jika klinik sudah membuatnya
+  dengan tangan di bawah kod lain tetapi **nama yang sama** (contohnya
+  "Housecall" sebagai `HOUSE_CALL`), supaya tiada pendua.
+- `[D]` **Ujian**: API unit +3 (`pay-dates`), e2e +5
+  (`pay-component-pay-date`), web +2 (`payrollItems`).
+
+### Uji di staging (ikut urutan)
+
+1. *Settings → Payroll items*: lajur **Paid on** menunjukkan "30th" untuk
+   semua item; potongan menunjukkan "From the salary payment".
+2. Tekan "30th" pada *Overtime* → **15th, next month**. Lakukan sama untuk
+   Locum fee, Housecall, Claim reimbursement (*Other claim*) dan Panel claim;
+   *Director's fee* → **1st, next month**.
+3. Jika butang *Add N standard items* muncul, tekan untuk menambah item
+   klinik yang belum ada; semak suisnya.
+
+### Keputusan terbuka
+
+- `[A]` Tafsiran "1 month in arrears": **dibayar pada bulan selepas bulan
+  payroll** (Overtime/Locum pada 15hb bulan berikutnya, BOD pada 1hb bulan
+  berikutnya). Angka bulan itu masih dikira daripada rekod bulan itu sendiri
+  (contohnya OT Oktober daripada kehadiran Oktober). Jika maksud anda ialah
+  run Oktober perlu mengira OT **September**, itu mengubah bulan rekod yang
+  dibaca oleh pengiraan; beritahu dan ia boleh ditambah sebagai tetapan item.
+- `[A]` Item standard sedia ada tidak diubah suisnya oleh batch ini. Mengikut
+  jadual anda, yang berbeza daripada lalai Kuwick ialah: Bonus (SOCSO/EIS
+  tidak), Locum fee (EPF/SOCSO/EIS ya), Incentive (bukan *additional
+  remuneration*). Tukar di *Payroll items* dengan sebab dan bulan berkuat
+  kuasa jika belum.
+- `[A]` Housecall dan Panel claim bermula pada 30hb seperti item lain; jadual
+  anda meletakkannya pada 15hb, jadi tetapkan di lajur *Paid on* (langkah 2).
+
+---
+
 ## Batch 21 — 10 Oktober 2026 — CI: ujian pelayar hijau semula (Bahagian 5)
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas

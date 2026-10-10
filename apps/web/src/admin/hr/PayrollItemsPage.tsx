@@ -6,6 +6,7 @@ import { useCan } from '../../core/hooks/useCan';
 import { useEmployees, usePayComponentHistory, usePayComponents, useSeedPayComponents, useUpsertPayComponent } from '../hooks/useAdmin';
 import { Drawer, HrPage, Panel, StatusChip } from './ui';
 import { Table } from './ui/Table';
+import { PayDateCell } from './PayDateCell';
 import { IconLock } from './ui/icons';
 import type { PayComponentRow, PayComponentVersion } from '../types';
 
@@ -549,6 +550,13 @@ export function PayrollItemsPage() {
                 );
               },
             })),
+            {
+              // When the money goes out (UAT, 10 October 2026): each date is its own transfer.
+              title: 'Paid on',
+              key: 'payDate',
+              width: 140,
+              render: (_: unknown, row: PayComponentRow) => <PayDateCell row={row} disabled={!mayManage} />,
+            },
             ...(showKind
               ? [
                   {

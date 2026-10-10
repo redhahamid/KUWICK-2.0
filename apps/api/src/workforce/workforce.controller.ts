@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { SetPayDateDto } from './dto/set-pay-date.dto';
 import { AcknowledgeExceptionsDto } from './dto/acknowledge-exceptions.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -516,6 +517,12 @@ export class WorkforceController {
   @Post('pay-components')
   upsertPayComponent(@Body() dto: UpsertPayComponentDto) {
     return this.payComponents.upsert(dto);
+  }
+
+  /** When an item is paid, on every version of it. Payment, not treatment: no version, no reason. */
+  @Patch('pay-components/:code/pay-date')
+  setPayComponentPayDate(@Param('code') code: string, @Body() dto: SetPayDateDto) {
+    return this.payComponents.setPayDate(code, dto);
   }
 
   // --- Payroll policy -------------------------------------------------------

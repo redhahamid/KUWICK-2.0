@@ -1,4 +1,4 @@
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsISO8601, IsInt, IsOptional, IsString, IsUUID, Length, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsISO8601, IsInt, IsOptional, IsString, IsUUID, Length, Max, Min } from 'class-validator';
 
 export class UpsertPayComponentDto {
   @IsOptional() @IsString() id?: string;
@@ -29,6 +29,10 @@ export class UpsertPayComponentDto {
   @IsOptional() @IsBoolean() gridColumn?: boolean;
   /** Layout, not treatment: a new month starts with last month's hand-keyed amount. */
   @IsOptional() @IsBoolean() carryForward?: boolean;
+  /** Payment, not treatment: the day of the month the item is paid. Kept from the current version when absent. */
+  @IsOptional() @IsInt() @Min(1) @Max(31) payDay?: number;
+  /** 0: paid in the payroll month. 1: paid in the month after it. */
+  @IsOptional() @IsInt() @IsIn([0, 1]) payMonthOffset?: number;
   /** Who the item is for: everybody, or the employees named in `appliesToStaffIds`. Audience, not treatment. */
   @IsOptional() @IsIn(['EVERYONE', 'SELECTED']) appliesTo?: 'EVERYONE' | 'SELECTED';
   /** The people a SELECTED item is for. Ignored unless `appliesTo` is SELECTED. */

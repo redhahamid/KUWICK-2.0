@@ -134,6 +134,8 @@ export type AuditAction =
   /// An unstarted version withdrawn outright, leaving the treatment in force
   /// unchanged. The mistake lives here rather than in the catalogue.
   | 'payComponent.versionWithdrawn'
+  /// When an item is paid, set on every version of it. Payment, not treatment.
+  | 'payComponent.payDateSet'
   // A named person here looked at the statutory registry. Not verification.
   | 'statutory.checked'
   | 'payrollPolicy.created'

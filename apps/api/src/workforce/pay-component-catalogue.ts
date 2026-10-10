@@ -246,6 +246,83 @@ export const SEED_PAY_COMPONENTS: SeedPayComponent[] = [
     includeInOrpBase: false, includeInUnpaidLeaveBase: false,
     additionalRemuneration: false, prorated: false, employerSide: false,
   },
+  /*
+   * WHAT A CLINIC PAYS DOCTORS AND STAFF BEYOND SALARY, AND THE CLAIMS AND
+   * RECOVERIES AROUND IT (UAT, 10 October 2026).
+   *
+   * The flags are the account holder's own table — EPF by the Act, SOCSO and
+   * EIS, PCB — and, like every row in this file, a starting position the
+   * clinic owns and not a statement of law: editable on Payroll items with a
+   * reason, a date and a new version. HRD is off for all of them, as for
+   * incentives and commission: variable pay sits outside HRD Corp's leviable
+   * wage. Each is paid on the 30th of the payroll month until the clinic
+   * gives it its own date there.
+   */
+  {
+    code: 'NIGHT_INCENTIVE', name: 'Night incentive', type: 'ADDITION', category: 'REMUNERATION',
+    includeIn: 'GROSS_AND_NET',
+    pcbLiable: true, epfLiable: true, socsoLiable: true, eisLiable: true, hrdLiable: false,
+    includeInOrpBase: false, includeInUnpaidLeaveBase: false,
+    additionalRemuneration: false, prorated: false, employerSide: false,
+  },
+  {
+    code: 'MARKETING', name: 'Marketing', type: 'ADDITION', category: 'REMUNERATION',
+    includeIn: 'GROSS_AND_NET',
+    pcbLiable: true, epfLiable: true, socsoLiable: true, eisLiable: true, hrdLiable: false,
+    includeInOrpBase: false, includeInUnpaidLeaveBase: false,
+    additionalRemuneration: false, prorated: false, employerSide: false,
+  },
+  {
+    code: 'PROCEDURE_INCENTIVE_BOD', name: 'Incentive procedure (BOD)', type: 'ADDITION', category: 'REMUNERATION',
+    includeIn: 'GROSS_AND_NET',
+    pcbLiable: true, epfLiable: true, socsoLiable: true, eisLiable: true, hrdLiable: false,
+    includeInOrpBase: false, includeInUnpaidLeaveBase: false,
+    additionalRemuneration: false, prorated: false, employerSide: false,
+  },
+  {
+    code: 'PROCEDURE_INCENTIVE_RESIDENT', name: 'Incentive procedure (resident)', type: 'ADDITION', category: 'REMUNERATION',
+    includeIn: 'GROSS_AND_NET',
+    pcbLiable: true, epfLiable: true, socsoLiable: true, eisLiable: true, hrdLiable: false,
+    includeInOrpBase: false, includeInUnpaidLeaveBase: false,
+    additionalRemuneration: false, prorated: false, employerSide: false,
+  },
+  {
+    code: 'HOUSECALL', name: 'Housecall', type: 'ADDITION', category: 'REMUNERATION',
+    includeIn: 'GROSS_AND_NET',
+    pcbLiable: true, epfLiable: true, socsoLiable: true, eisLiable: true, hrdLiable: false,
+    includeInOrpBase: false, includeInUnpaidLeaveBase: false,
+    additionalRemuneration: false, prorated: false, employerSide: false,
+  },
+  // Claims: money the employee spent, given back. Not wages, and not taxed.
+  {
+    code: 'PANEL_CLAIM', name: 'Panel claim', type: 'ADDITION', category: 'PERQUISITE',
+    includeIn: 'GROSS_AND_NET',
+    pcbLiable: false, epfLiable: false, socsoLiable: false, eisLiable: false, hrdLiable: false,
+    includeInOrpBase: false, includeInUnpaidLeaveBase: false,
+    additionalRemuneration: false, prorated: false, employerSide: false,
+  },
+  {
+    code: 'MEDICAL_CHECKUP_REFUND', name: 'Refund medical checkup', type: 'ADDITION', category: 'PERQUISITE',
+    includeIn: 'GROSS_AND_NET',
+    pcbLiable: false, epfLiable: false, socsoLiable: false, eisLiable: false, hrdLiable: false,
+    includeInOrpBase: false, includeInUnpaidLeaveBase: false,
+    additionalRemuneration: false, prorated: false, employerSide: false,
+  },
+  // Recoveries, taken from net pay after the statutory deductions like a uniform charge.
+  {
+    code: 'MEDICAL_CLAIM_RECOVERY', name: 'Hutang medical claim / overpaid', type: 'DEDUCTION', category: 'PAYROLL_DEDUCTION',
+    includeIn: 'NET_ONLY',
+    pcbLiable: false, epfLiable: false, socsoLiable: false, eisLiable: false, hrdLiable: false,
+    includeInOrpBase: false, includeInUnpaidLeaveBase: false,
+    additionalRemuneration: false, prorated: false, employerSide: false,
+  },
+  {
+    code: 'MEDICAL_CHECKUP_DEDUCTION', name: 'Medical checkup', type: 'DEDUCTION', category: 'PAYROLL_DEDUCTION',
+    includeIn: 'NET_ONLY',
+    pcbLiable: false, epfLiable: false, socsoLiable: false, eisLiable: false, hrdLiable: false,
+    includeInOrpBase: false, includeInUnpaidLeaveBase: false,
+    additionalRemuneration: false, prorated: false, employerSide: false,
+  },
 ];
 
 /** The liability shape the existing calculation consumes. */

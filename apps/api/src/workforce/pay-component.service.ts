@@ -6,9 +6,22 @@ import { requirePermission, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { SEED_PAY_COMPONENTS } from './pay-component-catalogue';
 import { UpsertPayComponentDto } from './dto/upsert-pay-component.dto';
+import { SetPayDateDto } from './dto/set-pay-date.dto';
+import { DEFAULT_PAY_DATE, describePayDate } from './pay-dates';
 import { DERIVED_CODES } from './payroll-register-columns';
 
 const EPOCH = new Date('1970-01-01T00:00:00.000Z');
+
+/**
+ * WHETHER A STANDARD ITEM IS ALREADY HERE: by its code, or by its name when
+ * the clinic made it by hand under a code of its own. A clinic that typed
+ * "Housecall" as HOUSE_CALL before the preset existed is not offered a
+ * second Housecall.
+ */
+function alreadyHere(preset: { code: string; name: string }, rows: readonly { code: string; name: string }[]): boolean {
+  const name = preset.name.trim().toLowerCase();
+  return rows.some((row) => row.code === preset.code || row.name.trim().toLowerCase() === name);
+}
 
 /**
  * The attributes that decide what a component is LIABLE TO — everything the
@@ -110,6 +123,9 @@ export class PayComponentService {
         employerSide: row.employerSide,
         gridColumn: row.gridColumn,
         carryForward: row.carryForward,
+        /** When it is paid: a day of the month, in the payroll month (0) or the month after (1). */
+        payDay: row.payDay,
+        payMonthOffset: row.payMonthOffset,
         /** Who the item is for: everybody, or the employees named below. */
         appliesTo: row.appliesTo,
         appliesToStaffIds: row.appliesToStaffIds,
@@ -145,9 +161,10 @@ export class PayComponentService {
        * Named rather than counted, because "one item is missing" invites the
        * question this answers.
        */
-      missingPresets: SEED_PAY_COMPONENTS.filter(
-        (preset) => !rows.some((row) => row.code === preset.code),
-      ).map((preset) => ({ code: preset.code, name: preset.name })),
+      missingPresets: SEED_PAY_COMPONENTS.filter((preset) => !alreadyHere(preset, rows)).map((preset) => ({
+        code: preset.code,
+        name: preset.name,
+      })),
       /**
        * Said on the screen, not only in a document. Every flag above is a
        * clinic's configuration that no authority has confirmed.
@@ -223,9 +240,9 @@ export class PayComponentService {
     return withAdminTx(this.rawPrisma, 'hr.statutory.manage', async (tx, actor) => {
       let created = 0;
       let existing = 0;
+      const held = await tx.payComponent.findMany({ select: { code: true, name: true } });
       for (const c of SEED_PAY_COMPONENTS) {
-        const found = await tx.payComponent.findFirst({ where: { code: c.code } });
-        if (found) {
+        if (alreadyHere(c, held)) {
           existing += 1;
           continue;
         }
@@ -266,6 +283,40 @@ export class PayComponentService {
         });
       }
       return { created, existing, total: created + existing };
+    });
+  }
+
+  /**
+   * WHEN AN ITEM IS PAID, written on every version of it.
+   *
+   * Payment, not treatment: what the item is liable to does not move, so this
+   * writes no version and asks for no reason, like the item's own column. It
+   * goes on every version so that whichever version a month resolves to says
+   * the same date; an approved month keeps the dates it was approved with,
+   * because the approved record froze them. A deduction comes out of the
+   * salary payment, so it has no date of its own.
+   */
+  async setPayDate(code: string, dto: SetPayDateDto) {
+    return withAdminTx(this.rawPrisma, 'hr.statutory.manage', async (tx, actor) => {
+      const versions = await tx.payComponent.findMany({ where: { code }, orderBy: { effectiveFrom: 'asc' } });
+      if (versions.length === 0) throw new NotFoundException('Pay component not found');
+      const open = versions.find((row) => row.effectiveTo === null) ?? versions[versions.length - 1];
+      if (open.type === 'DEDUCTION') {
+        throw new BadRequestException(
+          `${open.name} is a deduction. It comes out of the salary payment, so it has no pay date of its own.`,
+        );
+      }
+      const rule = { payDay: dto.payDay, payMonthOffset: dto.payMonthOffset };
+      await tx.payComponent.updateMany({ where: { code }, data: rule });
+      await recordAudit(tx, actor, {
+        action: 'payComponent.payDateSet',
+        entityType: 'PayComponent',
+        entityId: open.id,
+        before: { payDay: open.payDay, payMonthOffset: open.payMonthOffset },
+        after: rule,
+        reason: `${open.code} is paid on the ${describePayDate(rule)}.`,
+      });
+      return { code, ...rule };
     });
   }
 
@@ -394,6 +445,11 @@ export class PayComponentService {
         employerSide: dto.employerSide ?? false,
         gridColumn: dto.gridColumn ?? false,
         carryForward: dto.carryForward ?? false,
+        // WHEN IT IS PAID rides along unless named: a treatment change writes a
+        // new version, and that version must not quietly move the item back to
+        // the 30th.
+        payDay: dto.payDay ?? open?.payDay ?? DEFAULT_PAY_DATE.payDay,
+        payMonthOffset: dto.payMonthOffset ?? open?.payMonthOffset ?? DEFAULT_PAY_DATE.payMonthOffset,
         appliesTo,
         appliesToStaffIds,
         active: dto.active ?? true,
