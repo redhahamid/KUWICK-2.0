@@ -148,12 +148,25 @@ export function HrSettingsPage() {
         value: approval.data ? (APPROVED_BY[approval.data.mode] ?? approval.data.mode) : 'One approver',
       },
     ],
-    items: payDates.length
-      ? payDates.slice(0, 3).map(([label, list]) => ({
-          label: `Paid on the ${label}`,
-          value: names(list),
-        }))
-      : [{ label: 'Items in use', value: 'None yet' }],
+    // Three facts whatever the catalogue: what is in use, then when it is
+    // paid, then who it is for when every item is paid on the same day.
+    items: [
+      {
+        label: 'In use',
+        value: `${componentRows.filter((row) => row.type !== 'DEDUCTION').length} add · ${componentRows.filter((row) => row.type === 'DEDUCTION').length} deduct`,
+      },
+      ...(payDates.length
+        ? payDates.slice(0, 2).map(([label, list]) => ({ label: `Paid on the ${label}`, value: names(list) }))
+        : [{ label: 'Paid on', value: 'Nothing set up yet' }]),
+      ...(payDates.length === 1
+        ? [
+            {
+              label: 'For named people only',
+              value: names(componentRows.filter((row) => row.appliesTo === 'SELECTED').map((row) => row.name)) || 'None',
+            },
+          ]
+        : []),
+    ],
     employees: [
       { label: 'Active employees', value: employeeCount },
       { label: 'Where', value: 'The Employees page, not Settings' },

@@ -810,7 +810,7 @@ function ItemPanel({
           )
         : null}
 
-      <section className="hr-fld">
+      <section className="hr-itemSection">
         <h3 className="hr-itemPanel__head">What it counts towards</h3>
         <div className="hr-itemFlags">
           {FLAGS.map((flag) => {
@@ -858,14 +858,14 @@ function ItemPanel({
         </div>
       </section>
 
-      <section className="hr-fld">
+      <section className="hr-itemSection">
         <h3 className="hr-itemPanel__head">Paid on</h3>
         <PayDateCell row={row} disabled={!mayManage} />
         {kinds.length > 0 ? <span style={{ display: 'inline-flex', gap: 4, marginLeft: 8 }}>{kinds}</span> : null}
       </section>
 
       {row.handKeyed ? (
-        <section className="hr-fld">
+        <section className="hr-itemSection">
           <h3 className="hr-itemPanel__head">On the payroll grid</h3>
           {LAYOUT.map((layout) => (
             <div key={layout.key} className="hr-itemFlag__row">
@@ -886,7 +886,7 @@ function ItemPanel({
         </section>
       ) : null}
 
-      <section className="hr-fld">
+      <section className="hr-itemSection">
         <h3 className="hr-itemPanel__head">Applies to</h3>
         {row.audienceEditable ? (
           <button
@@ -905,7 +905,7 @@ function ItemPanel({
         )}
       </section>
 
-      <section className="hr-fld">
+      <section className="hr-itemSection">
         <div className="hr-itemFlag__row">
           <h3 className="hr-itemPanel__head">In use</h3>
           <Switch size="small" checked={row.active} disabled={!mayManage || saving} aria-label={`${row.name} in use`} onChange={onActive} />

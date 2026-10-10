@@ -6,6 +6,124 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 34 — 10 Oktober 2026 — Payroll items: satu baris, suis dalam panel
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada
+migrasi.** Tiada perubahan pengiraan, peraturan statutori atau data.
+
+### Keputusan anda (10 Oktober 2026)
+
+- `[D]` B4: "Payroll items table is too dense: show item name, adds/deducts,
+  a one-line summary ('EPF · SOCSO · EIS · PCB · paid 15th, a month in
+  arrears') and In use. All switches move into an edit panel opened by
+  clicking the row."
+
+### Apa yang berubah
+
+- `[D]` Jadual: *Item*, *Adds or deducts*, *What it counts towards* (satu
+  baris, contoh "EPF · SOCSO · EIS · PCB · paid 15th, a month in arrears";
+  potongan: "Reduces …" atau "Taken from net pay") dan *In use* (cip).
+- `[D]` Klik baris membuka panel item: 8 suis rawatan (masih minta bulan
+  berkuat kuasa dan sebab, di bawah suis itu sendiri), *Paid on*, *Own
+  column* / *Carry forward*, *Applies to*, *In use*, *History*, dan *Change
+  the month* untuk versi yang belum bermula. Cara simpan sama seperti dahulu.
+- `[D]` Nota panjang di bawah jadual kini di belakang *Details*.
+- `[D]` **Ujian**: web `payrollItems` dikemas kini (buka panel dahulu) +2
+  baharu (31 lulus). Skrip UAT `own-columns.uat.ts` membuka panel dahulu.
+
+### Uji di staging
+
+1. *Settings → Payroll items*: setiap baris satu ayat; tiada suis dalam
+   jadual.
+2. Klik *Overtime*: panel dibuka; matikan EPF: kotak "From which month / Why"
+   muncul di bawahnya; *Cancel* tidak menyimpan apa-apa.
+
+---
+
+## Batch 33 — 10 Oktober 2026 — Settings: langkah setup, kemudian empat kad
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada
+migrasi.** Tiada perubahan pengiraan, peraturan statutori atau data.
+
+### Keputusan anda (10 Oktober 2026)
+
+- `[D]` B1–B3: Settings semasa setup belum lengkap = hanya langkah setup
+  (SetupWizard.html); selepas lengkap = "Setup complete ✓ — Review setup" +
+  empat kad + *Advanced* berlipat (SettingsHome.html); Employees keluar dari
+  Settings; setiap tetapan di satu tempat sahaja.
+
+### Apa yang berubah
+
+- `[D]` Setup belum lengkap: kiri lima langkah dengan status (Company &
+  statutory numbers, Pay rules, Payroll items, Employees, Check statutory
+  rates; "Optional later: bank payment file"); kanan satu langkah terbuka.
+  Langkah syarikat ada borang (nama, no. pendaftaran, EPF, SOCSO, LHDN, zakat,
+  asas levi HRD) dengan *Save for later* dan *Save & next* / *Save & finish
+  setup*. Langkah lain menunjukkan fakta dan butang ke halaman masing-masing;
+  langkah kadar statutori ada *I've checked them*.
+- `[D]` Setup lengkap: satu baris "Setup complete", kad *Company &
+  statutory*, *Pay rules*, *Payroll items*, *Attendance & leave* (tiga fakta
+  setiap satu), *Advanced* (Statutory rates, Opening balances, Bank payment
+  file) berlipat. *Review setup* membuka semula langkah.
+- `[D]` *Payroll policies* kini bernama **Pay rules** (halaman yang sama);
+  *Attendance & leave policies* kini **Attendance & leave** dan memaut ke
+  *Public holidays*. Langkah *Employees* membuka halaman Employees.
+- `[D]` Pembetulan ditemui semasa membina langkah syarikat: menyimpan di
+  halaman *Company & statutory* dahulu mengosongkan no. HRD, alamat baris 2
+  dan poskod (borang tidak menghantarnya, API mengosongkan medan yang tiada).
+  Kini dihantar semula seperti sedia ada.
+- `[D]` **Ujian**: web baharu `hrSettingsPage` (6), `hrRoutes` dikemas kini
+  (empat kad), e2e `hr-navigation` "Settings is the setup steps until setup is
+  done".
+
+### Andaian, dilaporkan
+
+- `[A]` Kelas HRD Corp tidak dipilih dalam wizard (mockup menunjukkan tiga
+  butang): ia direkod dengan tarikh berkuat kuasa dan sebab di halaman
+  *Company & statutory*, jadi wizard menunjukkan kelas semasa dan pautan.
+- `[A]` *Pay rules* sentiasa "selesai" kerana peraturan lalai Kuwick terpakai
+  sehingga klinik menetapkan sendiri (sama seperti senarai semak lama).
+
+### Uji di staging
+
+1. Klinik yang belum menyemak kadar statutori: *HR → Settings* hanya
+   menunjukkan "Set up payroll" dan lima langkah.
+2. Isi nombor SOCSO/LHDN demo, *Save & next*: langkah bertukar hijau.
+3. Langkah *Check statutory rates* → *I've checked them*: Settings bertukar
+   ke "Setup complete" dengan empat kad; *Show* membuka *Advanced*.
+
+---
+
+## Batch 32 — 10 Oktober 2026 — Rupa premium untuk semua skrin HR
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada
+migrasi.** Gaya sahaja: tiada perubahan pengiraan, peraturan statutori atau
+data.
+
+### Keputusan anda (10 Oktober 2026)
+
+- `[D]` B5: lebar maksimum 1440px di tengah; teks 15px; tajuk 32–34px; amaun
+  utama 28–30px tabular; latar #ECEEF5; kad putih radius 22px dengan bayang
+  lembut; jubin ikon 38px radius 12px; indigo #4B4FC4; butang 44px radius
+  12px; cip pil dengan titik; penerangan panjang di belakang *Details*.
+
+### Apa yang berubah
+
+- `[D]` Token HR sahaja (`.kw-hrSlate`), jadi klinikal dan portal tidak
+  berubah: latar, indigo, warna cip, bayang, radius kad 22px dan kawalan
+  12px; tajuk 34px/800; amaun kad statistik 30px tabular; butang 44px (kecil
+  36px); cip 13px dengan titik 7px; jubin ikon 38px; antd dalam HR guna indigo
+  yang sama, 15px dan radius 12.
+- `[D]` Tangkapan skrin desktop dan telefon (390px) untuk Payroll,
+  Employees, Settings, Payroll items: tiada skrol mendatar.
+
+### Uji di staging
+
+1. Buka *HR → Payroll* pada desktop lebar: kandungan berhenti pada 1440px di
+   tengah, latar lavender, kad bulat.
+
+---
+
 ## Batch 31 — 10 Oktober 2026 — Amaran bulan awal tahun tanpa payroll
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. Komit: komit

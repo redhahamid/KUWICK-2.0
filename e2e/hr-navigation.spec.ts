@@ -185,7 +185,9 @@ test.describe('Settings is the setup steps until setup is done', () => {
       'Check statutory rates',
     ]);
     await expect(page.locator('.hr-area')).toHaveCount(0);
-    await expect(page.locator('.hr-wiz__card h2')).toHaveText('Check statutory rates');
+    // One step open, with its own heading and a way on.
+    await expect(page.locator('.hr-wiz__card h2')).toHaveCount(1);
+    await expect(page.locator('.hr-wiz__count')).toHaveText(/^Step \d of 5$/);
 
     // Each step settled elsewhere opens that one page, still inside Settings.
     for (const [step, link, path, heading, section] of [
