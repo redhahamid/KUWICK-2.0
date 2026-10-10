@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Dropdown } from 'antd';
 import dayjs from 'dayjs';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
+import { useClinics } from '../../core/hooks/useClinics';
 import { useCan } from '../../core/hooks/useCan';
 import { useEmployees, usePayrollReadiness, usePayrollRuns } from '../hooks/useAdmin';
 import { initialsOf } from './ui/who';
@@ -12,6 +13,7 @@ import { IconCalendar, IconDownload, IconEdit, IconEmployees, IconInfo, IconMore
 import { downloadCsv } from './ui/csv';
 import { CompleteProfileDrawer } from './CompleteProfileDrawer';
 import { MarkResignedModal } from './MarkResignedModal';
+import { EpfBasisForBranchDrawer } from './EpfBasisForBranchDrawer';
 import { leftLabel } from './leftLabel';
 import { DeleteEmployeeModal } from './DeleteEmployeeModal';
 import { BenefitsView } from './BenefitsView';
@@ -103,8 +105,12 @@ const Dot = ({ on, title }: { on: boolean | null; title: string }) => (
 
 export function EmployeesPage() {
   const { clinicId } = useClinicFilter();
+  const { data: clinics } = useClinics();
+  const branchName = clinicId ? (clinics ?? []).find((clinic) => clinic.id === clinicId)?.name : undefined;
   const navigate = useNavigate();
   const mayManage = useCan('hr.employee.manage');
+  // Setting a contribution basis needs payroll access, as on the person's own page.
+  const mayPayroll = useCan('hr.payroll.view');
   const [search, setSearch] = useSearchParams();
   const view: View = search.get('view') === 'benefits' ? 'benefits' : 'employees';
 
@@ -115,6 +121,7 @@ export function EmployeesPage() {
   const [seg, setSeg] = useState<Seg>('ACTIVE');
   const [completing, setCompleting] = useState<{ staffId: string; fullName: string } | null>(null);
   const [titlesOpen, setTitlesOpen] = useState(false);
+  const [epfBranchOpen, setEpfBranchOpen] = useState(false);
   const [resigning, setResigning] = useState<{ staffId: string; fullName: string } | null>(null);
   const [deleting, setDeleting] = useState<{ staffId: string; fullName: string } | null>(null);
 
@@ -237,6 +244,17 @@ export function EmployeesPage() {
               Add several
             </button>
           ) : null}
+          {mayManage && mayPayroll && view === 'employees' ? (
+            <button
+              type="button"
+              className="hr-btn"
+              disabled={!clinicId}
+              title={clinicId ? undefined : 'Pick a branch first: this sets everybody in one branch.'}
+              onClick={() => setEpfBranchOpen(true)}
+            >
+              Set EPF basis for branch
+            </button>
+          ) : null}
           {mayManage ? (
             <button type="button" className="hr-btn hr-btn--primary" onClick={() => navigate('/admin/hr/employees/new')}>
               <IconPlus />
@@ -247,6 +265,14 @@ export function EmployeesPage() {
       }
     >
       {titlesOpen ? <JobTitlesDrawer open onClose={() => setTitlesOpen(false)} /> : null}
+      {clinicId && epfBranchOpen ? (
+        <EpfBasisForBranchDrawer
+          open
+          clinicId={clinicId}
+          branchName={branchName ?? 'This branch'}
+          onClose={() => setEpfBranchOpen(false)}
+        />
+      ) : null}
       <CompleteProfileDrawer staffId={completing?.staffId ?? null} fullName={completing?.fullName ?? ''} onClose={() => setCompleting(null)} />
       <MarkResignedModal staffId={resigning?.staffId ?? null} fullName={resigning?.fullName ?? ''} open={Boolean(resigning)} onClose={() => setResigning(null)} />
       <DeleteEmployeeModal staffId={deleting?.staffId ?? null} fullName={deleting?.fullName ?? ''} open={Boolean(deleting)} onClose={() => setDeleting(null)} />

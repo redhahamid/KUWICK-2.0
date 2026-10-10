@@ -27,6 +27,8 @@ export class UpsertLegalEmployerDto {
   @IsOptional() @IsBoolean() active?: boolean;
   /** What the HRD levy is worked out on. Absent keeps what the employer has. */
   @IsOptional() @IsIn(['BASIC_ONLY', 'BASIC_PLUS_FIXED_ALLOWANCES']) hrdLevyBase?: 'BASIC_ONLY' | 'BASIC_PLUS_FIXED_ALLOWANCES';
+  /** The EPF basis new staff are given (UAT, 10 October 2026). Absent keeps what the employer has. */
+  @IsOptional() @IsIn(['BASIC_ONLY', 'ALL_APPLICABLE']) defaultEpfBasis?: 'BASIC_ONLY' | 'ALL_APPLICABLE';
   /** Whether zakat is deducted through payroll. Absent keeps what the employer has. */
   @IsOptional() @IsBoolean() zakatThroughPayroll?: boolean;
 }

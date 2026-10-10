@@ -3,6 +3,7 @@ import { apiClient, uploadFile } from "../../core/api-client";
 import type {
   EmployeeIntakeResult,
   EmployeeIntakeRowDto,
+  EpfBasisForBranchResult,
   ItemsImportCodes,
   ItemsImportResult,
   ItemsImportRowInput,
@@ -1629,6 +1630,15 @@ export function useImportItems() {
     ({ runId, ...body }: { runId: string; rows: ItemsImportRowInput[]; fileName?: string; commit?: boolean }) =>
       apiClient.post<ItemsImportResult>(`/workforce/payroll/runs/${runId}/items-import`, body),
     ["admin-hr"],
+  );
+}
+
+/** One EPF basis for every employee of a branch, from a date: preview, or `commit` (UAT, 10 October 2026). */
+export function useEpfBasisForBranch() {
+  return useAdminMutation(
+    (body: { clinicId: string; mode: "BASIC_ONLY" | "ALL_APPLICABLE"; effectiveFrom: string; reason: string; commit?: boolean }) =>
+      apiClient.post<EpfBasisForBranchResult>("/workforce/employees/epf-basis-for-branch", body),
+    ["admin-hr", "admin-employees"],
   );
 }
 

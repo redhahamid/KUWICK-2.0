@@ -72,6 +72,8 @@ export function LegalEmployersPage() {
   // Two settings the employer answers (UAT, 10 October 2026).
   const [levyBase, setLevyBase] = useState<LegalEmployerRow['hrdLevyBase']>('BASIC_PLUS_FIXED_ALLOWANCES');
   const [zakat, setZakat] = useState(false);
+  // The EPF basis new staff are given (UAT, 10 October 2026).
+  const [epfDefault, setEpfDefault] = useState<'BASIC_ONLY' | 'ALL_APPLICABLE'>('ALL_APPLICABLE');
   const [error, setError] = useState<string | null>(null);
   // Same shape as the rule set drawer: scrolling body, pinned footer.
   useProblemFocus(error);
@@ -86,6 +88,7 @@ export function LegalEmployersPage() {
     setEditing(row);
     setLevyBase(row?.hrdLevyBase ?? 'BASIC_PLUS_FIXED_ALLOWANCES');
     setZakat(row?.zakatThroughPayroll ?? false);
+    setEpfDefault(row?.defaultEpfBasis === 'BASIC_ONLY' ? 'BASIC_ONLY' : 'ALL_APPLICABLE');
     setForm(
       row
         ? {
@@ -137,6 +140,7 @@ export function LegalEmployersPage() {
         ...(bankAccountNo && bankAccountNo.trim() !== '' ? { bankAccountNo: bankAccountNo.trim() } : {}),
         hrdLevyBase: levyBase,
         zakatThroughPayroll: zakat,
+        defaultEpfBasis: epfDefault,
       });
       message.success('Saved.');
       setOpen(false);
@@ -363,6 +367,23 @@ export function LegalEmployersPage() {
               {levyBase === 'BASIC_ONLY'
                 ? 'The levy is worked out on basic salary, less unpaid leave. No allowance counts, whatever its item says.'
                 : 'Basic salary, less unpaid leave, plus every allowance marked HRD in Payroll items. This is how the PSMB Act defines wages.'}
+            </div>
+          </label>
+          <label>
+            <div className="hr-small hr-muted" style={{ marginBottom: 4 }}>EPF for new staff</div>
+            <Select
+              aria-label="EPF for new staff"
+              value={epfDefault}
+              onChange={setEpfDefault}
+              style={{ width: '100%' }}
+              options={[
+                { value: 'ALL_APPLICABLE', label: 'All EPF-liable pay (Kuwick’s default)' },
+                { value: 'BASIC_ONLY', label: 'Basic salary only' },
+              ]}
+            />
+            <div className="hr-small hr-muted" style={{ marginTop: 4 }}>
+              Each person who joins this employer is given this as their own dated EPF basis, from their start date, however
+              they are added. Staff already here keep theirs: change them on the Employees page with “Set EPF basis for branch”.
             </div>
           </label>
           <div>

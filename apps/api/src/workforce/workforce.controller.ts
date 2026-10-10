@@ -35,6 +35,7 @@ import { BenefitService } from './benefit.service';
 import { LegalEmployerService } from './legal-employer.service';
 import { EmployeeSalaryService } from './employee-salary.service';
 import { ContributionBasisService } from './contribution-basis.service';
+import { BulkEpfBasisDto } from './dto/bulk-epf-basis.dto';
 import { StatutoryClassificationService } from './statutory-classification.service';
 import { PayComponentService } from './pay-component.service';
 import { StatutorySettingsService } from './statutory-settings.service';
@@ -162,6 +163,12 @@ export class WorkforceController {
   @Post('employees/intake')
   intakeEmployees(@Body() dto: EmployeeIntakeDto) {
     return this.intake.intake(dto);
+  }
+
+  /** One EPF basis for every employee of a branch, from a date: `commit` absent previews. Before `employees/:staffId`. */
+  @Post('employees/epf-basis-for-branch')
+  epfBasisForBranch(@Body() dto: BulkEpfBasisDto) {
+    return this.contributionBases.recordForBranch(dto);
   }
 
   @Patch('employees/:staffId/legal-employer')

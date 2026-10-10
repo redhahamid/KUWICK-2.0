@@ -115,6 +115,7 @@ export type AuditAction =
   | 'employeeRecurringItem.ended'
   /** The employer selected which wages EPF is contributed on — a dated preference. */
   | 'employeeContributionBasis.recorded'
+  | 'employeeContributionBasis.branchRecorded'
   | 'employeeStatutoryClassification.recorded'
   /// The standing already on a date restated, rather than a second version
   /// opened on the same day. The first standing an employee ever gets is

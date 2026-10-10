@@ -6,6 +6,7 @@ import { requirePermission, requireScope, withAdminTx } from '../finance/admin-a
 import { recordAudit } from '../finance/admin-audit';
 import { UpsertLegalEmployerDto } from './dto/upsert-legal-employer.dto';
 import { hrdLevyRatePercent } from '../statutory/hrd-levy';
+import { writeEpfBasis } from './contribution-basis.service';
 
 /**
  * THE LEGAL EMPLOYER.
@@ -117,6 +118,7 @@ export class LegalEmployerService {
       active: row.active,
       /** What the HRD levy is worked out on: basic salary only, or basic plus fixed allowances. */
       hrdLevyBase: row.hrdLevyBase,
+      defaultEpfBasis: row.defaultEpfBasis,
       /** Whether zakat is deducted through payroll. */
       zakatThroughPayroll: row.zakatThroughPayroll,
       employeeCount: row._count.employees,
@@ -230,6 +232,7 @@ export class LegalEmployerService {
         active: dto.active ?? true,
         // Absent keeps what the employer has; a new one starts on the defaults.
         ...(dto.hrdLevyBase === undefined ? {} : { hrdLevyBase: dto.hrdLevyBase }),
+        ...(dto.defaultEpfBasis === undefined ? {} : { defaultEpfBasis: dto.defaultEpfBasis }),
         ...(dto.zakatThroughPayroll === undefined ? {} : { zakatThroughPayroll: dto.zakatThroughPayroll }),
       };
 
@@ -275,9 +278,11 @@ export class LegalEmployerService {
       if (!profile) throw new NotFoundException('Employee not found');
 
       let employerName: string | null = null;
+      let employerEpfBasis: 'BASIC_ONLY' | 'BASIC_PLUS_SELECTED' | 'ALL_APPLICABLE' = 'ALL_APPLICABLE';
       if (legalEmployerId) {
         const employer = await tx.legalEmployer.findFirst({ where: { id: legalEmployerId } });
         if (!employer) throw new NotFoundException('Legal employer not found');
+        employerEpfBasis = employer.defaultEpfBasis;
         if (!employer.active) {
           throw new BadRequestException('That legal employer is archived. Reactivate it, or choose another.');
         }
@@ -313,6 +318,31 @@ export class LegalEmployerService {
         before: { legalEmployerId: profile.legalEmployerId },
         after: { legalEmployerId: saved.legalEmployerId },
       });
+
+      /*
+       * THE EMPLOYER'S EPF BASIS FOR NEW STAFF (UAT, 10 October 2026). Every
+       * way somebody joins (one at a time, Add several, a CSV) places them
+       * with an employer through here, so this is where they are given the
+       * employer's basis: their own dated record, from their start date,
+       * which the run reads like any other. Only for somebody new, with no
+       * basis of their own and nothing paid yet; anybody else keeps theirs
+       * and is changed deliberately, from the Employees page.
+       */
+      if (legalEmployerId && employerEpfBasis !== 'ALL_APPLICABLE') {
+        const [ownBasis, paid] = await Promise.all([
+          tx.employeeContributionBasis.count({ where: { staffId, scheme: 'EPF' } }),
+          tx.payrollLine.count({ where: { staffId } }),
+        ]);
+        if (ownBasis === 0 && paid === 0) {
+          const from = profile.startDate ?? new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+          await writeEpfBasis(tx, actor, staffId, {
+            scheme: 'EPF',
+            mode: employerEpfBasis as 'BASIC_ONLY',
+            effectiveFrom: from.toISOString().slice(0, 10),
+            reason: `Employer default for new staff (${employerName}): basic salary only`,
+          });
+        }
+      }
 
       return saved;
     });

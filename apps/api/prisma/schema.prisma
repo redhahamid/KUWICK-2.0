@@ -7963,6 +7963,11 @@ model LegalEmployer {
   /// cannot be added, and one already on somebody's record stops the run
   /// until the clinic decides.
   zakatThroughPayroll Boolean @default(false) @map("zakat_through_payroll")
+  /// THE EMPLOYER'S EPF BASIS FOR NEW STAFF (UAT, 10 October 2026). Given to
+  /// each person as their own dated EPF-basis record when they are placed
+  /// with this employer and have none; the calculation reads only that
+  /// record. ALL_APPLICABLE is the behaviour of a person with no record.
+  defaultEpfBasis ContributionBasisMode @default(ALL_APPLICABLE) @map("default_epf_basis")
 
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at")

@@ -6,6 +6,60 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 38 — 10 Oktober 2026 — Asas EPF: lalai majikan untuk staf baharu, dan satu asas untuk seluruh cawangan
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi**
+`20261010180000_legal_employer_default_epf_basis`: satu lajur
+`default_epf_basis` (ContributionBasisMode, lalai `ALL_APPLICABLE`) pada
+`legal_employers`. Dijalankan di staging dengan *Migrate only* sebelum master
+digerakkan (run dalam laporan). Tiada perubahan pada pengiraan EPF: run masih
+membaca rekod asas EPF bertarikh setiap orang.
+
+### Keputusan anda (10 Oktober 2026)
+
+- `[D]` "The clinic's EPF basis policy must be the default for every new
+  employee, including Add several and CSV import", dan "Set EPF basis for all
+  staff in this branch" dengan tarikh berkuat kuasa dan sebab, dilog.
+
+### Percanggahan, dilaporkan
+
+- `[D]` Tiada polisi asas EPF peringkat klinik dalam Kuwick sebelum ini. Asas
+  EPF direkod bagi setiap orang; tanpa rekod = semua gaji yang dikenakan EPF.
+  "Basic salary only" dalam Pay rules ialah unjuran PCB, dan pada majikan
+  ialah asas levi HRD. Jadi tetapan baharu ditambah pada majikan (*Company &
+  statutory → EPF for new staff*), kerana EPF difailkan oleh majikan.
+
+### Apa yang berubah
+
+- `[D]` *Company & statutory*: "EPF for new staff" (All EPF-liable pay /
+  Basic salary only).
+- `[D]` Setiap cara staf masuk (satu demi satu, Add several, CSV)
+  meletakkan mereka dengan majikan melalui satu tempat; di situ, orang baharu
+  (tiada asas sendiri, belum dibayar) diberi rekod asas EPF bertarikh dari
+  tarikh mula mereka. Staf sedia ada tidak disentuh.
+- `[D]` *Employees* (satu cawangan dipilih): **Set EPF basis for branch** →
+  pilih asas, tarikh, sebab → *Check who changes* (siapa berubah, siapa sudah
+  ada, siapa disekat oleh bulan yang diluluskan) → *Set for N staff*. Semua
+  yang bekerja di cawangan pada atau selepas tarikh itu, termasuk yang telah
+  berhenti. Semua atau tiada: jika tarikh itu sampai ke bulan yang diluluskan
+  bagi sesiapa, tiada apa diubah. Setiap orang mendapat rekod sendiri (sama
+  seperti di halaman mereka, dengan log masing-masing) dan satu baris log
+  untuk batch (`employeeContributionBasis.branchRecorded`).
+- `[D]` **Ujian**: e2e baharu `epf-basis-default-and-branch` (3), web
+  baharu `epfBasisForBranch` (2).
+
+### Uji di staging
+
+1. *Employees* → pilih KLINIK HIJRAA BANGI → *Set EPF basis for branch* →
+   Basic salary only, 1 Jan 2026, sebab → *Check who changes* → *Set for N
+   staff*.
+2. Payroll → Januari 2026 → kira semula: EPF sepatutnya sama dengan payroll
+   lama.
+3. *Settings → Company & statutory* → edit majikan → *EPF for new staff* =
+   Basic salary only, supaya staf baharu mendapatnya secara automatik.
+
+---
+
 ## Batch 37 — 10 Oktober 2026 — Import item bulan dari CSV (skrin)
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada

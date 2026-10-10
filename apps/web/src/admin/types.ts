@@ -1990,6 +1990,8 @@ export interface LegalEmployerRow {
   hrdLevyBase: "BASIC_ONLY" | "BASIC_PLUS_FIXED_ALLOWANCES";
   /** Whether zakat is deducted through payroll. */
   zakatThroughPayroll: boolean;
+  /** The EPF basis new staff are given as their own dated record. */
+  defaultEpfBasis: "BASIC_ONLY" | "BASIC_PLUS_SELECTED" | "ALL_APPLICABLE";
   addressLine1: string | null;
   addressLine2: string | null;
   postcode: string | null;
@@ -3968,4 +3970,18 @@ export interface ItemsImportResult {
   previousImport: number;
   replaced: number;
   added: number;
+}
+
+/** "Set EPF basis for all staff in this branch" — who changes (UAT, 10 October 2026). */
+export interface EpfBasisForBranchResult {
+  clinicId: string;
+  branch: string;
+  mode: "BASIC_ONLY" | "ALL_APPLICABLE";
+  effectiveFrom: string;
+  people: number;
+  changing: number;
+  unchanged: number;
+  blocked: number;
+  committed: boolean;
+  rows: { staffId: string; name: string; employeeNo: string | null; current: string; action: "CHANGE" | "SAME" | "BLOCKED" }[];
 }
