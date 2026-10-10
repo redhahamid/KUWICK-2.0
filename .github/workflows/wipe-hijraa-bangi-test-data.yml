@@ -35,6 +35,11 @@ on:
         type: string
         required: false
         default: ''
+      also_remove_employee_nos:
+        description: 'Only if the owner said so: employee numbers in the branch to remove as well, comma separated. Empty removes the three named test employees only.'
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -182,6 +187,7 @@ jobs:
       - name: Run the wipe script
         env:
           WIPE_APPLY: ${{ inputs.apply && 'true' || 'false' }}
+          WIPE_ALSO_EMPLOYEE_NOS: ${{ inputs.also_remove_employee_nos }}
         run: |
           set -o pipefail
           DATABASE_URL="$PG_DATABASE_URL" node apps/api/scripts/wipe-hijraa-bangi-test-data.mjs 2>&1 | tee "$RUNNER_TEMP/wipe.txt"

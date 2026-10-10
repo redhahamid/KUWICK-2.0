@@ -33,17 +33,24 @@
 //   * No personal data is printed: counts, ids, roles and dates only. A test
 //     employee's name is shown only when it is one of the agreed labels.
 //
+//   * The employees are the three the owner named, matched by those names
+//     exactly. Anybody else with an employee record in the branch is kept and
+//     reported; WIPE_ALSO_EMPLOYEE_NOS adds an employee by number, only when
+//     the owner has said so.
+//
 // Environment: DATABASE_URL (the OWNER connection: every table is FORCE ROW
 // LEVEL SECURITY, so the application role cannot see what it must remove),
-// WIPE_APPLY=true to delete. WIPE_BRANCH and WIPE_EXPECTED_EMPLOYEES exist
-// for the local rehearsal only.
+// WIPE_APPLY=true to delete, WIPE_ALSO_EMPLOYEE_NOS (comma separated) to
+// remove somebody else too. WIPE_BRANCH exists for the local rehearsal only.
 import pg from 'pg';
 
+const norm = (text) => (text ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
 const APPLY = process.env.WIPE_APPLY === 'true';
-const BRANCH = (process.env.WIPE_BRANCH ?? 'KLINIK HIJRAA BANGI').trim().replace(/\s+/g, ' ').toUpperCase();
-const EXPECTED_EMPLOYEES = Number(process.env.WIPE_EXPECTED_EMPLOYEES ?? 3);
+const BRANCH = norm(process.env.WIPE_BRANCH ?? 'KLINIK HIJRAA BANGI');
+// The three the owner named, by the names they carry on the employee list.
+const AGREED = ['DR RESIDEN + BOD', 'CLINICAL STAFF', 'STAFF ADMIN'];
+const ALSO = (process.env.WIPE_ALSO_EMPLOYEE_NOS ?? '').split(',').map((no) => no.trim()).filter(Boolean);
 const YEAR = 2026;
-const LABELS = [/^CLINICAL STAFF$/i, /^STAFF ADMIN$/i, /RESIDEN/i, /\bBOD\b/i];
 
 // An employee's own HR record, and the parts of a payroll run. A row in one of
 // these is removed when it belongs to a test employee or to a 2026 run of the
@@ -114,7 +121,7 @@ async function main() {
   await client.query(`SET LOCAL statement_timeout = '120s'`);
   await client.query(`SET LOCAL lock_timeout = '15s'`);
   say(`Mode: ${APPLY ? 'APPLY (deletes, one transaction)' : 'DRY RUN (read only, changes nothing)'}`);
-  say(`Branch: ${BRANCH} · expected employees: ${EXPECTED_EMPLOYEES} · payroll year: ${YEAR}`);
+  say(`Branch: ${BRANCH} · employees named: ${AGREED.join(', ')}${ALSO.length ? ` · also employee no ${ALSO.join(', ')}` : ''} · payroll year: ${YEAR}`);
 
   // ---- 1. The branch, wherever it is. -------------------------------------
   await client.query(`SELECT set_config('app.bypass_tenant_scope', 'true', true)`);
@@ -154,16 +161,26 @@ async function main() {
     )
   ).rows;
   const employees = people.filter((person) => person.profile_id !== null);
+  const chosen = employees.filter((person) => AGREED.includes(norm(person.full_name)) || ALSO.includes(String(person.employee_no ?? '')));
+  const kept = employees.filter((person) => !chosen.includes(person));
   say(`\n== 2. People of the branch\nWith an employee record: ${employees.length}. Without one (not employees, kept): ${people.length - employees.length}.`);
   for (const person of employees) {
-    const label = LABELS.some((pattern) => pattern.test(person.full_name ?? '')) ? person.full_name : '(name withheld)';
-    say(`  - staff ${person.id} · ${person.role} · ${person.employment_status} · employee no ${person.employee_no ?? '-'} · login ${person.user_id ? 'yes' : 'no'} · ${label}`);
+    const label = AGREED.includes(norm(person.full_name)) ? person.full_name : '(name withheld)';
+    say(
+      `  - ${chosen.includes(person) ? 'REMOVE' : 'keep  '} staff ${person.id} · ${person.role} · ${person.employment_status} · employee no ${person.employee_no ?? '-'} · login ${person.user_id ? 'yes' : 'no'} · ${label}`,
+    );
   }
-  if (employees.length !== EXPECTED_EMPLOYEES) {
-    return stop(`Expected ${EXPECTED_EMPLOYEES} employees in the branch; found ${employees.length}. Nothing was changed.`);
+  for (const name of AGREED) {
+    const n = employees.filter((person) => norm(person.full_name) === name).length;
+    if (n !== 1) return stop(`Expected exactly one employee named ${name} in the branch; found ${n}. Nothing was changed.`);
   }
-  const targets = employees.map((person) => person.id);
-  const targetUsers = employees.map((person) => person.user_id).filter(Boolean);
+  for (const no of ALSO) {
+    const n = employees.filter((person) => String(person.employee_no ?? '') === no).length;
+    if (n !== 1) return stop(`Expected exactly one employee numbered ${no} in the branch; found ${n}. Nothing was changed.`);
+  }
+  if (kept.length) say(`Kept, not in the agreed list: ${kept.length} employee record(s).`);
+  const targets = chosen.map((person) => person.id);
+  const targetUsers = chosen.map((person) => person.user_id).filter(Boolean);
 
   // ---- 3. The branch's 2026 payroll runs. ---------------------------------
   const runs = (
@@ -388,6 +405,7 @@ async function main() {
       )
     ).rows[0].n,
   );
+  const removedLeft = Number((await client.query(`SELECT count(*)::int AS n FROM staff WHERE id = ANY($1::text[])`, [targets])).rows[0].n);
   const runsLeft = Number(
     (
       await client.query(
@@ -404,8 +422,11 @@ async function main() {
     )
   ).rows[0].n;
   say(`\n== 7. Counts after\nRows of the plan still present: ${Object.values(after).reduce((a, b) => a + b, 0)}.`);
-  say(`Employees in the branch: ${employeesLeft}. ${YEAR} payroll runs of the branch: ${runsLeft}. Locks on: ${locksOn} of ${Object.keys(LOCKS).length}.`);
-  if (employeesLeft !== 0 || runsLeft !== 0 || Object.values(after).some((n) => n !== 0) || locksOn !== Object.keys(LOCKS).length) {
+  say(
+    `Employees removed still present: ${removedLeft}. Employees in the branch: ${employeesLeft} (kept, not in the agreed list: ${kept.length}). ` +
+      `${YEAR} payroll runs of the branch: ${runsLeft}. Locks on: ${locksOn} of ${Object.keys(LOCKS).length}.`,
+  );
+  if (removedLeft !== 0 || employeesLeft !== kept.length || runsLeft !== 0 || Object.values(after).some((n) => n !== 0) || locksOn !== Object.keys(LOCKS).length) {
     throw new Error('The branch is not clean after the delete. Rolled back; nothing was changed.');
   }
   await client.query(
@@ -417,6 +438,7 @@ async function main() {
       JSON.stringify({ removed: before, employees: targets, runs: scopeRuns }),
       JSON.stringify({
         employeesInBranch: employeesLeft,
+        keptNotInAgreedList: kept.length,
         runsIn2026: runsLeft,
         _reason: 'One-off wipe of the branch test data, agreed with the clinic owner on 10 October 2026.',
         _source: 'scripts/wipe-hijraa-bangi-test-data.mjs',
@@ -424,7 +446,9 @@ async function main() {
     ],
   );
   await client.query('COMMIT');
-  say(`\nDONE. Committed. 0 employees and no ${YEAR} payroll runs in ${BRANCH}; one audit_logs row records it.`);
+  say(
+    `\nDONE. Committed. ${targets.length} employee(s) removed, ${kept.length} kept; no ${YEAR} payroll runs in ${BRANCH}; one audit_logs row records it.`,
+  );
   return 0;
 }
 
