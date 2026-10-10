@@ -142,6 +142,7 @@ export type AuditAction =
   | 'payrollPolicy.updated'
   | 'payrollPolicy.deleted'
   | 'payrollInput.created'
+  | 'payrollInput.imported'
   | 'payrollInput.updated'
   | 'payrollInput.deleted'
   | 'payrollInput.materialised'

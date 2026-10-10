@@ -40,6 +40,8 @@ import { PayComponentService } from './pay-component.service';
 import { StatutorySettingsService } from './statutory-settings.service';
 import { PayrollPolicyService } from './payroll-policy.service';
 import { PayrollInputService } from './payroll-input.service';
+import { PayrollItemsImportService } from './payroll-items-import.service';
+import { ItemsImportDto } from './dto/items-import.dto';
 import { UpsertLegalEmployerDto } from './dto/upsert-legal-employer.dto';
 import { RecordSalaryDto } from './dto/record-salary.dto';
 import { CreateRecurringItemDto, UpdateRecurringItemDto } from './dto/recurring-item.dto';
@@ -97,6 +99,7 @@ export class WorkforceController {
     private readonly statutorySettings: StatutorySettingsService,
     private readonly payrollPolicies: PayrollPolicyService,
     private readonly payrollInputs: PayrollInputService,
+    private readonly itemsImport: PayrollItemsImportService,
     private readonly claims: StaffClaimService,
     private readonly locum: LocumService,
     private readonly journey: PayrollJourneyService,
@@ -188,6 +191,18 @@ export class WorkforceController {
   @Get('payroll/readiness')
   payrollReadiness(@Query('period') period?: string, @Query('clinicId') clinicId?: string) {
     return this.readiness.list({ period, clinicId });
+  }
+
+  /** The codes an items file may use: the clinic's Payroll items, plus UNPAID_LEAVE_DAYS. */
+  @Get('payroll/items-import/codes')
+  itemsImportCodes() {
+    return this.itemsImport.codes();
+  }
+
+  /** Import a month's items from a CSV: preview every row, or with `commit` save them all. Draft months only. */
+  @Post('payroll/runs/:id/items-import')
+  importItems(@Param('id') id: string, @Body() dto: ItemsImportDto) {
+    return this.itemsImport.importItems(id, dto);
   }
 
   @Get('payroll/runs/:id/journey')

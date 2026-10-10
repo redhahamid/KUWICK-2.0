@@ -6,6 +6,72 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 36 — 10 Oktober 2026 — Import item bulan dari CSV (API)
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi**
+`20261010170000_payroll_input_quantity`: satu lajur `quantity`
+(DECIMAL(6,2), boleh kosong) pada `payroll_input_entries`, untuk hari cuti
+tanpa gaji yang diimport. Dijalankan di staging dengan *Migrate only*
+sebelum master digerakkan (run dalam laporan).
+
+### Keputusan anda (10 Oktober 2026)
+
+- `[D]` "Import this month's items (CSV)" pada langkah Prepare, untuk
+  memindahkan Jan–Sep 2026 daripada payroll lama: satu muat naik sebulan,
+  semak setiap baris dahulu, tiada apa disimpan sehingga semua lulus, muat
+  naik semula MENGGANTIKAN import sebelumnya, setiap import dilog, bulan
+  draf sahaja; OVERTIME boleh dalam RM dan ditanda "Imported";
+  UNPAID_LEAVE_DAYS dalam hari.
+
+### Apa yang berubah
+
+- `[D]` `GET /workforce/payroll/items-import/codes`: kod yang dibenarkan.
+  `POST /workforce/payroll/runs/:id/items-import`: tanpa `commit`, semak
+  sahaja; dengan `commit`, simpan semua hanya jika setiap baris lulus.
+- `[D]` Semakan setiap baris: Employee No. tidak dikenali, orang tidak dalam
+  run bulan itu (peraturan Batch 35), kontraktor, kod tidak dikenali, BASIC
+  / PCB / UNPAID_LEAVE (guna UNPAID_LEAVE_DAYS), amaun tidak sah, bulan
+  *earned in* tidak sah atau selepas bulan run, item untuk orang terpilih
+  sahaja, baris berganda bagi orang dan item yang sama, baris yang ditaip
+  di grid bulan ini, dan baris daripada kehadiran / cuti / tuntutan / item
+  berulang (akan dibayar dua kali).
+- `[D]` Baris yang diimport ialah baris tangan dengan `source = IMPORT`:
+  satu bagi setiap orang dan item; slip gaji, label *earned in*, tarikh
+  bayar dan statutori sama seperti baris tangan; boleh disunting di grid;
+  asal ditunjuk "Imported". Item bayaran tertunggak tanpa *earned in*
+  dianggap diperoleh bulan sebelumnya, seperti baris tangan.
+- `[D]` Muat naik semula: semua baris import terdahulu bulan itu (bagi orang
+  dalam run) dibuang, dan baris yang dibawa dari bulan lepas bagi orang dan
+  item yang sama digantikan. Satu baris `audit_logs`
+  (`payrollInput.imported`) bagi setiap import: siapa, bila, fail, bilangan
+  baris, bilangan diganti.
+- `[D]` UNPAID_LEAVE_DAYS disimpan sebagai baris Unpaid leave dengan bilangan
+  hari; run menilainya pada kadar harian set peraturan setiap kali bulan
+  dikira ("Unpaid leave · 2 days at RM100.00").
+- `[D]` **Ujian**: e2e baharu `payroll-items-import` (6).
+
+### Percanggahan, dilaporkan
+
+- `[D]` Jenis PCB (normal / additional) ditentukan oleh tetapan item dalam
+  Payroll items, bukan oleh baris; pengiraan membaca tetapan item. Lajur
+  yang bercanggah akan diabaikan secara senyap, jadi: sel kosong = tetapan
+  item; sel yang bercanggah ditolak dengan arahan untuk menukar item.
+- `[D]` Beberapa kod dalam senarai anda tiada dalam katalog standard Kuwick
+  (MARKERTING_INCENTIVE, INCENTIVE_PROCEDURE, OTHER_CLAIM,
+  REFUND_MEDICAL_CHECKUP, HUTANG_MEDICAL_CLAIM, MEDICAL_CHECKUP); katalog
+  standard menggunakan MARKETING, PROCEDURE_INCENTIVE_BOD /
+  PROCEDURE_INCENTIVE_RESIDENT, MEDICAL_CHECKUP_REFUND,
+  MEDICAL_CLAIM_RECOVERY, MEDICAL_CHECKUP_DEDUCTION. Import menerima kod yang
+  ada dalam Payroll items klinik itu sendiri; templat menyenaraikannya.
+
+### Andaian, dilaporkan
+
+- `[A]` Jika bulan yang diimport kemudian mendapat lebih masa daripada
+  kehadiran untuk orang yang sama, kedua-duanya dibayar; untuk bulan lepas
+  yang tiada rekod kehadiran, ini tidak berlaku.
+
+---
+
 ## Batch 35 — 10 Oktober 2026 — Payroll bulan lepas: semua yang bekerja dalam bulan itu
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada

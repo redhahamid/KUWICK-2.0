@@ -1877,6 +1877,22 @@ export class PayrollService {
           await tx.payrollInputEntry.deleteMany({ where: { id: { in: plan.remove } } });
         }
 
+        // IMPORTED UNPAID DAYS (UAT, 10 October 2026) are priced here, at this
+        // month's daily rate from the rule set, every time the month is worked
+        // out: the same rate the leave queue's unpaid days are priced at, so a
+        // salary corrected after the import reprices them.
+        if (!isBonusRun) {
+          for (const row of inputs) {
+            if (row.source !== 'IMPORT' || row.componentCode !== 'UNPAID_LEAVE' || row.quantity === null) continue;
+            const days = Number(row.quantity);
+            const cents = Math.round(days * rates.unpaidLeaveDailyCents);
+            const label = `Unpaid leave · ${days} day${days === 1 ? '' : 's'} at RM${formatCents(rates.unpaidLeaveDailyCents)}`;
+            if (toCents(row.amount) !== cents || row.label !== label) {
+              await tx.payrollInputEntry.update({ where: { id: row.id }, data: { amount: fromCents(cents), label } });
+            }
+          }
+        }
+
         // Re-read: the payslip is built from the MATERIALISED rows, not from the
         // in-memory derivation. One source of truth for what this period pays,
         // and the same rows the earnings screen shows.

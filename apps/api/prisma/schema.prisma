@@ -7600,6 +7600,10 @@ model PayrollInputEntry {
   label         String?
   /// Always positive; the component's kind carries the sign.
   amount        Decimal @db.Decimal(12, 2)
+  /// An imported unpaid-leave line's DAYS (UAT, 10 October 2026). The run
+  /// prices them at the rule set's daily rate each time it is worked out, so
+  /// `amount` follows the salary on record rather than a figure typed once.
+  quantity      Decimal? @db.Decimal(6, 2)
 
   /// Where the money was earned, when that is not the period it is paid in.
   /// The clinic pays December's overtime and locum fees in January, so a

@@ -21,6 +21,7 @@ import { PayComponentService } from './pay-component.service';
 import { StatutorySettingsService } from './statutory-settings.service';
 import { PayrollPolicyService } from './payroll-policy.service';
 import { PayrollInputService } from './payroll-input.service';
+import { PayrollItemsImportService } from './payroll-items-import.service';
 import { StaffClaimService } from './staff-claim.service';
 import { LocumService } from './locum.service';
 import { PayrollJourneyService } from './payroll-journey.service';
@@ -69,6 +70,7 @@ import { PayrollFinanceService } from './payroll-finance.service';
     StatutorySettingsService,
     PayrollPolicyService,
     PayrollInputService,
+    PayrollItemsImportService,
     StaffClaimService,
     LocumService,
     PayrollJourneyService,
