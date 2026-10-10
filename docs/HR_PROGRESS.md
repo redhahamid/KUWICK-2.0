@@ -294,11 +294,22 @@ workflow manual "Wipe Hijraa Bangi test data (one-off, manual)". Komit:
   kewangan, 3 cawangan lain, tenant lain, dan run September 2026 seluruh
   tenant. `audit_logs` lama tidak disentuh.
 
-### Keputusan yang masih terbuka
+### Larian kedua: no pekerja 1036
 
-- `[A]` No pekerja 1036 (doktor residen, RESIGNED) mungkin data sebenar,
-  jadi disimpan. Jika ia juga data ujian, skrip boleh memadamnya atas
-  arahan anda.
+- `[D]` Arahan anda (10 Oktober 2026): "Yes, remove employee no. 1036 too,
+  same way (staging, logged, nothing else touched)."
+- `[D]` Skrip yang sama, satu perubahan: nama yang tiada lagi diterima
+  hanya apabila baris `audit_logs` skrip ini sendiri untuk cawangan itu
+  menunjukkan larian awal telah memadamnya; jika tiada sesiapa untuk dipadam
+  ia berhenti. Diuji dahulu secara tempatan (4 ujian lulus, termasuk larian
+  kedua).
+- `[D]` Dry run (run 38050312034): selamat, 5 baris, tiada apa di luar
+  skop. Apply (run 38050433789): 1 gaji, 1 klasifikasi statutori, 1 profil
+  pekerja, 1 staf, 1 log masuk pengguna. **Jumlah 5 baris.** Tiada run
+  payroll disentuh (run September 2026 seluruh tenant disimpan).
+- `[D]` **Selepas**: pekerja dalam cawangan **0**; run 2026 cawangan 0;
+  kunci 2 daripada 2 hidup; baris `audit_logs` kedua merekod tambahan
+  pemilik. Jumlah kedua-dua larian: 165 baris.
 
 ---
 
