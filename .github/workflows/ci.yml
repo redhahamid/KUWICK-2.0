@@ -325,6 +325,24 @@ jobs:
           SMOKE_EMAIL: frontdesk@uat.kuwick.invalid
         run: node scripts/smoke-catalogue.mjs http://localhost:3000
 
+      # THE HR WORLD, THROUGH THE API. The admin UAT seed above builds the
+      # clinic, its people and their records; the HR specs also read months
+      # that were worked out, approved and paid, which is the world the owner
+      # tests against on staging. `seed-hr-uat.ts` makes the last three months
+      # by driving the running API as the owner (create, calculate, approve,
+      # prepare the payment, record it paid), so it runs after the API is up.
+      # Without it "the seeded month reads as what it is" waited for a Paid
+      # month this job never made. KUWICK_HR_UAT_SKIP_BASE: the admin clinic
+      # was seeded above.
+      - name: Seed the HR world through the API
+        run: npx tsx prisma/seed-hr-uat.ts
+        working-directory: apps/api
+        env:
+          KUWICK_ADMIN_UAT_SEED: 'yes'
+          KUWICK_HR_UAT_SKIP_BASE: 'yes'
+          ADMIN_UAT_PASSWORD: ${{ env.E2E_PASSWORD }}
+          KUWICK_API_URL: http://127.0.0.1:3000
+
       # Every spec in e2e/, not just the golden path — the name said otherwise
       # while it was already running the viewport and catalogue guardrails, and
       # a step whose name understates what it covers is a step people skim.

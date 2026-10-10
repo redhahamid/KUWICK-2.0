@@ -6,6 +6,45 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 21 — 10 Oktober 2026 — CI: ujian pelayar hijau semula (Bahagian 5)
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 20 (`c22584c`). Komit: komit yang menambah bahagian ini (hash dalam
+laporan). **Migrasi: tiada. Tiada kod aplikasi diubah** — `ci.yml` sahaja.
+
+### Punca
+
+- `[D]` Kerja *golden path (E2E)* dalam CI merah pada setiap push ke master
+  sejak sekurang-kurangnya 17 September (run 397 hingga 436). Pada run 436:
+  1 gagal, 1 *flaky*, 2 dilangkau, 102 lulus.
+- `[D]` Yang gagal: `e2e/admin-hr.spec.ts:160` "the seeded month reads as
+  what it is…", yang menunggu cip **Paid** pada bulan yang di-seed. Bulan
+  berbayar itu hanya dibuat oleh `prisma/seed-hr-uat.ts`, yang memandu API
+  yang sedang berjalan (cipta, kira, lulus, sediakan bayaran, rekod dibayar).
+  Gate tempatan menjalankannya; CI tidak pernah menjalankannya.
+
+### Apa yang berubah
+
+- `[D]` `ci.yml`: langkah baharu **Seed the HR world through the API**
+  selepas API dan web hidup dan kedua-dua ujian asap, sebelum Playwright,
+  dengan `KUWICK_HR_UAT_SKIP_BASE=yes` (klinik admin sudah di-seed oleh
+  langkah sebelumnya) dan kata laluan E2E CI.
+- `[D]` Disahkan secara tempatan dengan urutan CI yang sama (seed asas →
+  `seed-admin-uat.ts` → bina → API dan web → seed HR melalui API →
+  Playwright): **104 lulus, 2 dilangkau, 0 gagal**. Seed HR membayar Julai,
+  Ogos dan September 2026.
+
+### Keputusan terbuka
+
+- `[D]` `e2e/appointment-module.spec.ts:519` (pautan token membatalkan
+  temujanji) *flaky* dalam CI: gagal sekali, lulus pada ulangan, lulus
+  setiap kali secara tempatan. Ia tidak memerahkan kerja (Playwright
+  menganggap *flaky* sebagai lulus). Artifak CI (tangkapan skrin, jejak)
+  tidak dapat dimuat turun dari bekas ini kerana polisi rangkaian, jadi
+  puncanya belum diketahui.
+
+---
+
 ## Batch 20 — 6 Oktober 2026 — Review: satu kad bagi setiap jenis, tiga bahagian, satu kiraan
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
