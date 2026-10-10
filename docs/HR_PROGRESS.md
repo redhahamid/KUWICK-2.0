@@ -6,6 +6,108 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 29 — 10 Oktober 2026 — OT tertunggak dinilai seperti bulan ia dikerjakan; tarikh bayar yang sudah lepas
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+`a0e1766`. Komit: komit yang menambah bahagian ini (hash dalam laporan).
+**Tiada migrasi.**
+
+### Keputusan anda (10 Oktober 2026)
+
+- `[D]` A3: "Overtime paid in arrears: use the rest day and rule set of the
+  month the overtime was worked, not the paying month."
+- `[D]` A4: "Pay date in the past: reword to 'Already paid on 1 Oct? Record
+  the transfer with that date.' It must not block."
+
+### Apa yang berubah
+
+- `[D]` **Hari rehat bulan kerja** (`payroll.service.ts`,
+  `statutory-classification.ts` `classificationOn`): setiap hari OT bulan
+  lepas dinilai sebagai hari rehat atau tidak mengikut rekod statutori pekerja
+  yang berkuat kuasa **pada hari itu**.
+- `[D]` **Rule set bulan kerja** (`ruleSetOfWorkedMonth`): rule set tiada
+  tarikh, jadi yang terpakai pada bulan itu diambil daripada slip bulan itu
+  yang sudah diluluskan (terkunci): hari dan jam kadar biasa (ORP), nama rule
+  set, mod (Akta atau kadar klinik) dan kadar klinik. Pendarab diambil daripada
+  rule set yang sama namanya.
+- `[D]` Jika bulan kerja belum diluluskan dalam Kuwick, rule set yang berkuat
+  kuasa sekarang digunakan, dengan hari rehat bulan kerja.
+- `[D]` **Tarikh bayar yang sudah lepas** pada langkah Pay kini berkata
+  "Already paid on 1 Oct? Record the transfer with that date." Ia petunjuk
+  sahaja; tarikh masih boleh diubah dan tiada apa disekat.
+- `[D]` **Ujian**: e2e baharu `payroll-arrears-worked-month` (2: Sabtu
+  September dibayar sebagai OT hari biasa dan Ahad sebagai hari rehat,
+  kedua-duanya pada formula Akta seperti September, walaupun Oktober bertukar
+  kepada hari rehat Sabtu dan kadar klinik; bulan yang belum diluluskan
+  dinilai dengan rule set semasa); unit `classificationOn` +1; web
+  `paymentPanel` dikemas kini.
+
+### Andaian, dilaporkan
+
+- `[A]` Pendarab OT tidak dibekukan dalam slip, jadi pendarab bulan kerja
+  diambil daripada rule set yang sama namanya seperti sekarang.
+
+### Uji di staging
+
+1. Pekerja demo dengan OT tertunggak: tukar hari rehat dalam rekod statutori
+   mulai bulan ini. Run bulan ini menilai OT bulan lepas mengikut hari rehat
+   lama.
+2. Langkah Pay pada run yang ada tarikh sudah lepas: baris berkata "Already
+   paid on …? Record the transfer with that date." dan tarikh masih boleh
+   diubah.
+
+---
+
+## Bahagian 6 — 10 Oktober 2026 — Data ujian KLINIK HIJRAA BANGI dipadam di staging
+
+**Arahan anda:** "wipe now" (10 Oktober 2026). Skrip sekali guna
+`apps/api/scripts/wipe-hijraa-bangi-test-data.mjs`, dijalankan melalui
+workflow manual "Wipe Hijraa Bangi test data (one-off, manual)". Komit:
+`cf2bb5b`, `1d207f9`, `a0e1766`.
+
+### Apa yang berlaku
+
+- `[D]` Larian kering pertama (run 38042374305) **berhenti**: cawangan itu
+  ada **4** rekod pekerja, bukan 3. Yang keempat: doktor residen, status
+  RESIGNED, no pekerja 1036, ada log masuk, nama bukan salah satu daripada
+  tiga yang dinamakan. Tiada apa diubah.
+- `[D]` Skrip diubah supaya hanya tiga yang dinamakan (DR RESIDEN + BOD,
+  CLINICAL STAFF, STAFF ADMIN) dipadam; orang lain disimpan dan dilaporkan.
+- `[D]` Larian kering kedua (run 38042629064) **berhenti**: satu run
+  September 2026 untuk **seluruh tenant** (CALCULATED, 15 slip, semuanya
+  orang cawangan lain, tiada seorang pun daripada tiga itu) dikira sebagai
+  run cawangan. Skrip diubah: run seluruh tenant yang tidak membayar
+  seorang pun daripada tiga itu disimpan.
+- `[D]` Larian kering ketiga (run 38042960371): selamat, 160 baris. Dengan
+  no 1036 sekali (run 38042962105): selamat, 165 baris. Tiada apa diubah.
+- `[D]` **Dipadam** (run 38043215966, satu transaksi): 3 pekerja, 3 log
+  masuk mereka, 6 run 2026 cawangan (Jan–Mei dan Okt, semuanya APPROVED),
+  6 rekod lulus, 18 slip, 23 amaran, 3 senarai bayaran dengan 7 baris,
+  1 rekod filing, 6 kelulusan, 43 input, 18 baris YTD, 3 gaji, 5
+  klasifikasi statutori, 3 asas caruman, 3 pengakuan amaran, 2 item
+  berulang, 1 tuntutan (dengan 1 lampiran, 1 peristiwa), 1 fail pekerja.
+  Jumlah 160 baris.
+- `[D]` **Selepas**: baris rancangan yang tinggal 0; tiga pekerja itu 0;
+  run 2026 cawangan 0; kunci kelulusan hidup 2 daripada 2; satu baris
+  `audit_logs` (`admin.branchTestDataWiped`). Pekerja dalam cawangan: **1**,
+  iaitu no 1036 (disimpan, tidak dinamakan).
+- `[D]` Kunci kelulusan tidak dilemahkan: run yang diluluskan dibatalkan
+  dahulu (peralihan yang dibenarkan kunci itu sendiri); kunci rekod lulus
+  dimatikan hanya di dalam transaksi skrip dan dihidupkan semula sebelum
+  komit. Tiada kod, migrasi atau trigger diubah.
+- `[D]` Disimpan: cawangan, majikan dan nombor pendaftaran, polisi, item
+  payroll, kalendar, jadual statutori, semua data klinikal/pesakit/stok/
+  kewangan, 3 cawangan lain, tenant lain, dan run September 2026 seluruh
+  tenant. `audit_logs` lama tidak disentuh.
+
+### Keputusan yang masih terbuka
+
+- `[A]` No pekerja 1036 (doktor residen, RESIGNED) mungkin data sebenar,
+  jadi disimpan. Jika ia juga data ujian, skrip boleh memadamnya atas
+  arahan anda.
+
+---
+
 ## Batch 28 — 10 Oktober 2026 — Pemilik memilih tarikh bayar bagi setiap run, pada langkah Pay
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas

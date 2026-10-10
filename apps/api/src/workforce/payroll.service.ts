@@ -106,6 +106,7 @@ import {
   CLASSIFICATION_FIELDS,
   ContributionBasisRow,
   StatutoryClassificationRow,
+  classificationOn,
   resolveClassificationForPayroll,
   resolveContributionBasisForPayroll,
   resolveEmployerProfileForPayroll,
@@ -1610,18 +1611,25 @@ export class PayrollService {
         // Act does not reach, so the question OVERTIME_ENTITLEMENT_UNRECORDED
         // asks is answered by the rule set. Worked out per month's wages, so
         // last month's overtime is judged on last month's.
-        const scopeFor = (monthlyCents: number, resolutionDay: Date): OvertimeScope => {
-          const actScope = overtimeScope(monthlyCents, resolutionDay, classification.overtimeContractPolicy);
-          return clinicRates && !actScope.withinFirstSchedule && actScope.basis === 'NONE'
+        const scopeOf = (
+          monthlyCents: number,
+          resolutionDay: Date,
+          contractPolicy: typeof classification.overtimeContractPolicy,
+          monthClinicRates: typeof clinicRates,
+        ): OvertimeScope => {
+          const actScope = overtimeScope(monthlyCents, resolutionDay, contractPolicy);
+          return monthClinicRates && !actScope.withinFirstSchedule && actScope.basis === 'NONE'
             ? {
                 withinFirstSchedule: false,
                 basis: 'CONTRACTUAL',
                 reason:
                   'Wages exceed the First Schedule limit of RM4,000 a month, so the Act’s overtime provisions do not apply. ' +
-                  `Extra hours are paid at the clinic’s own rates under the "${clinicRates.ruleSet}" rule set.`,
+                  `Extra hours are paid at the clinic’s own rates under the "${monthClinicRates.ruleSet}" rule set.`,
               }
             : actScope;
         };
+        const scopeFor = (monthlyCents: number, resolutionDay: Date): OvertimeScope =>
+          scopeOf(monthlyCents, resolutionDay, classification.overtimeContractPolicy, clinicRates);
         const scope = scopeFor(fullMonthlyCents, statutoryResolutionDay);
         const workedAnyDay = attendance.some((row) => (row.workedMinutes ?? 0) > 0);
         if (!isBonusRun && workedAnyDay && !scope.withinFirstSchedule && !classification.overtimeContractPolicy && !clinicRates) {
@@ -1645,6 +1653,12 @@ export class PayrollService {
          * hours approved after last month was approved, or the month arrears
          * was switched off — but only where last month was run here: a month
          * paid elsewhere is not reached into.
+         *
+         * THE MONTH IT WAS WORKED decides the rest day and the rule set (UAT,
+         * 10 October 2026): a day is a rest day by the standing in force that
+         * day, and is priced by the rule set as that month's own approved
+         * payslip froze it, because a rule set carries no dates. Where that
+         * month was not approved here, the rule set in force now prices it.
          */
         const overtimeInArrears = !isBonusRun && (catalogue.get('OVERTIME')?.paidInArrears ?? false);
         const lastMonth = monthBefore(period);
@@ -1653,7 +1667,17 @@ export class PayrollService {
         const lastMonthSalary = resolveSalaryForPayroll(salaryByStaff.get(employee.staffId) ?? [], lastMonth, lastMonthEnd);
         const lastMonthlyCents =
           lastMonthSalary.kind === 'RESOLVED' && lastMonthSalary.row.basis === 'MONTHLY' ? lastMonthSalary.row.amountCents : fullMonthlyCents;
-        const priceDays = (rows: typeof attendance, monthRates: typeof rates, monthScope: OvertimeScope) =>
+        const priceDays = (
+          rows: typeof attendance,
+          month: {
+            rates: typeof rates;
+            scope: OvertimeScope;
+            restDayOn: (date: Date) => number | null;
+            hoursPerDay: number;
+            clinicRates: typeof clinicRates;
+            policy: typeof policyResolution.policy;
+          },
+        ) =>
           priceOvertime(
             rows.map((row) => ({
               attendanceId: row.id,
@@ -1662,22 +1686,46 @@ export class PayrollService {
               overtimeMinutes: row.overtimeMinutes,
               overtimeApproved: row.overtimeApproved,
             })),
-            (date) => classifyDay(date, { publicHolidayDates, festiveHolidayDates, restDayOfWeek: classification.restDayOfWeek }),
+            (date) => classifyDay(date, { publicHolidayDates, festiveHolidayDates, restDayOfWeek: month.restDayOn(date) }),
             {
               basis: 'MONTHLY',
-              scope: monthScope,
-              normalHoursPerDay: orpConfig.hoursPerDay,
-              dailyOrpCents: monthRates.overtimeDailyCents,
-              hourlyOrpCents: monthRates.overtimeHourlyCents,
-              clinicRates,
+              scope: month.scope,
+              normalHoursPerDay: month.hoursPerDay,
+              dailyOrpCents: month.rates.overtimeDailyCents,
+              hourlyOrpCents: month.rates.overtimeHourlyCents,
+              clinicRates: month.clinicRates,
               // The clinic's own multipliers where it set any, the Act's where it
               // did not. Never below the Act's — refused before it is stored.
-              multipliers: multipliersOf(policyResolution.policy),
+              multipliers: multipliersOf(month.policy),
             },
           );
+        const standing = classificationByStaff.get(employee.staffId) ?? [];
+        const worked = lastMonthDays.length > 0 ? await ruleSetOfWorkedMonth(tx, employee.staffId, lastMonth) : null;
+        const standingAtLastMonthEnd = classificationOn(standing, lastMonthEnd) ?? classification;
+        const lastClinicRates = worked
+          ? worked.clinicRates
+          : standingAtLastMonthEnd.overtimeContractPolicy === 'NOT_PAID'
+            ? null
+            : clinicRatesOf(policyResolution.policy);
+        const lastOrpConfig = worked?.orp ?? orpConfig;
         const pricing = combinePricing(
-          priceDays(lastMonthDays, ordinaryRates(lastMonthlyCents, orpConfig, daysInMonth(lastMonth)), scopeFor(lastMonthlyCents, lastMonthEnd)),
-          priceDays(overtimeInArrears ? [] : attendance, rates, scope),
+          priceDays(lastMonthDays, {
+            rates: ordinaryRates(lastMonthlyCents, lastOrpConfig, daysInMonth(lastMonth)),
+            scope: scopeOf(lastMonthlyCents, lastMonthEnd, standingAtLastMonthEnd.overtimeContractPolicy, lastClinicRates),
+            restDayOn: (date) => (classificationOn(standing, date) ?? classification).restDayOfWeek,
+            hoursPerDay: lastOrpConfig.hoursPerDay,
+            clinicRates: lastClinicRates,
+            // The rule set by the name that month froze; the one in force now where it is gone.
+            policy: (worked?.ruleSet ? payrollPolicies.find((row) => row.name === worked.ruleSet) : null) ?? policyResolution.policy,
+          }),
+          priceDays(overtimeInArrears ? [] : attendance, {
+            rates,
+            scope,
+            restDayOn: () => classification.restDayOfWeek,
+            hoursPerDay: orpConfig.hoursPerDay,
+            clinicRates,
+            policy: policyResolution.policy,
+          }),
         );
         const overtimeHours = pricing.normalDayHours;
 
@@ -4321,6 +4369,51 @@ export class PayrollService {
  * carried by another month's run is never paid again. Without arrears, only a
  * month this person was run for here is reached into.
  */
+/**
+ * THE RULE SET OF THE MONTH THE OVERTIME WAS WORKED, as that month's approved
+ * payslip line froze it (UAT, 10 October 2026). A rule set carries no dates,
+ * so what it was then is on the locked line: the ordinary-rate days and hours,
+ * the rule set's name and mode, and its clinic rates. Null where that month
+ * was not approved here.
+ */
+async function ruleSetOfWorkedMonth(tx: AdminTx, staffId: string, workedMonth: Date) {
+  const line = await tx.payrollLine.findFirst({
+    where: {
+      staffId,
+      payrollRun: { period: workedMonth, runType: 'REGULAR', status: { in: [PayrollRunStatus.APPROVED, PayrollRunStatus.PAID] } },
+    },
+    orderBy: { payrollRun: { sequence: 'desc' } },
+    select: { breakdown: true },
+  });
+  const frozen = (line?.breakdown ?? null) as {
+    ordinaryRateOfPay?: { overtimeDays?: number; hoursPerDay?: number };
+    overtimePolicy?: {
+      ruleSet?: string | null;
+      mode?: string;
+      clinicRates?: Record<'overtimeHourly' | 'publicHolidayShift' | 'festiveHolidayShift' | 'restDayShift' | 'session', number | null> | null;
+    };
+  } | null;
+  const orp = frozen?.ordinaryRateOfPay;
+  const policy = frozen?.overtimePolicy;
+  if (!orp?.overtimeDays || !orp.hoursPerDay || !policy) return null;
+  const cents = (value: number | null | undefined) => (value === null || value === undefined ? null : Math.round(Number(value) * 100));
+  return {
+    orp: { overtimeDaysPerMonth: Number(orp.overtimeDays), hoursPerDay: Number(orp.hoursPerDay) },
+    ruleSet: policy.ruleSet ?? null,
+    clinicRates:
+      policy.mode === 'CLINIC_RATE' && policy.clinicRates
+        ? {
+            ruleSet: policy.ruleSet ?? 'rule set',
+            overtimeHourlyCents: cents(policy.clinicRates.overtimeHourly),
+            publicHolidayShiftCents: cents(policy.clinicRates.publicHolidayShift),
+            festiveHolidayShiftCents: cents(policy.clinicRates.festiveHolidayShift),
+            restDayShiftCents: cents(policy.clinicRates.restDayShift),
+            sessionCents: cents(policy.clinicRates.session),
+          }
+        : null,
+  };
+}
+
 async function unpaidDaysOfLastMonth(tx: AdminTx, staffId: string, period: Date, inArrears: boolean) {
   const lastMonth = monthBefore(period);
   if (!inArrears) {

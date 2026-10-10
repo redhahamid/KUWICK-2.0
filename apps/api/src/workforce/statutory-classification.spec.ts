@@ -4,6 +4,7 @@ import {
   ClassificationField,
   StatutoryClassificationRow,
   classificationDiff,
+  classificationOn,
   resolveClassificationForPayroll,
   resolveEmployerProfileForPayroll,
 } from './statutory-classification';
@@ -283,5 +284,14 @@ describe('storedChangedFields', () => {
     expect(storedChangedFields('lindungParticipation')).toBeNull();
     expect(storedChangedFields(['lindungParticipation', 'notAField'])).toBeNull();
     expect(storedChangedFields([1])).toBeNull();
+  });
+});
+
+describe('classificationOn', () => {
+  it('finds the standing in force on one day, so a day worked last month keeps last month’s rest day', () => {
+    const rows = [row('sunday', '2024-01-01', '2026-09-30'), row('saturday', '2026-10-01', null, { restDayOfWeek: 6 })];
+    expect(classificationOn(rows, D('2026-09-12'))?.restDayOfWeek).toBe(0);
+    expect(classificationOn(rows, D('2026-10-10'))?.restDayOfWeek).toBe(6);
+    expect(classificationOn(rows, D('2023-12-31'))).toBeNull();
   });
 });

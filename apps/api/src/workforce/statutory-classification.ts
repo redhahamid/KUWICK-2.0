@@ -189,6 +189,16 @@ export type ClassificationOutcome =
  * `periodStart` and `periodEnd` are INCLUSIVE day boundaries — the caller
  * passes the last day of the month, not the first of the next.
  */
+/**
+ * THE STANDING IN FORCE ON ONE DAY: the latest version that covers it, or null
+ * where none does. A day worked last month and paid this month was a rest day
+ * or not by the standing of that day, not of the month that pays it.
+ */
+export function classificationOn<R extends StatutoryClassificationRow>(rows: readonly R[], day: Date): R | null {
+  const instant = atDayStart(day);
+  return [...rows].sort((a, b) => atDayStart(b.effectiveFrom) - atDayStart(a.effectiveFrom)).find((row) => covers(row, instant)) ?? null;
+}
+
 export function resolveClassificationForPayroll(
   rows: readonly StatutoryClassificationRow[],
   periodStart: Date,

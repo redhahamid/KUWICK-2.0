@@ -149,11 +149,13 @@ describe('choosing the pay dates for one run', () => {
     expect(chooseMutate.mock.calls[1][0]).toEqual({ runId: 'run-1', defaultDate: '2026-10-15', payDate: '2026-10-15' });
   });
 
-  it('keeps a date whose listing is prepared, flags a date that has passed, and offers nothing once every date stands', () => {
+  it('keeps a date whose listing is prepared, asks whether a date that has passed was already paid, and offers nothing once every date stands', () => {
     const some = mount(choosing([row('2020-01-01'), row('2026-10-30', { locked: true })], { payDateRange: { from: '2020-01-01', to: '2020-02-29' } }));
     expect(screen.getByTestId('run-pay-date-2026-10-30')).toHaveTextContent('30 Oct 2026 · listing prepared');
     expect(screen.queryByLabelText('Pay on, for what is due 30 Oct 2026')).toBeNull();
-    expect(screen.getByTestId('run-pay-date-2020-01-01')).toHaveTextContent('This date has passed');
+    expect(screen.getByTestId('run-pay-date-2020-01-01')).toHaveTextContent('Already paid on 1 Jan? Record the transfer with that date.');
+    // A hint only: the date can still be changed.
+    expect(screen.getByLabelText('Pay on, for what is due 1 Jan 2020')).toBeEnabled();
     some.unmount();
 
     const every = mount(choosing([row('2026-10-30', { locked: true })]));

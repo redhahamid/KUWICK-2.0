@@ -263,7 +263,10 @@ export function PaymentPanel({ runId }: { runId: string }) {
                         </Button>
                       </span>
                     ) : dayjs(row.payDate).isBefore(dayjs(), 'day') ? (
-                      <span style={{ fontSize: 12.5, color: '#b45309' }}>This date has passed. Change it if the money has not gone.</span>
+                      // A hint, never a block: money may well have gone on that day.
+                      <span style={{ fontSize: 12.5, color: '#b45309' }}>
+                        Already paid on {dayjs(row.payDate).format('D MMM')}? Record the transfer with that date.
+                      </span>
                     ) : null}
                   </>
                 )}
