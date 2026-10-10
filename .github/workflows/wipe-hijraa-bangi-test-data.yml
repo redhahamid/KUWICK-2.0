@@ -1,0 +1,205 @@
+# ONE-OFF: WIPE THE TEST EMPLOYEES OF KLINIK HIJRAA BANGI ON STAGING.
+#
+# Agreed with the clinic owner on 10 October 2026 ("wipe now"): branch KLINIK
+# HIJRAA BANGI only; remove its 3 test employees and everything attached to
+# them, plus all its 2026 payroll runs with their payslips, listings,
+# transfers, filing records and acknowledgements; keep everything else. The
+# rules, and how the script keeps to them, are at the top of
+# apps/api/scripts/wipe-hijraa-bangi-test-data.mjs.
+#
+# TWO PRESSES OF THE SAME BUTTON, like "Migrate only":
+#   1. "Apply" UNTICKED (the default): a READ-ONLY dry run. Prints the branch,
+#      the employees, the 2026 runs, the counts it would remove, and STOPS on
+#      anything outside the agreed scope. Changes nothing.
+#   2. "Apply" TICKED, with the confirmation typed: deletes, in one
+#      transaction, only when the dry-run verdict is clean; prints the counts
+#      after and writes one audit_logs row.
+#
+# It never runs the provisioning script and never reads the application
+# role's password. Only SUPABASE_DATABASE_URL (the owner, needed because every
+# table is FORCE ROW LEVEL SECURITY) is in its environment. No secret is
+# echoed. The job's token is contents:read.
+
+name: Wipe Hijraa Bangi test data (one-off, manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Delete. Leave unticked for a read-only dry run that changes nothing.'
+        type: boolean
+        required: false
+        default: false
+      confirm:
+        description: 'To delete, type exactly: WIPE KLINIK HIJRAA BANGI'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wipe-hijraa-bangi
+  cancel-in-progress: false
+
+jobs:
+  wipe:
+    name: ${{ inputs.apply && 'apply (one transaction)' || 'dry run (read only)' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+      NODE_OPTIONS: '--dns-result-order=ipv4first'
+    steps:
+      - name: Refuse to run without the secret, or to delete without the confirmation
+        env:
+          HAS_DB_URL: ${{ secrets.SUPABASE_DATABASE_URL != '' }}
+          APPLY: ${{ inputs.apply }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          [ "$HAS_DB_URL" = "true" ] || { echo "::error::Repository secret SUPABASE_DATABASE_URL is not set."; exit 1; }
+          if [ "$APPLY" = "true" ] && [ "$CONFIRM" != "WIPE KLINIK HIJRAA BANGI" ]; then
+            echo "::error::Apply was ticked without the confirmation. Type exactly: WIPE KLINIK HIJRAA BANGI"
+            exit 1
+          fi
+          echo "Mode: $([ "$APPLY" = "true" ] && echo "APPLY" || echo "DRY RUN, read only")"
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Pin the Supabase pooler hostname to IPv4
+        # WHY. GitHub-hosted runners have no routable IPv6. The pooler hostname
+        # is an AWS ELB; from a runner it can hand out an AAAA (IPv6) address,
+        # and a connection to it dies with `connect ENETUNREACH`. Two earlier
+        # fixes were insufficient: NODE_OPTIONS=--dns-result-order=ipv4first
+        # only reorders inside Node's own resolver (and not at all for Prisma's
+        # Rust engine), and a getent-based pin aborted the step with a bare
+        # "exit code 2" — `getent ahostsv4` returns exit 2 when the A lookup
+        # comes back empty (a transient/partial DNS answer for the dual-stack
+        # ELB), and under errexit+pipefail the command-substitution assignment
+        # took the whole step down before the "no IPv4" guard could report it.
+        #
+        # This step is the robust replacement. It resolves the pooler's IPv4 A
+        # records with Node itself — dns.resolve4 (a direct A query) with an
+        # IPv4-only getaddrinfo fallback, retried to ride out transient DNS —
+        # then pins EVERY resolved IPv4 into /etc/hosts. glibc consults
+        # /etc/hosts before DNS for BOTH Node/pg and Prisma's Rust engine, so
+        # once pinned no later step performs a DNS lookup for this host at all:
+        # the unreachable AAAA is out of the picture and every connection goes
+        # over IPv4. It runs AFTER checkout/setup-node (Node guaranteed, and a
+        # git tree exists for cleanup) and BEFORE the first DB connection.
+        #
+        # Errexit is deliberately OFF here so a resolution miss yields a clear
+        # ::error:: and exit 1, never an opaque exit code. No secret is printed:
+        # the URL is parsed inside Node (never echoed); only the non-secret
+        # hostname and its public IPv4 addresses are shown. Credentials and the
+        # connection URL are untouched — only name resolution changes.
+        env:
+          SUPABASE_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+        run: |
+          set +e
+          set -u
+
+          host="$(node -e 'process.stdout.write(new URL(process.env.SUPABASE_DATABASE_URL).hostname)')"
+          if [ -z "${host:-}" ]; then
+            echo "::error::Could not parse a hostname from SUPABASE_DATABASE_URL."
+            exit 1
+          fi
+
+          cat > /tmp/resolve-ipv4.cjs <<'RESOLVE_EOF'
+          const dnsp = require("dns").promises;
+          const host = new URL(process.env.SUPABASE_DATABASE_URL).hostname;
+          (async () => {
+            const once = async () => {
+              try { const a = await dnsp.resolve4(host); if (a && a.length) return a; } catch (e) {}
+              try {
+                const r = await dnsp.lookup(host, { family: 4, all: true });
+                const a = r.map((x) => x.address).filter(Boolean);
+                if (a.length) return a;
+              } catch (e) {}
+              return [];
+            };
+            for (let i = 0; i < 6; i++) {
+              const a = await once();
+              if (a.length) { process.stdout.write(Array.from(new Set(a)).join(" ")); return; }
+              await new Promise((res) => setTimeout(res, 2000));
+            }
+            process.exit(3);
+          })().catch(() => process.exit(3));
+          RESOLVE_EOF
+
+          ipv4s="$(node /tmp/resolve-ipv4.cjs)"
+          rm -f /tmp/resolve-ipv4.cjs
+          if [ -z "${ipv4s:-}" ]; then
+            echo "::error::The Supabase pooler hostname '$host' did not resolve to any IPv4 (A) record from this runner (tried dns.resolve4 and IPv4 getaddrinfo, with retries)."
+            echo "::error::GitHub-hosted runners have no routable IPv6, so an IPv4 A record is required. If this endpoint is IPv6-only here, use an IPv4-capable connection or an IPv6-capable runner."
+            exit 1
+          fi
+
+          # Pin every resolved IPv4 (the ELB publishes several) so resolution
+          # never falls back to the AAAA for this host.
+          for ip in $ipv4s; do
+            printf '%s %s\n' "$ip" "$host" | sudo tee -a /etc/hosts >/dev/null
+          done
+
+          echo "Supabase pooler hostname : $host"
+          echo "Pinned IPv4 address(es)  : $ipv4s"
+          echo "getent hosts after pin   :"
+          getent hosts "$host" || true
+          # 'NR==1' without 'exit' consumes all input, so getent never takes a
+          # SIGPIPE; assert the first resolved address is IPv4 (no colon).
+          first="$(getent hosts "$host" | awk 'NR==1{print $1}')"
+          case "${first:-}" in
+            ""|*:*)
+              echo "::error::'$host' still does not resolve to IPv4 after pinning (got '${first:-none}')."
+              exit 1
+              ;;
+          esac
+          echo "IPv4 pin verified: $first"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Derive the node-pg form of the connection URL
+        # As in "HR UAT Seed": node-postgres verifies the certificate chain
+        # under a plain sslmode=require, which the shared pooler's chain may not
+        # satisfy; sslmode=no-verify is the documented remote form for pg-based
+        # scripts (docs/STAGING_DEPLOYMENT.md). Derived once, masked, never printed.
+        run: |
+          PG_URL="${DATABASE_URL/sslmode=require/sslmode=no-verify}"
+          echo "::add-mask::$PG_URL"
+          {
+            echo "PG_DATABASE_URL<<__PG_URL_EOF__"
+            echo "$PG_URL"
+            echo "__PG_URL_EOF__"
+          } >> "$GITHUB_ENV"
+
+      - name: Run the wipe script
+        env:
+          WIPE_APPLY: ${{ inputs.apply && 'true' || 'false' }}
+        run: |
+          set -o pipefail
+          DATABASE_URL="$PG_DATABASE_URL" node apps/api/scripts/wipe-hijraa-bangi-test-data.mjs 2>&1 | tee "$RUNNER_TEMP/wipe.txt"
+
+      - name: Write the run summary
+        if: always()
+        env:
+          APPLY: ${{ inputs.apply }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          {
+            echo "## Wipe Hijraa Bangi test data"
+            echo ""
+            echo "- Branch: \`${GITHUB_REF_NAME}\` at \`${GITHUB_SHA}\`"
+            echo "- Mode: $([ "$APPLY" = "true" ] && echo "APPLY" || echo "DRY RUN, nothing changed")"
+            echo "- Job status: ${JOB_STATUS}"
+            echo ""
+            echo '```'
+            cat "$RUNNER_TEMP/wipe.txt" 2>/dev/null || echo "(the script did not run)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
