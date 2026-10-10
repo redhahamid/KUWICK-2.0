@@ -3643,6 +3643,8 @@ export interface PayrollPolicyRow {
    * Recorded, not applied: the final settlement is not built.
    */
   termination: { basis: string; days: number | null };
+  /** How a part month is paid: s.18A's calendar days, or the clinic's working days. */
+  partMonthBasis: "CALENDAR_DAYS" | "WORKING_DAYS";
   /** §6 — how extra hours, rest days and public holidays are priced. */
   overtimeMode: OvertimeMode;
   clinicRates: ClinicRateFields | null;

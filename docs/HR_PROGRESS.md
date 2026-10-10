@@ -6,14 +6,81 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 24 — 10 Oktober 2026 — Bulan separa: hari kalendar atau hari bekerja (Bahagian 3)
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
+Batch 23 (`0a2a92f`). Komit: komit yang menambah bahagian ini (hash dalam
+laporan). **Migrasi: `20261010110000_payroll_policy_part_month_basis`** —
+satu lajur `part_month_basis` pada `payroll_policies` (lalai `CALENDAR_DAYS`)
+dan satu semakan (hanya `CALENDAR_DAYS` atau `WORKING_DAYS`); tiada pernyataan
+data, tiada jadual baharu. Dijalankan di staging dengan *Migrate only* dari
+cawangan ini **sebelum** master dimajukan.
+
+### Percanggahan dengan kod, dilaporkan
+
+- `[D]` Kod sebelum ini **sengaja membuang** pilihan pembahagi bulan separa,
+  dengan sebab bertulis dalam `schema.prisma` (PayrollPolicy) dan
+  `upsert-payroll-policy.dto.ts`: s.18A Akta Kerja menetapkan bulan yang tidak
+  lengkap dikira dengan **hari kalendar** (gaji × hari bekerja ÷ hari dalam
+  bulan), jadi pilihan lain "is a choice the law does not give". Permintaan
+  anda menambahnya semula. Saya ikut permintaan anda, dengan tiga pengaman:
+  lalai kekal hari kalendar (s.18A); pilihan *Working days* dicatat dalam
+  audit; dan setiap bulan yang hari bekerja membayar **kurang** daripada angka
+  s.18A, review menamakan pekerja itu dan beza wangnya.
+- `[A]` Cadangan saya: kekalkan *Calendar days* melainkan kontrak pekerja
+  memang menyebut hari bekerja.
+
+### Apa yang berubah
+
+- `[D]` **Settings → Payroll policies → rule set → Part-month proration**:
+  *Calendar days (Employment Act s.18A)* (lalai) atau *Working days*.
+  Penerangan di bawahnya menunjukkan contoh anda: RM1,800 × 11/31 =
+  RM638.71. *Unpaid leave keeps its own divisor: the days in the month.*
+  Senarai rule set menunjukkan "part months by working days" bila dipilih.
+- `[D]` **Hari bekerja** (`proration.ts` `workingWeek`, `partMonthPay`):
+  gaji × hari bekerja semasa bekerja ÷ hari bekerja dalam bulan, dikira
+  daripada minggu kerja pekerja itu sendiri (5, 5.5 atau 6 hari pada rekod
+  pekerja) dan hari rehatnya. Tiada angka tetap.
+  `[A]` Pada minggu 5 hari, hari sebelum hari rehat juga cuti; pada minggu
+  5.5 hari, hari itu dikira separuh. Cuti umum dikira sebagai hari bekerja
+  biasa.
+- `[D]` Pekerja tanpa minggu kerja tetap pada rekod (tiada 5/5.5/6, atau hari
+  rehat berubah-ubah) dibayar dengan hari kalendar, dan baris *Part of the
+  month only* menyebut sebabnya.
+- `[D]` Amaran baharu **Part month below the Act’s calendar days**
+  (`PART_MONTH_BELOW_STATUTORY`, WARNING, tidak menyekat): contohnya pekerja
+  yang berhenti pada hari Ahad 4 Oktober dibayar RM200.00 dengan hari
+  bekerja, sedangkan s.18A memberi RM232.26 — kurang RM32.26.
+- `[D]` **Cuti tanpa gaji tidak berubah**: masih gaji ÷ hari dalam bulan.
+- `[D]` Ayat lama di halaman yang berkata bulan separa "not the clinic’s to
+  choose" telah dibetulkan.
+- `[D]` **Ujian**: API unit +6 (`proration`), e2e +3
+  (`payroll-part-month-basis`: 638.71 kalendar, 666.67 hari bekerja, 200.00
+  dengan amaran, pekerja tanpa minggu kerja, FIXED_DAYS ditolak), web +1
+  (`payrollPartMonth`).
+
+### Uji di staging (ikut urutan)
+
+1. *Settings → Payroll policies* → *Edit* rule set lalai: medan
+   **Part-month proration** = *Calendar days (Employment Act s.18A)*.
+2. Pekerja demo yang mula kerja pada 21 haribulan dengan gaji RM1,800: bulan
+   itu membayar RM638.71 (11/31).
+3. Tukar kepada **Working days**, simpan, kira semula bulan itu: pekerja
+   minggu 6 hari dengan Ahad sebagai hari rehat dibayar RM666.67 (10/27).
+4. Pekerja yang berhenti pada hari rehat: review menunjukkan **Part month
+   below the Act’s calendar days** dengan beza wangnya.
+
+---
+
 ## Batch 23 — 10 Oktober 2026 — Satu bulan payroll, tiga tarikh bayar (Bahagian 1)
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`, dibina atas
-Batch 22 (`5348779`). Komit: komit yang menambah bahagian ini (hash dalam
-laporan). **Migrasi: `20261010100000_payment_batch_pay_date`** — satu lajur
-boleh-null `pay_date` pada `payroll_payment_batches`; tiada pernyataan data,
-tiada jadual baharu. Dijalankan di staging dengan *Migrate only* dari cawangan
-ini **sebelum** master dimajukan. **Tiada logik pengiraan statutori diubah**:
+Batch 22 (`5348779`). Komit: `0a2a92f`. **Migrasi:
+`20261010100000_payment_batch_pay_date`** — satu lajur boleh-null `pay_date`
+pada `payroll_payment_batches`; tiada pernyataan data, tiada jadual baharu.
+Dijalankan di staging dengan *Migrate only* run #13 dari cawangan ini
+**sebelum** master dimajukan; status selepas: "Database schema is up to
+date!". **Tiada logik pengiraan statutori diubah**:
 EPF, SOCSO, EIS, PCB dan levi HRD masih dikira atas seluruh bulan, dan payslip
 masih satu bagi setiap bulan; hanya bayaran yang dipecah.
 

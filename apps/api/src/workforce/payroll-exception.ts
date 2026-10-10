@@ -460,6 +460,33 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'put this employee on a rule set that is at or above it.',
     deepLink: () => '/admin/hr/settings/payroll',
   },
+  /*
+   * A PART MONTH PAID BY WORKING DAYS, BELOW WHAT s.18A's CALENDAR DAYS PAY
+   * (UAT, 10 October 2026).
+   *
+   * Working days are the rule set's choice, so they are what is paid, and in
+   * most months they pay the same or more. Not in every month: somebody who
+   * leaves on a rest day, or joins just before one, can be paid less than the
+   * Act's calendar-day figure. This is the record, as with a clinic rate below
+   * the Act — who, which month, and by how much — not an obstacle.
+   */
+  PART_MONTH_BELOW_STATUTORY: {
+    code: 'PART_MONTH_BELOW_STATUTORY',
+    title: 'Part month below the Act’s calendar days',
+    severity: 'WARNING',
+    overridable: false,
+    cause: (c) =>
+      `The "${String(c.ruleSet)}" rule set pays this part month by working days: ${String(c.paid)}, where s.18A's ` +
+      `calendar days pay ${String(c.statutory)}, ${String(c.short)} more.`,
+    consequence:
+      'Section 18A of the Employment Act works out an incomplete month by calendar days. The clinic chose working ' +
+      'days, so they are what is paid; this employee receives less than the Act’s figure this month, and the clinic ' +
+      'owes the difference if it is ever claimed.',
+    remediation:
+      'Nothing is required to finish this run. To pay the Act’s figure, set the rule set’s part months to calendar ' +
+      'days in Settings and work the month out again.',
+    deepLink: () => '/admin/hr/settings/payroll',
+  },
   /**
    * THE EMPLOYER'S OWN STANDING, unrecorded. Run-level (no staffId): the levy
    * is 1% or 0.5% of every leviable wage in the month, so the gap belongs to
@@ -697,9 +724,13 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     severity: 'INFO',
     overridable: false,
     cause: (c) => String(c.note),
-    consequence:
-      'Their basic pay is worked out under s.18A of the Employment Act — the monthly wage divided by the days ' +
-      'in this month, times the days they served. Overtime is still priced on their full monthly wage.',
+    consequence: (c) =>
+      c.basis === 'WORKING_DAYS'
+        ? 'Their basic pay is worked out by working days, as their rule set says: the monthly wage divided by the ' +
+          'working days in this month, times the working days they were employed. Overtime is still priced on their ' +
+          'full monthly wage.'
+        : 'Their basic pay is worked out under s.18A of the Employment Act — the monthly wage divided by the days ' +
+          'in this month, times the days they served. Overtime is still priced on their full monthly wage.',
     remediation: 'Nothing to do, unless the start or end date on their record is wrong.',
     deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=employment&focus=employment`,
   },

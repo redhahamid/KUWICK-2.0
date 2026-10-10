@@ -71,7 +71,7 @@ import {
   planMaterialisation,
 } from './payroll-materialisation';
 import { computeLeaveBalance, leaveDaysInYear, proRateEntitlement } from './leave-balance';
-import { describeProration, proratedBasicCents, prorationFor } from './proration';
+import { describeProration, partMonthPay, prorationFor, workingWeek } from './proration';
 import { classifyDay, describePricedDay, priceOvertime } from './overtime-pricing';
 import { clinicRatesOf, multipliersOf, pcbProjectionOf, resolvePayrollPolicy } from './payroll-policy-resolution';
 import { workforceCategoryOf } from './workforce-category';
@@ -1291,12 +1291,45 @@ export class PayrollService {
           continue;
         }
         const fullMonthlyCents = salary.row.amountCents;
-        const basicCents = proratedBasicCents(fullMonthlyCents, proration, days);
-        const prorationNote = describeProration(proration, days);
+        // THE RULE SET (§6), resolved here because it also says how a part
+        // month is paid. It prices overtime further down.
+        const policyResolution = resolvePayrollPolicy(payrollPolicies, {
+          payrollPolicyId: employee.payrollPolicyId,
+          legalEmployerId: employee.legalEmployerId,
+          category: workforceCategoryOf(employee.staff),
+        });
+        // A PART MONTH BY THE RULE SET'S BASIS (UAT, 10 October 2026): s.18A's
+        // calendar days unless the clinic chose working days, counted from
+        // this person's own working week. Held against the calendar figure
+        // either way, so a month that pays less than the Act says so.
+        const partMonth = partMonthPay({
+          monthlyCents: fullMonthlyCents,
+          proration,
+          window: { periodStart: period, periodEnd, daysInPeriod: days, startDate: employee.startDate, endDate: employee.endDate },
+          basis: policyResolution.policy?.partMonthBasis ?? 'CALENDAR_DAYS',
+          week: workingWeek({
+            workDaysPerWeek: employee.workDaysPerWeek === null ? null : Number(employee.workDaysPerWeek),
+            restDayOfWeek: classification.restDayOfWeek,
+            restDayVaries: classification.restDayVaries,
+          }),
+        });
+        const basicCents = partMonth.basicCents;
+        const prorationNote = describeProration(proration, days, partMonth.workingDays);
         if (prorationNote) {
           // INFO, not a blocker. A part-month is a normal event; what is not
           // acceptable is it happening invisibly.
-          raise('PART_MONTH', employee, { note: prorationNote });
+          raise('PART_MONTH', employee, {
+            note: partMonth.fallback ? `${prorationNote} ${partMonth.fallback}` : prorationNote,
+            basis: partMonth.basis,
+          });
+        }
+        if (partMonth.basicCents < partMonth.calendarCents) {
+          raise('PART_MONTH_BELOW_STATUTORY', employee, {
+            ruleSet: policyResolution.policy?.name ?? 'rule set',
+            paid: formatCents(partMonth.basicCents),
+            statutory: formatCents(partMonth.calendarCents),
+            short: formatCents(partMonth.calendarCents - partMonth.basicCents),
+          });
         }
 
         // The Ordinary Rate of Pay is built from the earnings that COUNT toward
@@ -1559,11 +1592,6 @@ export class PayrollService {
         // standing wins over a group rule set: the person's record is the more
         // specific answer, and a doctor contracted with no overtime is not
         // put on clinic rates by being a doctor.
-        const policyResolution = resolvePayrollPolicy(payrollPolicies, {
-          payrollPolicyId: employee.payrollPolicyId,
-          legalEmployerId: employee.legalEmployerId,
-          category: workforceCategoryOf(employee.staff),
-        });
         const clinicRates =
           classification.overtimeContractPolicy === 'NOT_PAID' ? null : clinicRatesOf(policyResolution.policy);
         const actScope = overtimeScope(fullMonthlyCents, statutoryResolutionDay, classification.overtimeContractPolicy);

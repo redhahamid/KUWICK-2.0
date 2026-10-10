@@ -1,4 +1,4 @@
-import { describeProration, proratedBasicCents, prorationFor, unpaidLeaveDeductionCents } from './proration';
+import { describeProration, partMonthPay, proratedBasicCents, prorationFor, unpaidLeaveDeductionCents, workingWeek } from './proration';
 
 /** August 2026 — 31 days. */
 const AUG = {
@@ -153,5 +153,66 @@ describe('unpaid leave is s.18A too, not clinic policy', () => {
     const afterLeave = prorated - unpaidLeaveDeductionCents(310000, 1, 31);
     const directly = Math.round((310000 / 31) * 11);
     expect(afterLeave).toBe(directly);
+  });
+});
+
+describe('a part month by working days, when the rule set says so (UAT, 10 October 2026)', () => {
+  /** October 2026 — 31 days, the 1st a Thursday, Sundays on the 4th, 11th, 18th and 25th. */
+  const OCT = { periodStart: on('2026-10-01'), periodEnd: on('2026-11-01'), daysInPeriod: 31 };
+  const sundayRest = (workDaysPerWeek: number | null) => workingWeek({ workDaysPerWeek, restDayOfWeek: 0, restDayVaries: false });
+  const pay = (startDate: Date | null, endDate: Date | null, basis: string, week: readonly number[] | null) => {
+    const window = { ...OCT, startDate, endDate };
+    return partMonthPay({ monthlyCents: 180000, proration: prorationFor(window), window, basis, week });
+  };
+
+  it('pays the Act’s calendar days unless told otherwise: 1,800 × 11/31 = 638.71', () => {
+    expect(pay(on('2026-10-21'), null, 'CALENDAR_DAYS', sundayRest(6))).toMatchObject({
+      basicCents: 63871,
+      calendarCents: 63871,
+      basis: 'CALENDAR_DAYS',
+      workingDays: null,
+      fallback: null,
+    });
+  });
+
+  it('reads the working week from the rest day', () => {
+    expect(sundayRest(6)).toEqual([0, 1, 1, 1, 1, 1, 1]);
+    expect(sundayRest(5.5)).toEqual([0, 1, 1, 1, 1, 1, 0.5]);
+    expect(sundayRest(5)).toEqual([0, 1, 1, 1, 1, 1, 0]);
+    // A Friday rest day on a five-day week takes Thursday off too.
+    expect(workingWeek({ workDaysPerWeek: 5, restDayOfWeek: 5, restDayVaries: false })).toEqual([1, 1, 1, 1, 0, 0, 1]);
+    expect(workingWeek({ workDaysPerWeek: 6, restDayOfWeek: null, restDayVaries: true })).toBeNull();
+    expect(workingWeek({ workDaysPerWeek: 4, restDayOfWeek: 0, restDayVaries: false })).toBeNull();
+    expect(workingWeek({ workDaysPerWeek: null, restDayOfWeek: 0, restDayVaries: false })).toBeNull();
+  });
+
+  it('pays a joiner by the working days of their own week', () => {
+    // The 21st to the 31st: eleven days, one Sunday, two Saturdays.
+    expect(pay(on('2026-10-21'), null, 'WORKING_DAYS', sundayRest(6))).toMatchObject({
+      basicCents: 66667,
+      calendarCents: 63871,
+      basis: 'WORKING_DAYS',
+      workingDays: { employed: 10, inPeriod: 27 },
+    });
+    expect(pay(on('2026-10-21'), null, 'WORKING_DAYS', sundayRest(5.5))).toMatchObject({ basicCents: 66122, workingDays: { employed: 9, inPeriod: 24.5 } });
+    expect(pay(on('2026-10-21'), null, 'WORKING_DAYS', sundayRest(5))).toMatchObject({ basicCents: 65455, workingDays: { employed: 8, inPeriod: 22 } });
+  });
+
+  it('can pay less than the Act, and keeps the Act’s figure beside it to say so', () => {
+    // Left on Sunday the 4th: four calendar days, three of them working days.
+    expect(pay(null, on('2026-10-04'), 'WORKING_DAYS', sundayRest(6))).toMatchObject({ basicCents: 20000, calendarCents: 23226, basis: 'WORKING_DAYS' });
+  });
+
+  it('pays a whole month whole, and falls back to calendar days, with the reason, when there is no week to count', () => {
+    expect(pay(on('2024-01-01'), null, 'WORKING_DAYS', sundayRest(6))).toMatchObject({ basicCents: 180000, calendarCents: 180000 });
+    const noWeek = pay(on('2026-10-21'), null, 'WORKING_DAYS', null);
+    expect(noWeek).toMatchObject({ basicCents: 63871, basis: 'CALENDAR_DAYS', workingDays: null });
+    expect(noWeek.fallback).toMatch(/no fixed working week/);
+  });
+
+  it('describes the month in working days when it was paid by them', () => {
+    const p = prorationFor({ ...OCT, startDate: on('2026-10-21'), endDate: null });
+    expect(describeProration(p, 31, { employed: 10, inPeriod: 27 })).toBe('Paid for 10 of 27 working days: they started on 2026-10-21.');
+    expect(describeProration(p, 31)).toBe('Paid for 11 of 31 days: they started on 2026-10-21.');
   });
 });

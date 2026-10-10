@@ -8407,8 +8407,21 @@ model PayrollPolicy {
   /// worse than offering nothing: it invites somebody to set 26 and underpay
   /// every joiner in a 31-day month, and it made the screen claim a control
   /// the engine never had.
+  ///
+  /// A part month came back as a choice on 10 October 2026, at the account
+  /// holder's request, as `partMonthBasis` below — with s.18A as the default
+  /// and a warning on every month the other basis pays less.
   terminationBasis ProrationBasis @default(CALENDAR_DAYS) @map("termination_basis")
   terminationDays  Int            @default(31) @map("termination_days")
+
+  /// HOW A PART MONTH IS PAID: somebody who joined or left during it.
+  /// CALENDAR_DAYS is s.18A and the default: monthly wages × days employed ÷
+  /// days in the month. WORKING_DAYS is the clinic's own: the same over
+  /// working days, counted from each person's working week and rest day. It
+  /// can pay less than s.18A in some months, and the run names who and by how
+  /// much when it does. FIXED_DAYS is refused by a check. Unpaid leave keeps
+  /// its own divisor, the days in the month, whatever this says.
+  partMonthBasis   ProrationBasis @default(CALENDAR_DAYS) @map("part_month_basis")
 
   /// HOW EXTRA HOURS, REST DAYS AND PUBLIC HOLIDAYS ARE PRICED. STATUTORY is
   /// the Employment Act's arithmetic; CLINIC_RATE prices from the fixed

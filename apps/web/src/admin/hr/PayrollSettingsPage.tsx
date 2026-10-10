@@ -228,6 +228,7 @@ export function PayrollSettingsPage() {
   // silently read as 0 while somebody is still typing it.
   const [otDays, setOtDays] = useState('26');
   const [pcbProjection, setPcbProjection] = useState<'CURRENT_MONTH' | 'BASIC_ONLY' | 'CONTRACTUAL_MONTHLY'>('CURRENT_MONTH');
+  const [partMonth, setPartMonth] = useState<'CALENDAR_DAYS' | 'WORKING_DAYS'>('CALENDAR_DAYS');
   const [hoursDay, setHoursDay] = useState('7.5');
   // THE CLINIC'S OWN MULTIPLIERS, blank for "the Act's". Strings for the same
   // reason the divisors are: "2." mid-keystroke is not the number 2.
@@ -262,6 +263,7 @@ export function PayrollSettingsPage() {
     setSession('');
     setOtDays('26');
     setPcbProjection('CURRENT_MONTH');
+    setPartMonth('CALENDAR_DAYS');
     setHoursDay('7.5');
     setMultipliers({ 'ruleset-ot-multiplier': '', 'ruleset-restday-multiplier': '', 'ruleset-holiday-multiplier': '', 'ruleset-festive-multiplier': '' });
     setBelowActOk(false);
@@ -280,6 +282,7 @@ export function PayrollSettingsPage() {
     setSession(row.clinicRates?.session ?? '');
     setOtDays(String(row.overtime.days ?? 26));
     setPcbProjection(row.pcbProjectionBasis ?? 'CURRENT_MONTH');
+    setPartMonth(row.partMonthBasis ?? 'CALENDAR_DAYS');
     setHoursDay(String(row.overtime.hoursPerDay));
     // A box left blank is on the Act's, and stays blank so the placeholder can
     // say which figure that is rather than the clinic having to remember.
@@ -416,6 +419,7 @@ export function PayrollSettingsPage() {
         overtimeDays: otDaysNum,
         overtimeHoursPerDay: hoursNum,
         pcbProjectionBasis: pcbProjection,
+        partMonthBasis: partMonth,
         overtimeMode: mode,
         // Null clears a raised multiplier back to the Act's. Sent on every
         // save, in both modes: a clinic-rate rule set falls back to the Act's
@@ -622,6 +626,7 @@ export function PayrollSettingsPage() {
               render: (_: unknown, row) => (
                 <span>
                   {pricingLine(row)}
+                  {row.partMonthBasis === 'WORKING_DAYS' ? <span className="hr-faint"> · part months by working days</span> : null}
                   {row.belowAct ? (
                     <>
                       {' '}
@@ -787,7 +792,7 @@ export function PayrollSettingsPage() {
               The ordinary rate is the monthly salary over the overtime divisor, and an hour is that over the normal
               hours. Overtime, rest days and public holidays are all priced from it. Section 60I(1A) sets 26; above it
               every hour of overtime is worth less, and the run refuses to calculate. A day of unpaid leave is not set
-              here: section 18A prices an incomplete month on the actual days in it, so the divisor is 28, 29, 30 or 31
+              here: section 18A prices it on the actual days in the month, so the divisor is 28, 29, 30 or 31
               depending on the month.
             </div>
           </div>
@@ -837,6 +842,30 @@ export function PayrollSettingsPage() {
             * at assessment either way. It changes how much of their money is
             * held back each month until then.
             */}
+          {/*
+            * A PART MONTH (UAT, 10 October 2026). s.18A's calendar days are
+            * the Act's answer and the default; working days are the clinic's
+            * own, and the month's review names anybody they pay less.
+            */}
+          <div>
+            <label htmlFor="ruleset-part-month">Part-month proration</label>
+            <Select
+              id="ruleset-part-month"
+              value={partMonth}
+              onChange={setPartMonth}
+              style={{ width: '100%', maxWidth: 460 }}
+              options={[
+                { value: 'CALENDAR_DAYS', label: 'Calendar days (Employment Act s.18A)' },
+                { value: 'WORKING_DAYS', label: 'Working days' },
+              ]}
+            />
+            <div className="hr-form__help">
+              {partMonth === 'CALENDAR_DAYS'
+                ? 'Someone who joins or leaves during a month is paid monthly salary × days employed ÷ days in the month, e.g. RM1,800 × 11/31 = RM638.71.'
+                : 'Someone who joins or leaves during a month is paid monthly salary × working days employed ÷ working days in the month, counted from their own working week and rest day. Where that pays less than the calendar days the Act uses, the month’s review names them and the difference.'}
+            </div>
+            <div className="hr-form__help">Unpaid leave keeps its own divisor: the days in the month.</div>
+          </div>
           <div>
             <label htmlFor="ruleset-pcb-projection">How the rest of the year is estimated for monthly tax</label>
             <Select

@@ -56,6 +56,14 @@ export class UpsertPayrollPolicyDto {
   @IsOptional() @IsIn(BASES) terminationBasis?: Basis;
   @IsOptional() @IsInt() @Min(1) @Max(31) terminationDays?: number;
 
+  /**
+   * HOW A PART MONTH IS PAID (UAT, 10 October 2026). CALENDAR_DAYS is s.18A
+   * and the default; WORKING_DAYS is the clinic's own choice, counted from
+   * each person's working week. A fixed-day month is not offered. Absent
+   * keeps what the rule set has.
+   */
+  @IsOptional() @IsIn(['CALENDAR_DAYS', 'WORKING_DAYS']) partMonthBasis?: 'CALENDAR_DAYS' | 'WORKING_DAYS';
+
   /** §6 — STATUTORY (the Act's formula) or CLINIC_RATE (the amounts below). */
   @IsOptional() @IsIn(OVERTIME_MODES) overtimeMode?: OvertimeModeCode;
   /** RM per hour of approved overtime on a normal working day. */

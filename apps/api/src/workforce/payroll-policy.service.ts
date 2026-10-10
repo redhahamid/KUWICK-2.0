@@ -168,6 +168,8 @@ export class PayrollPolicyService {
           /** How this rule set estimates the rest of the year for monthly tax. */
           pcbProjectionBasis: row.pcbProjectionBasis,
           termination: { basis: row.terminationBasis, days: row.terminationDays },
+          /** How a part month is paid: s.18A's calendar days, or the clinic's working days. */
+          partMonthBasis: row.partMonthBasis,
           overtimeMode: row.overtimeMode,
           // WHAT THE HOURS ARE PRICED AT, and whether the clinic chose it. The
           // screen needs both: the figure in force, and whether it is the
@@ -263,10 +265,10 @@ export class PayrollPolicyService {
       }),
       categories: WORKFORCE_CATEGORIES,
       notice:
-        'Overtime, rest-day and public-holiday pay follow the rule set from the next calculation. A part month, a day of ' +
-        'unpaid leave and the ordinary rate are set by the Employment Act and are not the clinic’s to choose — the ' +
-        'settings that offered that choice have been removed. The termination basis is recorded and not yet applied: the ' +
-        'final settlement is not built.',
+        'Overtime, rest-day and public-holiday pay follow the rule set from the next calculation, and so does a part ' +
+        'month: calendar days under s.18A unless the rule set says working days. A day of unpaid leave and the ' +
+        'ordinary rate are set by the Employment Act and are not the clinic’s to choose. The termination basis is ' +
+        'recorded and not yet applied: the final settlement is not built.',
     };
   }
 
@@ -571,6 +573,8 @@ export class PayrollPolicyService {
         overtimeHoursPerDay: dto.overtimeHoursPerDay ?? 7.5,
         terminationBasis: dto.terminationBasis ?? 'CALENDAR_DAYS',
         terminationDays: dto.terminationDays ?? 31,
+        // Absent keeps what the rule set has; a new one starts on s.18A.
+        ...(dto.partMonthBasis === undefined ? {} : { partMonthBasis: dto.partMonthBasis }),
         overtimeMode,
         ...rates,
         ...multipliers,
@@ -617,6 +621,7 @@ export class PayrollPolicyService {
           (terms && acknowledgement.belowActAcknowledgedAt
             ? `, acknowledged as below the Act: ${acknowledgement.belowActReason}`
             : '') +
+          (dto.partMonthBasis === 'WORKING_DAYS' ? ', part months by working days rather than s.18A calendar days' : '') +
           (workforceCategory ? ` for ${categoryLabel(workforceCategory)?.toLowerCase()}` : ''),
         ...(existing ? { before: existing, after: saved } : { after: saved }),
       });
