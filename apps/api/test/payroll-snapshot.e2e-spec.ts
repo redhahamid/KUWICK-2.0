@@ -540,13 +540,15 @@ describe('a pay component treatment change is a dated version (e2e)', () => {
     expect(rows[0].name).toBe('Site allowance (outstation)');
   });
 
-  it('refuses a treatment change dated on or before the version in force', async () => {
+  it('refuses a treatment change dated before the version in force without a reason', async () => {
+    // Dating it earlier is allowed since 11 October 2026, with a reason and no
+    // approved month in the way (pay-component-backdate.e2e-spec.ts).
     const refused = await request(server())
       .post('/workforce/pay-components')
       .set('Authorization', bearer)
       .send({ ...COMPONENT, epfLiable: false, effectiveFrom: '1969-01-01' })
       .expect(400);
-    expect(refused.body.message).toMatch(/which is not before/);
+    expect(refused.body.message).toMatch(/Send a reason/);
   });
 });
 

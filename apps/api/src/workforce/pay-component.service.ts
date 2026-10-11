@@ -4,6 +4,9 @@ import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { requirePermission, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
+import { ActingStaff } from '../clinical/clinical-actor';
+import { AdminTx } from '../finance/admin-actor';
+import { PayComponent } from '@prisma/client';
 import { SEED_PAY_COMPONENTS } from './pay-component-catalogue';
 import { UpsertPayComponentDto } from './dto/upsert-pay-component.dto';
 import { SetPayDateDto } from './dto/set-pay-date.dto';
@@ -58,6 +61,127 @@ const TREATMENT_FIELDS = [
  * `verificationStatus` can only be raised by `hr.statutory.manage` — and even
  * then this stage never raises it, because no authority has been read.
  */
+/*
+ * A TREATMENT DATED EARLIER THAN THE VERSION IN FORCE (UAT, 11 October 2026):
+ * "Turning SOCSO off for ALLOWANCE from Jan 2026 is refused." The rule built
+ * for HRD registration: a version's start may be corrected, or a change dated
+ * earlier, as long as no APPROVED or PAID month of ANY branch lies in the
+ * period that would be priced differently. Payroll items are tenant-wide, so
+ * the check is too. Every row touched is logged with who, when and why.
+ */
+const isoDay = (date: Date) => date.toISOString().slice(0, 10);
+const dayBefore = (date: Date) => new Date(date.getTime() - 86_400_000);
+const monthOf = (date: Date) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+
+/** Refuses, naming the months and branches, when a settled month lies in [from's month, until). */
+async function refuseOverApproved(tx: AdminTx, code: string, from: Date, until: Date | null) {
+  const runs = await tx.payrollRun.findMany({
+    where: { status: { in: ['APPROVED', 'PAID'] }, period: { gte: monthOf(from), ...(until ? { lt: until } : {}) } },
+    select: { period: true, clinic: { select: { name: true } } },
+    orderBy: { period: 'asc' },
+  });
+  if (runs.length === 0) return;
+  const named = [
+    ...new Set(
+      runs.map(
+        (run) =>
+          `${run.period.toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })} (${run.clinic?.name ?? 'all branches'})`,
+      ),
+    ),
+  ];
+  throw new ConflictException(
+    `${named.join(', ')} ${named.length === 1 ? 'is' : 'are'} approved, and ${code} would be priced differently there. ` +
+      'Nothing was changed. Date the change after the last approved month, or correct that month with an adjustment.',
+  );
+}
+
+/** The version in force started earlier than recorded, with the same treatment: its start moves back. */
+async function correctStart(tx: AdminTx, actor: ActingStaff, open: PayComponent, from: Date, reason: string) {
+  const versions = await tx.payComponent.findMany({ where: { code: open.code }, orderBy: { effectiveFrom: 'asc' } });
+  const inside = versions.find((row) => row.id !== open.id && row.effectiveFrom >= from && row.effectiveFrom < open.effectiveFrom);
+  if (inside) {
+    throw new BadRequestException(
+      `Version ${inside.version} of ${open.code} starts on ${isoDay(inside.effectiveFrom)}, inside that period. ` +
+        `Choose a date after ${isoDay(inside.effectiveFrom)}, or change that version's treatment instead.`,
+    );
+  }
+  await refuseOverApproved(tx, open.code, from, open.effectiveFrom);
+  const governing = [...versions].reverse().find((row) => row.effectiveFrom < from) ?? null;
+  if (governing) await tx.payComponent.update({ where: { id: governing.id }, data: { effectiveTo: dayBefore(from) } });
+  const saved = await tx.payComponent.update({ where: { id: open.id }, data: { effectiveFrom: from, changeReason: reason } });
+  await recordAudit(tx, actor, {
+    action: 'payComponent.startCorrected',
+    entityType: 'PayComponent',
+    entityId: saved.id,
+    reason: `Corrected the start of ${open.code} v${open.version} from ${isoDay(open.effectiveFrom)} to ${isoDay(from)}: ${reason}`,
+    before: { effectiveFrom: isoDay(open.effectiveFrom), previousEndsOn: governing?.effectiveTo ? isoDay(governing.effectiveTo) : null },
+    after: { effectiveFrom: isoDay(from), previousEndsOn: governing ? isoDay(dayBefore(from)) : null },
+  });
+  return saved;
+}
+
+/**
+ * A treatment change dated before the version in force: from that date on,
+ * every version says it. The version covering the date is split there (a
+ * new version from the date), and each later version takes the same change.
+ */
+async function changeFromEarlier(
+  tx: AdminTx,
+  actor: ActingStaff,
+  open: PayComponent,
+  changed: Record<string, unknown>,
+  from: Date,
+  reason: string,
+) {
+  await refuseOverApproved(tx, open.code, from, null);
+  const versions = await tx.payComponent.findMany({ where: { code: open.code }, orderBy: { effectiveFrom: 'asc' } });
+  const later = versions.filter((row) => row.effectiveFrom >= from);
+  const governing = [...versions].reverse().find((row) => row.effectiveFrom < from) ?? null;
+  const fields = Object.entries(changed).map(([field, value]) => `${field} ${String(value)}`).join(', ');
+  if (governing) {
+    await tx.payComponent.update({ where: { id: governing.id }, data: { effectiveTo: dayBefore(from) } });
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id, createdAt, updatedAt, ...kept } = governing;
+    const inserted = await tx.payComponent.create({
+      data: {
+        ...kept,
+        ...changed,
+        version: Math.max(...versions.map((row) => row.version)) + 1,
+        effectiveFrom: from,
+        effectiveTo: later[0] ? dayBefore(later[0].effectiveFrom) : null,
+        sourceRef: null,
+        clinicOverride: true,
+        changeReason: reason,
+        createdByStaffId: actor.id,
+      },
+    });
+    await recordAudit(tx, actor, {
+      action: 'payComponent.updated',
+      entityType: 'PayComponent',
+      entityId: inserted.id,
+      reason:
+        `${open.code} v${inserted.version} inserted from ${isoDay(from)}` +
+        `${inserted.effectiveTo ? ` to ${isoDay(inserted.effectiveTo)}` : ''} (${fields}), set by this clinic and UNVERIFIED: ${reason}`,
+      before: governing,
+      after: inserted,
+    });
+  }
+  let saved = open;
+  for (const row of later) {
+    const updated = await tx.payComponent.update({ where: { id: row.id }, data: { ...changed, clinicOverride: true } });
+    await recordAudit(tx, actor, {
+      action: 'payComponent.updated',
+      entityType: 'PayComponent',
+      entityId: row.id,
+      reason: `${open.code} v${row.version} (from ${isoDay(row.effectiveFrom)}) takes the change dated ${isoDay(from)} (${fields}): ${reason}`,
+      before: row,
+      after: updated,
+    });
+    if (row.id === open.id) saved = updated;
+  }
+  return saved;
+}
+
 @Injectable()
 export class PayComponentService {
   constructor(
@@ -532,6 +656,20 @@ export class PayComponentService {
         const from = dto.effectiveFrom
           ? new Date(`${dto.effectiveFrom.slice(0, 10)}T00:00:00.000Z`)
           : open.effectiveFrom;
+        if (!notYetStarted && from < open.effectiveFrom) {
+          if (!dto.reason || dto.reason.trim().length < 4) {
+            throw new BadRequestException(
+              `Changing the statutory treatment of "${dto.code}" from an earlier date changes what people are paid. ` +
+                'Send a reason: it is kept with the change.',
+            );
+          }
+          const changed = Object.fromEntries(
+            TREATMENT_FIELDS.filter(
+              (field) => (data as Record<string, unknown>)[field] !== (open as unknown as Record<string, unknown>)[field],
+            ).map((field) => [field, (data as Record<string, unknown>)[field]]),
+          );
+          return changeFromEarlier(tx, actor, open, changed, from, dto.reason.trim());
+        }
         if (!notYetStarted && from <= open.effectiveFrom) {
           throw new BadRequestException(
             `The current version of "${dto.code}" starts on ${open.effectiveFrom.toISOString().slice(0, 10)}, ` +
@@ -736,6 +874,17 @@ export class PayComponentService {
             after: moved,
           });
           return moved;
+        }
+      }
+
+      // The version in force started earlier than recorded: same treatment, earlier date.
+      if (open && !notYetStarted && dto.effectiveFrom) {
+        const from = new Date(`${dto.effectiveFrom.slice(0, 10)}T00:00:00.000Z`);
+        if (from < open.effectiveFrom) {
+          if (!dto.reason || dto.reason.trim().length < 4) {
+            throw new BadRequestException(`Moving when "${dto.code}" starts changes which months it prices. Send a reason: it is kept with the change.`);
+          }
+          return correctStart(tx, actor, open, from, dto.reason.trim());
         }
       }
 

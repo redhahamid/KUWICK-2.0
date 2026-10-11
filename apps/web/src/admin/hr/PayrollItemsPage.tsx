@@ -788,14 +788,14 @@ function ItemPanel({
           <StatusChip tone="info">Your clinic</StatusChip>
           <span className="hr-faint">from {dayjs(row.effectiveFrom).format('D MMM YYYY')}</span>
           {/*
-            A PLAN'S DATE IS EDITABLE ON ITS OWN: where the switches already
-            say what the clinic wants and only the month is wrong.
+            A VERSION'S DATE IS EDITABLE ON ITS OWN: where the switches already
+            say what the clinic wants and only the month is wrong. A plan moves
+            anywhere; one in force moves earlier, while no month in between is
+            approved (UAT, 11 October 2026).
           */}
-          {notStarted(row) ? (
-            <button type="button" className="hr-historyLink" onClick={onMoveMonth}>
-              Change the month
-            </button>
-          ) : null}
+          <button type="button" className="hr-historyLink" onClick={onMoveMonth}>
+            Change the month
+          </button>
           {row.changeReason ? <span className="hr-decided__why">{row.changeReason}</span> : null}
         </div>
       ) : null}
@@ -803,8 +803,9 @@ function ItemPanel({
         ? ask(
             `Change when ${row.name} starts`,
             <div className="hr-small">
-              This change has not started yet, so its date can move without becoming a second version. The treatment stays
-              exactly as it is.
+              {notStarted(row)
+                ? 'This change has not started yet, so its date can move without becoming a second version. The treatment stays exactly as it is.'
+                : 'Choose an earlier month if this treatment really started then. Refused if any branch has an approved month in between. The treatment stays exactly as it is.'}
             </div>,
             false,
           )
@@ -846,7 +847,7 @@ function ItemPanel({
                           {/* A version that has not begun is a plan, and editing it replaces it; one in force is history. */}
                           {notStarted(row)
                             ? `This change has not started yet, so editing it replaces it — no third version, and nothing has been paid under it.`
-                            : 'A changed treatment is a new version, not an edit — months already priced keep the old one.'}
+                            : 'A changed treatment is a new version, not an edit — months already priced keep the old one. A month before the version in force applies it from then on, refused if any branch has an approved month from then.'}
                         </div>
                       </>,
                       true,

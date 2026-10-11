@@ -6,6 +6,35 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 43 — 11 Oktober 2026 — Rawatan item payroll boleh bertarikh lebih awal
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada
+migrasi.**
+
+- `[D]` (1) Peraturan HRD kini untuk item payroll. Dua cara:
+  - **Change the month** (rawatan sama, tarikh lebih awal) kini juga untuk
+    versi klinik yang sudah berkuat kuasa: mula versi itu dibetulkan, versi
+    sebelumnya tamat sehari sebelum. Ditolak jika ada versi lain di
+    tengah-tengah tempoh itu (dinamakan).
+  - **Tukar suis dengan bulan lebih awal** (contoh SOCSO off untuk ALLOWANCE
+    dari Jan 2026): versi yang meliputi tarikh itu dipecah, versi baharu
+    bermula pada tarikh itu, dan setiap versi kemudian turut menerima
+    perubahan yang sama, jadi "dari Jan" bermakna dari Jan seterusnya.
+- `[D]` Ditolak, menamakan bulan dan cawangan (contoh "Aug 2025 (Contoh
+  Central) is approved…"), jika **mana-mana cawangan** ada run APPROVED/PAID
+  dalam tempoh yang berubah. Sebab wajib; setiap baris yang disentuh direkod
+  dalam log audit (siapa, bila, sebab).
+- `[D]` Tarikh sama dengan mula versi berkuat kuasa masih ditolak ("not
+  before"): itu pembetulan sejarah, bukan tarikh lebih awal.
+- `[A]` Pada staging, ALLOWANCE v2 dari 2026-10-01: jika ia sudah SOCSO off,
+  pilih **Change the month** → Jan 2026; jika SOCSO masih on, tukar suis SOCSO
+  dengan bulan Jan 2026.
+- `[D]` **Ujian**: API baharu `pay-component-backdate` (3); `payroll-snapshot`
+  dikemas kini (tarikh lebih awal tanpa sebab kini "Send a reason"); web
+  `payrollItems` +1.
+
+---
+
 ## HR UAT Seed: rebuild dimatikan secara lalai dan dikawal — 11 Oktober 2026
 
 **Tiada migrasi. Workflow tidak dijalankan.**

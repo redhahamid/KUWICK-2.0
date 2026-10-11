@@ -132,6 +132,7 @@ export type AuditAction =
   /// A version corrected before it took effect — not a new version, because
   /// nothing was ever paid under the one it replaces.
   | 'payComponent.versionCorrected'
+  | 'payComponent.startCorrected'
   /// An unstarted version withdrawn outright, leaving the treatment in force
   /// unchanged. The mistake lives here rather than in the catalogue.
   | 'payComponent.versionWithdrawn'

@@ -423,6 +423,13 @@ describe('a version that has not started', () => {
     expect(Object.keys(sent)).not.toContain('null');
   });
 
+  it('offers an earlier month on a version already in force, saying an approved month refuses it', () => {
+    mount();
+    openItem('Mileage / travelling allowance');
+    fireEvent.click(screen.getByRole('button', { name: /Change the month/i }));
+    expect(screen.getByText(/Choose an earlier month if this treatment really started then/)).toBeTruthy();
+  });
+
   it('will not save the move without a reason, because it is kept with the version', async () => {
     mount();
     upsertMutate.mockClear();
