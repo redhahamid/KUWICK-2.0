@@ -6,6 +6,29 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## HR UAT Seed: rebuild dimatikan secara lalai dan dikawal — 11 Oktober 2026
+
+**Tiada migrasi. Workflow tidak dijalankan.**
+
+- `[D]` *Rebuild the demo tenant* kini **off** secara lalai.
+- `[D]` Jika ditanda, langkah baharu (baca sahaja, sebelum apa-apa ditulis,
+  `apps/api/scripts/guard-hr-uat-rebuild.mjs`) menolak rebuild selagi
+  KLINIK HIJRAA BANGI dalam tenant *Klinik Contoh (UAT)* ada rekod pekerja,
+  run payroll atau item payroll, kecuali nama cawangan ditaip dalam
+  *confirm_branch*. Jika semakan tidak dapat dibaca, ia menolak.
+- `[D]` Diuji pada DB tempatan: ada data tanpa nama → tolak; nama betul (huruf
+  besar/kecil dan ruang diabaikan) → teruskan dengan amaran; nama salah →
+  tolak; cawangan kosong, tenant lain atau tiada cawangan → dibenarkan; tidak
+  dapat sambung → tolak.
+- `[D]` **Mod top-up (kini lalai)** memerlukan akaun *Rohana Yusof* (pengurus
+  klinik) yang telah dibuang oleh pembersihan tadi, jadi ia berhenti pada
+  langkah 2 sebelum menulis data HR. `[A]` Jika akaun itu wujud semula, top-up
+  mencipta tiga bulan PAID di Contoh Central, yang akan menyekat semula
+  perubahan item bertarikh Jan 2026. Cadangan: kawalan yang sama untuk
+  top-up dan BANDING, jika mahu.
+
+---
+
 ## Pembersihan staging — 11 Oktober 2026 — data HR & payroll ujian di luar KLINIK HIJRAA BANGI
 
 **Staging sahaja.** Skrip sekali guna `apps/api/scripts/wipe-other-branches-hr-data.mjs`

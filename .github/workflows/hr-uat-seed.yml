@@ -39,10 +39,12 @@
 #                                in the run summary.
 #
 # IDEMPOTENT. Re-run it as often as testing needs: migrate deploy is a no-op
-# once applied, provisioning is declarative, and the seed rebuilds ITS OWN
-# tenant and touches no other. The one thing a re-run does destroy is anything
-# typed into the demo tenant during testing — untick "Rebuild the demo tenant"
-# to keep it and only top the HR layer up.
+# once applied, provisioning is declarative, and the seed touches no tenant
+# but its own. "Rebuild the demo tenant" is OFF by default (owner, 11 October
+# 2026): ticked, it deletes the whole "Klinik Contoh (UAT)" tenant, and KLINIK
+# HIJRAA BANGI lives in it on staging. While that branch holds HR or payroll
+# data a rebuild is refused unless its name is typed in "confirm_branch"
+# (scripts/guard-hr-uat-rebuild.mjs, read only, before anything is written).
 #
 # No secret is echoed: GitHub masks registered secrets, and the one derived
 # value (the node-pg form of the URL) is masked explicitly before use. The
@@ -58,10 +60,15 @@ on:
         required: false
         default: 'https://kuwick-api.onrender.com'
       rebuild_demo_tenant:
-        description: 'Rebuild "Klinik Contoh (UAT)" from scratch. Untick to keep what you have typed during testing and only top up the HR layer.'
+        description: 'Rebuild "Klinik Contoh (UAT)" from scratch. DELETES the whole tenant, KLINIK HIJRAA BANGI included. Off: keep everything and only top up the HR layer.'
         type: boolean
         required: false
-        default: true
+        default: false
+      confirm_branch:
+        description: 'Only to rebuild while KLINIK HIJRAA BANGI has HR or payroll data: type KLINIK HIJRAA BANGI to delete it. Otherwise leave empty.'
+        type: string
+        required: false
+        default: ''
       seed_banding:
         description: 'Also put BANDING A-D on it — the four August 2026 comparison employees, in their own clinic, with BANDING C real January-July year-to-date. Leaves the other employees alone.'
         type: boolean
@@ -201,6 +208,19 @@ jobs:
             echo "__PG_URL_EOF__"
           } >> "$GITHUB_ENV"
 
+      - name: Refuse to rebuild over KLINIK HIJRAA BANGI unless its name was typed
+        # OWNER, 11 October 2026: "make it refuse to rebuild while KLINIK HIJRAA
+        # BANGI has HR or payroll data unless I type the branch name to
+        # confirm." A rebuild deletes the whole "Klinik Contoh (UAT)" tenant,
+        # and that branch lives in it on staging. READ ONLY, and before every
+        # step that writes; anything it cannot read refuses. Skipped when
+        # "Rebuild the demo tenant" is off (the default since that day).
+        if: ${{ inputs.rebuild_demo_tenant }}
+        env:
+          DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+          GUARD_CONFIRM: ${{ inputs.confirm_branch }}
+        run: node apps/api/scripts/guard-hr-uat-rebuild.mjs
+
       - name: Wake the staging API and check it answers
         # WHY BEFORE ANY WRITE. The seed's third step runs June, July and August
         # through the ENGINE over HTTP — create, calculate, approve, prepare,
@@ -295,7 +315,7 @@ jobs:
 
             console.log('WHAT THIS RUN WILL DO TO THEM');
             console.log(hr
-              ? '  - "Klinik Contoh (UAT)" is already here. The HR seed rebuilds its own tenant, so this one is cleared and rebuilt (or topped up, if you unticked "Rebuild the demo tenant").'
+              ? '  - "Klinik Contoh (UAT)" is already here. The HR seed rebuilds its own tenant, so this one is topped up, or cleared and rebuilt if you ticked "Rebuild the demo tenant".'
               : '  - "Klinik Contoh (UAT)" is NOT here yet. The HR seed creates it. This is the tenant the UAT accounts belong to.');
             for (const t of others) {
               console.log(`  - "${t.name}" is NOT touched: the HR seed only ever writes inside its own tenant id.`);
@@ -373,7 +393,7 @@ jobs:
           KUWICK_API_URL: ${{ inputs.api_url || 'https://kuwick-api.onrender.com' }}
         run: |
           if [ "$KUWICK_HR_UAT_SKIP_BASE" = "yes" ]; then
-            echo "Rebuild unticked: the existing \"Klinik Contoh (UAT)\" tenant is kept and only the HR layer is topped up."
+            echo "Rebuild off: the existing \"Klinik Contoh (UAT)\" tenant is kept and only the HR layer is topped up."
           else
             echo "Rebuilding \"Klinik Contoh (UAT)\" from scratch. Anything typed into that tenant during testing is discarded; every other tenant is untouched."
           fi
@@ -602,7 +622,7 @@ jobs:
             say('');
             say('## 5. Running this again');
             say('');
-            say('Safe at any time. Migrations re-apply as a no-op, the role password is re-set to the same value (which is what keeps the live API off 28P01), and the seed rebuilds only its own tenant. The one thing a rebuild discards is whatever you typed into the demo tenant while testing — untick **Rebuild the demo tenant** to keep it and only top the HR layer up.');
+            say('Safe at any time. Migrations re-apply as a no-op, the role password is re-set to the same value (which is what keeps the live API off 28P01), and the seed rebuilds only its own tenant. **Rebuild the demo tenant** is off by default: ticked, it deletes the whole demo tenant, KLINIK HIJRAA BANGI included, and is refused while that branch holds HR or payroll data unless its name is typed to confirm.');
 
             await c.end();
             const text = out.join('\n') + '\n';
