@@ -421,8 +421,8 @@ export function LegalEmployersPage() {
             <div className="hr-small hr-muted" style={{ marginBottom: 4 }}>In force from</div>
             <DatePicker value={hrdFrom} onChange={(v) => v && setHrdFrom(v)} style={{ width: '100%' }} allowClear={false} format="D MMM YYYY" />
             <div className="hr-small hr-muted" style={{ marginTop: 4 }}>
-              Applies from the {hrdFrom.format('MMMM YYYY')} payroll onwards. A month already approved keeps what it was approved with;
-              reopen and recalculate it if the registration was in force then.
+              Applies from the {hrdFrom.format('MMMM YYYY')} payroll. A date before the registration on record corrects its start
+              (the same class) or adds an earlier one (a different class), as long as no approved month is affected.
             </div>
           </label>
           <label>

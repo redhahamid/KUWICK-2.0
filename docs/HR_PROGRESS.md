@@ -6,6 +6,31 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 40 — 11 Oktober 2026 — Pendaftaran HRD boleh dibawa ke tarikh lebih awal
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada
+migrasi.** Pengiraan levi tidak berubah: ia masih membaca kelas yang berkuat
+kuasa bagi bulan itu.
+
+- `[D]` (1) Satu-satunya rekod majikan yang bertarikh dalam Kuwick ialah kelas
+  pendaftaran HRD Corp; tetapan majikan lain tidak bertarikh.
+- `[D]` Tarikh sebelum rekod sedia ada kini diterima: kelas yang sama dengan
+  versi seterusnya = membetulkan tarikh mula versi itu (contoh: 1 Sep 2026 →
+  1 Jan 2026); kelas berbeza = versi lebih awal ditambah, tamat sehari sebelum
+  versi seterusnya. Sebab wajib. Dilog dengan tarikh lama dan baharu.
+- `[D]` Ditolak, dengan nama bulan, jika bulan yang diluluskan berada dalam
+  tempoh yang kelasnya akan berubah ("Aug 2025 is approved for …").
+- `[D]` **Ujian**: e2e baharu `employer-hrd-backdate` (3); `payroll-hrd` lulus.
+
+### Uji di staging
+
+1. *Settings → Company & statutory* → Hijraa Sdn Bhd → HRD registration →
+   Mandatory s.14, dari 1 Jan 2026, dengan sebab → simpan: rekod kini bermula
+   1 Jan 2026.
+2. Kira semula Januari 2026: levi HRD dikira.
+
+---
+
 ## Batch 39 — 11 Oktober 2026 — Bulan pada Prepare, ringkasan tarikh bayar, hari 15 untuk item standard
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada

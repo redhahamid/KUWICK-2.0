@@ -637,39 +637,77 @@ export class StatutoryClassificationService {
         );
       }
 
-      const approvedCovering = await tx.payrollRun.count({
+      /*
+       * A DATE ANYWHERE ON THE TIMELINE (UAT, 10 October 2026): "HRD
+       * registration cannot be back-dated." A date after the record in force
+       * starts a new version, as before. A date before or inside an existing
+       * version either corrects that version's start (the same class as the
+       * version it runs into: "registered from 1 January, not 1 September")
+       * or inserts a version of its own up to the next one. Nothing is
+       * deleted: a corrected start is an edit of the date, logged with the
+       * old one. Refused, naming the months, when an approved month lies in
+       * the period whose class would change.
+       */
+      const rows = await tx.legalEmployerStatutoryProfile.findMany({
+        where: { legalEmployerId },
+        orderBy: { effectiveFrom: 'asc' },
+      });
+      const dayBefore = (date: Date) => new Date(date.getTime() - 86400000);
+      const next = rows.find((row) => row.effectiveFrom > from) ?? null;
+      const governing = [...rows].reverse().find((row) => row.effectiveFrom < from) ?? null;
+      const backDated = next !== null;
+      if (governing && governing.hrdRegistration === dto.hrdRegistration && (!governing.effectiveTo || governing.effectiveTo >= from)) {
+        throw new BadRequestException(
+          `${employer.name} is already registered as ${dto.hrdRegistration} on ${dto.effectiveFrom}, so there is no new fact to record.`,
+        );
+      }
+      if (backDated && !dto.reason?.trim()) {
+        throw new BadRequestException('Say why the registration is being dated earlier: it is kept with the change.');
+      }
+      // The period whose class changes: from the date to the day before the next version, or open.
+      const corrects = next !== null && next.hrdRegistration === dto.hrdRegistration;
+      const changedUntil = next === null ? null : corrects ? dayBefore(next.effectiveFrom) : dayBefore(next.effectiveFrom);
+      const approved = await tx.payrollRun.findMany({
         where: {
           legalEmployerId,
           status: { in: ['APPROVED', 'PAID'] },
-          period: { gte: new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1)) },
+          period: {
+            gte: new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1)),
+            ...(changedUntil ? { lte: changedUntil } : {}),
+          },
         },
+        select: { period: true },
+        orderBy: { period: 'asc' },
       });
-      if (approvedCovering > 0) {
+      if (approved.length > 0) {
+        const months = [...new Set(approved.map((run) => run.period.toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })))];
         throw new ConflictException(
-          `${approvedCovering} approved payroll run(s) cover this date or later for ${employer.name}. ` +
-            'Record the change from a period that has not been approved.',
+          `${months.join(', ')} ${months.length === 1 ? 'is' : 'are'} approved for ${employer.name} and would be levied differently. ` +
+            'Nothing was changed. Date the change after the last approved month, or correct those months with an adjustment.',
         );
       }
 
-      const open = await tx.legalEmployerStatutoryProfile.findFirst({
-        where: { legalEmployerId, effectiveTo: null },
-        orderBy: { effectiveFrom: 'desc' },
-      });
-      if (open) {
-        if (open.effectiveFrom >= from) {
-          throw new BadRequestException(
-            `The current HRD registration starts on ${isoDate(open.effectiveFrom)}, which is not before ${dto.effectiveFrom}.`,
-          );
-        }
-        if (open.hrdRegistration === dto.hrdRegistration) {
-          throw new BadRequestException(
-            `${employer.name} is already registered as ${dto.hrdRegistration}, so there is no new fact to record.`,
-          );
-        }
-        await tx.legalEmployerStatutoryProfile.update({
-          where: { id: open.id },
-          data: { effectiveTo: new Date(from.getTime() - 86400000) },
+      // The version before the date stops the day before it.
+      if (governing && (!governing.effectiveTo || governing.effectiveTo >= from)) {
+        await tx.legalEmployerStatutoryProfile.update({ where: { id: governing.id }, data: { effectiveTo: dayBefore(from) } });
+      }
+
+      if (corrects && next) {
+        // The same class as the version it runs into: that version simply started earlier.
+        const saved = await tx.legalEmployerStatutoryProfile.update({
+          where: { id: next.id },
+          data: { effectiveFrom: from, reason: dto.reason ?? next.reason, note: dto.note ?? next.note },
         });
+        await recordAudit(tx, actor, {
+          action: 'legalEmployerStatutory.recorded',
+          entityType: 'LegalEmployerStatutoryProfile',
+          entityId: saved.id,
+          reason: `Corrected the start of HRD registration ${dto.hrdRegistration} from ${isoDate(next.effectiveFrom)} to ${dto.effectiveFrom}: ${dto.reason}`,
+          before: { hrdRegistration: next.hrdRegistration, effectiveFrom: isoDate(next.effectiveFrom) },
+          after: { hrdRegistration: dto.hrdRegistration, effectiveFrom: dto.effectiveFrom },
+          source: 'hr.employers',
+        });
+        return saved;
       }
 
       const saved = await tx.legalEmployerStatutoryProfile.create({
@@ -678,6 +716,8 @@ export class StatutoryClassificationService {
           legalEmployerId,
           hrdRegistration: dto.hrdRegistration,
           effectiveFrom: from,
+          // Inserted before a later version: it ends where that one starts.
+          effectiveTo: next ? dayBefore(next.effectiveFrom) : null,
           reason: dto.reason ?? null,
           note: dto.note ?? null,
           createdByStaffId: actor.id,
@@ -688,9 +728,9 @@ export class StatutoryClassificationService {
         action: 'legalEmployerStatutory.recorded',
         entityType: 'LegalEmployerStatutoryProfile',
         entityId: saved.id,
-        reason: `Recorded HRD registration ${dto.hrdRegistration} from ${dto.effectiveFrom}`,
-        before: open ? { hrdRegistration: open.hrdRegistration } : null,
-        after: { hrdRegistration: dto.hrdRegistration, effectiveFrom: dto.effectiveFrom },
+        reason: `Recorded HRD registration ${dto.hrdRegistration} from ${dto.effectiveFrom}${next ? ` to ${isoDate(dayBefore(next.effectiveFrom))}` : ''}${dto.reason ? `: ${dto.reason}` : ''}`,
+        before: governing ? { hrdRegistration: governing.hrdRegistration } : null,
+        after: { hrdRegistration: dto.hrdRegistration, effectiveFrom: dto.effectiveFrom, effectiveTo: next ? isoDate(dayBefore(next.effectiveFrom)) : null },
         source: 'hr.employers',
       });
 
