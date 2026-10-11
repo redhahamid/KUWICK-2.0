@@ -88,6 +88,9 @@ describe('Synthetic payroll month (e2e)', () => {
       .expect(201);
 
     await request(server()).post('/workforce/pay-components/seed').set('Authorization', bearer).expect(201);
+    // This month is one pay date: the claim paid with salary on the 30th, not
+    // the standard items' 15th, so the payment listing is the whole run.
+    await request(server()).patch('/workforce/pay-components/CLAIM_REIMBURSEMENT/pay-date').set('Authorization', bearer).send({ payDay: 30 }).expect(200);
 
     aina = await makeEmployee('Aina Rahim', '3900.00', {});
     farid = await makeEmployee('Farid Musa', '3000.00', {});

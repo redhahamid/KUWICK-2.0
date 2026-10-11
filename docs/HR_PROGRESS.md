@@ -6,12 +6,35 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Item 7 — 11 Oktober 2026 — Pelepasan anak 50/50 dalam MTD: tiada perubahan
+
+**Tiada perubahan kod.**
+
+- `[D]` Enjin PCB (`apps/api/src/statutory/pcb-2026.ts`) mengambil
+  `qualifyingChildren` sebagai bilangan bulat dan menolak RM2,000 bagi setiap
+  anak, iaitu "C = bilangan anak yang layak" dalam formula MTD.
+- `[A]` Spesifikasi Kaedah Pengiraan Berkomputer PCB 2026 HASiL takrifkan C
+  sebagai **bilangan** anak; tiada medan pecahan. Pembahagian 50% yang
+  diterangkan sumber awam adalah bagi ibu bapa yang bercerai/berpisah, dan
+  dituntut semasa e-Filing (BE), bukan melalui MTD bulanan. hasil.gov.my
+  disekat dari bekas kerja, jadi ini daripada petikan carian, belum dibaca
+  terus:
+  - https://www.hasil.gov.my/media/arvlrzh5/spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf
+  - https://www.hasil.gov.my/majikan/majikan-payroll-spesifikasi-data/
+  - https://help.talenox.com/en/articles/5312058-guide-to-filing-taxes-in-malaysia-tax-deduction-for-children
+- `[A]` Cadangan: pasangan itu rekodkan anak pada **seorang** sahaja dalam
+  MTD (atau 0 pada kedua-duanya) dan selaraskan 50/50 semasa e-Filing.
+  Mana-mana beza diselesaikan semasa taksiran.
+
+---
+
 ## Batch 42 — 11 Oktober 2026 — Pekerja yang masuk lewat: dibayar bulan berikutnya selepas hari N
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi:**
 `20261011090000_payroll_policy_late_joiner_cutoff` (satu lajur boleh-null,
-`payroll_policies.late_joiner_cutoff_day`). Staging: *Migrate only* (lihat
-di bawah).
+`payroll_policies.late_joiner_cutoff_day`). Staging: *Migrate only* #21
+pada `75ba7f5`, berjaya; "158 migrations found … Database schema is up to
+date".
 
 - `[D]` (6) *Settings → Pay rules*, setiap rule set: **Part-month pay for late
   joiners** — *Same month* (lalai, tingkah laku sedia ada) atau *Next month,
@@ -28,7 +51,9 @@ di bawah).
 - `[A]` EPF/SOCSO/EIS/PCB Mei dikira atas gaji pokok Mei yang termasuk hari
   April, seperti payroll lama membayarnya dalam run Mei. Tiada perubahan lain
   pada logik statutori.
-- `[D]` **Ujian**: API baharu `payroll-late-joiner-cutoff` (3).
+- `[D]` **Ujian**: API baharu `payroll-late-joiner-cutoff` (3). Ujian
+  `payroll-synthetic-month` kini menetapkan *Claim reimbursement* pada 30hb
+  supaya bulan itu kekal satu tarikh bayar (kesan Batch 39: lalai 15hb).
 
 ---
 
