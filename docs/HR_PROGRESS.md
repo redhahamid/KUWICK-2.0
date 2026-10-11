@@ -6,6 +6,38 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Pembersihan staging — 11 Oktober 2026 — data HR & payroll ujian di luar KLINIK HIJRAA BANGI
+
+**Staging sahaja.** Skrip sekali guna `apps/api/scripts/wipe-other-branches-hr-data.mjs`
+melalui workflow *Wipe HR outside Hijraa Bangi*: dry run #1 (selamat), apply #2
+(commit). Diraptai dahulu pada pangkalan data tempatan.
+
+- `[D]` Tenant *Klinik Contoh (UAT)*: BANDING (perbandingan Ogos 2026), Contoh
+  Bandar dan Contoh Central kini **0 rekod pekerja, 0 run payroll**. KLINIK
+  HIJRAA BANGI **tidak berubah** (cap jari sebelum/selepas sama): draf Jan
+  2026, 20 baris payslip, 46 input, 28 rekod pekerja.
+- `[D]` Dibuang 533 baris: 16 rekod pekerja, 17 gaji, 16 kedudukan statutori,
+  5 asas EPF, 3 item berulang, 40 input, 31 YTD, 8 cuti, 5 tuntutan, 4
+  akaun manfaat perubatan, 4 fail, 85 rekod kehadiran, 5 run (3 PAID Contoh
+  Central Jun–Ogos, 1 draf BANDING Ogos, 1 draf seluruh tenant Sep yang hanya
+  mengandungi staf cawangan itu) dengan 43 baris payslip, 3 snapshot, 3
+  listing pembayaran, 24 baris pindahan, 3 kelulusan, 16 amaran.
+- `[D]` 7 orang dibuang sepenuhnya (4 BANDING, 3 tanpa sebarang rekod lain).
+  **9 akaun dikekalkan tanpa rekod HR** kerana lawatan, invois, stok,
+  pembayaran atau tuntutan panel menunjuk kepada mereka (termasuk akaun
+  pemilik/admin). Data klinikal/kewangan tidak disentuh.
+- `[D]` Selepas: **0 run diluluskan/dibayar dari Jan 2026** dalam tenant ini,
+  iaitu syarat yang menyekat perubahan rawatan item bertarikh Jan 2026
+  (`pay-component.service.ts`). Satu baris `audit_logs`
+  (`admin.otherBranchesHrWiped`).
+- `[D]` Tenant lain *Kuwick UAT Staging (Synthetic)* (1 rekod pekerja, 1 run)
+  tidak disentuh.
+- `[D]` **Amaran:** workflow *HR UAT Seed* dengan "Rebuild the demo tenant"
+  (lalai: ditanda) membina semula *Klinik Contoh (UAT)*, tenant yang sama
+  dengan KLINIK HIJRAA BANGI. Jangan jalankannya dengan pilihan itu.
+
+---
+
 ## Item 7 — 11 Oktober 2026 — Pelepasan anak 50/50 dalam MTD: tiada perubahan
 
 **Tiada perubahan kod.**
