@@ -188,12 +188,18 @@ describe('the table, one line per item (UAT, 10 October 2026)', () => {
         component(),
         component({ id: 'c-ot', code: 'OVERTIME', name: 'Overtime', type: 'OVERTIME', category: 'REMUNERATION', payDay: 15, paidInArrears: true }),
         component({ id: 'c-uniform', code: 'UNIFORM', name: 'Uniform deduction', type: 'DEDUCTION', category: 'PAYROLL_DEDUCTION', epfLiable: false, socsoLiable: false, eisLiable: false, pcbLiable: false, active: false }),
+        component({ id: 'c-pcb', code: 'PCB', name: 'PCB (monthly tax deduction)', type: 'DEDUCTION', category: 'TAX_DEDUCTION', epfLiable: false, socsoLiable: false, eisLiable: false, pcbLiable: false }),
+        component({ id: 'c-zakat', code: 'ZAKAT', name: 'Zakat', type: 'DEDUCTION', category: 'TAX_DEDUCTION', epfLiable: false, socsoLiable: false, eisLiable: false, pcbLiable: false }),
+        component({ id: 'c-unpaid', code: 'UNPAID_LEAVE', name: 'Unpaid leave', type: 'DEDUCTION', category: 'PAYROLL_DEDUCTION' }),
       ],
     });
+    expect(screen.getByText('Monthly tax · calculated automatically')).toBeTruthy();
+    expect(screen.getByText('Reduces monthly tax')).toBeTruthy();
+    expect(screen.getByText('Reduces salary')).toBeTruthy();
     expect(screen.getByText('EPF · SOCSO · EIS · PCB · paid 30th')).toBeTruthy();
     expect(screen.getByText('EPF · SOCSO · EIS · PCB · paid 15th, a month in arrears')).toBeTruthy();
-    expect(screen.getByText('Taken from net pay')).toBeTruthy();
-    expect(screen.getAllByText('In use', { selector: '.hr-chip' })).toHaveLength(2);
+    expect(screen.getByText('Taken from take-home pay')).toBeTruthy();
+    expect(screen.getAllByText('In use', { selector: '.hr-chip' })).toHaveLength(5);
     expect(screen.getByText('Off')).toBeTruthy();
     expect(screen.queryByRole('switch')).toBeNull();
   });

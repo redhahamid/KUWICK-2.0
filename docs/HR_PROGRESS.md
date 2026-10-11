@@ -6,6 +6,25 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 44 — 11 Oktober 2026 — Label item dalam bahasa biasa; senarai pekerja hanya yang ada rekod HR
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada
+migrasi.** Label sahaja; tiada perubahan pengiraan.
+
+- `[D]` (2) *Payroll items*: PCB "Monthly tax · calculated automatically";
+  Zakat "Reduces monthly tax"; Unpaid leave "Reduces salary"; potongan
+  selepas statutori (Uniform, Medical checkup, Medical claim recovery, Other
+  deduction, Salary advance recovery) "Taken from take-home pay".
+- `[D]` (3) *Employees*: Active / Resigned / All kini hanya orang yang ada rekod
+  pekerjaan. Akaun log masuk tanpa rekod HR di bawah penapis baharu
+  **Accounts without HR record (N)**, dan tidak dikira dalam angka di atas
+  senarai. Klik baris di situ masih membuka "lengkapkan rekod".
+- `[D]` (4) *HR UAT Seed*: sudah siap dalam pusingan lalu (`5452330`): rebuild
+  off secara lalai, ditolak tanpa nama cawangan ditaip. Tidak dijalankan.
+- `[D]` **Ujian**: web `payrollItems` dikemas kini; web baharu `employeesList` (1).
+
+---
+
 ## Batch 43 — 11 Oktober 2026 — Rawatan item payroll boleh bertarikh lebih awal
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada

@@ -45,7 +45,7 @@ import type { EmployeeRow, PayrollReadinessItem } from '../types';
  * guarantee from the employee-master work holds it here: an account, an
  * employment and a clinical credential are three separate facts.
  */
-type Seg = 'ACTIVE' | 'RESIGNED' | 'ALL';
+type Seg = 'ACTIVE' | 'RESIGNED' | 'ALL' | 'NO_RECORD';
 type View = 'employees' | 'benefits';
 
 const GONE = new Set(['RESIGNED', 'TERMINATED']);
@@ -140,12 +140,21 @@ export function EmployeesPage() {
 
   const all = employees.data ?? [];
   const records = useMemo(() => new Map(all.map((row) => [row.staffId, recordOf(row, itemsByStaff.get(row.staffId))])), [all, itemsByStaff]);
-  const employed = all.filter((row) => !row.hasProfile || !GONE.has(row.employmentStatus ?? ''));
+  /*
+   * EMPLOYEES ARE PEOPLE WITH AN EMPLOYMENT RECORD (UAT, 11 October 2026). A
+   * login with no HR record (a doctor's or a clerk's account kept for their
+   * clinical work) is listed only under "Accounts without HR record", and is
+   * not counted in the figures above the list.
+   */
+  const employed = all.filter((row) => row.hasProfile && !GONE.has(row.employmentStatus ?? ''));
+  const withoutRecord = all.filter((row) => !row.hasProfile).length;
 
   const rows = useMemo(
     () =>
       all.filter((row) => {
-        const gone = row.hasProfile && GONE.has(row.employmentStatus ?? '');
+        if (seg === 'NO_RECORD') return !row.hasProfile;
+        if (!row.hasProfile) return false;
+        const gone = GONE.has(row.employmentStatus ?? '');
         if (seg === 'ACTIVE') return !gone;
         if (seg === 'RESIGNED') return gone;
         return true;
@@ -314,7 +323,7 @@ export function EmployeesPage() {
               searchFields={['fullName', 'position', 'employeeNo', 'department']}
               searchPlaceholder="Search name or role"
               searchLabel="Search name or role"
-              emptyText={seg === 'RESIGNED' ? 'Nobody has left.' : 'No staff records.'}
+              emptyText={seg === 'RESIGNED' ? 'Nobody has left.' : seg === 'NO_RECORD' ? 'Every account has an HR record.' : 'No staff records.'}
               onRow={(row) => ({ onClick: () => open(row) })}
               toolbar={
                 <SegControl<Seg>
@@ -325,6 +334,7 @@ export function EmployeesPage() {
                     { value: 'ACTIVE', label: 'Active' },
                     { value: 'RESIGNED', label: 'Resigned' },
                     { value: 'ALL', label: 'All' },
+                    { value: 'NO_RECORD', label: withoutRecord ? `Accounts without HR record (${withoutRecord})` : 'Accounts without HR record' },
                   ]}
                 />
               }

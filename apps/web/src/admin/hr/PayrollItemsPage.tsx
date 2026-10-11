@@ -176,7 +176,14 @@ const STATUTORY: Flag[] = ['epfLiable', 'socsoLiable', 'eisLiable', 'pcbLiable',
  */
 export const itemSummary = (row: PayComponentRow): string => {
   const schemes = FLAGS.filter((flag) => STATUTORY.includes(flag.key) && row[flag.key]).map((flag) => flag.title);
-  if (row.type === 'DEDUCTION') return schemes.length > 0 ? `Reduces ${schemes.join(' · ')}` : 'Taken from net pay';
+  // DEDUCTIONS IN PLAIN WORDS (UAT, 11 October 2026). Labels only: what each
+  // item does in the calculation is unchanged.
+  if (row.type === 'DEDUCTION') {
+    if (row.code === 'PCB') return 'Monthly tax · calculated automatically';
+    if (row.code === 'ZAKAT') return 'Reduces monthly tax';
+    if (row.code === 'UNPAID_LEAVE') return 'Reduces salary';
+    return schemes.length > 0 ? `Reduces ${schemes.join(' · ')}` : 'Taken from take-home pay';
+  }
   const paid = `paid ${ordinal(row.payDay)}${row.paidFollowingMonth ? ' of the following month' : ''}${row.paidInArrears ? ', a month in arrears' : ''}`;
   const head = row.includeIn === 'NET_ONLY' ? 'Reimbursement' : schemes.length > 0 ? schemes.join(' · ') : 'No EPF, SOCSO, EIS or PCB';
   return `${head} · ${paid}`;
