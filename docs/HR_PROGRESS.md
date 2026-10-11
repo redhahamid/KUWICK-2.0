@@ -6,6 +6,29 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 39 — 11 Oktober 2026 — Bulan pada Prepare, ringkasan tarikh bayar, hari 15 untuk item standard
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada
+migrasi.** Tiada perubahan pengiraan.
+
+- `[D]` (2) Payroll yang dibuka melalui pautan run (selepas *Start*, dari
+  History) kini menunjukkan pemilih bulan "Dec | Jan 2026 | Feb"; bulan jiran
+  membuka halaman bulan itu.
+- `[D]` (3) *Settings*, langkah dan kad Payroll items: setiap tarikh bayar
+  disenaraikan (30hb, 15hb dan 1hb untuk Director's fee), bukan dua sahaja.
+- `[D]` (5) Item standard Housecall, Panel claim dan Claim reimbursement kini
+  bermula pada 15hb (masih boleh diubah). Item standard lain kekal 30hb. Hanya
+  item yang ditambah selepas ini; item yang sudah ada tidak diubah.
+- `[D]` **Ujian**: e2e `pay-component-pay-date` dikemas kini; web
+  `hrSettingsPage` +1 semakan.
+
+### Uji di staging
+
+1. Payroll → *Start* bulan baharu: pemilih bulan kelihatan di atas.
+2. *Settings → Review setup → Payroll items*: 30hb, 15hb dan 1hb kelihatan.
+
+---
+
 ## Batch 38 — 10 Oktober 2026 — Asas EPF: lalai majikan untuk staf baharu, dan satu asas untuk seluruh cawangan
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi**

@@ -47,6 +47,7 @@ vi.mock('../hooks/useAdmin', () => ({
       components: [
         { name: 'Basic salary', active: true, payDay: 30, paidInArrears: false, paidFollowingMonth: false },
         { name: 'Overtime', active: true, payDay: 15, paidInArrears: true, paidFollowingMonth: false },
+        { name: "Director's fee", active: true, payDay: 1, paidInArrears: false, paidFollowingMonth: false },
       ],
     }),
   usePayrollApprovalPolicy: () => ok({ mode: 'STANDARD' }),
@@ -140,6 +141,8 @@ describe('Settings when setup is done', () => {
       expect(card.querySelectorAll('.hr-facts__row').length).toBeLessThanOrEqual(3);
     }
     expect(screen.getByText('Paid on the 15th · a month in arrears')).toBeInTheDocument();
+    // Every pay date, the 1st included (UAT, 10 October 2026).
+    expect(screen.getByText('Paid on the 1st')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Opening balances/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Show' }));
     expect(screen.getByRole('link', { name: /Opening balances/ })).toHaveAttribute('href', '/admin/hr/settings/opening-balances');

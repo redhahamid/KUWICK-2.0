@@ -57,6 +57,12 @@ export interface SeedPayComponent {
   additionalRemuneration: boolean;
   prorated: boolean;
   employerSide: boolean;
+  /**
+   * The day of the month it is paid, where not the 30th (UAT, 10 October
+   * 2026): items paid with overtime and claims on the 15th. A default only;
+   * the clinic changes it under Payroll items.
+   */
+  payDay?: number;
 }
 
 /**
@@ -216,7 +222,7 @@ export const SEED_PAY_COMPONENTS: SeedPayComponent[] = [
     includeIn: 'GROSS_AND_NET',
     pcbLiable: false, epfLiable: false, socsoLiable: false, eisLiable: false, hrdLiable: false,
     includeInOrpBase: false, includeInUnpaidLeaveBase: false,
-    additionalRemuneration: false, prorated: false, employerSide: false,
+    additionalRemuneration: false, prorated: false, employerSide: false, payDay: 15,
   },
   {
     /*
@@ -291,7 +297,7 @@ export const SEED_PAY_COMPONENTS: SeedPayComponent[] = [
     includeIn: 'GROSS_AND_NET',
     pcbLiable: true, epfLiable: true, socsoLiable: true, eisLiable: true, hrdLiable: false,
     includeInOrpBase: false, includeInUnpaidLeaveBase: false,
-    additionalRemuneration: false, prorated: false, employerSide: false,
+    additionalRemuneration: false, prorated: false, employerSide: false, payDay: 15,
   },
   // Claims: money the employee spent, given back. Not wages, and not taxed.
   {
@@ -299,7 +305,7 @@ export const SEED_PAY_COMPONENTS: SeedPayComponent[] = [
     includeIn: 'GROSS_AND_NET',
     pcbLiable: false, epfLiable: false, socsoLiable: false, eisLiable: false, hrdLiable: false,
     includeInOrpBase: false, includeInUnpaidLeaveBase: false,
-    additionalRemuneration: false, prorated: false, employerSide: false,
+    additionalRemuneration: false, prorated: false, employerSide: false, payDay: 15,
   },
   {
     code: 'MEDICAL_CHECKUP_REFUND', name: 'Refund medical checkup', type: 'ADDITION', category: 'PERQUISITE',

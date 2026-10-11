@@ -74,6 +74,28 @@ export function PayrollWorkspace({ runId, monthNav }: { runId: string; monthNav?
   const [inputsStaff, setInputsStaff] = useState<{ id: string; name: string | null } | null>(null);
   const locked = data?.run.status === 'APPROVED' || data?.run.status === 'PAID';
 
+  /*
+   * WHICH MONTH IS OPEN (UAT, 10 October 2026). Reached by the run's own link
+   * (after "Start", from History, from a remedy) the month control was
+   * missing, so nothing on the page said which month this is. The same three
+   * segments as the month page; a neighbour opens that month there.
+   */
+  const navigate = useNavigate();
+  const ownMonthNav = data ? (
+    <SegControl<string>
+      label="Payroll month"
+      value={data.run.period}
+      onChange={(next) => {
+        if (next !== data.run.period) navigate(`/admin/hr/payroll?period=${next}`);
+      }}
+      options={[
+        { value: dayjs(`${data.run.period}-01`).subtract(1, 'month').format('YYYY-MM'), label: dayjs(`${data.run.period}-01`).subtract(1, 'month').format('MMM') },
+        { value: data.run.period, label: dayjs(`${data.run.period}-01`).format('MMM YYYY') },
+        { value: dayjs(`${data.run.period}-01`).add(1, 'month').format('YYYY-MM'), label: dayjs(`${data.run.period}-01`).add(1, 'month').format('MMM') },
+      ]}
+    />
+  ) : null;
+
   const goTo = (key: StepKey) => {
     search.set('step', key);
     setSearch(search, { replace: true });
@@ -128,7 +150,7 @@ export function PayrollWorkspace({ runId, monthNav }: { runId: string; monthNav?
               {provisional ? `${humanise(data.run.status)} · provisional` : humanise(data.run.status)}
             </StatusChip>
           ) : null}
-          {monthNav}
+          {monthNav ?? ownMonthNav}
           <Link className="hr-btn" to="/admin/hr/payroll/history">
             <IconHistory />
             History

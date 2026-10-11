@@ -267,6 +267,7 @@ export class PayComponentService {
             additionalRemuneration: c.additionalRemuneration,
             prorated: c.prorated,
             employerSide: c.employerSide,
+            ...(c.payDay ? { payDay: c.payDay } : {}),
             systemControlled: true,
             // UNVERIFIED. Not a claim about the law.
             verificationStatus: 'DRAFT',

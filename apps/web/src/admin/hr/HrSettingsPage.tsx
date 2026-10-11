@@ -148,17 +148,22 @@ export function HrSettingsPage() {
         value: approval.data ? (APPROVED_BY[approval.data.mode] ?? approval.data.mode) : 'One approver',
       },
     ],
-    // Three facts whatever the catalogue: what is in use, then when it is
-    // paid, then who it is for when every item is paid on the same day.
+    // EVERY PAY DATE, one row each (UAT, 10 October 2026: the 1st, for the
+    // director's fee, was cut off after two), then what is in use and who an
+    // item is for when there are fewer than three dates.
     items: [
-      {
-        label: 'In use',
-        value: `${componentRows.filter((row) => row.type !== 'DEDUCTION').length} add · ${componentRows.filter((row) => row.type === 'DEDUCTION').length} deduct`,
-      },
       ...(payDates.length
-        ? payDates.slice(0, 2).map(([label, list]) => ({ label: `Paid on the ${label}`, value: names(list) }))
+        ? payDates.map(([label, list]) => ({ label: `Paid on the ${label}`, value: names(list) }))
         : [{ label: 'Paid on', value: 'Nothing set up yet' }]),
-      ...(payDates.length === 1
+      ...(payDates.length < 3
+        ? [
+            {
+              label: 'In use',
+              value: `${componentRows.filter((row) => row.type !== 'DEDUCTION').length} add · ${componentRows.filter((row) => row.type === 'DEDUCTION').length} deduct`,
+            },
+          ]
+        : []),
+      ...(payDates.length < 2
         ? [
             {
               label: 'For named people only',

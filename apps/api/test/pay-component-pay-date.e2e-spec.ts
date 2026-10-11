@@ -83,10 +83,13 @@ describe('when each payroll item is paid (e2e)', () => {
     await prisma.$disconnect();
   });
 
-  it('starts every item on the 30th and none in arrears, and brings the clinic’s items with its table', async () => {
+  it('starts items on the 30th, housecall and claims on the 15th, none in arrears, and brings the clinic’s items with its table', async () => {
     const { components, missingPresets } = await listOf(bearer);
     expect(missingPresets).toEqual([]);
-    expect(components.every((row) => row.payDay === 30 && row.paidInArrears === false)).toBe(true);
+    // Paid with overtime and claims on the 15th (UAT, 10 October 2026); a default the clinic can change.
+    const onThe15th = ['HOUSECALL', 'PANEL_CLAIM', 'CLAIM_REIMBURSEMENT'];
+    expect(components.filter((row) => row.payDay === 15).map((row) => row.code).sort()).toEqual([...onThe15th].sort());
+    expect(components.every((row) => (onThe15th.includes(String(row.code)) ? row.payDay === 15 : row.payDay === 30) && row.paidInArrears === false)).toBe(true);
 
     const flags = (code: string) => {
       const row = components.find((item) => item.code === code)!;
@@ -147,7 +150,7 @@ describe('when each payroll item is paid (e2e)', () => {
     const salary = await setPayDate('BASIC', { payDay: 30, paidInArrears: true }).expect(400);
     expect(salary.body.message).toMatch(/never paid a month in arrears/);
     await setPayDate('NOT_AN_ITEM', { payDay: 15 }).expect(404);
-    expect(await find('HOUSECALL')).toMatchObject({ payDay: 30, paidInArrears: false });
+    expect(await find('HOUSECALL')).toMatchObject({ payDay: 15, paidInArrears: false });
   });
 
   it('does not offer a standard item again when the clinic made one by hand under its own code', async () => {
