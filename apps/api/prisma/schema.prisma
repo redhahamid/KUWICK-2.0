@@ -8463,6 +8463,11 @@ model PayrollPolicy {
   /// much when it does. FIXED_DAYS is refused by a check. Unpaid leave keeps
   /// its own divisor, the days in the month, whatever this says.
   partMonthBasis   ProrationBasis @default(CALENDAR_DAYS) @map("part_month_basis")
+  /// LATE JOINERS PAID THE NEXT MONTH (UAT, 10 October 2026). Null: a
+  /// joiner's first part month is paid in that month (the default). A day N:
+  /// somebody who starts after day N is left out of that month's run and
+  /// their part month is added to basic pay in the next month's run.
+  lateJoinerCutoffDay Int? @map("late_joiner_cutoff_day") @db.SmallInt
 
   /// HOW EXTRA HOURS, REST DAYS AND PUBLIC HOLIDAYS ARE PRICED. STATUTORY is
   /// the Employment Act's arithmetic; CLINIC_RATE prices from the fixed

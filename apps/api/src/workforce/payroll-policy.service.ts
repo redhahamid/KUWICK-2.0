@@ -170,6 +170,8 @@ export class PayrollPolicyService {
           termination: { basis: row.terminationBasis, days: row.terminationDays },
           /** How a part month is paid: s.18A's calendar days, or the clinic's working days. */
           partMonthBasis: row.partMonthBasis,
+          /** Null: a joiner's part month is paid that month. A day: after it, the next month. */
+          lateJoinerCutoffDay: row.lateJoinerCutoffDay,
           overtimeMode: row.overtimeMode,
           // WHAT THE HOURS ARE PRICED AT, and whether the clinic chose it. The
           // screen needs both: the figure in force, and whether it is the
@@ -575,6 +577,7 @@ export class PayrollPolicyService {
         terminationDays: dto.terminationDays ?? 31,
         // Absent keeps what the rule set has; a new one starts on s.18A.
         ...(dto.partMonthBasis === undefined ? {} : { partMonthBasis: dto.partMonthBasis }),
+        ...(dto.lateJoinerCutoffDay === undefined ? {} : { lateJoinerCutoffDay: dto.lateJoinerCutoffDay }),
         overtimeMode,
         ...rates,
         ...multipliers,

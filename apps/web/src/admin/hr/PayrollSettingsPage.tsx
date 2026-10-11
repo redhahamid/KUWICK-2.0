@@ -229,6 +229,8 @@ export function PayrollSettingsPage() {
   const [otDays, setOtDays] = useState('26');
   const [pcbProjection, setPcbProjection] = useState<'CURRENT_MONTH' | 'BASIC_ONLY' | 'CONTRACTUAL_MONTHLY'>('CURRENT_MONTH');
   const [partMonth, setPartMonth] = useState<'CALENDAR_DAYS' | 'WORKING_DAYS'>('CALENDAR_DAYS');
+  // LATE JOINERS: blank is "same month", the default; a day is the cut-off.
+  const [lateJoinerCutoff, setLateJoinerCutoff] = useState('');
   const [hoursDay, setHoursDay] = useState('7.5');
   // THE CLINIC'S OWN MULTIPLIERS, blank for "the Act's". Strings for the same
   // reason the divisors are: "2." mid-keystroke is not the number 2.
@@ -264,6 +266,7 @@ export function PayrollSettingsPage() {
     setOtDays('26');
     setPcbProjection('CURRENT_MONTH');
     setPartMonth('CALENDAR_DAYS');
+    setLateJoinerCutoff('');
     setHoursDay('7.5');
     setMultipliers({ 'ruleset-ot-multiplier': '', 'ruleset-restday-multiplier': '', 'ruleset-holiday-multiplier': '', 'ruleset-festive-multiplier': '' });
     setBelowActOk(false);
@@ -283,6 +286,7 @@ export function PayrollSettingsPage() {
     setOtDays(String(row.overtime.days ?? 26));
     setPcbProjection(row.pcbProjectionBasis ?? 'CURRENT_MONTH');
     setPartMonth(row.partMonthBasis ?? 'CALENDAR_DAYS');
+    setLateJoinerCutoff(row.lateJoinerCutoffDay ? String(row.lateJoinerCutoffDay) : '');
     setHoursDay(String(row.overtime.hoursPerDay));
     // A box left blank is on the Act's, and stays blank so the placeholder can
     // say which figure that is rather than the clinic having to remember.
@@ -348,6 +352,12 @@ export function PayrollSettingsPage() {
         `An overtime divisor of ${otDaysNum} makes a day worth less than section 60I(1A) allows, which underpays ` +
           'every hour of overtime, every rest day and every public holiday. Payroll will refuse to calculate. Use 26 or fewer.',
       );
+      return;
+    }
+    const cutoffTyped = lateJoinerCutoff.trim();
+    const cutoffNum = cutoffTyped === '' ? null : Number(cutoffTyped);
+    if (cutoffNum !== null && (!Number.isInteger(cutoffNum) || cutoffNum < 1 || cutoffNum > 28)) {
+      refuse('ruleset-late-joiner-day', 'The cut-off is a day of the month between 1 and 28.');
       return;
     }
     if (!Number.isFinite(hoursNum) || hoursNum < 0.5 || hoursNum > 8) {
@@ -420,6 +430,7 @@ export function PayrollSettingsPage() {
         overtimeHoursPerDay: hoursNum,
         pcbProjectionBasis: pcbProjection,
         partMonthBasis: partMonth,
+        lateJoinerCutoffDay: cutoffNum,
         overtimeMode: mode,
         // Null clears a raised multiplier back to the Act's. Sent on every
         // save, in both modes: a clinic-rate rule set falls back to the Act's
@@ -627,6 +638,9 @@ export function PayrollSettingsPage() {
                 <span>
                   {pricingLine(row)}
                   {row.partMonthBasis === 'WORKING_DAYS' ? <span className="hr-faint"> · part months by working days</span> : null}
+                  {row.lateJoinerCutoffDay ? (
+                    <span className="hr-faint"> · joiners after day {row.lateJoinerCutoffDay} paid the next month</span>
+                  ) : null}
                   {row.belowAct ? (
                     <>
                       {' '}
@@ -865,6 +879,41 @@ export function PayrollSettingsPage() {
                 : 'Someone who joins or leaves during a month is paid monthly salary × working days employed ÷ working days in the month, counted from their own working week and rest day. Where that pays less than the calendar days the Act uses, the month’s review names them and the difference.'}
             </div>
             <div className="hr-form__help">Unpaid leave keeps its own divisor: the days in the month.</div>
+          </div>
+          {/*
+            * LATE JOINERS (UAT, 10 October 2026): some clinics pay the days of
+            * somebody who joins near the month's end in the next month's run.
+            * Off unless chosen; same month is the default.
+            */}
+          <div>
+            <label htmlFor="ruleset-late-joiner">Part-month pay for late joiners</label>
+            <Select
+              id="ruleset-late-joiner"
+              value={lateJoinerCutoff === '' ? 'SAME' : 'NEXT'}
+              onChange={(value) => setLateJoinerCutoff(value === 'SAME' ? '' : lateJoinerCutoff || '25')}
+              style={{ width: '100%', maxWidth: 460 }}
+              options={[
+                { value: 'SAME', label: 'Same month' },
+                { value: 'NEXT', label: 'Next month, for anybody who joins after a day' },
+              ]}
+            />
+            {lateJoinerCutoff !== '' ? (
+              <div style={{ marginTop: 8 }}>
+                <label htmlFor="ruleset-late-joiner-day">Joins after day</label>
+                <Input
+                  id="ruleset-late-joiner-day"
+                  inputMode="numeric"
+                  value={lateJoinerCutoff}
+                  onChange={(event) => setLateJoinerCutoff(event.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
+                  style={{ width: 90 }}
+                />
+              </div>
+            ) : null}
+            <div className="hr-form__help">
+              {lateJoinerCutoff === ''
+                ? 'Somebody who joins during a month is paid their days in that month’s run.'
+                : `Somebody who joins after the ${lateJoinerCutoff || '…'} is left out of that month’s run; the next month’s run adds those days to their basic pay.`}
+            </div>
           </div>
           <div>
             <label htmlFor="ruleset-pcb-projection">How the rest of the year is estimated for monthly tax</label>

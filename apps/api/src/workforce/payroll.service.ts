@@ -142,6 +142,17 @@ function monthStart(value: string | Date): Date {
 function monthEnd(start: Date): Date {
   return new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
 }
+/** "25th" — a day of the month, for a sentence. */
+function ordinalDay(day: number): string {
+  const teen = day % 100 >= 11 && day % 100 <= 13;
+  return `${day}${teen ? 'th' : day % 10 === 1 ? 'st' : day % 10 === 2 ? 'nd' : day % 10 === 3 ? 'rd' : 'th'}`;
+}
+
+/** "April 2026". */
+function monthLabelOf(month: Date): string {
+  return month.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
 function daysInMonth(start: Date): number {
   return new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)).getUTCDate();
 }
@@ -1166,6 +1177,34 @@ export class PayrollService {
           continue;
         }
 
+        /*
+         * LATE JOINERS PAID THE NEXT MONTH (UAT, 10 October 2026), only where
+         * the rule set has a cut-off day: somebody who starts after it is not
+         * in their joining month's run; the next month's run adds those days
+         * to basic pay. No cut-off (the default): paid in the same month.
+         */
+        const cutoffDay = isBonusRun
+          ? null
+          : (resolvePayrollPolicy(payrollPolicies, {
+              payrollPolicyId: employee.payrollPolicyId,
+              legalEmployerId: employee.legalEmployerId,
+              category: workforceCategoryOf(employee.staff),
+            }).policy?.lateJoinerCutoffDay ?? null);
+        const joinedAfterCutoff = (start: Date | null, monthStart: Date) =>
+          cutoffDay !== null &&
+          start !== null &&
+          start.getUTCFullYear() === monthStart.getUTCFullYear() &&
+          start.getUTCMonth() === monthStart.getUTCMonth() &&
+          start.getUTCDate() > cutoffDay;
+        if (joinedAfterCutoff(employee.startDate, period)) {
+          exclude('JOINED_AFTER_CUTOFF', employee, {
+            startDate: employee.startDate!.toISOString().slice(0, 10),
+            cutoff: ordinalDay(cutoffDay!),
+            periodLabel,
+          });
+          continue;
+        }
+
         const salary = resolveSalaryForPayroll(
           salaryByStaff.get(employee.staffId) ?? [],
           period,
@@ -1329,7 +1368,45 @@ export class PayrollService {
             restDayVaries: classification.restDayVaries,
           }),
         });
-        const basicCents = partMonth.basicCents;
+        let lateJoinerCents = 0;
+        const previousMonth = new Date(Date.UTC(period.getUTCFullYear(), period.getUTCMonth() - 1, 1));
+        // A month that already paid them (the cut-off set afterwards) is not paid again.
+        const previousMonthPaid =
+          joinedAfterCutoff(employee.startDate, previousMonth) &&
+          (await tx.payrollLine.count({
+            where: {
+              staffId: employee.staffId,
+              payrollRun: { period: previousMonth, runType: 'REGULAR', status: { in: [PayrollRunStatus.APPROVED, PayrollRunStatus.PAID] } },
+            },
+          })) > 0;
+        if (joinedAfterCutoff(employee.startDate, previousMonth) && !previousMonthPaid) {
+          const previousLastDay = new Date(period.getTime() - 86_400_000);
+          const previousSalary = resolveSalaryForPayroll(salaryByStaff.get(employee.staffId) ?? [], previousMonth, previousLastDay);
+          if (previousSalary.kind !== 'RESOLVED' || previousSalary.row.basis !== 'MONTHLY') {
+            exclude('LATE_JOINER_DAYS_UNPRICED', employee, { month: monthLabelOf(previousMonth) });
+            continue;
+          }
+          const previousDays = daysInMonth(previousMonth);
+          const previousWindow = { periodStart: previousMonth, periodEnd: period, daysInPeriod: previousDays, startDate: employee.startDate, endDate: employee.endDate };
+          const previousPart = partMonthPay({
+            monthlyCents: previousSalary.row.amountCents,
+            proration: prorationFor(previousWindow),
+            window: previousWindow,
+            basis: policyResolution.policy?.partMonthBasis ?? 'CALENDAR_DAYS',
+            week: workingWeek({
+              workDaysPerWeek: employee.workDaysPerWeek === null ? null : Number(employee.workDaysPerWeek),
+              restDayOfWeek: classification.restDayOfWeek,
+              restDayVaries: classification.restDayVaries,
+            }),
+          });
+          lateJoinerCents = previousPart.basicCents;
+          raise('LATE_JOINER_DAYS_ADDED', employee, {
+            note:
+              `Started ${employee.startDate!.toISOString().slice(0, 10)}, after the ${ordinalDay(cutoffDay!)} cut-off: ` +
+              `${monthLabelOf(previousMonth)}'s days, RM${formatCents(lateJoinerCents)}, are added to basic pay this month.`,
+          });
+        }
+        const basicCents = partMonth.basicCents + lateJoinerCents;
         const prorationNote = describeProration(proration, days, partMonth.workingDays);
         if (prorationNote) {
           // INFO, not a blocker. A part-month is a normal event; what is not

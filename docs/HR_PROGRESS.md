@@ -6,6 +6,32 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 42 — 11 Oktober 2026 — Pekerja yang masuk lewat: dibayar bulan berikutnya selepas hari N
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi:**
+`20261011090000_payroll_policy_late_joiner_cutoff` (satu lajur boleh-null,
+`payroll_policies.late_joiner_cutoff_day`). Staging: *Migrate only* (lihat
+di bawah).
+
+- `[D]` (6) *Settings → Pay rules*, setiap rule set: **Part-month pay for late
+  joiners** — *Same month* (lalai, tingkah laku sedia ada) atau *Next month,
+  for anybody who joins after a day* dengan hari 1–28. Baris rule set
+  menunjukkan "joiners after day N paid the next month".
+- `[D]` Dengan cut-off 25: pekerja yang mula 27 Apr tidak masuk run April
+  (INFO *Joined after the cut-off*); run Mei menambah hari April (4/30) pada
+  gaji pokok, 1,800 + 240 = 2,040, dengan INFO *Last month's days added*.
+  Hari dikira dengan asas part-month rule set yang sama.
+- `[D]` Jika April sudah diluluskan dan membayar mereka (cut-off ditetapkan
+  kemudian), Mei tidak membayar hari April sekali lagi.
+- `[D]` Jika tiada gaji bulanan tunggal pada bulan masuk, Mei disekat untuk
+  orang itu (*Last month's days cannot be priced*) dan bukannya meneka.
+- `[A]` EPF/SOCSO/EIS/PCB Mei dikira atas gaji pokok Mei yang termasuk hari
+  April, seperti payroll lama membayarnya dalam run Mei. Tiada perubahan lain
+  pada logik statutori.
+- `[D]` **Ujian**: API baharu `payroll-late-joiner-cutoff` (3).
+
+---
+
 ## Batch 41 — 11 Oktober 2026 — Eksport payroll: Employee No. dahulu, satu lajur bagi setiap item
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada

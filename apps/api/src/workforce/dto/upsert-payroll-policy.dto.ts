@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Length, Matches, Max, Min, ValidateIf } from 'class-validator';
 import { WORKFORCE_CATEGORIES } from '../workforce-category';
 
 const BASES = ['FIXED_DAYS', 'WORKING_DAYS', 'CALENDAR_DAYS'] as const;
@@ -63,6 +63,13 @@ export class UpsertPayrollPolicyDto {
    * keeps what the rule set has.
    */
   @IsOptional() @IsIn(['CALENDAR_DAYS', 'WORKING_DAYS']) partMonthBasis?: 'CALENDAR_DAYS' | 'WORKING_DAYS';
+
+  /**
+   * LATE JOINERS PAID THE NEXT MONTH (UAT, 10 October 2026). A day 1–28:
+   * somebody who starts after it is paid that month's days in the next run.
+   * Null: paid in the same month (the default). Absent keeps what it has.
+   */
+  @IsOptional() @ValidateIf((_, value) => value !== null) @IsInt() @Min(1) @Max(28) lateJoinerCutoffDay?: number | null;
 
   /** §6 — STATUTORY (the Act's formula) or CLINIC_RATE (the amounts below). */
   @IsOptional() @IsIn(OVERTIME_MODES) overtimeMode?: OvertimeModeCode;

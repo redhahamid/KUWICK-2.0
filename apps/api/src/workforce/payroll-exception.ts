@@ -737,6 +737,41 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'Set the rest day on their employee record. The Employment Act requires one a week, chosen by the employer and told to the employee.',
     deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=statutory&focus=standing`,
   },
+  /*
+   * LATE JOINERS PAID THE NEXT MONTH (UAT, 10 October 2026), where the rule
+   * set says so: the joining month leaves them out, and the next month adds
+   * those days to basic pay.
+   */
+  JOINED_AFTER_CUTOFF: {
+    code: 'JOINED_AFTER_CUTOFF',
+    title: 'Joined after the cut-off',
+    severity: 'INFO',
+    overridable: false,
+    cause: (c) => `They started on ${String(c.startDate)}, after the ${String(c.cutoff)} cut-off in their rule set.`,
+    consequence: (c) => `They are not paid in this month’s run. Their ${String(c.periodLabel)} days are added to basic pay in next month’s run.`,
+    remediation: 'Nothing to do. To pay joiners in the month they start, clear the cut-off in Settings → Pay rules.',
+    deepLink: () => '/admin/hr/settings/payroll',
+  },
+  LATE_JOINER_DAYS_UNPRICED: {
+    code: 'LATE_JOINER_DAYS_UNPRICED',
+    title: 'Last month’s days cannot be priced',
+    severity: 'BLOCKING',
+    overridable: false,
+    cause: (c) => `They joined after the cut-off in ${String(c.month)}, and no single monthly salary was in force that month.`,
+    consequence: 'Their days from that month cannot be added to this month’s basic pay, so they are not paid this month until it is fixed.',
+    remediation: 'Record their monthly salary from their start date, then work the month out again.',
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=employment&focus=salary`,
+  },
+  LATE_JOINER_DAYS_ADDED: {
+    code: 'LATE_JOINER_DAYS_ADDED',
+    title: 'Last month’s days added',
+    severity: 'INFO',
+    overridable: false,
+    cause: (c) => String(c.note),
+    consequence: 'Basic pay this month includes those days, and the statutory deductions are worked out on it.',
+    remediation: 'Nothing to do, unless the start date on their record is wrong.',
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=employment&focus=employment`,
+  },
   PART_MONTH: {
     code: 'PART_MONTH',
     title: 'Part of the month only',

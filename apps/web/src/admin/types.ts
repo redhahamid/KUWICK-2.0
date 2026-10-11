@@ -3681,6 +3681,8 @@ export interface PayrollPolicyRow {
   termination: { basis: string; days: number | null };
   /** How a part month is paid: s.18A's calendar days, or the clinic's working days. */
   partMonthBasis: "CALENDAR_DAYS" | "WORKING_DAYS";
+  /** Joiners after this day are paid their first days in the next month's run; null = same month. */
+  lateJoinerCutoffDay?: number | null;
   /** §6 — how extra hours, rest days and public holidays are priced. */
   overtimeMode: OvertimeMode;
   clinicRates: ClinicRateFields | null;
