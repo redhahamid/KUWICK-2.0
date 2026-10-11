@@ -6,6 +6,25 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 41 — 11 Oktober 2026 — Eksport payroll: Employee No. dahulu, satu lajur bagi setiap item
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada
+migrasi.** Tiada perubahan pengiraan.
+
+- `[D]` (4) *Export* pada payroll: lajur pertama **Employee No.**; "Other
+  income", "Claims" dan "Other deductions" diganti dengan satu lajur bagi
+  setiap item yang ada amaun bulan itu (contoh Night incentive, Claim
+  reimbursement, Uniform deduction): pendapatan sebelum *Gross*, potongan
+  selepasnya. Overtime, unpaid leave dan PCB kekal dengan lajur sedia ada.
+- `[D]` Jika item seseorang tidak menjumlah kepada angka pelayan, bezanya
+  diberi lajur "… (not itemised)" dan bukannya hilang; pada bulan yang dikira
+  oleh enjin, lajur itu tidak muncul.
+- `[D]` Pelayan kini menghantar Employee No. dan sisi (tambah/tolak) bagi
+  setiap baris item.
+- `[D]` **Ujian**: web baharu `payrollExport` (3).
+
+---
+
 ## Batch 40 — 11 Oktober 2026 — Pendaftaran HRD boleh dibawa ke tarikh lebih awal
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada

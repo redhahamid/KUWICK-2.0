@@ -15,7 +15,7 @@ import {
 } from '../hooks/useAdmin';
 import { ProvisionalBanner } from './ProvisionalBanner';
 import { PayrollStepper, STEPS, normaliseStep, stepsWithProblems, type StepKey } from './PayrollStepper';
-import { cellValue, gridColumnsFor, PayrollGrid, type GridEdit, type LeftOutRow, type SaveOutcome } from './PayrollGrid';
+import { PayrollGrid, type GridEdit, type LeftOutRow, type SaveOutcome } from './PayrollGrid';
 import { PayrollExceptionCentre } from './PayrollExceptionCentre';
 import { PayrollInputsDrawer } from './PayrollInputsDrawer';
 import { PayslipsPanel } from './PayslipsPanel';
@@ -25,6 +25,7 @@ import { useCan } from '../../core/hooks/useCan';
 import { HrPage, Panel, PanelHead, SegControl, StatCard, StatRow, StatusChip, Toolbar, ToolbarSearch } from './ui';
 import { IconDownload, IconHistory, IconPayroll } from './ui/icons';
 import { downloadCsv } from './ui/csv';
+import { payrollExportTable } from './payrollExport';
 import type { PayrollJourney } from '../types';
 import { ItemsImport } from './ItemsImport';
 
@@ -121,21 +122,9 @@ export function PayrollWorkspace({ runId, monthNav }: { runId: string; monthNav?
 
   const exportCsv = () => {
     if (!data) return;
-    // Every column, the clinic's own ones included — a folded column is a
-    // screen decision, not a change to what the month contains.
-    const exportColumns = gridColumnsFor(data.pay.columns);
-    downloadCsv(
-      `payroll-${data.run.period}`,
-      // The export carries the column's fuller name where the grid leans on
-      // the group header above it to say whose money the column is.
-      ['Employee', 'Position', 'Status', ...exportColumns.map((column) => column.exportTitle ?? column.title)],
-      rows.map((row) => [
-        row.name,
-        row.position,
-        row.blockers > 0 ? 'Blocked' : row.warnings > 0 ? 'Needs attention' : 'Ready',
-        ...exportColumns.map((column) => cellValue(column, row)),
-      ]),
-    );
+    // One column per item with an amount, Employee No. first (UAT, 10 October 2026).
+    const table = payrollExportTable(data.pay);
+    downloadCsv(`payroll-${data.run.period}`, table.header, table.rows);
   };
 
   return (

@@ -619,6 +619,15 @@ export class PayrollJourneyService {
      * quietly. The server already holds all three; it does the join once.
      */
     const standingByStaff = new Map(step1.map((row) => [row.staffId, row]));
+    // Employee No. on every paid row: the export leads with it (UAT, 10 October 2026).
+    const numberByStaff = new Map(
+      (
+        await this.prisma.employeeProfile.findMany({
+          where: { staffId: { in: run.lines.map((line) => line.staffId) } },
+          select: { staffId: true, employeeNo: true },
+        })
+      ).map((row) => [row.staffId, row.employeeNo]),
+    );
     const paidRows = [...run.lines].sort(byEmployeeName((line) => ({ name: line.staff.fullName, staffId: line.staffId }))).map((line) => {
       const own = inputsByStaff.get(line.staffId) ?? [];
       const standing = standingByStaff.get(line.staffId);
@@ -875,9 +884,12 @@ export class PayrollJourneyService {
         columns: columnCells,
         overtimeHours: overtimeHoursOnLine,
         unpaidDays: unpaidDaysOnLine,
+        employeeNo: numberByStaff.get(line.staffId) ?? null,
         items: own.map((row) => ({
           id: row.id,
           componentCode: row.componentCode,
+          /** Whether the line adds to pay or comes off it — the export's own column per item needs the side. */
+          direction: audienceByCode.get(row.componentCode)?.type === 'DEDUCTION' ? ('DEDUCTS' as const) : ('ADDS' as const),
           label: row.label ?? itemName.get(row.componentCode) ?? row.componentCode,
           amount: formatCents(toCents(row.amount)),
           source: row.source,

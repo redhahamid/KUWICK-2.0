@@ -2600,6 +2600,8 @@ export interface PayrollJourneyColumnCell {
 export interface PayrollJourneyPayItem {
   id: string;
   componentCode: string;
+  /** Adds to pay or comes off it. */
+  direction?: "ADDS" | "DEDUCTS";
   label: string;
   amount: string;
   source: string;
@@ -2764,6 +2766,7 @@ export interface PayrollJourney {
       unpaidDays: number;
       /** The own columns, keyed by item code; `pay.columns` gives their order and names. */
       columns: Record<string, PayrollJourneyColumnCell>;
+      employeeNo?: string | null;
       items: PayrollJourneyPayItem[];
     }[];
     /**
