@@ -14,6 +14,8 @@ const SETTINGS_CATEGORIES: HubCategory[] = [
       // FINAL-UAT — tenant-defined roles; assignment happens on the Staff
       // page's Access drawer.
       { path: '/settings/organisation/roles', label: 'Roles & Permissions' },
+      // Display names, which the owner can correct (12 October 2026).
+      { path: '/settings/organisation/users', label: 'Users' },
       { path: '/management/hr/staff', label: 'Users & Staff →' },
     ],
   },

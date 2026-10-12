@@ -6,6 +6,31 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 47 — 12 Oktober 2026 — Tiada kotak YTD; nama paparan boleh ditukar (dilog)
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada
+migrasi.** Tiada angka berubah.
+
+- `[D]` (1) PDF payslip: kotak Year-to-date dibuang. Yang lain kekal.
+- `[D]` (2) **My Kuwick → Profile** (tab baharu): pengguna menukar nama
+  paparan sendiri. **Settings → Organisation & Branches → Users** (halaman
+  baharu): pemilik (kebenaran `users.manage`) menamakan semula sesiapa. Setiap
+  tukaran nama, termasuk melalui suntingan staf sedia ada, direkod dalam log
+  audit `staff.renamed` dengan nama lama dan baharu.
+- `[D]` Payslip: Prepared by / Approved by kini dibekukan dalam rekod kelulusan
+  (versi 7). Bulan yang diluluskan sebelum ini membaca nama dari log: tukaran
+  nama pertama selepas kelulusan menyimpan nama hari itu dalam `before`; tiada
+  tukaran → nama semasa. Hanya bulan yang diluluskan selepas tukaran mencetak
+  nama baharu. Jawatan (position) kekal semasa.
+- `[A]` Tukaran nama sebelum hari ini yang tidak melalui skrin ini (contoh
+  seed) tiada dalam log, jadi bulan lama berkenaan akan mencetak nama semasa.
+- `[D]` **Ujian**: e2e `payroll-payslip` +1 (403 bukan pemilik, 400 nama
+  kosong, dua tukaran dilog, payslip kekal nama lama); unit
+  `payroll-payslip-employer.spec` +2; web baharu `myProfile` (1),
+  `usersSettings` (2).
+
+---
+
 ## Batch 46 — 12 Oktober 2026 — Payslip mencetak butiran majikan seperti semasa kelulusan
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada

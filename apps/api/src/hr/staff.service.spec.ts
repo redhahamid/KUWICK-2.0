@@ -27,7 +27,7 @@ function createService() {
     // Final-UAT — assertMayManageUsers reads the actor's capability roles.
     staffRoleAssignment: { findMany: jest.fn().mockResolvedValue([]) },
   } as unknown as TenantScopedPrismaClient;
-  return { service: new StaffService(prisma), prisma };
+  return { service: new StaffService(prisma, {} as never), prisma };
 }
 
 function withTenant<T>(fn: () => Promise<T>): Promise<T> {

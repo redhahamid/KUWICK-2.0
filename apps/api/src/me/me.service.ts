@@ -4,6 +4,7 @@ import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-s
 import { PrismaService } from '../core/prisma.service';
 import { currentStaffId, currentTenantId } from '../core/tenant-context';
 import { requireActor, withTenantTx } from '../clinical/clinical-actor';
+import { renameStaff } from '../hr/staff-name';
 import { recordAudit } from '../finance/admin-audit';
 import { clinicDateKey } from '../appointment/time.util';
 import { AttendanceRecordService } from '../workforce/attendance-record.service';
@@ -84,6 +85,17 @@ export class MeService {
    * payslip, which is a document about one month with a total they can check,
    * not from a settings screen they might think they can edit.
    */
+  /**
+   * THE PERSON CHANGES THEIR OWN DISPLAY NAME (owner, 12 October 2026: My
+   * Kuwick → Profile). Their own name only, logged with the old one.
+   */
+  async rename(fullName: unknown) {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      return renameStaff(tx, actor, actor.id, fullName, 'me.profile');
+    });
+  }
+
   async profile() {
     const actor = await this.me();
     const [employment, clinic] = await Promise.all([

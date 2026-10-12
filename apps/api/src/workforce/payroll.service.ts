@@ -3668,6 +3668,8 @@ export class PayrollService {
             addressLine1: true, addressLine2: true, postcode: true, city: true, state: true,
           },
         },
+        createdBy: { select: { id: true, fullName: true } },
+        approvedBy: { select: { id: true, fullName: true } },
         lines: { orderBy: { staffId: 'asc' } },
         approvals: { orderBy: { sequence: 'asc' }, include: { staff: { select: { fullName: true } } } },
         exceptionRows: { orderBy: [{ severity: 'asc' }, { code: 'asc' }, { staffId: 'asc' }] },
@@ -3943,6 +3945,11 @@ export class PayrollService {
             state: run.legalEmployer.state,
           }
         : null,
+      // Named as they are now, at approval: a later rename leaves this alone.
+      signatories: {
+        preparedBy: run.createdBy ? { staffId: run.createdBy.id, name: run.createdBy.fullName } : null,
+        approvedBy: run.approvedBy ? { staffId: run.approvedBy.id, name: run.approvedBy.fullName } : null,
+      },
       period: run.period.toISOString().slice(0, 10),
       runType: run.runType,
       sequence: run.sequence,

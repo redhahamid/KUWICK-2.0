@@ -23,6 +23,7 @@ describe('Payroll payslips (e2e)', () => {
   let prisma: PrismaClient;
   let tenantId: string;
   let bearer: string;
+  let ownerStaffId: string;
   let clinicId: string;
   let legalEmployerId: string;
   let staffId: string;
@@ -43,6 +44,7 @@ describe('Payroll payslips (e2e)', () => {
     );
     const owner = await createOwnerAndBearer(prisma, tenantId);
     bearer = owner.bearer;
+    ownerStaffId = owner.staffId;
 
     const clinic = await request(app.getHttpServer())
       .post('/clinics')
@@ -271,7 +273,7 @@ describe('Payroll payslips (e2e)', () => {
     expect(((audit[0].after ?? {}) as { staffId?: string }).staffId).toBe(staffId);
   });
 
-  it('prints the employer logo, the account it was paid to by its last four digits, and the year to date', async () => {
+  it('prints the employer logo and the account it was paid to by its last four digits', async () => {
     // UAT, 12 October 2026. A 1×1 PNG stands in for the clinic's logo.
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
     await request(app.getHttpServer())
@@ -327,6 +329,33 @@ describe('Payroll payslips (e2e)', () => {
       .set('Authorization', bearer)
       .send({ id: legalEmployerId, name: 'Payslip Employer Sdn Bhd', registrationNo: '202601012345', epfEmployerNo: 'EPF-EMP-9' })
       .expect(201);
+  });
+
+  it('renames a user, logged, and keeps the approved payslip’s Prepared and Approved names', async () => {
+    // Owner, 12 October 2026: My Kuwick → Profile, and Organisation settings → Users.
+    const before = (await request(app.getHttpServer()).get(`/workforce/payroll/runs/${runId}/payslips/${staffId}`).set('Authorization', bearer).expect(200)).body;
+    const approvedName = before.approvedBy.name as string;
+
+    const clerk = bearerFor(tenantId, staffId, Role.FRONT_DESK_CLINICAL_STAFF);
+    await request(app.getHttpServer()).patch(`/staff/${ownerStaffId}/name`).set('Authorization', clerk).send({ fullName: 'Not Allowed' }).expect(403);
+    await request(app.getHttpServer()).patch(`/staff/${ownerStaffId}/name`).set('Authorization', bearer).send({ fullName: ' ' }).expect(400);
+    await request(app.getHttpServer()).patch(`/staff/${ownerStaffId}/name`).set('Authorization', bearer).send({ fullName: 'Dr  Demo   Renamed' }).expect(200);
+    await request(app.getHttpServer()).patch('/me/name').set('Authorization', clerk).send({ fullName: 'Payslip Person Baru' }).expect(200);
+
+    const renames = await withTenantContext(prisma, tenantId, (tx) =>
+      tx.auditLog.findMany({ where: { action: 'staff.renamed' }, orderBy: { createdAt: 'asc' } }),
+    );
+    expect(renames.map((row) => [row.entityId, (row.before as { fullName: string }).fullName, (row.after as { fullName: string }).fullName])).toEqual([
+      [ownerStaffId, approvedName, 'Dr Demo Renamed'],
+      [staffId, 'Payslip Person', 'Payslip Person Baru'],
+    ]);
+
+    const after = (await request(app.getHttpServer()).get(`/workforce/payroll/runs/${runId}/payslips/${staffId}`).set('Authorization', bearer).expect(200)).body;
+    expect(after.approvedBy.name).toBe(approvedName);
+    expect(after.preparedBy.name).toBe(before.preparedBy.name);
+    // Put the names back for the tests below.
+    await request(app.getHttpServer()).patch(`/staff/${ownerStaffId}/name`).set('Authorization', bearer).send({ fullName: approvedName }).expect(200);
+    await request(app.getHttpServer()).patch(`/staff/${staffId}/name`).set('Authorization', bearer).send({ fullName: 'Payslip Person' }).expect(200);
   });
 
   it('lets the employee download their own payslip once the run is PAID, and nobody else', async () => {

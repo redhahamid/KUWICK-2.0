@@ -57,3 +57,23 @@ describe('the employer on a payslip', () => {
     expect(await asApproved({ legalEmployerName: 'Demo Klinik Baharu Sdn Bhd' })).toMatchObject({ registrationNo: '209999999999', addressLine1: 'No. 9, Jalan Baharu' });
   });
 });
+
+describe('a Prepared or Approved name on an older payslip', () => {
+  const serviceWithRename = (before: unknown) => {
+    const findFirst = jest.fn(async () => (before === undefined ? null : { before }));
+    const service = new PayrollPayslipService({ auditLog: { findFirst } } as never, {} as never);
+    return (service as unknown as { nameAsApproved: (id: string, current: string, at: Date) => Promise<string> }).nameAsApproved(
+      's-1',
+      'Dr Demo Renamed',
+      new Date('2026-02-01T00:00:00.000Z'),
+    );
+  };
+
+  it('is the name before the first rename made after the approval', async () => {
+    expect(await serviceWithRename({ fullName: 'Dr Demo Asal' })).toBe('Dr Demo Asal');
+  });
+
+  it('is today’s name when nobody was renamed since', async () => {
+    expect(await serviceWithRename(undefined)).toBe('Dr Demo Renamed');
+  });
+});

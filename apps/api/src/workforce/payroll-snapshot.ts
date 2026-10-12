@@ -49,8 +49,18 @@ import { EmployeeFigures, InvariantViolation, RunTotals, checkPayrollInvariants 
  * Version 6 (UAT, 12 October 2026) freezes the employer's details as they
  * stood at approval: name, registration, statutory numbers and address. A
  * payslip is a historical document, so it prints those, never today's.
+ *
+ * Version 7 (UAT, 12 October 2026) freezes who prepared and who approved the
+ * month, by name as it stood then, so renaming a user does not rewrite an
+ * approved payslip.
  */
-export const SNAPSHOT_SCHEMA_VERSION = 6;
+export const SNAPSHOT_SCHEMA_VERSION = 7;
+
+/** A person named on the approved record (version 7+). */
+export interface SnapshotSignatory {
+  staffId: string;
+  name: string;
+}
 
 /** The employer as it stood when the month was approved (version 6+). */
 export interface SnapshotEmployer {
@@ -331,6 +341,8 @@ export interface SnapshotPayload {
   legalEmployerName: string | null;
   /** Version 6+. The employer's details as they stood at approval. */
   legalEmployer?: SnapshotEmployer | null;
+  /** Version 7+. Who prepared and who approved the month, named as they were then. */
+  signatories?: { preparedBy: SnapshotSignatory | null; approvedBy: SnapshotSignatory | null } | null;
   period: string;
   runType: string;
   sequence: number;

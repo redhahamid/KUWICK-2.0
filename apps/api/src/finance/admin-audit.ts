@@ -133,6 +133,8 @@ export type AuditAction =
   /// nothing was ever paid under the one it replaces.
   | 'payComponent.versionCorrected'
   | 'payComponent.startCorrected'
+  /** A person's display name changed, by themselves or the owner. */
+  | 'staff.renamed'
   /// An unstarted version withdrawn outright, leaving the treatment in force
   /// unchanged. The mistake lives here rather than in the catalogue.
   | 'payComponent.versionWithdrawn'

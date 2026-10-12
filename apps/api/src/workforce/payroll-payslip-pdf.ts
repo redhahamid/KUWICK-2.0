@@ -19,7 +19,7 @@ import type { PayslipData } from './payroll-payslip.service';
  *  - the employer's contributions ABOVE the net, never mixed into deductions;
  *  - the net pay in figures and in words, the account it was paid to, and a
  *    small Date | Amount table when the month is paid on more than one date;
- *  - a small year-to-date box: gross, EPF, SOCSO + EIS and PCB to this month;
+ *  - no year to date: the clinic does not want it on the payslip;
  *  - Prepared by / Approved by, as typed names — no signature image is on
  *    record.
  *
@@ -358,30 +358,8 @@ export function renderPayslipPdf(slip: PayslipData, logo: Buffer | null = null):
     leftY = rowY;
   }
 
-  // YEAR TO DATE, from January to this month, as approval recorded it.
-  const ytdX = left + halfW + gap;
-  const ytdRows: [string, string][] = slip.ytd
-    ? [
-        ['Gross', RM(slip.ytd.grossCents)],
-        ['EPF (employee)', RM(slip.ytd.epfEmployeeCents)],
-        ['SOCSO + EIS (employee)', RM(slip.ytd.socsoEmployeeCents + slip.ytd.eisEmployeeCents)],
-        ['PCB', RM(slip.ytd.pcbCents)],
-      ]
-    : [];
-  const ytdTitle = `Year to date · Jan – ${periodEnd.toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })} (RM)`;
-  const ytdH = 18 + (ytdRows.length ? ytdRows.length * 12 : 12) + 6;
-  doc.save().roundedRect(ytdX, y, halfW, ytdH, 4).lineWidth(0.8).strokeColor(LINE).stroke().restore();
-  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(INK3).text(ytdTitle.toUpperCase(), ytdX + 8, y + 6, { width: halfW - 16, characterSpacing: 0.5 });
-  let ytdY = y + 18;
-  if (ytdRows.length === 0) {
-    doc.font('Helvetica').fontSize(8.5).fillColor(INK3).text('Not recorded for this year yet.', ytdX + 8, ytdY, { width: halfW - 16 });
-  }
-  for (const [label, value] of ytdRows) {
-    doc.font('Helvetica').fontSize(8.5).fillColor(INK2).text(label, ytdX + 8, ytdY, { width: halfW - 100 });
-    doc.fillColor(INK).text(value, ytdX + halfW - 98, ytdY, { width: 90, align: 'right' });
-    ytdY += 12;
-  }
-  y = Math.max(leftY, y + ytdH) + 18;
+  // No year-to-date box: the clinic does not want one on the payslip (12 October 2026).
+  y = leftY + 18;
 
   // --- Prepared by / Approved by -----------------------------------------------------
   const sigW = (width - 30) / 2;

@@ -82,6 +82,21 @@ export class PayrollPayslipService {
     };
   }
 
+  /**
+   * A PERSON'S NAME AS IT STOOD AT APPROVAL, for a record approved before
+   * names were frozen with it: the first rename after the approval holds the
+   * name of that day in its `before`; with no rename since, today's name is it.
+   */
+  private async nameAsApproved(staffId: string, current: string, approvedAt: Date): Promise<string> {
+    const renamed = await this.prisma.auditLog.findFirst({
+      where: { entityType: 'Staff', entityId: staffId, action: 'staff.renamed', createdAt: { gt: approvedAt } },
+      orderBy: { createdAt: 'asc' },
+      select: { before: true },
+    });
+    const before = renamed?.before as { fullName?: unknown } | null | undefined;
+    return typeof before?.fullName === 'string' ? before.fullName : current;
+  }
+
   /** The employer's logo for the PDF, from a payslip already authorised; null prints the initial. */
   async logoBytes(mediaId: string | null): Promise<Buffer | null> {
     if (!mediaId) return null;
@@ -209,8 +224,8 @@ export class PayrollPayslipService {
         // WHO PREPARED AND WHO APPROVED — the two signatures on the slip
         // (payslip.html): the person who ran the month and the person who
         // locked it, each with the position on their own employee record.
-        createdBy: { select: { fullName: true, employeeProfile: { select: { position: true } } } },
-        approvedBy: { select: { fullName: true, employeeProfile: { select: { position: true } } } },
+        createdBy: { select: { id: true, fullName: true, employeeProfile: { select: { position: true } } } },
+        approvedBy: { select: { id: true, fullName: true, employeeProfile: { select: { position: true } } } },
         _count: { select: { snapshots: true } },
       },
     });
@@ -290,6 +305,13 @@ export class PayrollPayslipService {
           };
 
     const approvedEmployer = await this.employerAsApproved(payload, run.legalEmployer, snapshot.createdAt);
+    // PREPARED AND APPROVED BY, named as they were at approval (owner, 12
+    // October 2026): a rename shows only on months approved after it.
+    const preparedName =
+      payload.signatories?.preparedBy?.name ?? (await this.nameAsApproved(run.createdBy.id, run.createdBy.fullName, snapshot.createdAt));
+    const approvedName = run.approvedBy
+      ? (payload.signatories?.approvedBy?.name ?? (await this.nameAsApproved(run.approvedBy.id, run.approvedBy.fullName, snapshot.createdAt)))
+      : null;
 
     const classification = line.classification;
     const detail = line.payslip ?? null;
@@ -382,13 +404,13 @@ export class PayrollPayslipService {
        * approved is the run's own approval, or the last of several.
        */
       preparedBy: {
-        name: run.createdBy.fullName,
+        name: preparedName,
         position: run.createdBy.employeeProfile?.position ?? null,
         at: (run.calculatedAt ?? run.createdAt).toISOString(),
       },
       approvedBy: run.approvedBy
         ? {
-            name: run.approvedBy.fullName,
+            name: approvedName ?? run.approvedBy.fullName,
             position: run.approvedBy.employeeProfile?.position ?? null,
             at: (run.approvedAt ?? snapshot.createdAt).toISOString(),
           }

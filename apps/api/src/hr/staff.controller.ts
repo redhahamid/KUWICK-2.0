@@ -27,6 +27,12 @@ export class StaffController {
     return this.staffService.update(id, dto);
   }
 
+  /** The owner renames any user, logged (Organisation settings → Users). */
+  @Patch(':id/name')
+  rename(@Param('id') id: string, @Body() body: { fullName?: string }) {
+    return this.staffService.rename(id, body?.fullName);
+  }
+
   // C0 closure — read-only history of professional identity / signing
   // permission changes. There is deliberately no write, update or delete
   // route for these rows anywhere in the API.

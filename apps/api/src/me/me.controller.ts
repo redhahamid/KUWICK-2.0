@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { MAX_STAFF_FILE_BYTES, StaffFileService } from '../workforce/staff-file.service';
@@ -36,6 +36,12 @@ export class MeController {
   @Get()
   profile() {
     return this.me.profile();
+  }
+
+  /** The signed-in person's own display name. */
+  @Patch('name')
+  rename(@Body() body: { fullName?: string }) {
+    return this.me.rename(body?.fullName);
   }
 
   /** The phone's home screen: am I clocked in, what is today, what is waiting. */

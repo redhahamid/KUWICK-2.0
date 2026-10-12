@@ -11,6 +11,9 @@ import { can } from '../core/permissions';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 import { nextProviderColor } from './provider-colors';
+import { PrismaService } from '../core/prisma.service';
+import { requireActor, withTenantTx } from '../clinical/clinical-actor';
+import { renameStaff } from './staff-name';
 
 const DOCTOR_ROLES: Role[] = [Role.DOCTOR_RESIDENT, Role.DOCTOR_LOCUM];
 const PASSWORD_HASH_ROUNDS = 10;
@@ -19,7 +22,21 @@ const PASSWORD_HASH_ROUNDS = 10;
 export class StaffService {
   constructor(
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
+    private readonly rawPrisma: PrismaService,
   ) {}
+
+  /**
+   * THE OWNER RENAMES SOMEBODY (owner, 12 October 2026: Organisation settings
+   * → Users). User management, so the same gate as every other edit of an
+   * account; logged with the old and new name.
+   */
+  async rename(id: string, fullName: unknown) {
+    await this.assertMayManageUsers();
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      return renameStaff(tx, actor, id, fullName, 'settings.users');
+    });
+  }
 
   async create(dto: CreateStaffDto) {
     // FINAL-UAT hardening — creating an ACCOUNT is user management. This was
@@ -126,7 +143,7 @@ export class StaffService {
     'canSignClinicalNotes',
   ] as const;
 
-  async update(id: string, dto: UpdateStaffDto) {
+  async update(id: string, dto: UpdateStaffDto): Promise<Staff> {
     // FINAL-UAT hardening — role, branch and active are access-control
     // facts; editing anybody's staff record is user management.
     await this.assertMayManageUsers();
@@ -140,6 +157,12 @@ export class StaffService {
       await this.assertMayChangeProfessionalIdentity();
     }
 
+    // A name changed here is logged like any other rename.
+    if (staffFields.fullName !== undefined && staffFields.fullName.trim() !== existing.fullName) {
+      const { fullName, ...rest } = staffFields;
+      await this.rename(id, fullName);
+      return this.update(id, { ...rest, professionalChangeReason } as UpdateStaffDto);
+    }
     const derived = this.derivedProfessionalFields(staffFields, existing);
     const data: Prisma.StaffUncheckedUpdateInput = { ...staffFields, ...derived };
     const updated = await this.prisma.staff.update({ where: { id }, data });

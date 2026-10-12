@@ -351,6 +351,11 @@ function useMyMutation<TBody, TResult>(fn: (body: TBody) => Promise<TResult>) {
   });
 }
 
+/** The signed-in person's own display name (owner, 12 October 2026), logged. */
+export function useRenameSelf() {
+  return useMyMutation((body: { fullName: string }) => apiClient.patch<{ id: string; fullName: string }>('/me/name', body));
+}
+
 export function useClockSelf() {
   return useMyMutation((body: { clinicId?: string; lat?: number; lng?: number; proofFileId?: string }) =>
     apiClient.post('/me/attendance/clock', body),

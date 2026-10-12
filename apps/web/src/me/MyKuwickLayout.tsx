@@ -34,6 +34,7 @@ const TABS: { to: string; label: string; end?: boolean }[] = [
   { to: "/my/leave", label: "Leave" },
   { to: "/my/claims", label: "Claims" },
   { to: "/my/attendance", label: "Attendance" },
+  { to: "/my/profile", label: "Profile" },
 ];
 
 /** The tile each tab's panels wear — see `SectionTileContext`. */
