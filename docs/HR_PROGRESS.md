@@ -10,7 +10,9 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi:**
 `20261012090000_legal_employer_logo` (satu lajur boleh-null,
-`legal_employers.logo_media_id`). Tiada angka berubah.
+`legal_employers.logo_media_id`). Staging: *Migrate only* #22 pada
+`9f972ee`, berjaya; "159 migrations found … Database schema is up to date".
+Tiada angka berubah.
 
 - `[D]` (1) Nama pekerja dicetak penuh; baris fakta bertambah tinggi dan nama
   dibalut ke baris kedua.
