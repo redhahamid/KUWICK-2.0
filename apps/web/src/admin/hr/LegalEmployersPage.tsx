@@ -9,6 +9,7 @@ import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useClinics } from '../../core/hooks/useClinics';
 import { Table } from './ui/Table';
 import type { LegalEmployerRow } from '../types';
+import { EmployerLogoField } from './EmployerLogoField';
 
 /** The Act's own words for each class, and the rate the Act fixes for it. */
 const HRD_LABELS: Record<string, string> = {
@@ -337,6 +338,15 @@ export function LegalEmployersPage() {
       >
         <ProblemNotice problem={error} />
         <div style={{ display: 'grid', gap: 10 }}>
+          {editing ? (
+            <EmployerLogoField
+              key={editing.id}
+              employerId={editing.id}
+              employerName={editing.name}
+              logoMediaId={editing.logoMediaId ?? null}
+              mayManage={mayManage}
+            />
+          ) : null}
           {FIELDS.map(([key, label]) => (
             <label key={key}>
               <div className="hr-small hr-muted" style={{ marginBottom: 4 }}>{label}</div>

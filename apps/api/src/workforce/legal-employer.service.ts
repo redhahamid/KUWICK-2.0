@@ -7,6 +7,10 @@ import { recordAudit } from '../finance/admin-audit';
 import { UpsertLegalEmployerDto } from './dto/upsert-legal-employer.dto';
 import { hrdLevyRatePercent } from '../statutory/hrd-levy';
 import { writeEpfBasis } from './contribution-basis.service';
+import { validateClinicalAttachment } from '../clinical/attachment-validation';
+
+/** A payslip logo: PNG or JPEG (what the PDF can draw), up to 1 MB. */
+export const MAX_LOGO_BYTES = 1024 * 1024;
 
 /**
  * THE LEGAL EMPLOYER.
@@ -121,6 +125,8 @@ export class LegalEmployerService {
       defaultEpfBasis: row.defaultEpfBasis,
       /** Whether zakat is deducted through payroll. */
       zakatThroughPayroll: row.zakatThroughPayroll,
+      // The payslip logo, if one was uploaded (UAT, 12 October 2026).
+      logoMediaId: row.logoMediaId,
       employeeCount: row._count.employees,
       payrollRunCount: row._count.runs,
       /**
@@ -170,6 +176,78 @@ export class LegalEmployerService {
       bankAccountOnFile: Boolean(bankAccountNo),
       bankAccountLastFour: bankAccountNo ? bankAccountNo.slice(-4) : null,
     };
+  }
+
+  /*
+   * THE COMPANY LOGO ON PAYSLIPS (UAT, 12 October 2026). The bytes sit in
+   * media_assets like the booking page's images (they survive redeploys and
+   * stay under tenant RLS); the employer points at its one current logo.
+   * PNG or JPEG only, proven by magic bytes, because those are what the PDF
+   * renderer draws. Replacing or removing one deletes the old image.
+   */
+  async setLogo(id: string, file: { originalname?: string; mimetype?: string; buffer?: Buffer; size?: number }) {
+    const buffer = file?.buffer;
+    if (!buffer || buffer.length === 0) throw new BadRequestException('No file arrived. Attach the logo as the "file" field.');
+    if (buffer.length > MAX_LOGO_BYTES) throw new BadRequestException('That logo is over 1 MB. Please use a smaller image.');
+    const validated = validateClinicalAttachment(file);
+    if (validated.mimeType !== 'image/png' && validated.mimeType !== 'image/jpeg') {
+      throw new BadRequestException('Upload the logo as a PNG or JPG image.');
+    }
+    return withAdminTx(this.rawPrisma, 'hr.statutory.manage', async (tx, actor) => {
+      const employer = await tx.legalEmployer.findFirst({ where: { id } });
+      if (!employer) throw new NotFoundException('Legal employer not found');
+      const asset = await tx.mediaAsset.create({
+        data: {
+          tenantId: currentTenantId(),
+          kind: 'EMPLOYER_LOGO',
+          contentType: validated.mimeType,
+          byteSize: buffer.length,
+          data: new Uint8Array(buffer),
+          createdByStaffId: actor.id,
+        },
+        select: { id: true },
+      });
+      await tx.legalEmployer.update({ where: { id }, data: { logoMediaId: asset.id } });
+      if (employer.logoMediaId) await tx.mediaAsset.deleteMany({ where: { id: employer.logoMediaId, kind: 'EMPLOYER_LOGO' } });
+      await recordAudit(tx, actor, {
+        action: 'legalEmployer.updated',
+        entityType: 'LegalEmployer',
+        entityId: id,
+        reason: `${employer.logoMediaId ? 'Replaced' : 'Added'} the payslip logo of ${employer.name}`,
+        before: { logoMediaId: employer.logoMediaId },
+        after: { logoMediaId: asset.id },
+      });
+      return { logoMediaId: asset.id };
+    });
+  }
+
+  async removeLogo(id: string) {
+    return withAdminTx(this.rawPrisma, 'hr.statutory.manage', async (tx, actor) => {
+      const employer = await tx.legalEmployer.findFirst({ where: { id } });
+      if (!employer) throw new NotFoundException('Legal employer not found');
+      if (!employer.logoMediaId) return { logoMediaId: null };
+      await tx.legalEmployer.update({ where: { id }, data: { logoMediaId: null } });
+      await tx.mediaAsset.deleteMany({ where: { id: employer.logoMediaId, kind: 'EMPLOYER_LOGO' } });
+      await recordAudit(tx, actor, {
+        action: 'legalEmployer.updated',
+        entityType: 'LegalEmployer',
+        entityId: id,
+        reason: `Removed the payslip logo of ${employer.name}`,
+        before: { logoMediaId: employer.logoMediaId },
+        after: { logoMediaId: null },
+      });
+      return { logoMediaId: null };
+    });
+  }
+
+  /** The logo's bytes, for the preview on the employer screen. */
+  async logo(id: string) {
+    await requirePermission(this.rawPrisma, 'hr.view');
+    const employer = await this.prisma.legalEmployer.findFirst({ where: { id }, select: { logoMediaId: true } });
+    if (!employer?.logoMediaId) throw new NotFoundException('No logo on file');
+    const row = await this.prisma.mediaAsset.findFirst({ where: { id: employer.logoMediaId }, select: { contentType: true, data: true } });
+    if (!row) throw new NotFoundException('No logo on file');
+    return row;
   }
 
   async upsert(dto: UpsertLegalEmployerDto) {

@@ -6,6 +6,38 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 45 — 12 Oktober 2026 — PDF payslip: nama penuh, tajuk, logo, jadual bayaran, akaun, YTD
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi:**
+`20261012090000_legal_employer_logo` (satu lajur boleh-null,
+`legal_employers.logo_media_id`). Tiada angka berubah.
+
+- `[D]` (1) Nama pekerja dicetak penuh; baris fakta bertambah tinggi dan nama
+  dibalut ke baris kedua.
+- `[D]` (2) Tajuk "Payslip — January 2026" besar; "1 – 31 Jan 2026" kecil di
+  bawahnya.
+- `[D]` (3) *Company & statutory* → Edit syarikat → **Payslip logo** (PNG/JPG,
+  ≤1 MB, disahkan dengan magic bytes, disimpan dalam `media_assets` seperti
+  imej halaman tempahan). Dicetak di payslip; tiada logo → huruf pertama nama.
+  Tukar/buang direkod dalam log audit.
+- `[D]` (4) Ayat "Paid in 3 parts…" diganti jadual kecil Date | Amount di bawah
+  Net pay, hanya bila bulan itu ada lebih daripada satu tarikh bayar. Teks
+  "paid <tarikh>" pada setiap baris pendapatan dibuang; label bulan diperoleh
+  seperti "(December 2025)" kekal.
+- `[D]` (5) "Paid to: <bank> ·· <4 digit akhir>" (atau "Cash") di bawah Net
+  pay: akaun dari senarai pindahan run itu, atau rekod semasa jika tiada; hanya
+  4 digit akhir keluar dari pelayan.
+- `[D]` (6) Kotak kecil Year to date (Jan–bulan ini): Gross, EPF (pekerja),
+  SOCSO + EIS (pekerja), PCB, dari jadual YTD yang ditulis semasa kelulusan.
+- `[D]` (7) Nama syarikat penuh seperti direkod (sebelum ini nama yang dibekukan
+  semasa kelulusan), no. pendaftaran dan alamat: baris alamat dicetak seperti
+  ditaip; poskod, bandar dan negeri hanya ditambah jika belum disebut.
+- `[D]` **Ujian**: API baharu `payroll-payslip-pdf.spec` (4); e2e
+  `payroll-payslip` +1 (logo, 4 digit, PDF dengan imej); web
+  `legalEmployersPage` +1.
+
+---
+
 ## Batch 44 — 11 Oktober 2026 — Label item dalam bahasa biasa; senarai pekerja hanya yang ada rekod HR
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada

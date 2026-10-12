@@ -1465,6 +1465,31 @@ export function useUpsertLegalEmployer() {
   );
 }
 
+/** The payslip logo of an employer: PNG or JPG, saved straight away. */
+export function useSetEmployerLogo() {
+  return useAdminMutation(
+    ({ employerId, file }: { employerId: string; file: File }) => {
+      const body = new FormData();
+      body.append("file", file, file.name);
+      return apiClient.postFile<{ logoMediaId: string }>(
+        `/workforce/legal-employers/${employerId}/logo`,
+        body,
+      );
+    },
+    ["admin-hr"],
+  );
+}
+
+export function useRemoveEmployerLogo() {
+  return useAdminMutation(
+    (employerId: string) =>
+      apiClient.delete<{ logoMediaId: null }>(
+        `/workforce/legal-employers/${employerId}/logo`,
+      ),
+    ["admin-hr"],
+  );
+}
+
 export function useAssignEmployer() {
   return useAdminMutation(
     ({

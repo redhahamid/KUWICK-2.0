@@ -7968,6 +7968,10 @@ model LegalEmployer {
   /// with this employer and have none; the calculation reads only that
   /// record. ALL_APPLICABLE is the behaviour of a person with no record.
   defaultEpfBasis ContributionBasisMode @default(ALL_APPLICABLE) @map("default_epf_basis")
+  /// The company logo printed on payslips (UAT, 12 October 2026): a
+  /// media_assets row of kind EMPLOYER_LOGO, PNG or JPEG. Null prints the
+  /// name's initial letter instead.
+  logoMediaId String? @map("logo_media_id")
 
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at")

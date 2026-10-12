@@ -1969,6 +1969,8 @@ export interface LegalEmployerRow {
   updatedAt: string;
   id: string;
   name: string;
+  /** The payslip logo, if one was uploaded. */
+  logoMediaId?: string | null;
   registrationNo: string | null;
   epfEmployerNo: string | null;
   socsoEmployerNo: string | null;

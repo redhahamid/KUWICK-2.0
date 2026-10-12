@@ -271,6 +271,46 @@ describe('Payroll payslips (e2e)', () => {
     expect(((audit[0].after ?? {}) as { staffId?: string }).staffId).toBe(staffId);
   });
 
+  it('prints the employer logo, the account it was paid to by its last four digits, and the year to date', async () => {
+    // UAT, 12 October 2026. A 1×1 PNG stands in for the clinic's logo.
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    await request(app.getHttpServer())
+      .post(`/workforce/legal-employers/${legalEmployerId}/logo`)
+      .set('Authorization', bearer)
+      .attach('file', Buffer.from('not an image'), { filename: 'logo.png', contentType: 'image/png' })
+      .expect(400);
+    const uploaded = await request(app.getHttpServer())
+      .post(`/workforce/legal-employers/${legalEmployerId}/logo`)
+      .set('Authorization', bearer)
+      .attach('file', png, { filename: 'logo.png', contentType: 'image/png' })
+      .expect(201);
+    expect(uploaded.body.logoMediaId).toBeTruthy();
+    await request(app.getHttpServer()).get(`/workforce/legal-employers/${legalEmployerId}/logo`).set('Authorization', bearer).expect(200);
+
+    const slip = (await request(app.getHttpServer()).get(`/workforce/payroll/runs/${runId}/payslips/${staffId}`).set('Authorization', bearer).expect(200)).body;
+    expect(slip.employer.logoMediaId).toBe(uploaded.body.logoMediaId);
+    expect(slip.employer.name).toBe('Payslip Employer Sdn Bhd');
+    expect(slip.employee.bankName).toBe('Maybank');
+    expect(slip.employee.bankAccountLastFour).toBe('8901');
+    expect(JSON.stringify(slip)).not.toContain('512345678901');
+
+    const pdf = await request(app.getHttpServer())
+      .get(`/workforce/payroll/runs/${runId}/payslips/${staffId}/pdf`)
+      .set('Authorization', bearer)
+      .buffer(true)
+      .parse((res, done) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => done(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+    const bytes = pdf.body as Buffer;
+    expect(bytes.toString('latin1')).toContain('/Subtype /Image');
+
+    await request(app.getHttpServer()).delete(`/workforce/legal-employers/${legalEmployerId}/logo`).set('Authorization', bearer).expect(200);
+    await request(app.getHttpServer()).get(`/workforce/legal-employers/${legalEmployerId}/logo`).set('Authorization', bearer).expect(404);
+  });
+
   it('lets the employee download their own payslip once the run is PAID, and nobody else', async () => {
     const employeeBearer = bearerFor(tenantId, staffId, Role.FRONT_DESK_CLINICAL_STAFF);
     // Approved is not paid: the portal waits for the money to have gone out.
@@ -307,8 +347,9 @@ describe('Payroll payslips (e2e)', () => {
     const audit = await withTenantContext(prisma, tenantId, (tx) =>
       tx.auditLog.findMany({ where: { tenantId, action: 'payrollPayslip.downloaded' }, orderBy: { createdAt: 'asc' } }),
     );
-    expect(audit).toHaveLength(2);
-    expect(((audit[1].after ?? {}) as { self?: boolean }).self).toBe(true);
+    // Two downloads by the owner (the PDF test and the logo test), then the employee's own.
+    expect(audit).toHaveLength(3);
+    expect(((audit[2].after ?? {}) as { self?: boolean }).self).toBe(true);
   });
 
   it('refuses the payslip surface to an account without the payroll permission', async () => {

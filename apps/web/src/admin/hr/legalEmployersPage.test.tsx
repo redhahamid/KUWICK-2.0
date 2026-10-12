@@ -40,10 +40,13 @@ let clinicId: string | undefined = 'clinic-a';
 const upsertMutate = vi.fn().mockResolvedValue({});
 const rows = [employer({}), employer({ id: 'e-2', name: 'Cawangan Sdn Bhd', employeeCount: 0 }), employer({ id: 'e-3', name: 'Dormant Sdn Bhd', employeeCount: 0 })];
 
+const { setLogo } = vi.hoisted(() => ({ setLogo: vi.fn(async () => ({ logoMediaId: 'logo-1' })) }));
 vi.mock('../hooks/useAdmin', () => ({
   useLegalEmployers: () => ({ data: rows, isLoading: false }),
   useUpsertLegalEmployer: () => ({ mutateAsync: upsertMutate, isPending: false }),
   useRecordEmployerHrd: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useSetEmployerLogo: () => ({ mutateAsync: setLogo, isPending: false }),
+  useRemoveEmployerLogo: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('../../core/hooks/useCan', () => ({ useCan: () => true }));
 vi.mock('../../core/hooks/useClinics', () => ({ useClinics: () => ({ data: [{ id: 'clinic-a', name: 'Bangi' }, { id: 'clinic-b', name: 'Kajang' }] }) }));
@@ -98,5 +101,20 @@ describe('the two employer settings (UAT, 10 October 2026)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(upsertMutate).toHaveBeenCalledTimes(1));
     expect(upsertMutate.mock.calls[0][0]).toMatchObject({ id: 'e-1', hrdLevyBase: 'BASIC_ONLY', zakatThroughPayroll: true });
+  });
+
+  it('uploads a payslip logo from the employer drawer, PNG or JPG only', async () => {
+    clinicId = undefined;
+    setLogo.mockClear();
+    mount();
+    fireEvent.click(screen.getAllByRole('button', { name: /Edit/ })[0]);
+    expect(screen.getByRole('button', { name: 'Upload logo' })).toBeTruthy();
+    const input = screen.getByLabelText('Logo file');
+    fireEvent.change(input, { target: { files: [new File(['gif'], 'logo.gif', { type: 'image/gif' })] } });
+    expect(setLogo).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { files: [new File(['png'], 'logo.png', { type: 'image/png' })] } });
+    await waitFor(() => expect(setLogo).toHaveBeenCalledTimes(1));
+    expect((setLogo.mock.calls[0] as unknown as [{ employerId: string }])[0].employerId).toBe('e-1');
+    expect(await screen.findByRole('button', { name: 'Replace logo' })).toBeTruthy();
   });
 });

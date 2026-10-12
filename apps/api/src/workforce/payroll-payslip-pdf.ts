@@ -17,10 +17,16 @@ import type { PayslipData } from './payroll-payslip.service';
  *  - earnings and deductions side by side, WITHOUT percentages or workings —
  *    only unpaid leave says how many days;
  *  - the employer's contributions ABOVE the net, never mixed into deductions;
- *  - the net pay in figures and in words, and where it was paid;
+ *  - the net pay in figures and in words, the account it was paid to, and a
+ *    small Date | Amount table when the month is paid on more than one date;
+ *  - a small year-to-date box: gross, EPF, SOCSO + EIS and PCB to this month;
  *  - Prepared by / Approved by, as typed names — no signature image is on
- *    record;
- *  - no year to date.
+ *    record.
+ *
+ * UAT, 12 October 2026: the full employee name always prints (wrapping to a
+ * second line), the title reads "Payslip — January 2026" with the period
+ * under it, and the employer's uploaded logo replaces the initial letter.
+ * Layout only: every figure is the one the approved record froze.
  *
  * Honesty rules carried onto paper, which the design does not draw because
  * they only appear when something is wrong:
@@ -75,7 +81,7 @@ export function employerInitials(name: string | null): string {
 
 type EarningRow = { label: string; amountCents: number; note?: string | null; negative?: boolean; words?: string | null; tone?: string };
 
-export function renderPayslipPdf(slip: PayslipData): Promise<Buffer> {
+export function renderPayslipPdf(slip: PayslipData, logo: Buffer | null = null): Promise<Buffer> {
   const doc = new PDFDocument({ size: 'A4', margin: 36, bufferPages: true, info: { Title: `Payslip ${slip.periodLabel} — ${slip.employee.name}` } });
   const chunks: Buffer[] = [];
   doc.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -91,15 +97,27 @@ export function renderPayslipPdf(slip: PayslipData): Promise<Buffer> {
 
   const periodStart = new Date(`${slip.period}-01T00:00:00.000Z`);
   const periodEnd = new Date(Date.UTC(periodStart.getUTCFullYear(), periodStart.getUTCMonth() + 1, 0));
-  const range = `1 – ${periodEnd.getUTCDate()} ${periodEnd.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })}`;
+  const range = `1 – ${periodEnd.getUTCDate()} ${periodEnd.toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })}`;
 
   // --- Header -----------------------------------------------------------------
   let y = doc.page.margins.top;
-  doc.save().roundedRect(left, y, 42, 42, 9).fill(SLATE).restore();
-  doc.font('Helvetica-Bold').fontSize(15).fillColor('#ffffff').text(employerInitials(slip.employer.name), left, y + 13, { width: 42, align: 'center', characterSpacing: 0.6 });
+  let drewLogo = false;
+  if (logo) {
+    try {
+      doc.image(logo, left, y, { fit: [42, 42], align: 'center', valign: 'center' });
+      drewLogo = true;
+    } catch {
+      // An image the renderer cannot read falls back to the initial below.
+    }
+  }
+  if (!drewLogo) {
+    doc.save().roundedRect(left, y, 42, 42, 9).fill(SLATE).restore();
+    doc.font('Helvetica-Bold').fontSize(18).fillColor('#ffffff').text(employerInitials(slip.employer.name).slice(0, 1), left, y + 12, { width: 42, align: 'center' });
+  }
 
+  const titleW = 230;
   const coX = left + 42 + 12;
-  const coWidth = width - 42 - 12 - 190;
+  const coWidth = width - 42 - 12 - titleW - 10;
   doc.font('Helvetica-Bold').fontSize(13.5).fillColor(INK).text(slip.employer.name ?? 'Employer', coX, y + 1, { width: coWidth });
   doc.font('Helvetica').fontSize(9).fillColor(INK2);
   const registration = [slip.employer.registrationNo ? `(${slip.employer.registrationNo})` : null, slip.employer.addressLines.join(', ') || null]
@@ -116,9 +134,9 @@ export function renderPayslipPdf(slip: PayslipData): Promise<Buffer> {
   if (numbers) doc.text(numbers, coX, doc.y + 1, { width: coWidth });
   const coBottom = doc.y;
 
-  const titleX = right - 180;
-  doc.font('Helvetica-Bold').fontSize(16.5).fillColor(SLATE).text('Payslip', titleX, y, { width: 180, align: 'right' });
-  doc.font('Helvetica').fontSize(9).fillColor(INK2).text(`${slip.periodLabel} · ${range}`, titleX, doc.y, { width: 180, align: 'right' });
+  const titleX = right - titleW;
+  doc.font('Helvetica-Bold').fontSize(17).fillColor(SLATE).text(`Payslip — ${slip.periodLabel}`, titleX, y, { width: titleW, align: 'right' });
+  doc.font('Helvetica').fontSize(8.5).fillColor(INK2).text(range, titleX, doc.y + 1, { width: titleW, align: 'right' });
   const tag = slip.paidAt ? `Paid ${dateOf(slip.paidAt)}` : `Approved ${dateOf(slip.revision.approvedAt)}`;
   doc.font('Helvetica-Bold').fontSize(8);
   const tagWidth = doc.widthOfString(tag) + 14;
@@ -171,25 +189,31 @@ export function renderPayslipPdf(slip: PayslipData): Promise<Buffer> {
     ['Tax no.', slip.employee.taxNumber],
   ];
   const cellW = width / 4;
-  const cellH = 34;
-  doc.save().roundedRect(left, y, width, cellH * 2, 6).lineWidth(0.8).strokeColor(LINE).stroke().restore();
-  doc.moveTo(left, y + cellH).lineTo(right, y + cellH).lineWidth(0.8).strokeColor(LINE).stroke();
+  // A ROW AS TALL AS ITS LONGEST VALUE: the full name always prints, wrapping
+  // to a second line rather than being cut off ("DR MUHAMMAD…").
+  doc.font('Helvetica').fontSize(9.5);
+  const rowHeights = [0, 1].map((row) =>
+    Math.max(34, ...facts.slice(row * 4, row * 4 + 4).map(([, value]) => 7 + 11 + doc.heightOfString(value ?? '—', { width: cellW - 18 }) + 6)),
+  );
+  const factsH = rowHeights[0] + rowHeights[1];
+  doc.save().roundedRect(left, y, width, factsH, 6).lineWidth(0.8).strokeColor(LINE).stroke().restore();
+  doc.moveTo(left, y + rowHeights[0]).lineTo(right, y + rowHeights[0]).lineWidth(0.8).strokeColor(LINE).stroke();
   for (let i = 1; i < 4; i += 1) {
-    doc.moveTo(left + cellW * i, y).lineTo(left + cellW * i, y + cellH * 2).lineWidth(0.8).strokeColor(LINE).stroke();
+    doc.moveTo(left + cellW * i, y).lineTo(left + cellW * i, y + factsH).lineWidth(0.8).strokeColor(LINE).stroke();
   }
   facts.forEach(([label, value], index) => {
     const x = left + cellW * (index % 4) + 9;
-    const top = y + cellH * Math.floor(index / 4) + 7;
+    const top = y + (index < 4 ? 0 : rowHeights[0]) + 7;
     doc.font('Helvetica-Bold').fontSize(7.5).fillColor(INK3).text(label.toUpperCase(), x, top, { width: cellW - 18, characterSpacing: 0.5 });
-    doc.font('Helvetica').fontSize(9.5).fillColor(INK).text(value ?? '—', x, top + 11, { width: cellW - 18, height: 14, ellipsis: true });
+    doc.font('Helvetica').fontSize(9.5).fillColor(INK).text(value ?? '—', x, top + 11, { width: cellW - 18 });
   });
-  y += cellH * 2 + 15;
+  y += factsH + 15;
 
   // --- Earnings and deductions, side by side -----------------------------------------
   const earnings: EarningRow[] = [];
-  // A month paid on more than one date says which date each amount goes out on.
+  // The dates each amount goes out on are in the table under the net pay, not
+  // on each line; an earned-in month stays in the line's own label.
   const manyDates = (slip.payments?.length ?? 0) > 1;
-  const paidNote = (date: string | null | undefined) => (manyDates && date ? `paid ${dateOf(date)}` : null);
   if (slip.itemised && slip.earnings) {
     // One line per kind of extra day — Overtime, Public holiday pay, Rest day
     // pay — rather than one per day the engine priced.
@@ -201,13 +225,13 @@ export function renderPayslipPdf(slip: PayslipData): Promise<Buffer> {
         const entry = grouped.get(label);
         if (entry) entry.amountCents += item.amountCents;
         else {
-          const row = { label, amountCents: item.amountCents, note: paidNote(item.payDate) };
+          const row = { label, amountCents: item.amountCents };
           grouped.set(label, row);
           earnings.push(row);
         }
         continue;
       }
-      earnings.push({ label: item.label, amountCents: item.amountCents, note: paidNote(item.payDate) });
+      earnings.push({ label: item.label, amountCents: item.amountCents });
     }
     for (const reduction of slip.wageReductions ?? []) {
       if (reduction.amountCents === 0) continue;
@@ -305,16 +329,59 @@ export function renderPayslipPdf(slip: PayslipData): Promise<Buffer> {
   doc.save().roundedRect(left, y, width, netH, 8).lineWidth(1.1).strokeColor(SLATE).stroke().restore();
   doc.font('Helvetica').fontSize(9).fillColor(INK2).text('Net pay', left + 13, y + 10, { width: 200 });
   doc.font('Helvetica-Bold').fontSize(21).fillColor(SLATE).text(`RM ${RM(slip.figures.netCents)}`, left + 13, y + 22, { width: 240, characterSpacing: -0.3 });
-  const paidLine = manyDates
-    ? // THE MONTH IN ITS TRANSFERS, each with its date: the day it went, or the day it is due.
-      `Paid in ${slip.payments!.length} parts${slip.employee.bankName ? ` to ${slip.employee.bankName}` : ''}: ` +
-      slip.payments!.map((payment) => `${dateOf(payment.paidOn ?? payment.date)} RM ${RM(payment.amountCents)}`).join(' · ')
-    : [slip.employee.bankName ? `Paid to ${slip.employee.bankName}` : null, slip.paidAt ? `on ${dateOf(slip.paidAt)}` : null].filter(Boolean).join(' ');
-  doc.font('Helvetica').fontSize(8).fillColor(INK2).text(`${slip.netInWords ?? ''}${paidLine ? `\n${paidLine}` : ''}`, right - 13 - 240, y + 12, {
-    width: 240,
-    align: 'right',
-  });
-  y += netH + 26;
+  doc.font('Helvetica').fontSize(8).fillColor(INK2).text(slip.netInWords ?? '', right - 13 - 240, y + 12, { width: 240, align: 'right' });
+  y += netH + 8;
+
+  // --- Where it was paid, when, and the year so far ------------------------------------
+  const halfW = (width - gap) / 2;
+  const account = slip.employee.bankName || slip.employee.bankAccountLastFour
+    ? `${slip.employee.bankName ?? 'Bank account'}${slip.employee.bankAccountLastFour ? ` ·· ${slip.employee.bankAccountLastFour}` : ''}`
+    : 'Cash';
+  doc.font('Helvetica-Bold').fontSize(8.5).fillColor(INK2).text('Paid to: ', left, y, { continued: true });
+  doc.font('Helvetica').fillColor(INK).text(account, { width: halfW });
+  let leftY = doc.y + 6;
+  if (manyDates) {
+    // THE MONTH IN ITS TRANSFERS: the day each went, or the day it is due.
+    const rowH2 = 15;
+    const dateW = halfW * 0.55;
+    doc.rect(left, leftY, halfW, rowH2).fill(SOFT);
+    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(INK3).text('DATE', left + 8, leftY + 4, { width: dateW - 8, characterSpacing: 0.5 });
+    doc.text('AMOUNT (RM)', left + dateW, leftY + 4, { width: halfW - dateW - 8, align: 'right', characterSpacing: 0.5 });
+    let rowY = leftY + rowH2;
+    for (const payment of slip.payments ?? []) {
+      doc.moveTo(left, rowY).lineTo(left + halfW, rowY).lineWidth(0.6).strokeColor(LINE).stroke();
+      doc.font('Helvetica').fontSize(8.5).fillColor(INK).text(dateOf(payment.paidOn ?? payment.date) ?? '—', left + 8, rowY + 4, { width: dateW - 8 });
+      doc.text(RM(payment.amountCents), left + dateW, rowY + 4, { width: halfW - dateW - 8, align: 'right' });
+      rowY += rowH2;
+    }
+    doc.save().roundedRect(left, leftY, halfW, rowY - leftY, 4).lineWidth(0.8).strokeColor(LINE).stroke().restore();
+    leftY = rowY;
+  }
+
+  // YEAR TO DATE, from January to this month, as approval recorded it.
+  const ytdX = left + halfW + gap;
+  const ytdRows: [string, string][] = slip.ytd
+    ? [
+        ['Gross', RM(slip.ytd.grossCents)],
+        ['EPF (employee)', RM(slip.ytd.epfEmployeeCents)],
+        ['SOCSO + EIS (employee)', RM(slip.ytd.socsoEmployeeCents + slip.ytd.eisEmployeeCents)],
+        ['PCB', RM(slip.ytd.pcbCents)],
+      ]
+    : [];
+  const ytdTitle = `Year to date · Jan – ${periodEnd.toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })} (RM)`;
+  const ytdH = 18 + (ytdRows.length ? ytdRows.length * 12 : 12) + 6;
+  doc.save().roundedRect(ytdX, y, halfW, ytdH, 4).lineWidth(0.8).strokeColor(LINE).stroke().restore();
+  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(INK3).text(ytdTitle.toUpperCase(), ytdX + 8, y + 6, { width: halfW - 16, characterSpacing: 0.5 });
+  let ytdY = y + 18;
+  if (ytdRows.length === 0) {
+    doc.font('Helvetica').fontSize(8.5).fillColor(INK3).text('Not recorded for this year yet.', ytdX + 8, ytdY, { width: halfW - 16 });
+  }
+  for (const [label, value] of ytdRows) {
+    doc.font('Helvetica').fontSize(8.5).fillColor(INK2).text(label, ytdX + 8, ytdY, { width: halfW - 100 });
+    doc.fillColor(INK).text(value, ytdX + halfW - 98, ytdY, { width: 90, align: 'right' });
+    ytdY += 12;
+  }
+  y = Math.max(leftY, y + ytdH) + 18;
 
   // --- Prepared by / Approved by -----------------------------------------------------
   const sigW = (width - 30) / 2;

@@ -1103,6 +1103,11 @@ export class MeService {
     const actor = await this.me();
     return this.payslipService.payslipForSelf(runId, actor.id);
   }
+
+  /** The employer's logo for a payslip the employee was just given. */
+  payslipLogo(mediaId: string | null) {
+    return this.payslipService.logoBytes(mediaId);
+  }
 }
 
 // --- date helpers, UTC because every date-only column is stored at UTC midnight ---

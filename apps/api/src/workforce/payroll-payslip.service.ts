@@ -45,6 +45,13 @@ export class PayrollPayslipService {
     private readonly rawPrisma: PrismaService,
   ) {}
 
+  /** The employer's logo for the PDF, from a payslip already authorised; null prints the initial. */
+  async logoBytes(mediaId: string | null): Promise<Buffer | null> {
+    if (!mediaId) return null;
+    const row = await this.prisma.mediaAsset.findFirst({ where: { id: mediaId, kind: 'EMPLOYER_LOGO' }, select: { data: true } });
+    return row ? Buffer.from(row.data) : null;
+  }
+
   /** The payslips an approved run can issue — one row per paid employee. */
   async list(runId: string) {
     await requirePermission(this.rawPrisma, 'hr.payroll.view');
@@ -207,8 +214,17 @@ export class PayrollPayslipService {
       where: { staffId },
       // The identity number (NRIC or passport) is write-only on every screen
       // and appears here because the payslip is the employee's own document.
-      select: { epfNumber: true, socsoNumber: true, taxNumber: true, identifierType: true, identifierValue: true },
+      select: { epfNumber: true, socsoNumber: true, taxNumber: true, identifierType: true, identifierValue: true, bankAccountNo: true },
     });
+    // WHERE THE PAY WENT (UAT, 12 October 2026): the account on this run's own
+    // transfer list, or today's record where no list was prepared. Only the
+    // last four digits ever leave this method.
+    const paymentLine = await this.prisma.payrollPaymentLine.findFirst({
+      where: { staffId, included: true, batch: { payrollRunId: runId } },
+      orderBy: { batch: { createdAt: 'desc' } },
+      select: { bankName: true, bankAccountNo: true },
+    });
+    const accountNo = paymentLine?.bankAccountNo ?? profile?.bankAccountNo ?? null;
 
     // Year to date THROUGH the payslip's own month, from the table approval
     // writes — imported opening months included and said so.
@@ -287,18 +303,18 @@ export class PayrollPayslipService {
         schemaVersion: verification.schemaVersion,
       },
       employer: {
-        /** The name as approved — frozen in the snapshot. */
-        name: payload.legalEmployerName,
+        /**
+         * The full legal name as recorded (UAT, 12 October 2026), like the
+         * registration and address beside it; the name frozen at approval
+         * where the employer is no longer on file.
+         */
+        name: run.legalEmployer?.name ?? payload.legalEmployerName,
+        logoMediaId: run.legalEmployer?.logoMediaId ?? null,
         registrationNo: run.legalEmployer?.registrationNo ?? null,
         epfEmployerNo: run.legalEmployer?.epfEmployerNo ?? null,
         socsoEmployerNo: run.legalEmployer?.socsoEmployerNo ?? null,
         lhdnEmployerNo: run.legalEmployer?.lhdnEmployerNo ?? null,
-        addressLines: [
-          run.legalEmployer?.addressLine1,
-          run.legalEmployer?.addressLine2,
-          [run.legalEmployer?.postcode, run.legalEmployer?.city].filter(Boolean).join(' ') || null,
-          run.legalEmployer?.state,
-        ].filter((value): value is string => Boolean(value)),
+        addressLines: addressAsRecorded(run.legalEmployer),
         /** Address and registrations are today's master data, not frozen. */
         detailsAsAt: 'CURRENT' as const,
       },
@@ -309,7 +325,8 @@ export class PayrollPayslipService {
         position: detail?.position ?? null,
         department: detail?.department ?? null,
         employmentType: detail?.employmentType ?? null,
-        bankName: detail?.bankName ?? null,
+        bankName: paymentLine?.bankName ?? detail?.bankName ?? null,
+        bankAccountLastFour: accountNo ? accountNo.replace(/\s+/g, '').slice(-4) : null,
         epfNumber: profile?.epfNumber ?? null,
         socsoNumber: profile?.socsoNumber ?? null,
         taxNumber: profile?.taxNumber ?? null,
@@ -472,3 +489,23 @@ export class PayrollPayslipService {
 }
 
 export type PayslipData = Awaited<ReturnType<PayrollPayslipService['payslip']>>;
+
+/**
+ * THE ADDRESS AS RECORDED, each part once (UAT, 12 October 2026: "no
+ * repeated city"). The lines are printed as typed; the postcode, city and
+ * state are added only where the lines above do not already say them.
+ */
+export function addressAsRecorded(
+  employer: { addressLine1?: string | null; addressLine2?: string | null; postcode?: string | null; city?: string | null; state?: string | null } | null | undefined,
+): string[] {
+  if (!employer) return [];
+  const lines = [employer.addressLine1, employer.addressLine2].map((line) => line?.trim()).filter((line): line is string => Boolean(line));
+  const said = (part: string | null | undefined) => {
+    const wanted = part?.trim().toLowerCase();
+    return !wanted || lines.some((line) => line.toLowerCase().includes(wanted));
+  };
+  const place = [said(employer.postcode) ? null : employer.postcode?.trim(), said(employer.city) ? null : employer.city?.trim()].filter(Boolean).join(' ');
+  if (place) lines.push(place);
+  if (!said(employer.state)) lines.push(employer.state!.trim());
+  return lines;
+}

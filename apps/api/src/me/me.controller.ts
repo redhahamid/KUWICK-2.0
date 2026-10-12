@@ -176,7 +176,7 @@ export class MeController {
   @Get('payslips/:runId/pdf')
   async payslipPdf(@Param('runId') runId: string, @Res() res: Response) {
     const slip = await this.me.payslipPdf(runId);
-    const pdf = await renderPayslipPdf(slip);
+    const pdf = await renderPayslipPdf(slip, await this.me.payslipLogo(slip.employer.logoMediaId));
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="payslip-${slip.period}.pdf"`);
     res.send(pdf);

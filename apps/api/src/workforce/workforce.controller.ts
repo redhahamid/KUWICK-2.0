@@ -32,7 +32,7 @@ import { UpsertStatutoryRulesDto } from './dto/upsert-statutory-rules.dto';
 import { OptionalDateParam, RequiredDateParam } from '../core/date-param.pipe';
 import { assertDateOrder } from '../core/query-dates';
 import { BenefitService } from './benefit.service';
-import { LegalEmployerService } from './legal-employer.service';
+import { LegalEmployerService, MAX_LOGO_BYTES } from './legal-employer.service';
 import { EmployeeSalaryService } from './employee-salary.service';
 import { ContributionBasisService } from './contribution-basis.service';
 import { BulkEpfBasisDto } from './dto/bulk-epf-basis.dto';
@@ -135,6 +135,26 @@ export class WorkforceController {
   @Post('legal-employers')
   upsertLegalEmployer(@Body() dto: UpsertLegalEmployerDto) {
     return this.legalEmployers.upsert(dto);
+  }
+
+  /** The company logo printed on payslips: PNG or JPG, up to 1 MB. */
+  @Post('legal-employers/:id/logo')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: MAX_LOGO_BYTES } }))
+  setLegalEmployerLogo(@Param('id') id: string, @UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('file is required');
+    return this.legalEmployers.setLogo(id, file);
+  }
+
+  @Delete('legal-employers/:id/logo')
+  removeLegalEmployerLogo(@Param('id') id: string) {
+    return this.legalEmployers.removeLogo(id);
+  }
+
+  @Get('legal-employers/:id/logo')
+  async legalEmployerLogo(@Param('id') id: string, @Res() res: Response) {
+    const row = await this.legalEmployers.logo(id);
+    res.set({ 'Content-Type': row.contentType, 'Cache-Control': 'private, no-cache' });
+    res.send(Buffer.from(row.data));
   }
 
   // The clinic's own job titles, picked from and added to on the employee form.
@@ -1135,7 +1155,7 @@ export class WorkforceController {
     @Query('version') version?: string,
   ) {
     const slip = await this.payslipService.payslipForDownload(id, staffId, version ? Number(version) : undefined);
-    const pdf = await renderPayslipPdf(slip);
+    const pdf = await renderPayslipPdf(slip, await this.payslipService.logoBytes(slip.employer.logoMediaId));
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
