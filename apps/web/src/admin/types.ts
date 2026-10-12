@@ -2645,6 +2645,8 @@ export interface PayrollJourney {
     newJoiners: number;
     leavers: number;
     needsSetup: number;
+    /** Left last month (or earlier, with items keyed this month) and not paid in the run yet. */
+    finalPayCandidates?: { staffId: string; name: string; employeeNo: string | null; position: string | null; leftOn: string; label: string }[];
     rows: {
       staffId: string;
       name: string;
@@ -2770,6 +2772,8 @@ export interface PayrollJourney {
       /** The own columns, keyed by item code; `pay.columns` gives their order and names. */
       columns: Record<string, PayrollJourneyColumnCell>;
       employeeNo?: string | null;
+      /** "Final pay (left 21 Feb 2026)": somebody who left before the month, paid only keyed lines. */
+      finalPay?: string | null;
       items: PayrollJourneyPayItem[];
     }[];
     /**
@@ -3966,6 +3970,8 @@ export interface ItemsImportRowResult {
   pcbType?: "normal" | "additional";
   note?: string | null;
   replaces?: string | null;
+  /** "Final pay (left 21 Feb 2026)". */
+  finalPay?: string | null;
 }
 
 export interface ItemsImportResult {

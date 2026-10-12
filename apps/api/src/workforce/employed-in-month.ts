@@ -59,3 +59,46 @@ export const employedInMonthOf = (period: Date): Prisma.EmployeeProfileWhereInpu
  */
 export const paidThisMonth = (row: { endDate: Date | null; staff: { active: boolean } }): boolean =>
   row.staff.active || row.endDate !== null;
+
+/*
+ * FINAL PAY AFTER LEAVING (UAT, 12 October 2026): "a leaver's arrears must be
+ * payable in the month after they leave." Somebody whose last day was before
+ * a month comes back into that month's run ONLY for lines keyed by hand or
+ * imported: arrears, earned-in items and one-off final payments. No salary,
+ * no proration, no recurring or derived items; statutory is worked out on
+ * those lines as for anybody else that month.
+ */
+
+/** Whether somebody left before the month containing `period`. */
+export function leftBefore(endDate: Date | null | undefined, period: Date): endDate is Date {
+  return endDate != null && endDate < monthWindow(period).periodStart;
+}
+
+/** "Final pay (left 21 Feb 2026)", the words every screen uses. */
+export function finalPayLabel(endDate: Date): string {
+  return `Final pay (left ${endDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })})`;
+}
+
+/**
+ * Why a line cannot be paid to a leaver, or null when it can: an earning
+ * keyed by hand, not basic pay, not a deduction, and not earned after they
+ * left.
+ */
+export function finalPayRefusal(args: {
+  name: string;
+  endDate: Date;
+  componentCode: string;
+  componentType: string;
+  earnedPeriod: Date | null;
+}): string | null {
+  const left = args.endDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  if (args.componentCode === 'BASIC') return `${args.name} left on ${left}: no salary is paid after leaving.`;
+  if (args.componentType === 'DEDUCTION' || args.componentCode === 'UNPAID_LEAVE') {
+    return `${args.name} left on ${left}. Only final payments (arrears, earned-in items, one-off payments) can be paid after leaving, not deductions.`;
+  }
+  if (args.earnedPeriod && args.earnedPeriod > monthWindow(args.endDate).periodStart) {
+    const month = args.earnedPeriod.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    return `${args.name} left on ${left}, so nothing can be earned in ${month}.`;
+  }
+  return null;
+}

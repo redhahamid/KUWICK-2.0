@@ -234,6 +234,7 @@ export function PayrollWorkspace({ runId, monthNav }: { runId: string; monthNav?
                 canEdit={mayRun && !locked}
                 onGoTo={goTo}
                 onOpenItems={(row) => onFixInputs(row.staffId, row.name)}
+                onOpenPerson={onFixInputs}
               />
             ) : null}
             {step === 'review' ? (
@@ -287,6 +288,7 @@ function PrepareStep({
   canEdit,
   onGoTo,
   onOpenItems,
+  onOpenPerson,
 }: {
   data: PayrollJourney;
   runId: string;
@@ -295,6 +297,8 @@ function PrepareStep({
   onGoTo: (key: StepKey) => void;
   /** A white cell was pressed: open that person's items for the month. */
   onOpenItems: (row: PayrollJourney['pay']['rows'][number]) => void;
+  /** Open somebody's items who has no row yet: a leaver's final pay. */
+  onOpenPerson: (staffId: string, name: string | null) => void;
 }) {
   const { message } = App.useApp();
   const calculate = useCalculatePayroll();
@@ -418,6 +422,35 @@ function PrepareStep({
           onSaveCells={saveCells}
         />
       )}
+
+      {/*
+        FINAL PAY AFTER LEAVING (UAT, 12 October 2026): people who left last
+        month can still be paid arrears, earned-in items and one-off final
+        payments here. No salary; they join the month once an item is keyed
+        and the month is worked out again.
+      */}
+      {(data.employees.finalPayCandidates ?? []).length > 0 ? (
+        <div className="hr-pad hr-pad--top0" data-testid="final-pay-candidates">
+          <div className="hr-notice hr-notice--info">
+            <strong>Left before {dayjs(`${data.run.period}-01`).format('MMMM YYYY')}.</strong> Arrears, earned-in items and one-off final
+            payments can still be paid to them this month. No salary is paid.
+            <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+              {(data.employees.finalPayCandidates ?? []).map((person) => (
+                <li key={person.staffId} style={{ marginBottom: 4 }}>
+                  <span className="hr-strong">{person.name}</span>
+                  {person.employeeNo ? <span className="hr-faint"> · {person.employeeNo}</span> : null}
+                  <span className="hr-muted"> · {person.label}</span>{' '}
+                  {canEdit ? (
+                    <button type="button" className="hr-linkButton" onClick={() => onOpenPerson(person.staffId, person.name)}>
+                      Add final pay
+                    </button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : null}
 
       {/* "3 not worked out" on the HRD levy is not an explanation; this is the employer-level one. */}
       {data.pay.hrdAdvice ? (

@@ -19,7 +19,7 @@ import { statutoryStatusOf } from './statutory';
 import { toClassificationRow } from './statutory-classification.service';
 import { columnItems, monthBefore, monthLabel, itemAppliesTo } from './payroll-register-columns';
 import { hrdAdviceFor } from './hrd-advice';
-import { employedInMonth, paidThisMonth } from './employed-in-month';
+import { employedInMonth, finalPayLabel, paidThisMonth } from './employed-in-month';
 
 function monthStart(value: string | Date): Date {
   const date = typeof value === 'string' ? new Date(`${value.slice(0, 7)}-01T00:00:00.000Z`) : value;
@@ -334,6 +334,39 @@ export class PayrollJourneyService {
    * cannot disagree about who is in the month.
    */
   /** The employing companies behind a run, each with its latest HRD Corp class row. */
+  private async finalPayCandidates(
+    run: { clinicId: string | null; legalEmployerId: string | null },
+    period: Date,
+    paid: Set<string>,
+  ) {
+    const keyed = await this.prisma.payrollInputEntry.findMany({
+      where: { period, source: { in: ['MANUAL', 'IMPORT'] } },
+      select: { staffId: true },
+      distinct: ['staffId'],
+    });
+    const rows = await this.prisma.employeeProfile.findMany({
+      where: {
+        engagement: 'EMPLOYEE',
+        endDate: { lt: period },
+        OR: [{ endDate: { gte: monthBefore(period) } }, { staffId: { in: keyed.map((row) => row.staffId) } }],
+        ...(run.clinicId ? { staff: { clinicId: run.clinicId } } : {}),
+        ...(run.legalEmployerId ? { legalEmployerId: run.legalEmployerId } : {}),
+      },
+      select: { staffId: true, endDate: true, employeeNo: true, position: true, staff: { select: { fullName: true } } },
+      orderBy: { endDate: 'desc' },
+    });
+    return rows
+      .filter((row) => !paid.has(row.staffId))
+      .map((row) => ({
+        staffId: row.staffId,
+        name: row.staff.fullName,
+        employeeNo: row.employeeNo,
+        position: row.position,
+        leftOn: row.endDate!.toISOString().slice(0, 10),
+        label: finalPayLabel(row.endDate!),
+      }));
+  }
+
   private async hrdEmployersFor(runEmployerId: string | null, employeeEmployerIds: (string | null)[]) {
     const ids = [...new Set([runEmployerId, ...employeeEmployerIds].filter((id): id is string => Boolean(id)))];
     if (ids.length === 0) return [];
@@ -620,13 +653,14 @@ export class PayrollJourneyService {
      */
     const standingByStaff = new Map(step1.map((row) => [row.staffId, row]));
     // Employee No. on every paid row: the export leads with it (UAT, 10 October 2026).
-    const numberByStaff = new Map(
-      (
-        await this.prisma.employeeProfile.findMany({
-          where: { staffId: { in: run.lines.map((line) => line.staffId) } },
-          select: { staffId: true, employeeNo: true },
-        })
-      ).map((row) => [row.staffId, row.employeeNo]),
+    const lineProfiles = await this.prisma.employeeProfile.findMany({
+      where: { staffId: { in: run.lines.map((line) => line.staffId) } },
+      select: { staffId: true, employeeNo: true, endDate: true },
+    });
+    const numberByStaff = new Map(lineProfiles.map((row) => [row.staffId, row.employeeNo]));
+    // FINAL PAY (UAT, 12 October 2026): a line for somebody who left before the month.
+    const finalPayByStaff = new Map(
+      lineProfiles.filter((row) => row.endDate && row.endDate < period).map((row) => [row.staffId, finalPayLabel(row.endDate!)]),
     );
     const paidRows = [...run.lines].sort(byEmployeeName((line) => ({ name: line.staff.fullName, staffId: line.staffId }))).map((line) => {
       const own = inputsByStaff.get(line.staffId) ?? [];
@@ -885,6 +919,7 @@ export class PayrollJourneyService {
         overtimeHours: overtimeHoursOnLine,
         unpaidDays: unpaidDaysOnLine,
         employeeNo: numberByStaff.get(line.staffId) ?? null,
+        finalPay: finalPayByStaff.get(line.staffId) ?? null,
         items: own.map((row) => ({
           id: row.id,
           componentCode: row.componentCode,
@@ -1094,6 +1129,13 @@ export class PayrollJourneyService {
         employeeCount: run.employeeCount,
       },
       employees: {
+        /*
+         * WHO CAN BE GIVEN A FINAL PAY THIS MONTH (UAT, 12 October 2026):
+         * people who left last month, and anybody who left earlier with items
+         * keyed this month, not yet paid in the run. "Add final pay" opens
+         * their items; the run then pays those items and nothing else.
+         */
+        finalPayCandidates: await this.finalPayCandidates(run, period, new Set(run.lines.map((line) => line.staffId))),
         included: step1.filter((e) => e.includedInRun).length,
         newJoiners: joiners,
         leavers,

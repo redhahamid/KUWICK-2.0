@@ -18,7 +18,7 @@ import {
   originOf,
   placeOnRegister,
 } from './payroll-register-columns';
-import { employedInMonthOf } from './employed-in-month';
+import { employedInMonthOf, finalPayRefusal, leftBefore } from './employed-in-month';
 
 export type CarriedForward = {
   /** "January 2026" — the month the lines came from. */
@@ -210,6 +210,18 @@ export class PayrollInputService {
         note: dto.note === undefined ? (existing?.note ?? null) : dto.note,
         carriedFromId: null,
       };
+
+      // FINAL PAY (UAT, 12 October 2026): after leaving, earnings only, none earned after the last day.
+      if (leftBefore(profile.endDate, period)) {
+        const refusal = finalPayRefusal({
+          name: profile.staff.fullName,
+          endDate: profile.endDate,
+          componentCode: component.code,
+          componentType: component.type,
+          earnedPeriod: data.earnedPeriod,
+        });
+        if (refusal) throw new BadRequestException(refusal);
+      }
 
       const saved = existing
         ? await tx.payrollInputEntry.update({ where: { id: existing.id }, data })

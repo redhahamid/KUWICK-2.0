@@ -742,6 +742,16 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    * set says so: the joining month leaves them out, and the next month adds
    * those days to basic pay.
    */
+  FINAL_PAY: {
+    code: 'FINAL_PAY',
+    title: 'Final pay after leaving',
+    severity: 'INFO',
+    overridable: false,
+    cause: (c) => `${String(c.label)}: only the items keyed or imported for them in ${String(c.periodLabel)} are paid.`,
+    consequence: 'No salary, proration or recurring items. EPF, SOCSO, EIS and PCB are worked out on these items as for anybody else this month.',
+    remediation: 'Nothing to do. To stop paying them this month, remove their items.',
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}?tab=employment&focus=employment`,
+  },
   JOINED_AFTER_CUTOFF: {
     code: 'JOINED_AFTER_CUTOFF',
     title: 'Joined after the cut-off',

@@ -560,7 +560,7 @@ export function PayrollGrid({
                     <span className="hr-who__avatar">{initialsOf(row.name)}</span>
                     <span>
                       <span className="hr-who__name">{row.name}</span>
-                      <span className="hr-who__role">{row.position ?? 'No position recorded'}</span>
+                      <span className="hr-who__role">{row.finalPay ?? row.position ?? 'No position recorded'}</span>
                     </span>
                   </Link>
                 </td>
@@ -856,7 +856,7 @@ function PayrollCards({
               <span className="hr-who__avatar">{initialsOf(row.name)}</span>
               <span>
                 <span className="hr-who__name">{row.name}</span>
-                <span className="hr-who__role">{row.position ?? ''}</span>
+                <span className="hr-who__role">{row.finalPay ?? row.position ?? ''}</span>
               </span>
             </span>
             <RowStatus row={row} />

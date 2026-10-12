@@ -6,7 +6,7 @@ import { currentTenantId } from '../core/tenant-context';
 import { AdminTx, requirePermission, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { formatCents, toCents } from '../finance/money';
-import { employedInMonth, paidThisMonth } from './employed-in-month';
+import { employedInMonth, finalPayLabel, finalPayRefusal, paidThisMonth } from './employed-in-month';
 import { itemAppliesTo, monthBefore, monthLabel } from './payroll-register-columns';
 import type { ItemsImportDto } from './dto/items-import.dto';
 
@@ -70,6 +70,8 @@ export type ImportRowResult = {
   note?: string | null;
   /** A line this row replaces: the previous import, or one carried from last month. */
   replaces?: string | null;
+  /** "Final pay (left 21 Feb 2026)": somebody who left before the month, paid only these lines. */
+  finalPay?: string | null;
 };
 
 export type ImportResult = {
@@ -229,6 +231,18 @@ export class PayrollItemsImportService {
       })
     ).filter(paidThisMonth);
     const inRun = new Map(runPeople.map((person) => [person.staffId, person]));
+    // FINAL PAY (UAT, 12 October 2026): somebody who left before this month,
+    // in this run's branch and company, for earnings only.
+    const leavers = await tx.employeeProfile.findMany({
+      where: {
+        engagement: 'EMPLOYEE',
+        endDate: { lt: period },
+        ...(run.clinicId ? { staff: { clinicId: run.clinicId } } : {}),
+        ...(run.legalEmployerId ? { legalEmployerId: run.legalEmployerId } : {}),
+      },
+      select: { staffId: true, endDate: true, staff: { select: { clinicId: true } } },
+    });
+    const leftBy = new Map(leavers.map((person) => [person.staffId, person]));
 
     // Items: the version in force for the month, else the latest active one.
     const versions = await tx.payComponent.findMany({ where: { active: true }, orderBy: { effectiveFrom: 'desc' } });
@@ -242,7 +256,7 @@ export class PayrollItemsImportService {
 
     // What is already on this month for the run's people.
     const existing = await tx.payrollInputEntry.findMany({
-      where: { period, staffId: { in: [...inRun.keys()] } },
+      where: { period, staffId: { in: [...inRun.keys(), ...leftBy.keys()] } },
       select: { id: true, staffId: true, componentCode: true, source: true, carriedFromId: true },
     });
 
@@ -284,6 +298,10 @@ export class PayrollItemsImportService {
           result.name = person.staff.fullName;
           if (person.engagement === 'CONTRACTOR') {
             result.problems.push(`${person.staff.fullName} is a contractor, paid outside payroll.`);
+          } else if (!inRun.has(person.staffId) && leftBy.has(person.staffId)) {
+            staffId = person.staffId;
+            result.staffId = staffId;
+            result.finalPay = finalPayLabel(leftBy.get(person.staffId)!.endDate!);
           } else if (!inRun.has(person.staffId)) {
             result.problems.push(
               `${person.staff.fullName} is not in ${monthLabel(period)}’s run: not employed here that month, or at another branch or company.`,
@@ -344,6 +362,8 @@ export class PayrollItemsImportService {
       // ---- Earned in. --------------------------------------------------------
       const rawEarned = (input.earnedIn ?? '').trim();
       let earnedPeriod: Date | null = null;
+      // The month named in the file, even when it is the run's own month.
+      let earnedNamed: Date | null = null;
       if (rawEarned) {
         const match = /^(\d{4})-(\d{2})$/.exec(rawEarned);
         const earned = match ? new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, 1)) : null;
@@ -352,6 +372,7 @@ export class PayrollItemsImportService {
         } else if (earned > period) {
           result.problems.push(`Earned in ${monthLabel(earned)} is after ${monthLabel(period)}.`);
         } else {
+          earnedNamed = earned;
           earnedPeriod = earned.getTime() === period.getTime() ? null : earned;
         }
       } else if (item && !isDays && item.payMonthOffset === 1) {
@@ -359,6 +380,19 @@ export class PayrollItemsImportService {
         earnedPeriod = monthBefore(period);
       }
       result.earnedIn = earnedPeriod ? earnedPeriod.toISOString().slice(0, 7) : null;
+
+      // ---- After leaving: earnings only, none earned after the last day. ----
+      const leaver = staffId ? leftBy.get(staffId) : undefined;
+      if (leaver && !inRun.has(leaver.staffId) && (item || isDays)) {
+        const refusal = finalPayRefusal({
+          name: result.name ?? employeeNo,
+          endDate: leaver.endDate!,
+          componentCode: isDays ? 'UNPAID_LEAVE' : rawCode,
+          componentType: isDays ? 'DEDUCTION' : item!.type,
+          earnedPeriod: earnedNamed ?? earnedPeriod,
+        });
+        if (refusal) result.problems.push(refusal);
+      }
 
       // ---- PCB type: the item's. ---------------------------------------------
       const rawPcb = (input.pcbType ?? '').trim().toLowerCase();
@@ -410,7 +444,7 @@ export class PayrollItemsImportService {
         writes.push({
           row: rowNo,
           staffId,
-          clinicId: inRun.get(staffId)?.staff.clinicId ?? null,
+          clinicId: inRun.get(staffId)?.staff.clinicId ?? leftBy.get(staffId)?.staff.clinicId ?? null,
           componentCode,
           label: isDays ? `Unpaid leave · ${Number(quantity)} day${Number(quantity) === 1 ? '' : 's'}` : null,
           amount,

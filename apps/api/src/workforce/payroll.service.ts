@@ -133,7 +133,7 @@ import {
   checkPayrollInvariants,
   describeViolations,
 } from './payroll-invariants';
-import { employedInMonth, paidThisMonth } from './employed-in-month';
+import { employedInMonth, finalPayLabel, leftBefore, paidThisMonth } from './employed-in-month';
 
 function monthStart(value: string | Date): Date {
   const date = typeof value === 'string' ? new Date(`${value.slice(0, 7)}-01T00:00:00.000Z`) : value;
@@ -826,6 +826,38 @@ export class PayrollService {
         orderBy: { staffId: 'asc' },
       });
 
+      /*
+       * FINAL PAY AFTER LEAVING (UAT, 12 October 2026). Somebody who left
+       * before this month is in its run only for lines keyed by hand or
+       * imported for them this month: arrears, earned-in items and one-off
+       * final payments. Not on an off-cycle run, which pays what was keyed for
+       * everybody anyway.
+       */
+      const finalPayIds = new Set<string>();
+      if (!isBonusRun) {
+        const keyed = await tx.payrollInputEntry.findMany({
+          where: { period, source: { in: ['MANUAL', 'IMPORT'] } },
+          select: { staffId: true },
+          distinct: ['staffId'],
+        });
+        const leavers = await tx.employeeProfile.findMany({
+          where: {
+            engagement: 'EMPLOYEE',
+            staffId: { in: keyed.map((row) => row.staffId) },
+            endDate: { lt: period },
+            ...(run.clinicId ? { staff: { clinicId: run.clinicId } } : {}),
+          },
+          include: {
+            staff: { select: { id: true, fullName: true, active: true, clinicId: true, role: true, professionalType: true } },
+          },
+        });
+        for (const leaver of leavers) {
+          finalPayIds.add(leaver.staffId);
+          employees.push(leaver);
+        }
+        employees.sort((x, y) => (x.staffId < y.staffId ? -1 : x.staffId > y.staffId ? 1 : 0));
+      }
+
       // Who was left out, and why — visible on the run rather than only in the
       // absence of a payslip. An INFO row never blocks approval.
       const contractors = await tx.employeeProfile.findMany({
@@ -1177,13 +1209,20 @@ export class PayrollService {
           continue;
         }
 
+        // FINAL PAY: keyed lines only, priced on the standing and salary of the last day worked.
+        const finalPay = finalPayIds.has(employee.staffId) && leftBefore(employee.endDate, period);
+        const keyedOnly = isBonusRun || finalPay;
+        const asOfStart = finalPay ? employee.endDate! : period;
+        const asOfEnd = finalPay ? employee.endDate! : lastDayOfPeriod;
+        if (finalPay) raise('FINAL_PAY', employee, { label: finalPayLabel(employee.endDate!), periodLabel });
+
         /*
          * LATE JOINERS PAID THE NEXT MONTH (UAT, 10 October 2026), only where
          * the rule set has a cut-off day: somebody who starts after it is not
          * in their joining month's run; the next month's run adds those days
          * to basic pay. No cut-off (the default): paid in the same month.
          */
-        const cutoffDay = isBonusRun
+        const cutoffDay = keyedOnly
           ? null
           : (resolvePayrollPolicy(payrollPolicies, {
               payrollPolicyId: employee.payrollPolicyId,
@@ -1207,8 +1246,8 @@ export class PayrollService {
 
         const salary = resolveSalaryForPayroll(
           salaryByStaff.get(employee.staffId) ?? [],
-          period,
-          lastDayOfPeriod,
+          asOfStart,
+          asOfEnd,
         );
         if (salary.kind === 'NO_SALARY') {
           exclude('NO_SALARY', employee);
@@ -1231,8 +1270,8 @@ export class PayrollService {
 
         const classificationOutcome = resolveClassificationForPayroll(
           classificationByStaff.get(employee.staffId) ?? [],
-          period,
-          lastDayOfPeriod,
+          asOfStart,
+          asOfEnd,
         );
         if (classificationOutcome.kind === 'NONE_ON_RECORD') {
           exclude('NO_STATUTORY_CLASSIFICATION', employee, { periodLabel });
@@ -1250,11 +1289,12 @@ export class PayrollService {
         }
         const classification = classificationOutcome.row;
 
+        const none = <T,>(): Promise<T[]> => Promise.resolve([]);
         const [attendance, leave, incentives, inputs, claims, recurringItems] = await Promise.all([
-          tx.attendanceRecord.findMany({
+          finalPay ? none<Prisma.AttendanceRecordGetPayload<object>>() : tx.attendanceRecord.findMany({
             where: { staffId: employee.staffId, workDate: { gte: period, lt: periodEnd } },
           }),
-          tx.leaveRequest.findMany({
+          finalPay ? none<Prisma.LeaveRequestGetPayload<{ include: { approvedBy: { select: { fullName: true } } } }>>() : tx.leaveRequest.findMany({
             where: {
               staffId: employee.staffId,
               status: 'APPROVED',
@@ -1263,7 +1303,9 @@ export class PayrollService {
             },
             include: { approvedBy: { select: { fullName: true } } },
           }),
-          tx.incentiveResult.findMany({
+          finalPay
+            ? none<Prisma.IncentiveResultGetPayload<{ include: { incentiveRun: { select: { approvedBy: { select: { fullName: true } } } } } }>>()
+            : tx.incentiveResult.findMany({
             where: {
               staffId: employee.staffId,
               incentiveRun: { period, status: { in: ['APPROVED', 'PAID'] } },
@@ -1276,7 +1318,7 @@ export class PayrollService {
           // APPROVED claims the approver routed to PAYROLL. A claim routed to
           // FINANCE is deliberately not here: it is reimbursed separately, and
           // reading it would be the double payment the route exists to prevent.
-          tx.staffClaim.findMany({
+          finalPay ? none<Prisma.StaffClaimGetPayload<{ include: { decidedBy: { select: { fullName: true } } } }>>() : tx.staffClaim.findMany({
             where: {
               staffId: employee.staffId,
               status: 'APPROVED',
@@ -1289,7 +1331,7 @@ export class PayrollService {
           // employee's record says they get every month. Read here, carried
           // into the period as inputs below, so the grid's "other income" is
           // the record and not a figure somebody retyped.
-          tx.employeeRecurringItem.findMany({
+          finalPay ? none<Prisma.EmployeeRecurringItemGetPayload<{ include: { createdBy: { select: { fullName: true } } } }>>() : tx.employeeRecurringItem.findMany({
             where: {
               staffId: employee.staffId,
               effectiveFrom: { lte: lastDayOfPeriod },
@@ -1336,7 +1378,7 @@ export class PayrollService {
           startDate: employee.startDate,
           endDate: employee.endDate,
         });
-        if (proration.outsidePeriod) {
+        if (proration.outsidePeriod && !finalPay) {
           // Not a payslip for nought days — they simply are not on this
           // payroll. Usually a leaver whose record is still marked active.
           exclude('NOT_EMPLOYED_IN_PERIOD', employee, {
@@ -1379,7 +1421,7 @@ export class PayrollService {
               payrollRun: { period: previousMonth, runType: 'REGULAR', status: { in: [PayrollRunStatus.APPROVED, PayrollRunStatus.PAID] } },
             },
           })) > 0;
-        if (joinedAfterCutoff(employee.startDate, previousMonth) && !previousMonthPaid) {
+        if (!finalPay && joinedAfterCutoff(employee.startDate, previousMonth) && !previousMonthPaid) {
           const previousLastDay = new Date(period.getTime() - 86_400_000);
           const previousSalary = resolveSalaryForPayroll(salaryByStaff.get(employee.staffId) ?? [], previousMonth, previousLastDay);
           if (previousSalary.kind !== 'RESOLVED' || previousSalary.row.basis !== 'MONTHLY') {
@@ -1406,8 +1448,9 @@ export class PayrollService {
               `${monthLabelOf(previousMonth)}'s days, RM${formatCents(lateJoinerCents)}, are added to basic pay this month.`,
           });
         }
-        const basicCents = partMonth.basicCents + lateJoinerCents;
-        const prorationNote = describeProration(proration, days, partMonth.workingDays);
+        // No salary after leaving: a final pay carries only its keyed lines.
+        const basicCents = finalPay ? 0 : partMonth.basicCents + lateJoinerCents;
+        const prorationNote = finalPay ? null : describeProration(proration, days, partMonth.workingDays);
         if (prorationNote) {
           // INFO, not a blocker. A part-month is a normal event; what is not
           // acceptable is it happening invisibly.
@@ -1416,7 +1459,7 @@ export class PayrollService {
             basis: partMonth.basis,
           });
         }
-        if (partMonth.basicCents < partMonth.calendarCents) {
+        if (!finalPay && partMonth.basicCents < partMonth.calendarCents) {
           raise('PART_MONTH_BELOW_STATUTORY', employee, {
             ruleSet: policyResolution.policy?.name ?? 'rule set',
             paid: formatCents(partMonth.basicCents),
@@ -1455,7 +1498,7 @@ export class PayrollService {
          * from the same ledger the Leave screen shows, so the two cannot
          * disagree about what was taken.
          */
-        if (proration.leftOn) {
+        if (proration.leftOn && !finalPay) {
           const year = period.getUTCFullYear();
           const [annualPolicy, storedBalance, yearRequests] = await Promise.all([
             tx.employeeProfile
@@ -1582,7 +1625,7 @@ export class PayrollService {
         // Only where it changes an entitlement: an employee the Act does not
         // reach has no statutory rest-day pay to get wrong.
         if (
-          !isBonusRun &&
+          !keyedOnly &&
           classification.restDayOfWeek === null &&
           !classification.restDayVaries &&
           fullMonthlyCents <= FIRST_SCHEDULE_WAGE_CEILING_CENTS &&
@@ -1595,7 +1638,7 @@ export class PayrollService {
         // worked is priced as a normal day. Said once per person per month,
         // as information, so rest-day pay is keyed by hand where it arises.
         if (
-          !isBonusRun &&
+          !keyedOnly &&
           classification.restDayOfWeek === null &&
           classification.restDayVaries &&
           attendance.some((row) => (row.workedMinutes ?? 0) > 0)
@@ -1712,7 +1755,7 @@ export class PayrollService {
           scopeOf(monthlyCents, resolutionDay, classification.overtimeContractPolicy, clinicRates);
         const scope = scopeFor(fullMonthlyCents, statutoryResolutionDay);
         const workedAnyDay = attendance.some((row) => (row.workedMinutes ?? 0) > 0);
-        if (!isBonusRun && workedAnyDay && !scope.withinFirstSchedule && !classification.overtimeContractPolicy && !clinicRates) {
+        if (!keyedOnly && workedAnyDay && !scope.withinFirstSchedule && !classification.overtimeContractPolicy && !clinicRates) {
           raise('OVERTIME_ENTITLEMENT_UNRECORDED', employee, {
             wages: formatCents(fullMonthlyCents),
           });
@@ -1740,9 +1783,9 @@ export class PayrollService {
          * payslip froze it, because a rule set carries no dates. Where that
          * month was not approved here, the rule set in force now prices it.
          */
-        const overtimeInArrears = !isBonusRun && (catalogue.get('OVERTIME')?.paidInArrears ?? false);
+        const overtimeInArrears = !keyedOnly && (catalogue.get('OVERTIME')?.paidInArrears ?? false);
         const lastMonth = monthBefore(period);
-        const lastMonthDays = isBonusRun ? [] : await unpaidDaysOfLastMonth(tx, employee.staffId, period, overtimeInArrears);
+        const lastMonthDays = keyedOnly ? [] : await unpaidDaysOfLastMonth(tx, employee.staffId, period, overtimeInArrears);
         const lastMonthEnd = new Date(period.getTime() - 86_400_000);
         const lastMonthSalary = resolveSalaryForPayroll(salaryByStaff.get(employee.staffId) ?? [], lastMonth, lastMonthEnd);
         const lastMonthlyCents =
@@ -1835,7 +1878,7 @@ export class PayrollService {
         // A BONUS RUN CARRIES NO ATTENDANCE. Overtime, unpaid leave and
         // incentives belong to the month's regular payroll and are already on
         // it; materialising them again here would pay them a second time.
-        const desiredInputs = isBonusRun
+        const desiredInputs = keyedOnly
           ? []
           : [
           ...materialiseOvertimeDays(
@@ -1983,7 +2026,7 @@ export class PayrollService {
         // as an INFO row the reviewer reads before approving. Editing or
         // clearing the line takes it off this list.
         const carriedRows = materialised.filter((row) => row.carriedFromId !== null);
-        if (carriedRows.length > 0 && !isBonusRun) {
+        if (carriedRows.length > 0 && !keyedOnly) {
           raise('CARRIED_FORWARD_UNCHECKED', employee, {
             count: carriedRows.length,
             from: previousPeriodLabel,
@@ -2012,7 +2055,7 @@ export class PayrollService {
         // derivations AND read again from the input table, which is how a
         // derived figure could be counted twice the moment it also existed as a
         // row. There is now one source: the rows.
-        const componentLines: PayrollComponentLine[] = isBonusRun
+        const componentLines: PayrollComponentLine[] = keyedOnly
           ? []
           : [
               {
@@ -2034,7 +2077,7 @@ export class PayrollService {
          * like a payment that failed. Left out and said so, rather than
          * filtered out of a query where nobody could see the decision.
          */
-        if (isBonusRun && materialised.every((row) => row.componentCode === 'PCB' || toCents(row.amount) === 0)) {
+        if (keyedOnly && materialised.every((row) => row.componentCode === 'PCB' || toCents(row.amount) === 0)) {
           exclude('NOTHING_TO_PAY_OFF_CYCLE', employee, { periodLabel });
           continue;
         }

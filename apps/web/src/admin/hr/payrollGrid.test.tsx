@@ -197,6 +197,13 @@ describe('the payroll grid', () => {
    * left of it and everything that comes off sits to the right — the shape
    * payroll.html draws, and the property that lets a reader check a row.
    */
+  it('names a leaver’s final pay where the position would be', () => {
+    viewport(1440);
+    grid({ rows: [row({ finalPay: 'Final pay (left 21 Feb 2026)' })] });
+    expect(screen.getByText('Final pay (left 21 Feb 2026)')).toBeTruthy();
+    expect(screen.queryByText('Clinic assistant')).toBeNull();
+  });
+
   it('lays the columns out as payroll.html does: earnings, gross, deductions, net', () => {
     viewport(1440);
     grid();

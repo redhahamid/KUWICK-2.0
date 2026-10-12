@@ -6,6 +6,33 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 48 — 12 Oktober 2026 — Bayaran akhir selepas berhenti (tunggakan bulan berikutnya)
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada
+migrasi.**
+
+- `[D]` Pekerja yang berhenti sebelum sesuatu bulan kini boleh masuk ke run
+  bulan itu **hanya** untuk baris yang ditaip atau diimport: tunggakan, item
+  "earned in" dan bayaran akhir sekali. Tiada gaji, tiada proration, tiada item
+  berulang atau terbitan (kehadiran, cuti, insentif, tuntutan). EPF, SOCSO, EIS
+  dan PCB dikira atas baris itu seperti biasa untuk bulan itu, menggunakan
+  kedudukan statutori dan gaji pada hari terakhir bekerja.
+- `[D]` Dinamakan "Final pay (left 21 Feb 2026)": pada grid (di tempat jawatan),
+  pratonton import, dan baris INFO *Final pay after leaving* pada run.
+- `[D]` Import CSV dan grid menerima baris pendapatan untuk mereka; menolak
+  potongan, hari cuti tanpa gaji, gaji pokok, dan apa-apa yang "earned in"
+  selepas bulan mereka berhenti, dengan sebab yang jelas.
+- `[D]` Prepare: senarai "Left before <bulan>" untuk yang berhenti bulan lepas
+  (atau lebih awal dengan item bulan ini) yang belum dibayar, dengan butang
+  **Add final pay** yang membuka item mereka.
+- `[D]` Kes sebenar diuji: no. 48 berhenti 21 Feb 2026; OT (tunggakan, earned
+  Feb) RM300 dan night incentive (earned Feb) RM200 diimport ke Mac 2026 → baris
+  Mac: basic 0, gross 500, SOCSO dikira, tiada penyekat.
+- `[D]` **Ujian**: API baharu `payroll-final-pay` (3); web `payrollGrid` +1,
+  `itemsImport` dikemas kini.
+
+---
+
 ## Batch 47 — 12 Oktober 2026 — Tiada kotak YTD; nama paparan boleh ditukar (dilog)
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada

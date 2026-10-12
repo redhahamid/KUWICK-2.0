@@ -203,6 +203,7 @@ export function ItemsImport({ runId, period, canImport }: { runId: string; perio
                     <div>
                       <div className="hr-strong">{row.name ?? row.employeeNo ?? '—'}</div>
                       <span className="hr-faint hr-small">{row.employeeNo || 'No Employee No.'}</span>
+                      {row.finalPay ? <div className="hr-small hr-muted">{row.finalPay}</div> : null}
                     </div>
                   ),
                 },

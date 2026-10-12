@@ -34,8 +34,9 @@ const result = (over: Partial<ItemsImportResult>): ItemsImportResult => ({
   rows: [
     { row: 1, employeeNo: 'EM-001', itemCode: 'OVERTIME', ok: true, problems: [], name: 'Demo Nurse', itemName: 'Overtime', amount: '250.00' },
     { row: 2, employeeNo: 'EM-002', itemCode: 'UNPAID_LEAVE_DAYS', ok: true, problems: [], name: 'Demo Clerk', itemName: 'Unpaid leave', days: '2.00' },
+    { row: 3, employeeNo: '48', itemCode: 'OVERTIME', ok: true, problems: [], name: 'Demo Leaver', itemName: 'Overtime', amount: '300.00', earnedIn: '2026-02', finalPay: 'Final pay (left 21 Feb 2026)' },
   ],
-  passed: 2,
+  passed: 3,
   failed: 0,
   previousImport: 0,
   replaced: 0,
@@ -99,7 +100,8 @@ describe('the import', () => {
     mount();
     choose(csv);
     expect(await screen.findByText('2 days')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Add 2 lines' }));
+    expect(screen.getByText('Final pay (left 21 Feb 2026)')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Add 3 lines' }));
     await waitFor(() => expect(calculate).toHaveBeenCalledWith('run-1'));
     expect((mutateAsync.mock.calls[1] as unknown as [{ commit?: boolean; fileName: string }])[0]).toMatchObject({ commit: true, fileName: 'jan-2026.csv' });
   });
