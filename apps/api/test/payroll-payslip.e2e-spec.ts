@@ -311,6 +311,24 @@ describe('Payroll payslips (e2e)', () => {
     await request(app.getHttpServer()).get(`/workforce/legal-employers/${legalEmployerId}/logo`).set('Authorization', bearer).expect(404);
   });
 
+  it('prints the employer as it stood when the month was approved, not as it is today', async () => {
+    // Owner, 12 October 2026: "Payslips are historical documents."
+    await request(app.getHttpServer())
+      .post('/workforce/legal-employers')
+      .set('Authorization', bearer)
+      .send({ id: legalEmployerId, name: 'Payslip Employer Renamed Sdn Bhd', registrationNo: '209999999999', addressLine1: 'No. 9, Jalan Baharu', city: 'Kajang' })
+      .expect(201);
+    const slip = (await request(app.getHttpServer()).get(`/workforce/payroll/runs/${runId}/payslips/${staffId}`).set('Authorization', bearer).expect(200)).body;
+    expect(slip.employer).toMatchObject({ name: 'Payslip Employer Sdn Bhd', registrationNo: '202601012345', epfEmployerNo: 'EPF-EMP-9', addressLines: [], detailsAsAt: 'APPROVAL' });
+    expect(JSON.stringify(slip.employer)).not.toContain('Renamed');
+    // Put it back, so the rest of the file reads the employer it set up.
+    await request(app.getHttpServer())
+      .post('/workforce/legal-employers')
+      .set('Authorization', bearer)
+      .send({ id: legalEmployerId, name: 'Payslip Employer Sdn Bhd', registrationNo: '202601012345', epfEmployerNo: 'EPF-EMP-9' })
+      .expect(201);
+  });
+
   it('lets the employee download their own payslip once the run is PAID, and nobody else', async () => {
     const employeeBearer = bearerFor(tenantId, staffId, Role.FRONT_DESK_CLINICAL_STAFF);
     // Approved is not paid: the portal waits for the money to have gone out.

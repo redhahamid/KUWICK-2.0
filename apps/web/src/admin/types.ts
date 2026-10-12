@@ -991,7 +991,8 @@ export interface PayslipDoc {
     socsoEmployerNo: string | null;
     lhdnEmployerNo: string | null;
     addressLines: string[];
-    detailsAsAt: "CURRENT";
+    /** As the employer stood when the month was approved. */
+    detailsAsAt: "APPROVAL";
   };
   employee: {
     staffId: string;

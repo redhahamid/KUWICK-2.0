@@ -412,7 +412,7 @@ export function renderPayslipPdf(slip: PayslipData, logo: Buffer | null = null):
     lineBreak: false,
   });
   doc.fontSize(6.5).text(
-    `Revision ${slip.revision.version} of ${slip.revision.of} · approved record ${slip.verification.hash.slice(0, 16)}… · verification ${slip.verification.verdict} · membership numbers and employer details as on file at issue`,
+    `Revision ${slip.revision.version} of ${slip.revision.of} · approved record ${slip.verification.hash.slice(0, 16)}… · verification ${slip.verification.verdict} · employer details as at approval · membership numbers as on file at issue`,
     left,
     footY + 16,
     { width, lineBreak: false },

@@ -3662,7 +3662,12 @@ export class PayrollService {
     const run = await tx.payrollRun.findUniqueOrThrow({
       where: { id: runId },
       include: {
-        legalEmployer: { select: { id: true, name: true } },
+        legalEmployer: {
+          select: {
+            id: true, name: true, registrationNo: true, epfEmployerNo: true, socsoEmployerNo: true, lhdnEmployerNo: true,
+            addressLine1: true, addressLine2: true, postcode: true, city: true, state: true,
+          },
+        },
         lines: { orderBy: { staffId: 'asc' } },
         approvals: { orderBy: { sequence: 'asc' }, include: { staff: { select: { fullName: true } } } },
         exceptionRows: { orderBy: [{ severity: 'asc' }, { code: 'asc' }, { staffId: 'asc' }] },
@@ -3923,6 +3928,21 @@ export class PayrollService {
       schemaVersion: SNAPSHOT_SCHEMA_VERSION,
       legalEmployerId: run.legalEmployer?.id ?? null,
       legalEmployerName: run.legalEmployer?.name ?? null,
+      // As it stands at approval: the payslip prints these, never today's.
+      legalEmployer: run.legalEmployer
+        ? {
+            name: run.legalEmployer.name,
+            registrationNo: run.legalEmployer.registrationNo,
+            epfEmployerNo: run.legalEmployer.epfEmployerNo,
+            socsoEmployerNo: run.legalEmployer.socsoEmployerNo,
+            lhdnEmployerNo: run.legalEmployer.lhdnEmployerNo,
+            addressLine1: run.legalEmployer.addressLine1,
+            addressLine2: run.legalEmployer.addressLine2,
+            postcode: run.legalEmployer.postcode,
+            city: run.legalEmployer.city,
+            state: run.legalEmployer.state,
+          }
+        : null,
       period: run.period.toISOString().slice(0, 10),
       runType: run.runType,
       sequence: run.sequence,

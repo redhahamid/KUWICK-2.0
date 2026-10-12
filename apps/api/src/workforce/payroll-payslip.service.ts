@@ -10,6 +10,7 @@ import { recordAudit } from '../finance/admin-audit';
 import { ringgitInWords } from '../finance/money-words';
 import {
   SnapshotEmployeeLine,
+  SnapshotEmployer,
   SnapshotPayload,
   verifySnapshot,
 } from './payroll-snapshot';
@@ -44,6 +45,42 @@ export class PayrollPayslipService {
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
     private readonly rawPrisma: PrismaService,
   ) {}
+
+  /**
+   * THE EMPLOYER AS IT STOOD AT APPROVAL. A record approved since 12 October
+   * 2026 carries it. An older one is rebuilt from the audit trail: the first
+   * change to the employer after the approval holds, in its `before`, what
+   * the employer said that day; with no change since, today's record is the
+   * same thing. The name frozen with every record wins over either.
+   */
+  private async employerAsApproved(
+    payload: SnapshotPayload,
+    current: ({ id: string } & Partial<SnapshotEmployer>) | null,
+    approvedAt: Date,
+  ): Promise<SnapshotEmployer | null> {
+    if (payload.legalEmployer) return payload.legalEmployer;
+    if (!current) return null;
+    const changes = await this.prisma.auditLog.findMany({
+      where: { entityType: 'LegalEmployer', entityId: current.id, action: 'legalEmployer.updated', createdAt: { gt: approvedAt } },
+      orderBy: { createdAt: 'asc' },
+      select: { before: true },
+    });
+    const then =
+      changes.map((row) => row.before as Partial<SnapshotEmployer> | null).find((before) => before !== null && 'name' in before) ?? current;
+    const pick = (key: keyof SnapshotEmployer) => (then[key] as string | null | undefined) ?? null;
+    return {
+      name: payload.legalEmployerName ?? pick('name') ?? '',
+      registrationNo: pick('registrationNo'),
+      epfEmployerNo: pick('epfEmployerNo'),
+      socsoEmployerNo: pick('socsoEmployerNo'),
+      lhdnEmployerNo: pick('lhdnEmployerNo'),
+      addressLine1: pick('addressLine1'),
+      addressLine2: pick('addressLine2'),
+      postcode: pick('postcode'),
+      city: pick('city'),
+      state: pick('state'),
+    };
+  }
 
   /** The employer's logo for the PDF, from a payslip already authorised; null prints the initial. */
   async logoBytes(mediaId: string | null): Promise<Buffer | null> {
@@ -252,6 +289,8 @@ export class PayrollPayslipService {
             zakatCents: sumYtd((row) => row.zakatCents),
           };
 
+    const approvedEmployer = await this.employerAsApproved(payload, run.legalEmployer, snapshot.createdAt);
+
     const classification = line.classification;
     const detail = line.payslip ?? null;
     const statutoryRows = this.statutoryRows(line);
@@ -304,19 +343,19 @@ export class PayrollPayslipService {
       },
       employer: {
         /**
-         * The full legal name as recorded (UAT, 12 October 2026), like the
-         * registration and address beside it; the name frozen at approval
-         * where the employer is no longer on file.
+         * AS IT STOOD WHEN THE MONTH WAS APPROVED (owner, 12 October 2026:
+         * "Payslips are historical documents"). Name, registration, statutory
+         * numbers and address; only a month approved after a change shows the
+         * new details. The logo is today's.
          */
-        name: run.legalEmployer?.name ?? payload.legalEmployerName,
+        name: approvedEmployer?.name ?? payload.legalEmployerName,
         logoMediaId: run.legalEmployer?.logoMediaId ?? null,
-        registrationNo: run.legalEmployer?.registrationNo ?? null,
-        epfEmployerNo: run.legalEmployer?.epfEmployerNo ?? null,
-        socsoEmployerNo: run.legalEmployer?.socsoEmployerNo ?? null,
-        lhdnEmployerNo: run.legalEmployer?.lhdnEmployerNo ?? null,
-        addressLines: addressAsRecorded(run.legalEmployer),
-        /** Address and registrations are today's master data, not frozen. */
-        detailsAsAt: 'CURRENT' as const,
+        registrationNo: approvedEmployer?.registrationNo ?? null,
+        epfEmployerNo: approvedEmployer?.epfEmployerNo ?? null,
+        socsoEmployerNo: approvedEmployer?.socsoEmployerNo ?? null,
+        lhdnEmployerNo: approvedEmployer?.lhdnEmployerNo ?? null,
+        addressLines: addressAsRecorded(approvedEmployer),
+        detailsAsAt: 'APPROVAL' as const,
       },
       employee: {
         staffId: line.staffId,

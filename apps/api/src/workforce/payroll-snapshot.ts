@@ -45,8 +45,26 @@ import { EmployeeFigures, InvariantViolation, RunTotals, checkPayrollInvariants 
  * the run's own month and, beside it, whether the item is paid a month in
  * arrears. A version 4 record's `payMonthOffset` moved a date into the next
  * month; its frozen dates stand as they were approved.
+ *
+ * Version 6 (UAT, 12 October 2026) freezes the employer's details as they
+ * stood at approval: name, registration, statutory numbers and address. A
+ * payslip is a historical document, so it prints those, never today's.
  */
-export const SNAPSHOT_SCHEMA_VERSION = 5;
+export const SNAPSHOT_SCHEMA_VERSION = 6;
+
+/** The employer as it stood when the month was approved (version 6+). */
+export interface SnapshotEmployer {
+  name: string;
+  registrationNo: string | null;
+  epfEmployerNo: string | null;
+  socsoEmployerNo: string | null;
+  lhdnEmployerNo: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  postcode: string | null;
+  city: string | null;
+  state: string | null;
+}
 
 /** The statutory standing the payslip was computed on, frozen. */
 export interface SnapshotClassification {
@@ -311,6 +329,8 @@ export interface SnapshotPayload {
   schemaVersion?: number;
   legalEmployerId: string | null;
   legalEmployerName: string | null;
+  /** Version 6+. The employer's details as they stood at approval. */
+  legalEmployer?: SnapshotEmployer | null;
   period: string;
   runType: string;
   sequence: number;

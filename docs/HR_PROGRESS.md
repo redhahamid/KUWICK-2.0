@@ -6,6 +6,28 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 46 — 12 Oktober 2026 — Payslip mencetak butiran majikan seperti semasa kelulusan
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada
+migrasi** (rekod kelulusan ialah JSON). Membetulkan keputusan Batch 45 (7).
+
+- `[D]` Pemilik: "Payslips are historical documents." Nama majikan, no.
+  pendaftaran, no. EPF/SOCSO/LHDN dan alamat kini dicetak seperti semasa bulan
+  itu diluluskan. Hanya bulan yang diluluskan selepas sesuatu perubahan
+  menunjukkan butiran baharu.
+- `[D]` Rekod kelulusan versi 6 menyimpan butiran itu bersama angka (dalam
+  hash yang sama). Pengesahan rekod lama tidak berubah.
+- `[D]` Bulan yang diluluskan sebelum hari ini dibina semula dari log audit:
+  perubahan pertama kepada majikan selepas kelulusan menyimpan, dalam
+  `before`, apa yang majikan nyatakan pada hari itu; jika tiada perubahan sejak
+  itu, rekod hari ini adalah sama. Nama yang dibekukan bersama setiap rekod
+  sentiasa diutamakan.
+- `[D]` Logo kekal logo semasa. Footer PDF: "employer details as at approval".
+- `[D]` **Ujian**: e2e `payroll-payslip` +1 (namakan semula selepas kelulusan,
+  payslip kekal lama); unit baharu `payroll-payslip-employer.spec` (3).
+
+---
+
 ## Batch 45 — 12 Oktober 2026 — PDF payslip: nama penuh, tajuk, logo, jadual bayaran, akaun, YTD
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi:**
