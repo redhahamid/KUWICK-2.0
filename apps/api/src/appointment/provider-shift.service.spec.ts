@@ -83,6 +83,10 @@ function build(world: World = {}) {
               // The board now selects the role, because it decides which part
               // of the workforce a row is and whether bookings can land in it.
               role: 'DOCTOR_RESIDENT',
+              // In the branch, active, no HR record: on the board (roster-eligibility.ts).
+              clinicId: CLINIC,
+              active: true,
+              employeeProfile: null,
               appointmentScheduleMode: 'ROSTER_LINKED',
               calendarColor: null,
               professionalType: 'MEDICAL_DOCTOR',
