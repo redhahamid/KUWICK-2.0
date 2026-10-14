@@ -279,9 +279,11 @@ export class AttendanceRecordService {
           })
         : [];
       const lastLive = live[live.length - 1] ?? null;
-      // A second scan within a minute is the same person scanning twice, not
+      // A second SCAN within a minute is the same person scanning twice, not
       // a clock-out: refused rather than closing the shift they just opened.
-      if (lastLive && now.getTime() - lastLive.at.getTime() < 60_000 && !forSomebodyElse) {
+      // A tap on the clock button is deliberate, so it is not held back.
+      const scanned = source === 'QR' || source === 'PIN';
+      if (scanned && lastLive && now.getTime() - lastLive.at.getTime() < 60_000) {
         throw new BadRequestException('Already recorded a moment ago. Nothing more to do.');
       }
       const isClockOut = lastLive?.kind === 'IN';
