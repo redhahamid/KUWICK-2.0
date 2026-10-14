@@ -19,3 +19,6 @@ Not built in the HR core push. Each is a known gap, not a bug.
 | EA form Part F as the exempt part of each allowance | An item marked "not taxable" goes wholly in F; a partly exempt allowance (exemption limit) is not split yet. |
 | C.P.8D file in LHDN's exact e-Filing layout | Kuwick gives a plain CSV with the same facts; the e-Filing template changes yearly and must be checked first. |
 | Previous employment (Form TP3) on the EA form | TP3 money is not this employer's and is left off, as LHDN asks; shown in the Year to date report. |
+| Email or phone notifications (leave decided, claim paid, payslip ready) | Staff see every status in My Kuwick; no mail or push sender exists in the product yet. |
+| A manager's own approvals inbox on the phone | Managers approve from HR → Leave / Claims / Attendance, which work on a phone; a single combined inbox can come later. |
+| Bank change: verify the account name against the bank | HR compares the proof photo by eye; no bank verification service is connected. |

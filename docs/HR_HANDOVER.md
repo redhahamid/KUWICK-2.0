@@ -229,7 +229,46 @@ form box* (no code change). The suggestion for an item with no box:
 
 ---
 
-## 8. Payroll (for orientation)
+## 8. My Kuwick (staff on their phones)
+
+**What it does.** Home (clock in by QR scan or GPS, latest payslip, leave
+left, quick actions), Attendance (my published roster, the month's punches,
+"Ask for a fix", kiosk PIN), Leave (balances first, apply, cancel while
+waiting), Claims (photo of the receipt, withdraw while waiting, medical
+benefit balance), Payslips, Profile (contact details the person edits; a new
+bank account is a request HR approves with a proof photo). Built for 390px.
+
+**Code.** `web/me/*` (one page per tab; `MyDetailsForms.tsx` for contact and
+bank), `api/me/me.service.ts` (everything is "the person holding the token";
+no endpoint takes a staffId), `api/workforce/bank-change.service.ts` (HR's
+side), `web/admin/hr/BankChangesNotice.tsx` (the notice on Employees).
+
+**Tables.** `bank_change_requests` (PENDING / APPROVED / REJECTED /
+CANCELLED; approving copies the account onto `employee_profiles`),
+`staff_files` (kind `BANK_PROOF` for the photo), plus the leave, claim and
+attendance tables above. A cancelled pending leave request is deleted (it
+never counted); a withdrawn claim is kept as CANCELLED.
+
+**Change a rule.** Who approves a bank change: `hr.employee.manage`, never
+the person themselves (`bank-change.service.ts`). Home and Attendance show
+published roster months only.
+
+---
+
+## 9. Help and the user guides
+
+**What it does.** A **Help** button on every HR page (`/admin/hr/help`) and in
+the My Kuwick top bar (`/my/help`), showing the owner/HR guide or the staff
+guide in Bahasa Melayu (default) or English.
+
+**Code.** The guides are plain files in `docs/guides/*.md`, imported into the
+web app as text (`web/help/guides.ts`) and drawn by a small renderer
+(`web/help/Markdown.tsx`: headings, numbered steps, the "You see" line under
+a step, bullets, bold). Edit the `.md` file; the app shows it on the next build.
+
+---
+
+## 10. Payroll (for orientation)
 
 The run lives in `api/workforce/payroll.service.ts` (`calculate`). Upstream
 facts become reviewable rows in `payroll_input_entries` through
