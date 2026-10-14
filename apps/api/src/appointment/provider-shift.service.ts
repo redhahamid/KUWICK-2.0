@@ -29,7 +29,7 @@ import { OpeningHours, resolveAttendancePolicy } from '../workforce/attendance-p
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 async function groupOf(tx: Parameters<Parameters<typeof withTenantTx>[1]>[0], staffId: string): Promise<RosterGroup> {
-  const staff = await tx.staff.findUnique({ where: { id: staffId }, select: { role: true, professionalType: true } });
+  const staff = await tx.staff.findUnique({ where: { id: staffId }, select: { role: true, professionalType: true, staffGroup: true } });
   if (!staff) throw new NotFoundException('That person is not on the staff list.');
   return workforceCategoryOf(staff) === 'DOCTOR' ? 'DOCTOR' : 'STAFF';
 }
@@ -238,6 +238,7 @@ export class ProviderShiftService {
           appointmentScheduleMode: true,
           calendarColor: true,
           professionalType: true,
+          staffGroup: true,
         },
         orderBy: { fullName: 'asc' },
       }),

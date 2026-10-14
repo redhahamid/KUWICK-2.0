@@ -3,6 +3,7 @@ import { App, AutoComplete, DatePicker, Input, Select } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
   useAssignEmployer,
+  useSetStaffGroup,
   useEmployees,
   useLegalEmployers,
   useRecordStatutoryClassification,
@@ -71,6 +72,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
   const { message } = App.useApp();
   const upsert = useUpsertEmployee();
   const assignEmployer = useAssignEmployer();
+  const setGroup = useSetStaffGroup();
   const people = useEmployees({});
   const employers = useLegalEmployers();
   const standing = useStatutoryClassifications(staffId);
@@ -102,6 +104,8 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
   const [workDays, setWorkDays] = useState<number | undefined>();
   const [department, setDepartment] = useState('');
   const [employmentType, setEmploymentType] = useState<string | undefined>();
+  // Doctor or staff: 'ROLE' leaves it to the account role.
+  const [staffGroup, setStaffGroup] = useState<'DOCTOR' | 'STAFF' | 'ROLE'>('ROLE');
   const [managerStaffId, setManagerStaffId] = useState<string | undefined>();
   const [startDate, setStartDate] = useState<Dayjs | null>(null);
   const [confirmedDate, setConfirmedDate] = useState<Dayjs | null>(null);
@@ -150,6 +154,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
     setWorkDays(em.workDaysPerWeek ?? undefined);
     setDepartment(em.department ?? '');
     setEmploymentType(em.employmentType);
+    setStaffGroup(em.staffGroup ?? 'ROLE');
     setManagerStaffId(people.data?.find((row) => row.fullName === em.manager)?.staffId);
     setStartDate(parse(em.startDate));
     setConfirmedDate(parse(em.confirmedDate));
@@ -287,6 +292,9 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
         await assignEmployer.mutateAsync({ staffId, legalEmployerId: legalEmployerId ?? null, reason: employerReason.trim() || undefined });
       }
       await upsert.mutateAsync({ staffId, ...body });
+      if (section === 'employment' && (staffGroup === 'ROLE' ? null : staffGroup) !== (data.employment.staffGroup ?? null)) {
+        await setGroup.mutateAsync({ staffId, staffGroup: staffGroup === 'ROLE' ? null : staffGroup });
+      }
       if (section === 'employment') {
         // The record is written by now. A refusal here — a month already
         // approved with a different day in it — is about the rest day alone,
@@ -483,6 +491,24 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
                     { value: 'INTERN', label: 'Intern' },
                   ]}
                 />
+              </div>
+              <div>
+                <label htmlFor="ed-group">Doctor or staff</label>
+                <Select
+                  id="ed-group"
+                  value={staffGroup}
+                  onChange={setStaffGroup}
+                  style={{ width: '100%' }}
+                  options={[
+                    { value: 'DOCTOR', label: 'Doctor' },
+                    { value: 'STAFF', label: 'Staff' },
+                    {
+                      value: 'ROLE',
+                      label: `From the account role (${data.employment.groupFromRole === 'DOCTOR' ? 'doctor' : 'staff'})`,
+                    },
+                  ]}
+                />
+                <div className="hr-form__help">Decides the roster group, the shifts offered and doctor or staff pay rules.</div>
               </div>
               <div>
                 <label htmlFor="ed-pos">Job title</label>

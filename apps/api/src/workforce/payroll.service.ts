@@ -580,7 +580,7 @@ export class PayrollService {
         select: {
           payrollPolicyId: true,
           legalEmployerId: true,
-          staff: { select: { role: true, professionalType: true } },
+          staff: { select: { role: true, professionalType: true, staffGroup: true } },
         },
       });
       const policies = await tx.payrollPolicy.findMany();
@@ -819,7 +819,7 @@ export class PayrollService {
           ...(run.clinicId ? { staff: { clinicId: run.clinicId } } : {}),
         },
         include: {
-          staff: { select: { id: true, fullName: true, active: true, clinicId: true, role: true, professionalType: true } },
+          staff: { select: { id: true, fullName: true, active: true, clinicId: true, role: true, professionalType: true, staffGroup: true } },
         },
         // Deterministic order, so two calculations of the same run produce the
         // same exception list in the same sequence.
@@ -848,7 +848,7 @@ export class PayrollService {
             ...(run.clinicId ? { staff: { clinicId: run.clinicId } } : {}),
           },
           include: {
-            staff: { select: { id: true, fullName: true, active: true, clinicId: true, role: true, professionalType: true } },
+            staff: { select: { id: true, fullName: true, active: true, clinicId: true, role: true, professionalType: true, staffGroup: true } },
           },
         });
         for (const leaver of leavers) {

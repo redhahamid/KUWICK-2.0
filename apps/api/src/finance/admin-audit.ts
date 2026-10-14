@@ -85,6 +85,7 @@ export type AuditAction =
   | 'attendance.corrected'
   | 'attendancePolicy.saved'
   | 'shiftTemplate.saved'
+  | 'staff.groupChanged'
   | 'shiftTemplate.retired'
   | 'shiftTemplate.deleted'
   | 'staffFile.uploaded'

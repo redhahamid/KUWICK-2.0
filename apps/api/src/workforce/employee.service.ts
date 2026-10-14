@@ -5,6 +5,7 @@ import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { actorCan, requirePermission, requireScope, withAdminTx } from '../finance/admin-actor';
 import { diffOf, recordAudit } from '../finance/admin-audit';
+import { workforceCategoryOf } from './workforce-category';
 import { UpsertEmployeeDto } from './dto/upsert-employee.dto';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import * as bcrypt from 'bcryptjs';
@@ -156,7 +157,7 @@ export class EmployeeService {
     const profile = await this.prisma.employeeProfile.findUnique({
       where: { staffId },
       include: {
-        staff: { select: { id: true, fullName: true, role: true, active: true, clinicId: true } },
+        staff: { select: { id: true, fullName: true, role: true, active: true, clinicId: true, professionalType: true, staffGroup: true } },
         manager: { select: { id: true, fullName: true } },
         leavePolicy: { select: { id: true, name: true, entitlements: { select: { leaveType: true, daysPerYear: true } } } },
         // WHO EMPLOYS THEM, which is not where they work. Stage 1 made the
@@ -319,6 +320,10 @@ export class EmployeeService {
         emergencyContactRelation: profile.emergencyContactRelation,
       },
       employment: {
+        // Doctor or staff (UAT, 14 October 2026): as recorded, and what the account role alone would say.
+        staffGroup: profile.staff.staffGroup,
+        group: workforceCategoryOf(profile.staff) === 'DOCTOR' ? 'DOCTOR' : 'STAFF',
+        groupFromRole: workforceCategoryOf({ role: profile.staff.role, professionalType: profile.staff.professionalType }) === 'DOCTOR' ? 'DOCTOR' : 'STAFF',
         employeeNo: profile.employeeNo,
         position: profile.position,
         jobTitleId: profile.jobTitleId,
@@ -901,6 +906,29 @@ export class EmployeeService {
       hasLogin: row.userId !== null,
       createdAt: row.createdAt,
     }));
+  }
+
+  /**
+   * DOCTOR OR STAFF (UAT, 14 October 2026): "the doctor/staff split must come
+   * from the employee record, not the account role. The owner can be a
+   * doctor." Decides the roster group, the shift templates offered and the
+   * doctor or staff pay rules. Null goes back to the account role.
+   */
+  async setGroup(staffId: string, staffGroup: 'DOCTOR' | 'STAFF' | null) {
+    return withAdminTx(this.rawPrisma, 'hr.employee.manage', async (tx, actor) => {
+      const before = await tx.staff.findUnique({ where: { id: staffId }, select: { id: true, staffGroup: true } });
+      if (!before) throw new NotFoundException('Staff member not found');
+      const saved = await tx.staff.update({ where: { id: staffId }, data: { staffGroup }, select: { staffGroup: true } });
+      await recordAudit(tx, actor, {
+        action: 'staff.groupChanged',
+        entityType: 'Staff',
+        entityId: staffId,
+        before: { staffGroup: before.staffGroup },
+        after: { staffGroup: saved.staffGroup },
+        source: 'hr.employee',
+      });
+      return { staffId, staffGroup: saved.staffGroup };
+    });
   }
 
   async upsert(staffId: string, dto: UpsertEmployeeDto) {

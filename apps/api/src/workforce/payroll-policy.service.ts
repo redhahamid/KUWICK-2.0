@@ -75,7 +75,7 @@ export class PayrollPolicyService {
         staffId: true,
         payrollPolicyId: true,
         legalEmployerId: true,
-        staff: { select: { fullName: true, active: true, role: true, professionalType: true } },
+        staff: { select: { fullName: true, active: true, role: true, professionalType: true, staffGroup: true } },
       },
     });
     const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
@@ -293,7 +293,7 @@ export class PayrollPolicyService {
         staffId: true,
         payrollPolicyId: true,
         legalEmployerId: true,
-        staff: { select: { active: true, role: true, professionalType: true } },
+        staff: { select: { active: true, role: true, professionalType: true, staffGroup: true } },
       },
     });
     const active = employees.filter((row) => row.staff.active);
@@ -366,7 +366,7 @@ export class PayrollPolicyService {
       const policies = await tx.payrollPolicy.findMany();
       const employees = await tx.employeeProfile.findMany({
         where: { engagement: 'EMPLOYEE', employmentStatus: { in: [...ACTIVE_STATUSES] } },
-        select: { payrollPolicyId: true, legalEmployerId: true, staff: { select: { active: true, role: true, professionalType: true } } },
+        select: { payrollPolicyId: true, legalEmployerId: true, staff: { select: { active: true, role: true, professionalType: true, staffGroup: true } } },
       });
       const covers = employees.filter(
         (employee) =>

@@ -747,6 +747,16 @@ export class WorkforceController {
     return this.claimPolicies.save(dto);
   }
 
+  /** Doctor or staff, on the employee record (UAT, 14 October 2026). Null: from the account role. */
+  @Patch('employees/:staffId/group')
+  setStaffGroup(@Param('staffId') staffId: string, @Body() body: { staffGroup?: string | null }) {
+    const value = body?.staffGroup ?? null;
+    if (value !== null && value !== 'DOCTOR' && value !== 'STAFF') {
+      throw new BadRequestException('staffGroup is DOCTOR, STAFF or null.');
+    }
+    return this.employees.setGroup(staffId, value);
+  }
+
   // --- Shift templates (UAT, 14 October 2026) ---------------------------------
   @Get('shift-templates')
   listShiftTemplates(

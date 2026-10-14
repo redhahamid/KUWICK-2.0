@@ -746,7 +746,7 @@ export class AttendanceRecordService {
       },
       orderBy: { startsAt: 'asc' },
       include: {
-        staff: { select: { id: true, fullName: true, role: true, professionalType: true } },
+        staff: { select: { id: true, fullName: true, role: true, professionalType: true, staffGroup: true } },
         clinic: { select: { id: true, name: true } },
         template: { select: { name: true, colour: true } },
       },

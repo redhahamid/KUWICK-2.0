@@ -18,6 +18,7 @@ import type { EmployeeRecord } from '../types';
  * refusal must leave the rest of the record alone.
  */
 const assignMutate = vi.fn().mockResolvedValue({});
+const groupMutate = vi.fn().mockResolvedValue({});
 const upsertMutate = vi.fn().mockResolvedValue({});
 const standingMutate = vi.fn().mockResolvedValue({});
 
@@ -53,6 +54,7 @@ vi.mock('../hooks/useAdmin', () => ({
   useUpdateJobTitle: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpsertEmployee: () => ({ mutateAsync: upsertMutate, isPending: false }),
   useAssignEmployer: () => ({ mutateAsync: assignMutate, isPending: false }),
+  useSetStaffGroup: () => ({ mutateAsync: groupMutate, isPending: false }),
   useEmployees: () => ({ data: [] }),
   useLegalEmployers: () => ({ data: EMPLOYERS }),
   useStatutoryClassifications: () => ({ data: versions, isLoading: false }),
@@ -94,6 +96,7 @@ function record(over: Partial<EmployeeRecord['employment']> = {}): EmployeeRecor
 
 function open(over: Partial<EmployeeRecord['employment']> = {}) {
   assignMutate.mockClear();
+  groupMutate.mockClear();
   upsertMutate.mockClear();
   standingMutate.mockClear();
   assignMutate.mockResolvedValue({});
@@ -110,6 +113,23 @@ async function choose(name: string) {
   const option = await screen.findByTitle(name);
   fireEvent.click(option);
 }
+
+describe('doctor or staff, on the employee record (UAT, 14 October 2026)', () => {
+  it('records a doctor whose account role says otherwise, e.g. an owner', async () => {
+    open({ staffGroup: null, group: 'STAFF', groupFromRole: 'STAFF' });
+    fireEvent.mouseDown(screen.getByLabelText('Doctor or staff'));
+    fireEvent.click(await screen.findByTitle('Doctor'));
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(groupMutate).toHaveBeenCalledWith({ staffId: 'staff-1', staffGroup: 'DOCTOR' }));
+  });
+
+  it('leaves it alone when untouched', async () => {
+    open({ staffGroup: 'DOCTOR', group: 'DOCTOR', groupFromRole: 'STAFF' });
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(upsertMutate).toHaveBeenCalled());
+    expect(groupMutate).not.toHaveBeenCalled();
+  });
+});
 
 describe('the employing company, on the employment tab', () => {
   it('offers the company and opens on the one the employee is already on', () => {

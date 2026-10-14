@@ -1514,6 +1514,11 @@ export interface EmployeeRecord {
     emergencyContactRelation: string | null;
   };
   employment: {
+    /** Doctor or staff as recorded; null leaves it to the account role (UAT, 14 October 2026). */
+    staffGroup?: 'DOCTOR' | 'STAFF' | null;
+    /** In force: the recorded value, or what the account role says. */
+    group?: 'DOCTOR' | 'STAFF';
+    groupFromRole?: 'DOCTOR' | 'STAFF';
     employeeNo: string | null;
     position: string | null;
     /** The clinic's own job title the position came from, when it came from the list. */

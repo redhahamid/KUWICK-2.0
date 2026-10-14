@@ -937,6 +937,15 @@ export function useDeleteEmployee() {
   );
 }
 
+/** Doctor or staff, on the employee record (UAT, 14 October 2026). */
+export function useSetStaffGroup() {
+  return useAdminMutation(
+    ({ staffId, staffGroup }: { staffId: string; staffGroup: 'DOCTOR' | 'STAFF' | null }) =>
+      apiClient.patch(`/workforce/employees/${staffId}/group`, { staffGroup }),
+    ["admin-hr"],
+  );
+}
+
 export function useUpsertEmployee() {
   return useAdminMutation(
     ({ staffId, ...body }: { staffId: string } & Record<string, unknown>) =>

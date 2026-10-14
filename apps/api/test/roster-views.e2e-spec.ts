@@ -90,4 +90,21 @@ describe('roster views (e2e)', () => {
     // Last night's shift is not "not clocked in" today; the OFF day is nobody's.
     expect(board.notClockedIn.map((row: { name: string }) => row.name)).toEqual(['Demo Staf Pagi']);
   });
+
+  it('an owner recorded as a doctor is on the doctor side of the board (UAT, 14 October 2026)', async () => {
+    const partner = await withTenantContext(prisma, tenantId, (tx) =>
+      tx.staff.create({ data: { tenantId, role: Role.OWNER_ADMIN, fullName: 'Dr Demo Pemilik', clinicId, active: true } }),
+    );
+    const ownerRow = async () =>
+      (await request(server()).get(`/provider-shifts/month?clinicId=${clinicId}&month=2026-11`).set('Authorization', bearer).expect(200)).body.providers.find(
+        (row: { staffId: string }) => row.staffId === partner.id,
+      );
+    expect((await ownerRow()).category).toBe('MANAGEMENT');
+    const ownerId = (await ownerRow()).staffId;
+    await request(server()).patch(`/workforce/employees/${ownerId}/group`).set('Authorization', bearer).send({ staffGroup: 'DOCTOR' }).expect(200);
+    expect((await ownerRow()).category).toBe('DOCTOR');
+    await request(server()).patch(`/workforce/employees/${ownerId}/group`).set('Authorization', bearer).send({ staffGroup: 'NURSE' }).expect(400);
+    await request(server()).patch(`/workforce/employees/${ownerId}/group`).set('Authorization', bearer).send({ staffGroup: null }).expect(200);
+    expect((await ownerRow()).category).toBe('MANAGEMENT');
+  });
 });

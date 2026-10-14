@@ -140,7 +140,7 @@ export async function computeInputStamps(db: StampDb, run: { clinicId: string | 
       ...employedInMonth(period, periodEnd),
       ...(run.clinicId ? { staff: { clinicId: run.clinicId } } : {}),
     },
-    include: { staff: { select: { fullName: true, active: true, clinicId: true } } },
+    include: { staff: { select: { fullName: true, active: true, clinicId: true, staffGroup: true } } },
   });
   const staffIds = employees.map((e) => e.staffId);
   const among = { staffId: { in: staffIds } };
@@ -191,6 +191,9 @@ export async function computeInputStamps(db: StampDb, run: { clinicId: string | 
           fullName: e.staff.fullName,
           active: e.staff.active,
           clinicId: e.staff.clinicId,
+          // Doctor or staff picks the rule set. Only when set, so adding the
+          // field did not move every draft's fingerprint.
+          ...(e.staff.staffGroup ? { staffGroup: e.staff.staffGroup } : {}),
           employeeNo: e.employeeNo,
           legalName: e.legalName,
           dateOfBirth: e.dateOfBirth,

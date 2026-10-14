@@ -6,6 +6,26 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 55 (Roster A4) — 15 Oktober 2026 — "Doktor atau staf" pada rekod pekerja
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi:**
+`20261015110000_staff_group` (lajur `staff.staff_group`, kosong), dijalankan di
+staging dengan *Migrate only* sebelum master — run #MIGRATE_RUN. Jawapan
+keputusan: `docs/HR_DECISIONS.md`.
+
+- `[D]` Rekod pekerja → Employment → **Doctor or staff**: Doctor, Staff, atau
+  "From the account role". Pemilik boleh direkod sebagai doktor.
+- `[D]` Nilai ini menentukan kumpulan roster (paparan Doktor/Staf, *On duty
+  today*), templat syif yang ditawarkan, kebenaran roster doktor/staf, dan
+  peraturan gaji doktor/staf. Kosong = peranan akaun, seperti dahulu, jadi
+  tiada apa berubah sehingga ditetapkan.
+- `[D]` Dilog (`staff.groupChanged`). Bulan draf yang terkesan diminta dikira
+  semula; cap jari hanya berubah apabila nilai ditetapkan.
+- `[D]` **Ujian**: unit `workforce-category` +3; API `roster-views` +1; web
+  `employeeEditDrawer` +2.
+
+---
+
 ## Batch 53–54 (Roster A2, A3) — 15 Oktober 2026 — Paparan roster, terbit, lokum luar, kebenaran berasingan
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi

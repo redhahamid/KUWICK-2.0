@@ -61,3 +61,18 @@ describe('isRosterableRole', () => {
     for (const role of staffRoles) expect(isRosterableRole(role)).toBe(true);
   });
 });
+
+describe('doctor or staff from the employee record (UAT, 14 October 2026)', () => {
+  it('an owner recorded as a doctor is with the doctors', () => {
+    expect(workforceCategoryOf({ role: Role.OWNER_ADMIN, staffGroup: 'DOCTOR' })).toBe('DOCTOR');
+  });
+
+  it('a doctor account recorded as staff is not', () => {
+    expect(workforceCategoryOf({ role: Role.DOCTOR_RESIDENT, staffGroup: 'STAFF' })).toBe('CLINICAL');
+  });
+
+  it('nothing recorded: the account role decides, as before', () => {
+    expect(workforceCategoryOf({ role: Role.OWNER_ADMIN, staffGroup: null })).toBe('MANAGEMENT');
+    expect(workforceCategoryOf({ role: Role.FRONT_DESK_CLINICAL_STAFF, professionalType: ProfessionalType.NON_CLINICAL, staffGroup: 'STAFF' })).toBe('ADMIN');
+  });
+});

@@ -997,6 +997,11 @@ model Staff {
   // verification — Kuwick performs no MMC registry lookup and the UI must
   // never claim otherwise (no such integration exists).
   professionalType                ProfessionalType @default(NON_CLINICAL) @map("professional_type")
+  /// DOCTOR OR STAFF, from the employee record (UAT, 14 October 2026): "the
+  /// doctor/staff split must come from the employee record, not the account
+  /// role. The owner can be a doctor." NULL until somebody says, and then the
+  /// account role decides, as it always did.
+  staffGroup                      ShiftGroup?      @map("staff_group")
   medicalRegistrationNo           String?          @map("medical_registration_no")
   // Normalised (uppercased, inner whitespace/punctuation stripped) copy used
   // for duplicate detection. Indexed but NOT unique in C0 — the hard

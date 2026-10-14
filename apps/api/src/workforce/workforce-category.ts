@@ -1,4 +1,4 @@
-import { ProfessionalType, Role } from '@prisma/client';
+import { ProfessionalType, Role, ShiftGroup } from '@prisma/client';
 
 /**
  * WHAT KIND OF WORKER IS THIS — the axis a roster is actually read along.
@@ -33,7 +33,16 @@ export const WORKFORCE_CATEGORIES: { key: WorkforceCategory; label: string }[] =
 export function workforceCategoryOf(staff: {
   role: Role;
   professionalType?: ProfessionalType | null;
+  /** From the employee record (UAT, 14 October 2026); wins over the role when set. */
+  staffGroup?: ShiftGroup | null;
 }): WorkforceCategory {
+  const byRole = categoryByRole(staff);
+  if (staff.staffGroup === 'DOCTOR') return 'DOCTOR';
+  if (staff.staffGroup === 'STAFF' && byRole === 'DOCTOR') return 'CLINICAL';
+  return byRole;
+}
+
+function categoryByRole(staff: { role: Role; professionalType?: ProfessionalType | null }): WorkforceCategory {
   switch (staff.role) {
     case Role.DOCTOR_RESIDENT:
     case Role.DOCTOR_LOCUM:
