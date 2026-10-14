@@ -34,10 +34,11 @@ async function gotoHr(page: Page, path: string): Promise<void> {
  * contract for both halves of that sentence.
  */
 
-const SECTIONS = ['Employees', 'Payroll', 'Attendance', 'Leave', 'Claims', 'Reports'];
+// Roster has its own entry since 15 October 2026: HR officers look for it there.
+const SECTIONS = ['Employees', 'Payroll', 'Attendance', 'Roster', 'Leave', 'Claims', 'Reports'];
 
 test.describe('the HR rail', () => {
-  test('offers six sections, with Settings apart from them', async ({ page }) => {
+  test('offers seven sections, with Settings apart from them', async ({ page }) => {
     await loginAdmin(page);
     await gotoHr(page, '/admin/hr/payroll');
 
@@ -50,7 +51,7 @@ test.describe('the HR rail', () => {
       'Settings',
     ]);
 
-    // Settings is visibly not one of the six.
+    // Settings is visibly not one of the seven.
     await expect(page.locator('.kw-hubRail__item--settings')).toHaveText('Settings');
   });
 
@@ -60,7 +61,7 @@ test.describe('the HR rail', () => {
       ['/admin/hr/employees', 'Employees'],
       ['/admin/hr/payroll', 'Payroll'],
       ['/admin/hr/attendance', 'Attendance'],
-      ['/admin/hr/attendance/roster', 'Attendance'],
+      ['/admin/hr/attendance/roster', 'Roster'],
       ['/admin/hr/leave', 'Leave'],
       ['/admin/hr/claims', 'Claims'],
       ['/admin/hr/reports', 'Reports'],
@@ -236,7 +237,7 @@ test.describe('Attendance carries the roster', () => {
 
     await views.filter({ hasText: 'Roster' }).click();
     await expect(page).toHaveURL(/\/admin\/hr\/attendance\/roster$/);
-    await expect(page.locator('.kw-hubRail__item.is-active .hr-side__label')).toHaveText('Attendance');
+    await expect(page.locator('.kw-hubRail__item.is-active .hr-side__label')).toHaveText('Roster');
   });
 
   test('gives Leave and Claims rail entries of their own', async ({ page }) => {
