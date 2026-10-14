@@ -6,6 +6,36 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 62 (Malam 5) — 15 Oktober 2026 — My Kuwick di telefon (390px)
+
+**Migrasi:** `20261016100000_bank_change_requests` (jadual permintaan tukar
+akaun bank + jenis fail `BANK_PROOF`), dijalankan di staging dengan *Migrate
+only* sebelum master — run #30.
+
+Dijalani setiap perjalanan staf pada 390px (tangkapan skrin) dan dibetulkan:
+
+| Perjalanan | Yang dibetulkan |
+|---|---|
+| QR clock in/out | `[D]` **Scan to clock in** kini di Home (dulu hanya di Attendance); mesej "Clocked in at 08:02"; butang besar tersusun satu baris seorang (dulu terkeluar skrin pada 360px). |
+| PIN | `[D]` Panel Kiosk PIN dipindah ke bawah; HR kini ada **Open kiosk screen** di Attendance (dulu tiada pautan ke skrin kiosk langsung). |
+| Roster | `[D]` **My roster** di atas halaman Attendance. Home dulu menunjukkan syif daripada roster **belum diterbitkan**; kini hanya yang diterbitkan, sama seperti tab Attendance. |
+| Cuti | `[D]` Baki ditunjuk **sebelum** borang; **Cancel request** bagi permohonan yang menunggu (dua ketikan); ayat "by email" dibuang (Kuwick tidak menghantar e-mel). |
+| Tuntutan | `[D]` **Withdraw** bagi tuntutan yang menunggu; "Take a photo of the receipt" (bukan "Drop"). |
+| Slip gaji | `[D]` Butang PDF terkeluar skrin; lajur Gross disembunyi pada telefon. |
+| Pembetulan kehadiran | `[D]` **Ask for a fix** di bawah tarikh (dulu di lajur paling kanan, perlu skrol ke tepi). |
+| Profil | `[D]` Staf boleh ubah telefon, e-mel, alamat dan orang kecemasan. **Akaun bank**: dulu "beritahu HR"; kini permintaan dengan gambar bukti → HR **Approve** di Employees (notis kuning). Kod sengaja menghalang staf menukar akaun terus `[D]`; reka bentuk ini mengekalkan semakan HR. |
+| Tab | `[D]` Enam tab dalam satu baris yang boleh diskrol (dulu dua baris). |
+
+Pihak penyelia/HR: cuti, tuntutan dan pembetulan diluluskan di HR → Leave /
+Claims / Attendance, yang berfungsi pada telefon `[D]` (tangkapan skrin).
+
+**Ujian:** gate 0–3 lulus (API 2947, integrasi 752, web 2025). Playwright 100/103:
+`my-kuwick` (butang keluar skrin — dibetulkan, 9/9 lulus), kewangan dan tempahan
+awam gagal sekali dan lulus bila diulang `[D]` — jam klinik baru melepasi tengah
+malam `[A]`; tiada kod itu diubah.
+
+---
+
 ## Batch 61 (Malam 2 dan 3) — 15 Oktober 2026 — Bahasa mudah di skrin HR; Borang EA dan Borang E; klinik demo kosong
 
 **Tiada migrasi.** Kotak EA sudah ada pada setiap item gaji (`ea_field`).

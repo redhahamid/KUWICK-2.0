@@ -2895,10 +2895,12 @@ textarea.hr-f {
   .hr-portal .hr-pageHead__actions {
     margin-left: 0;
     width: 100%;
+    flex-wrap: wrap;
   }
+  /* One big button per row, so two (Scan and Clock in) never push off the edge. */
   .hr-portal .hr-pageHead__actions .hr-btn {
     min-height: 48px;
-    flex: 1 1 auto;
+    flex: 1 1 100%;
     justify-content: center;
   }
 }
@@ -3751,10 +3753,16 @@ textarea.hr-f {
    only a wide screen needs hidden, and row buttons that wrap rather than
    fall off the edge. */
 @media (max-width: 720px) {
+  .hr-portal .hr-portal__main {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
   .hr-portal .hr-ptabs {
     flex-wrap: nowrap;
     overflow-x: auto;
     scrollbar-width: none;
+    max-width: 100%;
   }
   .hr-portal .hr-ptabs a {
     flex: 0 0 auto;
