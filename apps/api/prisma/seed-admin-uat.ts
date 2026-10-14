@@ -821,7 +821,7 @@ async function reset() {
     'visit_observation_revisions', 'visit_observations', 'visit_attachments', 'documents',
     'visit_workflow_events', 'queue_tickets', 'visits',
     'appointment_form_answers', 'appointment_events', 'appointment_communications', 'appointments',
-    'waitlist_entries', 'appointment_series', 'provider_shifts', 'shift_templates', 'provider_schedule_mode_periods',
+    'waitlist_entries', 'appointment_series', 'roster_locum_slots', 'roster_publications', 'provider_shifts', 'shift_templates', 'provider_schedule_mode_periods',
     'doctor_service_qualifications', 'slot_capacity_configs', 'schedule_exceptions', 'doctor_schedules',
     'service_bookable_hours', 'booking_form_fields', 'clinic_booking_pages', 'clinic_booking_settings',
     'clinic_closed_dates', 'appointment_reminder_rules', 'appointment_message_templates',
