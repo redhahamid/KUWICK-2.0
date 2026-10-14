@@ -10,7 +10,7 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi:**
 `20261015110000_staff_group` (lajur `staff.staff_group`, kosong), dijalankan di
-staging dengan *Migrate only* sebelum master — run #MIGRATE_RUN. Jawapan
+staging dengan *Migrate only* sebelum master — run #26. Jawapan
 keputusan: `docs/HR_DECISIONS.md`.
 
 - `[D]` Rekod pekerja → Employment → **Doctor or staff**: Doctor, Staff, atau
