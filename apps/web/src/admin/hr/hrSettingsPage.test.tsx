@@ -15,6 +15,7 @@ const employer = (over: Partial<LegalEmployerRow> = {}): LegalEmployerRow =>
   ({
     id: 'le-1',
     name: 'Demo Clinic Sdn Bhd',
+    employeeCount: 3,
     registrationNo: '202001000001',
     epfEmployerNo: '000000001',
     socsoEmployerNo: null,
@@ -117,6 +118,13 @@ describe('Settings while setup is incomplete', () => {
       zakatThroughPayroll: false,
     });
     expect(body).not.toHaveProperty('bankAccountNo');
+  });
+
+  it('asks only employers with staff for their numbers, and every card stays reachable (UAT, 15 October 2026)', () => {
+    employers = [employer({ socsoEmployerNo: 'A0000000001X' }), employer({ id: 'le-2', name: 'Contoh Wellness', employeeCount: 0, epfEmployerNo: null })];
+    mount();
+    expect(within(screen.getByRole('navigation', { name: 'Setup steps' })).queryByText(/number.? missing/)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open all settings now' })).toHaveAttribute('href', '/admin/hr/settings?all=1');
   });
 
   it('sends the Employees step to the Employees page', () => {

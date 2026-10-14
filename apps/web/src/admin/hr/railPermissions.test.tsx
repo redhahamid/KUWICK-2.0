@@ -58,7 +58,7 @@ describe('the HR rail draws only what the account can open', () => {
     const labels = railLabels();
     expect(labels).not.toContain('Payroll');
     // The rest of her job is untouched — this withholds one seat, not a module.
-    expect(labels).toEqual(['Employees', 'Attendance', 'Leave', 'Claims', 'Reports']);
+    expect(labels).toEqual(['Employees', 'Attendance', 'Roster', 'Leave', 'Claims', 'Reports']);
   });
 
   it('draws everything for a session that carries no permission array at all', () => {

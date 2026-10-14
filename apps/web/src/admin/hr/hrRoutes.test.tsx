@@ -121,7 +121,7 @@ describe('the HR addresses', () => {
     const hr = ADMIN_CATEGORIES.find((category) => category.key === 'hr');
     expect(hr).toBeDefined();
     const rail = [...hr!.items.map((item) => item.path), hr!.settings?.path ?? ''];
-    expect(rail).toHaveLength(7);
+    expect(rail).toHaveLength(8);
     for (const path of rail) {
       const route = routes.find((candidate) => matches(candidate.path, path));
       expect({ path, mounted: Boolean(route), redirectsTo: route?.redirectsTo ?? null }).toEqual({
@@ -165,7 +165,7 @@ describe('the HR labels', () => {
     const { ADMIN_CATEGORIES } = await import('../AdminLayout');
     const hr = ADMIN_CATEGORIES.find((category) => category.key === 'hr');
     const labels = [...(hr?.items ?? []).map((item) => item.label), hr?.settings?.label ?? ''];
-    expect(labels).toEqual(['Employees', 'Payroll', 'Attendance', 'Leave', 'Claims', 'Reports', 'Settings']);
+    expect(labels).toEqual(['Employees', 'Payroll', 'Attendance', 'Roster', 'Leave', 'Claims', 'Reports', 'Settings']);
   });
 });
 

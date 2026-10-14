@@ -80,12 +80,12 @@ vi.mock('../../core/hooks/useCan', async (importOriginal) => ({
 }));
 
 const { RosterPage } = await import('./RosterPage');
-const mount = () =>
+const mount = (readOnly = false) =>
   render(
     <QueryClientProvider client={new QueryClient()}>
       <MemoryRouter>
         <App>
-          <RosterPage clinicId="c1" />
+          <RosterPage clinicId="c1" readOnly={readOnly} />
         </App>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -151,5 +151,10 @@ describe('roster views', () => {
     expect((screen.getByRole('button', { name: /Add shift to 1 date/ }) as HTMLButtonElement).disabled).toBe(false);
     perms.all = true;
     perms.doctors = true;
+  });
+  it('in Appointments the roster is read only: edited in HR (UAT, 15 October 2026)', () => {
+    mount(true);
+    expect(screen.getByTestId('roster-read-only').textContent).toContain('edited in HR');
+    expect(screen.queryByRole('button', { name: /Add shift/ })).toBeNull();
   });
 });

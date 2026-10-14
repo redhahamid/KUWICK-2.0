@@ -159,6 +159,9 @@ export const ADMIN_CATEGORIES: HubCategory[] = [
         path: '/admin/hr/attendance',
         label: 'Attendance',
       },
+      // ROSTER IN THE HR MENU (UAT, 15 October 2026): HR officers look for it
+      // here, not only under Appointments. The same board as the Attendance tab.
+      { path: '/admin/hr/attendance/roster', label: 'Roster' },
       { path: '/admin/hr/leave', label: 'Leave' },
       { path: '/admin/hr/claims', label: 'Claims' },
       { path: '/admin/hr/reports', label: 'Reports' },

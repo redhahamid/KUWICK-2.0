@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { IconClose } from './icons';
 
 /**
@@ -35,7 +36,11 @@ export function Drawer({
   }, [open, onClose]);
 
   if (!open) return null;
-  return (
+  // RENDERED AT THE TOP OF THE HR SHELL, not where it is declared (UAT, 15
+  // October 2026): a drawer declared inside a panel opened out of view on
+  // staging. The shell element carries the HR colours, so it looks the same.
+  const host = (typeof document !== 'undefined' && (document.querySelector('.kw-hrSlate') as HTMLElement | null)) || null;
+  const drawer = (
     <aside className="hr-drawer" role="dialog" aria-modal="false" aria-label={typeof title === 'string' ? title : 'Details'}>
       <div className="hr-drawer__head">
         <div>
@@ -52,4 +57,5 @@ export function Drawer({
       {footer ? <div className="hr-drawer__foot">{footer}</div> : null}
     </aside>
   );
+  return host ? createPortal(drawer, host) : drawer;
 }

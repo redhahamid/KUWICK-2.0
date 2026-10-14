@@ -132,7 +132,12 @@ export function SettingsSetupWizard({
             </Link>
           </>
         ) : (
-          'Five steps, once. The rest of Settings opens when these are done.'
+          <>
+            Five steps, once. Payroll can&apos;t go live until they&apos;re done.{' '}
+            <Link className="hr-link" to="/admin/hr/settings?all=1">
+              Open all settings now
+            </Link>
+          </>
         )
       }
       actions={
@@ -230,7 +235,9 @@ function CompanyStep({
   const mayManage = useCan('hr.statutory.manage');
   // The first employer still missing a number, else the first one.
   const first =
-    employers.find((row) => !row.epfEmployerNo || !row.socsoEmployerNo || !row.lhdnEmployerNo) ?? employers[0] ?? null;
+    employers.find((row) => (row.employeeCount ?? 0) > 0 && (!row.epfEmployerNo || !row.socsoEmployerNo || !row.lhdnEmployerNo)) ??
+    employers[0] ??
+    null;
   const [employerId, setEmployerId] = useState<string | null>(first?.id ?? null);
   const row = employers.find((candidate) => candidate.id === employerId) ?? null;
   const [form, setForm] = useState<Record<string, string>>({});

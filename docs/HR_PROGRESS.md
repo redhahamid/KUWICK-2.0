@@ -6,13 +6,45 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 57 — 15 Oktober 2026 — Penghalang staging: roster kosong, wizard Settings, dialog Shifts
+
+Tiada migrasi.
+
+- `[D]` **Roster menyenaraikan semua pekerja cawangan** yang bekerja dalam
+  tempoh itu, daripada rekod pekerja HR, doktor dan staf, ada login atau
+  tidak. Pekerja yang sudah berhenti sebelum bulan itu tidak disenaraikan.
+  Akaun tanpa rekod HR kekal seperti dahulu.
+- `[D]` Pekerja tanpa cawangan pada rekod HR dipaparkan di roster setiap
+  cawangan dengan amaran "N employees have no branch on their HR record".
+- `[A]` Punca roster kosong di staging tidak dapat disemak terus (tiada akses
+  baca ke DB staging). Andaian: 28 pekerja yang diimport tiada cawangan pada
+  rekod Staff (import CSV tanpa lajur cawangan oleh akaun pelbagai cawangan),
+  atau rekod Staff mereka tidak aktif. Kedua-dua kes kini disenaraikan.
+- `[D]` **Roster diedit di HR sahaja**: HR → Roster (menu baharu). Appointments
+  → Roster & Availability kini baca sahaja dengan nota "edited in HR → Roster".
+  Hak mengedit ikut kebenaran: roster staf / roster doktor.
+- `[D]` *Add shift* berfungsi untuk mana-mana pekerja yang disenaraikan.
+- `[D]` **Wizard Settings**: nombor berkanun hanya diminta untuk majikan yang
+  ada staf; majikan ujian tanpa staf tidak lagi menahan langkah 1. Pautan
+  "Open all settings now" sentiasa membuka semua kad Settings.
+- `[D]` **Dialog Settings → Shifts**: laci HR kini dipaparkan di peringkat atas
+  shell HR, bukan di dalam panel. Di Chrome desktop tempatan ia sudah kelihatan
+  sebelum pembetulan; `[A]` di staging ia keluar dari paparan, mungkin pada
+  pelayar atau saiz skrin lain.
+- `[D]` Batch 56: peraturan imbasan berganda 60 saat kini untuk imbasan QR/PIN
+  sahaja, bukan butang clock (dua ujian My Kuwick gagal kerananya).
+- `[D]` **Ujian**: API `roster-views` +1; web `rosterViews` +1,
+  `hrSettingsPage` +1; jangkaan rel HR dikemas kini (Roster).
+
+---
+
 ## Batch 56 (Seksyen B) — 15 Oktober 2026 — Kehadiran QR, PIN kiosk, lokasi, peraturan jam dibayar
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi:**
 `20261015120000_qr_attendance` (nilai `PIN` untuk sumber kehadiran; lajur
 `attendance_policies.qr_rotate_seconds`, `location_mode`, `clinic_networks`,
 `paid_hours_rule`; `staff.attendance_pin_hash`), dijalankan di staging dengan
-*Migrate only* sebelum master — run #MIGRATE_RUN.
+*Migrate only* sebelum master — run #27.
 
 - `[D]` **Kiosk**: `/kiosk/attendance?clinicId=…` (perlu `hr.attendance.manage`)
   memaparkan kod QR yang bertukar setiap 30 saat (tetapan cawangan). Kod

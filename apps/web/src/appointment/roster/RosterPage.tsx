@@ -71,6 +71,8 @@ const SHIFT_TONE: Record<string, { bg: string; fg: string; edge: string; label?:
 
 interface RosterPageProps {
   clinicId?: string;
+  /** Appointments shows the roster without editing; HR edits it. */
+  readOnly?: boolean;
 }
 
 /**
@@ -92,7 +94,7 @@ interface RosterPageProps {
  * (a standing pattern, edited below). Never both, and switching destroys
  * neither: the other model's rows stay where they are and stop being read.
  */
-export function RosterPage({ clinicId }: RosterPageProps) {
+export function RosterPage({ clinicId, readOnly = false }: RosterPageProps) {
   const [month, setMonth] = useState<Dayjs>(() => dayjs().startOf('month'));
   const [editing, setEditing] = useState<{
     staffId: string;
@@ -111,9 +113,11 @@ export function RosterPage({ clinicId }: RosterPageProps) {
   // Half each (UAT, 14 October 2026): the staff roster and the doctor roster.
   const canDoctors = useCan('roster.manage_doctors');
   const canStaff = useCan('roster.manage_staff');
+  // THE ROSTER IS EDITED IN HR ONLY (UAT, 15 October 2026). Appointments
+  // shows it read-only: who is on duty, for bookings.
   const mayWrite = (category?: WorkforceCategory) =>
-    canManageRoster || (category === 'DOCTOR' ? canDoctors : canStaff);
-  const mayWriteAny = canManageRoster || canDoctors || canStaff;
+    !readOnly && (canManageRoster || (category === 'DOCTOR' ? canDoctors : canStaff));
+  const mayWriteAny = !readOnly && (canManageRoster || canDoctors || canStaff);
   const publish = usePublishRoster();
   const removeLocum = useRemoveLocumSlot();
   const [locumDates, setLocumDates] = useState<string[] | null>(null);
@@ -390,6 +394,11 @@ export function RosterPage({ clinicId }: RosterPageProps) {
           <OpeningHoursNote opening={opening} />
         </Space>
         )}
+        {readOnly ? (
+          <span className="kw-roster-explain" data-testid="roster-read-only">
+            Read only here. The roster is edited in HR → Roster.
+          </span>
+        ) : (
         <Space wrap>
           {view !== 'STAFF' ? (
           <Popconfirm
@@ -450,6 +459,7 @@ export function RosterPage({ clinicId }: RosterPageProps) {
             </Button>
           </Tooltip>
         </Space>
+        )}
       </div>
 
       {isFetching && !data ? <Spin /> : null}
@@ -488,6 +498,16 @@ export function RosterPage({ clinicId }: RosterPageProps) {
               </Button>
             ) : undefined
           }
+        />
+      ) : null}
+
+      {(data?.providers ?? []).some((row) => row.noBranch) ? (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={`${(data?.providers ?? []).filter((row) => row.noBranch).length} employees have no branch on their HR record`}
+          description="They show on every branch's roster until a branch is set. Set it on the employee record (HR → Employees → Employment)."
         />
       ) : null}
 

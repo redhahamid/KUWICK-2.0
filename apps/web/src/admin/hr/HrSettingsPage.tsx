@@ -65,7 +65,9 @@ export function HrSettingsPage() {
   // An employer that cannot file is an employer that cannot pay: EPF, SOCSO,
   // EIS and PCB submissions are all made by an entity, and one missing number
   // stops all four.
-  const missingNumbers = employerRows.flatMap((row) =>
+  // Only employers with staff need their numbers (UAT, 15 October 2026): a
+  // test company nobody works for must not hold the whole of Settings back.
+  const missingNumbers = employerRows.filter((row) => (row.employeeCount ?? 0) > 0).flatMap((row) =>
     [!row.epfEmployerNo ? 'EPF' : null, !row.socsoEmployerNo ? 'SOCSO' : null, !row.lhdnEmployerNo ? 'LHDN' : null].filter(
       (value): value is string => Boolean(value),
     ),
@@ -190,6 +192,8 @@ export function HrSettingsPage() {
   const complete = steps.every((step) => step.done);
   const loading = [employers, components, employees, rates].some((query) => query.isLoading);
   const reviewing = params.has('setup');
+  // Every Settings card stays reachable while setup is unfinished (UAT, 15 October 2026).
+  const showAll = params.has('all');
   const requested = params.get('step') as SetupStepKey | null;
   const openStep: SetupStepKey =
     requested && steps.some((step) => step.key === requested) ? requested : (steps.find((step) => !step.done)?.key ?? 'company');
@@ -204,7 +208,7 @@ export function HrSettingsPage() {
     );
   }
 
-  if (!complete || reviewing) {
+  if ((!complete && !showAll) || reviewing) {
     return (
       <SettingsSetupWizard
         steps={steps}

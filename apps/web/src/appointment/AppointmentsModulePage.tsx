@@ -114,7 +114,7 @@ export function AppointmentsModulePage() {
               onBook={() => setBooking(true)}
             />
           ) : null}
-          {active === 'roster' ? <RosterPage clinicId={clinicId} /> : null}
+          {active === 'roster' ? <RosterPage clinicId={clinicId} readOnly /> : null}
           {active === 'services' ? <ServicesPage clinicId={clinicId} /> : null}
           {active === 'booking-page' ? <BookingPageSettings clinicId={clinicId} /> : null}
         </div>

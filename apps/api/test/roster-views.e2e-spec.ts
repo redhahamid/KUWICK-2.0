@@ -107,4 +107,28 @@ describe('roster views (e2e)', () => {
     await request(server()).patch(`/workforce/employees/${ownerId}/group`).set('Authorization', bearer).send({ staffGroup: null }).expect(200);
     expect((await ownerRow()).category).toBe('MANAGEMENT');
   });
+  it('lists every employee of the branch employed in the month, login or not, and nobody who had left (UAT, 15 October 2026)', async () => {
+    const hire = async (fullName: string, extra: Record<string, unknown>) =>
+      (
+        await request(server())
+          .post('/workforce/employees')
+          .set('Authorization', bearer)
+          .send({ fullName, role: Role.FRONT_DESK_CLINICAL_STAFF, employmentType: 'PERMANENT', employmentStatus: 'ACTIVE', startDate: '2025-01-01', ...extra })
+          .expect(201)
+      ).body.staffId as string;
+    const here = await hire('Demo Pembantu Klinik', { clinicId });
+    const noBranch = await hire('Demo Tanpa Cawangan', {});
+    const left = await hire('Demo Sudah Berhenti', { clinicId, employmentStatus: 'RESIGNED', endDate: '2026-09-30' });
+    const rows = (await request(server()).get(`/provider-shifts/month?clinicId=${clinicId}&month=2026-11`).set('Authorization', bearer).expect(200)).body
+      .providers as { staffId: string; noBranch?: boolean }[];
+    expect(rows.find((row) => row.staffId === here)?.noBranch).toBe(false);
+    expect(rows.find((row) => row.staffId === noBranch)?.noBranch).toBe(true);
+    expect(rows.some((row) => row.staffId === left)).toBe(false);
+    // Add shift works for an employee with no login.
+    await request(server())
+      .post('/provider-shifts')
+      .set('Authorization', bearer)
+      .send({ clinicId, staffId: here, dates: ['2026-11-03'], startTime: '08:00', endTime: '16:00', shiftType: 'WORKING' })
+      .expect(201);
+  });
 });

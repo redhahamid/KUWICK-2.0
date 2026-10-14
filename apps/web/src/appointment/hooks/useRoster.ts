@@ -65,6 +65,8 @@ export interface RosterRow {
   /** Every change scheduled after today, in order — the plan the dialog edits. */
   upcomingChanges: ScheduledModeChange[];
   calendarColor: string | null;
+  /** No branch on the HR employee record yet: shown on every branch roster until set. */
+  noBranch?: boolean;
   cells: Record<string, RosterCell>;
 }
 

@@ -25,6 +25,7 @@ import {
 } from '../workforce/workforce-category';
 import { clinicDateKey, parseDateOnly, parseTimeToDate, zonedWallClockToInstant } from './time.util';
 import { OpeningHours, resolveAttendancePolicy } from '../workforce/attendance-policy';
+import { employedInMonth } from '../workforce/employed-in-month';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -87,6 +88,8 @@ export interface RosterRow {
   /** Every change scheduled after today, in order — the plan the scheduling dialog edits. */
   upcomingChanges: { mode: string; effectiveFrom: string }[];
   calendarColor: string | null;
+  /** The employee record has no branch yet; shown on every branch's roster until HR sets one. */
+  noBranch?: boolean;
   /** Which part of the workforce this person is, for the board's filter. */
   category: WorkforceCategory;
   role: Role;
@@ -225,16 +228,29 @@ export class ProviderShiftService {
       // `ProviderShift` always accepted any staffId and `create()` never had a
       // doctor guard, so nothing below this line changes: the same table, the
       // same rows, more of the people who are in it.
+      //
+      // EVERY EMPLOYEE OF THE BRANCH (UAT, 15 October 2026): "the roster must
+      // list every employee of the branch who is employed in that period,
+      // whether or not they have a login." So the HR employee record decides:
+      // anybody employed in these dates whose branch is this one, plus anybody
+      // with no branch recorded yet (flagged, so HR can set it). Accounts with
+      // no HR record stay on the board as before.
       this.prisma.staff.findMany({
         where: {
-          clinicId: branch,
-          active: true,
           role: { not: Role.PATIENT_PORTAL },
+          OR: [
+            { clinicId: branch, active: true, employeeProfile: { is: null } },
+            {
+              OR: [{ clinicId: branch }, { clinicId: null }],
+              employeeProfile: { is: { engagement: 'EMPLOYEE', ...employedInMonth(first, new Date(last.getTime() + DAY_MS)) } },
+            },
+          ],
         },
         select: {
           id: true,
           fullName: true,
           role: true,
+          clinicId: true,
           appointmentScheduleMode: true,
           calendarColor: true,
           professionalType: true,
@@ -311,6 +327,8 @@ export class ProviderShiftService {
         modeToday: bookable ? planning?.mode ?? provider.appointmentScheduleMode : 'ROSTER_LINKED',
         upcomingChanges: bookable ? (planning?.upcoming ?? []).map(serialize) : [],
         calendarColor: provider.calendarColor,
+        // No branch on the employee record: shown on every branch's roster until HR sets one.
+        noBranch: provider.clinicId === null,
         cells: Object.fromEntries(
           dates.map((date) => [date, { date, shifts: [], leave: null } as RosterCell]),
         ),
