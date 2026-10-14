@@ -1,0 +1,175 @@
+# ONE-OFF: AN EMPTY CLINIC "KLINIK DEMO BARU" ON STAGING, FOR A NEW-CLINIC
+# TEST (overnight brief, 15 October 2026).
+#
+# Made exactly as the platform console makes a new clinic: the tenant, its
+# first branch, the standard default lists, then one owner login. No staff,
+# payroll or HR settings. Never touches any other tenant (Klinik Contoh (UAT)
+# included). If "Klinik Demo Baru" already exists it changes nothing.
+#
+# The owner's password is never an input: only its bcrypt hash is. The script
+# is apps/api/prisma/create-demo-tenant.ts. "Apply" unticked is a dry run.
+# Only SUPABASE_DATABASE_URL is in the environment; the app role's password is
+# never read and the provisioning script never runs.
+
+name: Create demo clinic (one-off, manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Create it. Leave unticked for a dry run that changes nothing.'
+        type: boolean
+        required: false
+        default: false
+      owner_email:
+        description: 'Owner login email'
+        type: string
+        required: true
+      owner_password_hash:
+        description: 'bcrypt hash of the owner password (never the password itself)'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: create-demo-tenant
+  cancel-in-progress: false
+
+jobs:
+  create:
+    name: ${{ inputs.apply && 'create' || 'dry run' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+      NODE_OPTIONS: '--dns-result-order=ipv4first'
+    steps:
+      - name: Refuse to run without the secret
+        env:
+          HAS_DB_URL: ${{ secrets.SUPABASE_DATABASE_URL != '' }}
+        run: |
+          [ "$HAS_DB_URL" = "true" ] || { echo "::error::Repository secret SUPABASE_DATABASE_URL is not set."; exit 1; }
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Pin the Supabase pooler hostname to IPv4
+        # WHY. GitHub-hosted runners have no routable IPv6. The pooler hostname
+        # is an AWS ELB; from a runner it can hand out an AAAA (IPv6) address,
+        # and a connection to it dies with `connect ENETUNREACH`. Two earlier
+        # fixes were insufficient: NODE_OPTIONS=--dns-result-order=ipv4first
+        # only reorders inside Node's own resolver (and not at all for Prisma's
+        # Rust engine), and a getent-based pin aborted the step with a bare
+        # "exit code 2" — `getent ahostsv4` returns exit 2 when the A lookup
+        # comes back empty (a transient/partial DNS answer for the dual-stack
+        # ELB), and under errexit+pipefail the command-substitution assignment
+        # took the whole step down before the "no IPv4" guard could report it.
+        #
+        # This step is the robust replacement. It resolves the pooler's IPv4 A
+        # records with Node itself — dns.resolve4 (a direct A query) with an
+        # IPv4-only getaddrinfo fallback, retried to ride out transient DNS —
+        # then pins EVERY resolved IPv4 into /etc/hosts. glibc consults
+        # /etc/hosts before DNS for BOTH Node/pg and Prisma's Rust engine, so
+        # once pinned no later step performs a DNS lookup for this host at all:
+        # the unreachable AAAA is out of the picture and every connection goes
+        # over IPv4. It runs AFTER checkout/setup-node (Node guaranteed, and a
+        # git tree exists for cleanup) and BEFORE the first DB connection.
+        #
+        # Errexit is deliberately OFF here so a resolution miss yields a clear
+        # ::error:: and exit 1, never an opaque exit code. No secret is printed:
+        # the URL is parsed inside Node (never echoed); only the non-secret
+        # hostname and its public IPv4 addresses are shown. Credentials and the
+        # connection URL are untouched — only name resolution changes.
+        env:
+          SUPABASE_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+        run: |
+          set +e
+          set -u
+
+          host="$(node -e 'process.stdout.write(new URL(process.env.SUPABASE_DATABASE_URL).hostname)')"
+          if [ -z "${host:-}" ]; then
+            echo "::error::Could not parse a hostname from SUPABASE_DATABASE_URL."
+            exit 1
+          fi
+
+          cat > /tmp/resolve-ipv4.cjs <<'RESOLVE_EOF'
+          const dnsp = require("dns").promises;
+          const host = new URL(process.env.SUPABASE_DATABASE_URL).hostname;
+          (async () => {
+            const once = async () => {
+              try { const a = await dnsp.resolve4(host); if (a && a.length) return a; } catch (e) {}
+              try {
+                const r = await dnsp.lookup(host, { family: 4, all: true });
+                const a = r.map((x) => x.address).filter(Boolean);
+                if (a.length) return a;
+              } catch (e) {}
+              return [];
+            };
+            for (let i = 0; i < 6; i++) {
+              const a = await once();
+              if (a.length) { process.stdout.write(Array.from(new Set(a)).join(" ")); return; }
+              await new Promise((res) => setTimeout(res, 2000));
+            }
+            process.exit(3);
+          })().catch(() => process.exit(3));
+          RESOLVE_EOF
+
+          ipv4s="$(node /tmp/resolve-ipv4.cjs)"
+          rm -f /tmp/resolve-ipv4.cjs
+          if [ -z "${ipv4s:-}" ]; then
+            echo "::error::The Supabase pooler hostname '$host' did not resolve to any IPv4 (A) record from this runner (tried dns.resolve4 and IPv4 getaddrinfo, with retries)."
+            echo "::error::GitHub-hosted runners have no routable IPv6, so an IPv4 A record is required. If this endpoint is IPv6-only here, use an IPv4-capable connection or an IPv6-capable runner."
+            exit 1
+          fi
+
+          # Pin every resolved IPv4 (the ELB publishes several) so resolution
+          # never falls back to the AAAA for this host.
+          for ip in $ipv4s; do
+            printf '%s %s\n' "$ip" "$host" | sudo tee -a /etc/hosts >/dev/null
+          done
+
+          echo "Supabase pooler hostname : $host"
+          echo "Pinned IPv4 address(es)  : $ipv4s"
+          echo "getent hosts after pin   :"
+          getent hosts "$host" || true
+          # 'NR==1' without 'exit' consumes all input, so getent never takes a
+          # SIGPIPE; assert the first resolved address is IPv4 (no colon).
+          first="$(getent hosts "$host" | awk 'NR==1{print $1}')"
+          case "${first:-}" in
+            ""|*:*)
+              echo "::error::'$host' still does not resolve to IPv4 after pinning (got '${first:-none}')."
+              exit 1
+              ;;
+          esac
+          echo "IPv4 pin verified: $first"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate the Prisma client
+        working-directory: apps/api
+        run: npx prisma generate
+
+      - name: Derive the node-pg form of the connection URL
+        run: |
+          PG_URL="${DATABASE_URL/sslmode=require/sslmode=no-verify}"
+          echo "::add-mask::$PG_URL"
+          {
+            echo "PG_DATABASE_URL<<__PG_URL_EOF__"
+            echo "$PG_URL"
+            echo "__PG_URL_EOF__"
+          } >> "$GITHUB_ENV"
+
+      - name: Create the clinic
+        working-directory: apps/api
+        env:
+          DEMO_APPLY: ${{ inputs.apply && 'true' || 'false' }}
+          DEMO_OWNER_EMAIL: ${{ inputs.owner_email }}
+          DEMO_OWNER_PASSWORD_HASH: ${{ inputs.owner_password_hash }}
+        run: DATABASE_URL="$PG_DATABASE_URL" npx tsx prisma/create-demo-tenant.ts

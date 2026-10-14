@@ -95,9 +95,9 @@ test.describe("HR", () => {
      */
     await expect(
       page.getByRole("row", { name: /Dr Aisyah Rahman/ }),
-    ).toContainText(/may sign/);
+    ).toContainText(/· Clinical access/);
     await expect(page.getByRole("row", { name: /Hafiz Osman/ })).toContainText(
-      /Not a clinician/,
+      /No clinical access/,
     );
 
     expect(errors).toEqual([]);
