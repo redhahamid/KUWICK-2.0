@@ -131,4 +131,22 @@ describe('roster views (e2e)', () => {
       .send({ clinicId, staffId: here, dates: ['2026-11-03'], startTime: '08:00', endTime: '16:00', shiftType: 'WORKING' })
       .expect(201);
   });
+  it('the owner roster check says who was considered and why anybody was left off (UAT, 15 October 2026)', async () => {
+    const other = (await request(server()).post('/clinics').set('Authorization', bearer).send({ name: 'Klinik Lain' }).expect(201)).body.id;
+    await request(server())
+      .post('/workforce/employees')
+      .set('Authorization', bearer)
+      .send({ fullName: 'Demo Cawangan Lain', role: Role.FRONT_DESK_CLINICAL_STAFF, clinicId: other, employmentType: 'PERMANENT', employmentStatus: 'ACTIVE' })
+      .expect(201);
+    const check = (await request(server()).get(`/provider-shifts/roster-check?clinicId=${clinicId}&month=2026-11`).set('Authorization', bearer).expect(200))
+      .body;
+    expect(check.apiBuild).toEqual(expect.any(String));
+    expect(check.included).toBeGreaterThan(0);
+    expect(check.excluded).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'Demo Sudah Berhenti', reason: 'Left 2026-09-30, before this period' })]));
+    expect(check.inOtherBranches).toEqual([{ branch: 'Klinik Lain', count: 1 }]);
+    // The board agrees with the check, and a doctor is on it whatever their booking mode.
+    const board = (await request(server()).get(`/provider-shifts/month?clinicId=${clinicId}&month=2026-11`).set('Authorization', bearer).expect(200)).body;
+    expect(board.providers.length).toBe(check.included);
+    expect(board.providers.some((row: { staffId: string }) => row.staffId === people.doctor)).toBe(true);
+  });
 });

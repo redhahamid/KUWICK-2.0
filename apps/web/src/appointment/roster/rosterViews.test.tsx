@@ -32,7 +32,10 @@ const matrix = (dates: string[]): RosterMatrix => ({
   dates,
   closedDates: {},
   categoryCounts: { DOCTOR: 1, CLINICAL: 1, ADMIN: 0, MANAGEMENT: 0, OTHER: 0 },
-  providers: [row('d1', 'Dr Demo Bulan', 'DOCTOR', dates), row('s1', 'Demo Staf Minggu', 'CLINICAL', dates)],
+  providers: [
+    { ...row('d1', 'Dr Demo Bulan', 'DOCTOR', dates), ...(perms.fixedDoctor ? { scheduleMode: 'FIXED_WEEKLY' as const } : {}) },
+    row('s1', 'Demo Staf Minggu', 'CLINICAL', dates),
+  ],
   weekStartDay: 0,
   openingHours: { open24Hours: true, openTime: null, closeTime: null },
   publication: { month: '2026-11', publishedAt: null, publishedBy: null, changedSince: 0 },
@@ -43,7 +46,7 @@ const matrix = (dates: string[]): RosterMatrix => ({
 const { calls, publish, perms } = vi.hoisted(() => ({
   calls: { month: [] as unknown[][], week: [] as unknown[][] },
   publish: vi.fn(),
-  perms: { all: true, staff: true, doctors: true },
+  perms: { all: true, staff: true, doctors: true, fixedDoctor: false },
 }));
 
 vi.mock('../hooks/useRoster', async (importOriginal) => ({
@@ -156,5 +159,13 @@ describe('roster views', () => {
     mount(true);
     expect(screen.getByTestId('roster-read-only').textContent).toContain('edited in HR');
     expect(screen.queryByRole('button', { name: /Add shift/ })).toBeNull();
+  });
+  it('in HR a doctor on a standing weekly booking pattern is still on the board: no provider logic (UAT, 15 October 2026)', () => {
+    perms.fixedDoctor = true;
+    const { container } = mount();
+    const grid = container.querySelector('.kw-roster-grid') as HTMLElement;
+    expect(within(grid).getByText('Dr Demo Bulan')).toBeTruthy();
+    expect(screen.queryByText('No provider is on the monthly roster yet')).toBeNull();
+    perms.fixedDoctor = false;
   });
 });

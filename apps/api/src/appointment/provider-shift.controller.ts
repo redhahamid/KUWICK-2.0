@@ -43,6 +43,12 @@ export class ProviderShiftController {
     return this.shifts.week(clinicId, start, category);
   }
 
+  /** Owner only: who the roster considered for this branch and month, and why anybody is left off. */
+  @Get('roster-check')
+  rosterCheck(@Query('clinicId') clinicId: string, @Query('month') month: string) {
+    return this.shifts.rosterCheck(clinicId, month);
+  }
+
   @Get('month')
   month(
     @Query('clinicId') clinicId: string,

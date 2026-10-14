@@ -6,6 +6,32 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 59 — 15 Oktober 2026 — Roster masih kosong di staging: semakan pemilik, tiada logik "provider"
+
+Tiada migrasi.
+
+- `[D]` **Satu peraturan roster** (`appointment/roster-eligibility.ts`) untuk papan
+  dan untuk semakan: pekerja yang rekod HR-nya di cawangan ini (atau tiada
+  cawangan) dan bekerja dalam tempoh itu, ada login atau tidak, akaun aktif
+  atau tidak. Akaun tanpa rekod HR kekal jika aktif di cawangan.
+- `[D]` **HR → Roster tidak lagi bergantung pada status "provider"**: semua yang
+  disenaraikan pelayan ada di papan, termasuk doktor pada corak mingguan tetap.
+  Mesej "No provider is on the monthly roster yet" dan bahagian corak mingguan
+  kini hanya di paparan baca sahaja Appointments.
+- `[D]` Jika permintaan roster gagal, papan kini menunjukkan ralat sebenar,
+  bukan "No provider…" (sebelum ini ralat dan papan kosong kelihatan sama).
+- `[D]` **Roster check (pemilik sahaja)** di HR → Roster: bilangan orang yang
+  dipertimbangkan, berapa di roster, setiap yang tertinggal dengan sebab
+  (cawangan lain, belum mula / sudah berhenti, status pekerjaan, tiada rekod HR,
+  akaun dimatikan), dan **build API** yang menjawab.
+- `[D]` `/health` kini membaca `RENDER_GIT_COMMIT`; sebelum ini hanya
+  pembolehubah Railway, jadi di Render ia sentiasa "untracked-local".
+- `[A]` Saya tidak dapat menyemak Render dari sini (staging tidak boleh dicapai
+  dari persekitaran ini, dan GitHub tidak menunjukkan deploy Render).
+- `[D]` **Ujian**: API `roster-views` +1; web `rosterViews` +1.
+
+---
+
 ## Batch 57 — 15 Oktober 2026 — Penghalang staging: roster kosong, wizard Settings, dialog Shifts
 
 Tiada migrasi.

@@ -35,6 +35,7 @@ import {
 import { ShiftEditorModal } from './ShiftEditorModal';
 import { OnDutyToday } from './OnDutyToday';
 import { LocumSlotModal } from './LocumSlotModal';
+import { RosterCheck } from './RosterCheck';
 
 /** The external-locum row's key in a selection: not a staff id. */
 const LOCUMS = '__locums__';
@@ -240,17 +241,20 @@ export function RosterPage({ clinicId, readOnly = false }: RosterPageProps) {
     return null;
   }, [data]);
 
+  // HR ROSTERING DOES NOT ASK WHO IS A PROVIDER (UAT, 15 October 2026):
+  // in HR everybody the server lists is on the board. Only the read-only
+  // Appointments view still separates doctors on a standing weekly pattern.
   const rosterProviders = useMemo(
-    () => (data?.providers ?? []).filter((row) => row.scheduleMode === 'ROSTER_LINKED'),
-    [data],
+    () => (data?.providers ?? []).filter((row) => !readOnly || row.scheduleMode === 'ROSTER_LINKED'),
+    [data, readOnly],
   );
   // FIXED_WEEKLY is a statement about APPOINTMENT AVAILABILITY, so only
   // somebody who takes bookings can be in this section. A receptionist is
   // always their shifts; the API reports ROSTER_LINKED for them and `bookable`
   // keeps the section honest if that ever changes.
   const weeklyProviders = useMemo(
-    () => (data?.providers ?? []).filter((row) => row.bookable && row.scheduleMode === 'FIXED_WEEKLY'),
-    [data],
+    () => (readOnly ? (data?.providers ?? []).filter((row) => row.bookable && row.scheduleMode === 'FIXED_WEEKLY') : []),
+    [data, readOnly],
   );
 
   const toggleDate = (staffId: string, date: string) => {
@@ -511,14 +515,36 @@ export function RosterPage({ clinicId, readOnly = false }: RosterPageProps) {
         />
       ) : null}
 
-      {rosterProviders.length === 0 && !isFetching ? (
+      {source.isError ? (
         <Alert
-          type="info"
+          type="error"
           showIcon
           style={{ marginBottom: 16 }}
-          message="No provider is on the monthly roster yet"
-          description="Providers below are on a standing weekly pattern. Switch one to the monthly roster when their hours change week to week."
+          message="The roster could not be loaded"
+          description={source.error instanceof Error ? source.error.message : 'The server did not answer.'}
         />
+      ) : null}
+
+      {!readOnly && clinicId ? <RosterCheck clinicId={clinicId} month={view === 'STAFF' ? weekAnchor.format('YYYY-MM') : monthKey} /> : null}
+
+      {rosterProviders.length === 0 && !isFetching && !source.isError && data ? (
+        readOnly ? (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="No provider is on the monthly roster yet"
+            description="Providers below are on a standing weekly pattern. Switch one to the monthly roster when their hours change week to week."
+          />
+        ) : (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="Nobody is employed in this branch for this period"
+            description="The roster lists every employee whose HR record is in this branch and who is employed in these dates."
+          />
+        )
       ) : null}
 
       {rosterProviders.length > 0 ? (

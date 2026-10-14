@@ -7,7 +7,7 @@ import {
 import { currentStaffId, currentTenantId } from '../core/tenant-context';
 import { PrismaService } from '../core/prisma.service';
 import { requireActor, withTenantTx } from '../clinical/clinical-actor';
-import { requireScopeAny } from '../finance/admin-actor';
+import { requirePermission, requireScopeAny } from '../finance/admin-actor';
 import { RosterGroup, assertMayRoster, mayRoster } from '../workforce/roster-permission';
 import {
   CopyRosterDto,
@@ -25,7 +25,8 @@ import {
 } from '../workforce/workforce-category';
 import { clinicDateKey, parseDateOnly, parseTimeToDate, zonedWallClockToInstant } from './time.util';
 import { OpeningHours, resolveAttendancePolicy } from '../workforce/attendance-policy';
-import { employedInMonth } from '../workforce/employed-in-month';
+import { rosterEligibility } from './roster-eligibility';
+import { BUILD_SHA } from '../core/build-info';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -181,6 +182,66 @@ export class ProviderShiftService {
   }
 
   /**
+   * THE ROSTER CHECK (UAT, 15 October 2026), owner only: everybody the roster
+   * considered for this branch and month, and for each one left off, why.
+   * The same rule as the board (`rosterEligibility`). Also says which API
+   * build answered, so "is staging on the latest master?" is answered on the
+   * page itself.
+   */
+  async rosterCheck(clinicId: string, month: string) {
+    if (!/^\d{4}-\d{2}$/.test(month)) throw new BadRequestException('Month must be written as YYYY-MM.');
+    await requirePermission(this.rawPrisma, 'settings.manage');
+    const { scope } = await requireScopeAny(this.rawPrisma, ['appointment.view', 'hr.view']);
+    const branch = scope.require(clinicId);
+    const dates = datesInMonth(month);
+    const first = parseDateOnly(dates[0]);
+    const last = parseDateOnly(dates[dates.length - 1]);
+    const [people, clinics] = await Promise.all([
+      this.prisma.staff.findMany({
+        where: { role: { not: Role.PATIENT_PORTAL } },
+        select: {
+          id: true,
+          fullName: true,
+          role: true,
+          clinicId: true,
+          active: true,
+          employeeProfile: { select: { employeeNo: true, startDate: true, endDate: true, employmentStatus: true } },
+        },
+        orderBy: { fullName: 'asc' },
+      }),
+      this.prisma.clinic.findMany({ select: { id: true, name: true } }),
+    ]);
+    const clinicName = new Map(clinics.map((row) => [row.id, row.name]));
+    const included: { name: string; employeeNo: string | null; noBranch: boolean }[] = [];
+    const excluded: { name: string; employeeNo: string | null; reason: string }[] = [];
+    const elsewhere = new Map<string, number>();
+    for (const person of people) {
+      const verdict = rosterEligibility(person, branch, first, last);
+      const employeeNo = person.employeeProfile?.employeeNo ?? null;
+      if (verdict.included) {
+        included.push({ name: person.fullName, employeeNo, noBranch: verdict.noBranch });
+      } else if (person.clinicId !== null && person.clinicId !== branch) {
+        // Other branches are counted, not listed: a long list of names that belong elsewhere hides the ones that matter.
+        const name = clinicName.get(person.clinicId) ?? 'another branch';
+        elsewhere.set(name, (elsewhere.get(name) ?? 0) + 1);
+      } else {
+        excluded.push({ name: person.fullName, employeeNo, reason: verdict.reason });
+      }
+    }
+    return {
+      apiBuild: BUILD_SHA,
+      clinicId: branch,
+      branchName: clinicName.get(branch) ?? null,
+      month,
+      considered: people.length,
+      included: included.length,
+      includedPeople: included,
+      excluded,
+      inOtherBranches: [...elsewhere.entries()].map(([name, count]) => ({ branch: name, count })),
+    };
+  }
+
+  /**
    * ONE WEEK OF THE ROSTER (UAT, 14 October 2026): "weekly staff roster
    * view". Seven days from the branch's own week start: a date that is not
    * one moves back to the start of its week, so the board and a bookmark
@@ -213,7 +274,7 @@ export class ProviderShiftService {
     const last = parseDateOnly(dates[dates.length - 1]);
 
     const publishedMonth = dates[0].slice(0, 7);
-    const [providers, shifts, leave, closed, policies, publication, locums] = await Promise.all([
+    const [people, shifts, leave, closed, policies, publication, locums] = await Promise.all([
       // THE WHOLE WORKFORCE, not only the doctors.
       //
       // This read was `role: { in: [DOCTOR_RESIDENT, DOCTOR_LOCUM] }`, and the
@@ -229,32 +290,22 @@ export class ProviderShiftService {
       // doctor guard, so nothing below this line changes: the same table, the
       // same rows, more of the people who are in it.
       //
-      // EVERY EMPLOYEE OF THE BRANCH (UAT, 15 October 2026): "the roster must
-      // list every employee of the branch who is employed in that period,
-      // whether or not they have a login." So the HR employee record decides:
-      // anybody employed in these dates whose branch is this one, plus anybody
-      // with no branch recorded yet (flagged, so HR can set it). Accounts with
-      // no HR record stay on the board as before.
+      // EVERY EMPLOYEE OF THE BRANCH (UAT, 15 October 2026): who is on the
+      // board is decided by `rosterEligibility` below, from the HR employee
+      // record, never by appointment "provider" status.
       this.prisma.staff.findMany({
-        where: {
-          role: { not: Role.PATIENT_PORTAL },
-          OR: [
-            { clinicId: branch, active: true, employeeProfile: { is: null } },
-            {
-              OR: [{ clinicId: branch }, { clinicId: null }],
-              employeeProfile: { is: { engagement: 'EMPLOYEE', ...employedInMonth(first, new Date(last.getTime() + DAY_MS)) } },
-            },
-          ],
-        },
+        where: { role: { not: Role.PATIENT_PORTAL }, OR: [{ clinicId: branch }, { clinicId: null }] },
         select: {
           id: true,
           fullName: true,
           role: true,
           clinicId: true,
+          active: true,
           appointmentScheduleMode: true,
           calendarColor: true,
           professionalType: true,
           staffGroup: true,
+          employeeProfile: { select: { startDate: true, endDate: true, employmentStatus: true } },
         },
         orderBy: { fullName: 'asc' },
       }),
@@ -287,6 +338,7 @@ export class ProviderShiftService {
       }),
     ]);
     const policy = resolveAttendancePolicy(policies, branch);
+    const providers = people.filter((person) => rosterEligibility(person, branch, first, last).included);
 
     // The board asks THE resolver, exactly as the availability engine does —
     // a mode is a fact about a date. Twice, for two different questions: the
