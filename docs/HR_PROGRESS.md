@@ -6,6 +6,30 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 63 (Malam 6) — 15 Oktober 2026 — Panduan pengguna BM dan EN, butang Help
+
+**Tiada migrasi.**
+
+- `[D]` `docs/guides/owner-hr-guide.ms.md` / `.en.md`: persediaan → pekerja →
+  syif dan roster → kehadiran QR → cuti → tuntutan → faedah perubatan → gaji
+  bulanan (prepare, review, approve, pay, slip gaji, pemfailan) → Borang EA dan E.
+- `[D]` `docs/guides/staff-guide.ms.md` / `.en.md`: setiap perjalanan My Kuwick.
+- `[D]` Satu tindakan bagi setiap langkah, dengan "Anda nampak" selepasnya. Nama
+  butang disemak dengan tangkapan skrin dan kod (contoh *+ New employer*,
+  *Open 2026 accounts*, *Work the month out again*, *Record the transfer*).
+- `[D]` Butang **Help** pada setiap halaman HR (`/admin/hr/help`) dan di bar atas
+  My Kuwick (`/my/help`). Bahasa Melayu dahulu; *English* satu ketikan (diingat
+  oleh pelayar).
+- `[D]` **Open kiosk screen** di HR → Attendance (pilih cawangan dahulu).
+- Kemas kini: `docs/HR_HANDOVER.md` (§8 My Kuwick, §9 Help), `docs/HR_BACKLOG.md`.
+
+**Ujian:** gate 0–3 lulus (API 2947, integrasi 752, web 2027). Playwright 101/103;
+dua ujian (kiraan tunai kewangan, tempahan awam) gagal pada larian pertama
+selepas data dibina semula dan lulus bila diulang `[D]`; CI GitHub yang
+menjalankan suite penuh lulus pada commit sebelumnya `[D]`. Tiada kod itu diubah.
+
+---
+
 ## Batch 62 (Malam 5) — 15 Oktober 2026 — My Kuwick di telefon (390px)
 
 **Migrasi:** `20261016100000_bank_change_requests` (jadual permintaan tukar
