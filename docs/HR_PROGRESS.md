@@ -11,7 +11,7 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi:**
 `20261015130000_weekly_hours`, `20261015140000_clinic_leave_types`,
 `20261015150000_clinic_claim_types`, `20261015160000_benefit_policy`,
-dijalankan di staging dengan *Migrate only* sebelum master — run #MIGRATE_RUN.
+dijalankan di staging dengan *Migrate only* sebelum master — run #28.
 Semua peraturan ialah tetapan klinik. Serahan: `docs/HR_HANDOVER.md`.
 
 **C — Lebih masa dan lokum, minggu demi minggu**
