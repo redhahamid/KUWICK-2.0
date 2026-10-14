@@ -4,6 +4,7 @@ import { Dropdown } from 'antd';
 import dayjs from 'dayjs';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useClinics } from '../../core/hooks/useClinics';
+import { BankChangesNotice } from './BankChangesNotice';
 import { useCan } from '../../core/hooks/useCan';
 import { useEmployees, usePayrollReadiness, usePayrollRuns } from '../hooks/useAdmin';
 import { initialsOf } from './ui/who';
@@ -273,6 +274,7 @@ export function EmployeesPage() {
         </>
       }
     >
+      {mayManage ? <BankChangesNotice /> : null}
       {titlesOpen ? <JobTitlesDrawer open onClose={() => setTitlesOpen(false)} /> : null}
       {clinicId && epfBranchOpen ? (
         <EpfBasisForBranchDrawer

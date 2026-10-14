@@ -3,6 +3,7 @@ import { App, Input } from 'antd';
 import jsQR from 'jsqr';
 import { ApiError } from '../core/api-client';
 import { Drawer } from '../admin/hr/ui';
+import { formatClinicTime } from '../clinical/clinicTime';
 import { readPosition } from './clock';
 import { useClockSelf, useSetAttendancePin } from './hooks/useMe';
 
@@ -13,7 +14,7 @@ import { useClockSelf, useSetAttendancePin } from './hooks/useMe';
  * phone is when the clinic asks for that. Clock in or out is decided by the
  * server, as with the button.
  */
-export function ScanClock() {
+export function ScanClock({ onDuty = false }: { onDuty?: boolean }) {
   const { message } = App.useApp();
   const clock = useClockSelf();
   const [open, setOpen] = useState(false);
@@ -68,7 +69,8 @@ export function ScanClock() {
     const position = await readPosition();
     try {
       await clock.mutateAsync({ qr, ...(position ?? {}) });
-      message.success('Recorded.');
+      // Say what happened and when, so nobody scans twice to be sure.
+      message.success(`${onDuty ? 'Clocked out' : 'Clocked in'} at ${formatClinicTime(new Date().toISOString())}.`);
       setOpen(false);
     } catch (error) {
       setProblem(error instanceof ApiError ? error.message : 'The clinic code could not be used.');
@@ -77,8 +79,8 @@ export function ScanClock() {
 
   return (
     <>
-      <button type="button" className="hr-btn" onClick={() => { setProblem(null); setOpen(true); }}>
-        Scan clinic code
+      <button type="button" className="hr-btn hr-btn--primary" onClick={() => { setProblem(null); setOpen(true); }}>
+        {onDuty ? 'Scan to clock out' : 'Scan to clock in'}
       </button>
       <Drawer open={open} title="Scan the code on the clinic screen" onClose={() => setOpen(false)}>
         {problem ? <div className="hr-notice hr-notice--attn">{problem}</div> : null}

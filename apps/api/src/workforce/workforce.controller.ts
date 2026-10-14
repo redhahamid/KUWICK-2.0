@@ -72,6 +72,7 @@ import { PayrollTaxService } from './payroll-tax.service';
 import { renderPayslipPdf, renderPayslipsPdf } from './payroll-payslip-pdf';
 import { PayrollReportService } from './payroll-report.service';
 import { EaFormService } from './ea-form.service';
+import { BankChangeService } from './bank-change.service';
 import { renderEaFormsPdf } from './ea-form-pdf';
 import { PayrollFinanceService } from './payroll-finance.service';
 import { CreateStaffClaimDto, DecideStaffClaimDto, SettleStaffClaimDto } from './dto/staff-claim.dto';
@@ -125,6 +126,7 @@ export class WorkforceController {
     private readonly tax: PayrollTaxService,
     private readonly reports: PayrollReportService,
     private readonly eaForms: EaFormService,
+    private readonly bankChanges: BankChangeService,
     private readonly financeContract: PayrollFinanceService,
     private readonly staffFiles: StaffFileService,
     private readonly claimPolicies: ClaimPolicyService,
@@ -391,6 +393,18 @@ export class WorkforceController {
     const parsedYear = Number(year);
     if (!Number.isInteger(parsedYear)) throw new BadRequestException('year must be a whole year, e.g. 2026.');
     return this.reports.ytd(parsedYear, legalEmployerId || undefined, clinicId || undefined);
+  }
+
+  // --- New bank accounts asked for in My Kuwick -----------------------------
+
+  @Get('bank-changes')
+  bankChangesWaiting() {
+    return this.bankChanges.waiting();
+  }
+
+  @Post('bank-changes/:id/decide')
+  decideBankChange(@Param('id') id: string, @Body() body: { approve?: boolean; note?: string }) {
+    return this.bankChanges.decide(id, body.approve === true, body.note);
   }
 
   // --- Year-end forms: Borang EA per employee, Borang E summary ------------

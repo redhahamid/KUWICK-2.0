@@ -287,6 +287,18 @@ describe('My Kuwick: employee self-service (e2e)', () => {
         .send({ approve: true });
       expect(refused.status).toBe(400);
     });
+
+    it('lets me cancel my own pending leave, and nobody else’s (testing, 15 October 2026)', async () => {
+      const asked = await request(server())
+        .post('/me/leave')
+        .set('Authorization', nurseBearer)
+        .send({ leaveType: 'ANNUAL', startDate: '2026-11-02', endDate: '2026-11-03' })
+        .expect(201);
+      await request(server()).post(`/me/leave/${asked.body.id}/cancel`).set('Authorization', colleagueBearer).expect(404);
+      await request(server()).post(`/me/leave/${asked.body.id}/cancel`).set('Authorization', nurseBearer).expect(201);
+      const mine = await request(server()).get('/me/leave').set('Authorization', nurseBearer).expect(200);
+      expect(mine.body).toHaveLength(0);
+    });
   });
 
   // ===========================================================================
@@ -383,6 +395,18 @@ describe('My Kuwick: employee self-service (e2e)', () => {
         .expect(201);
       const theirs = await request(server()).get('/me/claims').set('Authorization', colleagueBearer).expect(200);
       expect(theirs.body).toHaveLength(0);
+    });
+
+    it('lets me withdraw my own claim while it waits (testing, 15 October 2026)', async () => {
+      const claim = await request(server())
+        .post('/me/claims')
+        .set('Authorization', nurseBearer)
+        .send({ category: 'MEDICAL', amountClaimed: '20.00', claimDate: '2026-09-15', description: 'Withdraw me.', receiptFileId: await uploadReceipt(nurseBearer) })
+        .expect(201);
+      await request(server()).post(`/me/claims/${claim.body.id}/cancel`).set('Authorization', colleagueBearer).expect(404);
+      const withdrawn = await request(server()).post(`/me/claims/${claim.body.id}/cancel`).set('Authorization', nurseBearer).expect(201);
+      expect(withdrawn.body.status).toBe('CANCELLED');
+      await request(server()).post(`/me/claims/${claim.body.id}/cancel`).set('Authorization', nurseBearer).expect(400);
     });
 
     it('refuses a receipt on a claim that is not the uploader’s', async () => {

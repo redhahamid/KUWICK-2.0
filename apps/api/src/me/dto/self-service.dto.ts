@@ -83,3 +83,25 @@ export class AttachReceiptDto {
    */
   @ValidateIf((o) => !o.fileId) @IsInt() @Min(1) @Max(15 * 1024 * 1024) fileSize!: number;
 }
+
+/** My own contact details (testing, 15 October 2026). Blank clears a field. */
+export class UpdateMyContactDto {
+  @IsOptional() @IsString() @MaxLength(40) phone?: string;
+  @IsOptional() @IsString() @MaxLength(160) email?: string;
+  @IsOptional() @IsString() @MaxLength(300) address?: string;
+  @IsOptional() @IsString() @MaxLength(10) postcode?: string;
+  @IsOptional() @IsString() @MaxLength(80) city?: string;
+  @IsOptional() @IsString() @MaxLength(80) state?: string;
+  @IsOptional() @IsString() @MaxLength(120) emergencyContactName?: string;
+  @IsOptional() @IsString() @MaxLength(40) emergencyContactPhone?: string;
+  @IsOptional() @IsString() @MaxLength(60) emergencyContactRelation?: string;
+}
+
+/** A new bank account, for HR to check and approve. */
+export class RequestBankChangeDto {
+  @IsString() @Length(2, 80) bankName!: string;
+  @Matches(/^[0-9 -]{6,30}$/, { message: 'The account number is digits only, 6 to 30 of them.' }) bankAccountNo!: string;
+  @IsString() @Length(2, 120) bankAccountName!: string;
+  /** A photo of the statement header or card, uploaded first as kind BANK_PROOF. */
+  @IsUUID() proofFileId!: string;
+}

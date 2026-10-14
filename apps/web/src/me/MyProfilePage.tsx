@@ -7,6 +7,7 @@ import { useAuthStore } from '../core/auth-store';
 import { Panel, PanelHead, StatusChip } from '../admin/hr/ui';
 import { useMyProfile, useRenameSelf } from './hooks/useMe';
 import { PortalEmpty } from './portal';
+import { BankPanel, ContactPanel } from './MyDetailsForms';
 
 /**
  * PROFILE — what the clinic holds about the person. The display name is the
@@ -50,7 +51,7 @@ export function MyProfilePage() {
       <div className="hr-pageHead">
         <div>
           <h1>Profile</h1>
-          <div className="hr-sub">You can change your display name here. Anything else that is wrong is corrected by HR.</div>
+          <div className="hr-sub">Keep your contact details up to date here. A new bank account is checked by HR first.</div>
         </div>
         <div className="hr-pageHead__actions">
           <button
@@ -108,11 +109,7 @@ export function MyProfilePage() {
             {kv('Kind of work', data?.category?.toLowerCase())}
           </div>
           <div className="hr-panelHead--top">
-            <PanelHead title="Contact" />
-          </div>
-          <div className="hr-kv">
-            {kv('Phone', data?.employment?.phone)}
-            {kv('Email', data?.employment?.email)}
+            <ContactPanel employment={data?.employment ?? null} />
           </div>
         </Panel>
 
@@ -139,12 +136,8 @@ export function MyProfilePage() {
             </PortalEmpty>
           )}
           <div className="hr-panelHead--top">
-            <PanelHead title="Bank account" />
+            <BankPanel hasEmploymentProfile={Boolean(data?.hasEmploymentProfile)} />
           </div>
-          <PortalEmpty title="Changed through HR">
-            Tell your manager or HR the new account, with proof it is yours. Payroll is paid only to an account HR has
-            checked, so it cannot be changed from here.
-          </PortalEmpty>
         </Panel>
       </div>
     </>

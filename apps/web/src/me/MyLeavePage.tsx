@@ -5,7 +5,7 @@ import { ApiError } from '../core/api-client';
 import { Panel, PanelHead, StatusChip } from '../admin/hr/ui';
 import { IconDoc } from '../admin/hr/ui/icons';
 import { AuthImage } from '../admin/hr/ui';
-import { myFilePath, uploadMyFile, useMyLeave, useMyLeaveBalances, useMyLeavePreview, useRequestLeave } from './hooks/useMe';
+import { myFilePath, uploadMyFile, useCancelLeave, useMyLeave, useMyLeaveBalances, useMyLeavePreview, useRequestLeave } from './hooks/useMe';
 import { IconCheckCircle, PortalEmpty, dayRange } from './portal';
 
 /** Shown until the clinic's own list arrives (Section D: the types are the clinic's). */
@@ -36,6 +36,25 @@ const STATUS: Record<string, { tone: 'attn' | 'done' | 'block' | 'muted'; label:
   REJECTED: { tone: 'block', label: 'Not approved' },
 };
 
+/** "Cancel request" on my own pending leave: one tap, then confirm. */
+function CancelLeaveButton({ id, onCancel, busy }: { id: string; onCancel: (id: string) => void; busy: boolean }) {
+  const [sure, setSure] = useState(false);
+  return sure ? (
+    <span className="hr-dots">
+      <button type="button" className="hr-btn hr-btn--sm hr-btn--primary" disabled={busy} onClick={() => onCancel(id)}>
+        Yes, cancel it
+      </button>
+      <button type="button" className="hr-btn hr-btn--sm hr-btn--ghost" onClick={() => setSure(false)}>
+        Keep
+      </button>
+    </span>
+  ) : (
+    <button type="button" className="hr-btn hr-btn--sm hr-btn--ghost" onClick={() => setSure(true)}>
+      Cancel request
+    </button>
+  );
+}
+
 /**
  * LEAVE, after `portal-leave.html`: the form on the left with what the
  * request would mean under it — the days, the balance after, who else is
@@ -52,6 +71,7 @@ export function MyLeavePage() {
   const { data: requests, isLoading } = useMyLeave();
   const { data: balances } = useMyLeaveBalances();
   const request = useRequestLeave();
+  const cancelLeave = useCancelLeave();
 
   const today = dayjs().format('YYYY-MM-DD');
   const [leaveType, setLeaveType] = useState('ANNUAL');
@@ -93,7 +113,7 @@ export function MyLeavePage() {
       return;
     }
     if (needsAttachment && !attachment) {
-      message.error('This kind of leave needs the MC attached.');
+      message.error('This kind of leave needs a document. Add a photo of it first.');
       return;
     }
     setSending(true);
@@ -109,7 +129,7 @@ export function MyLeavePage() {
         halfDay: halfDay || undefined,
         attachmentFileId: uploaded?.id,
       });
-      message.success('Sent to your manager.');
+      message.success('Sent to your manager. It shows under My requests as Waiting.');
       reset();
     } catch (error) {
       message.error(error instanceof ApiError ? error.message : 'Could not send that.');
@@ -128,9 +148,19 @@ export function MyLeavePage() {
       <div className="hr-pageHead">
         <div>
           <h1>Apply for leave</h1>
-          <div className="hr-sub">Your manager gets it straight away. You'll see the decision here and by email.</div>
+          <div className="hr-sub">Your manager gets it straight away. The decision shows under My requests.</div>
         </div>
       </div>
+
+      {balanceRows.length > 0 ? (
+        <div className="hr-balanceStrip" data-testid="leave-balance-strip">
+          {balanceRows.map((row) => (
+            <span key={row.leaveType} className={row.leaveType === leaveType ? 'is-chosen' : ''}>
+              <b>{row.remaining}</b> {nameOf(row.leaveType)} left
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       <div className="hr-grid2 hr-grid2--wide">
         <Panel>
@@ -193,11 +223,11 @@ export function MyLeavePage() {
                 />
               </div>
               <div className="hr-pform__full">
-                <label htmlFor="leave-attachment">Attachment (needed for medical leave)</label>
+                <label htmlFor="leave-attachment">Document (MC or letter)</label>
                 {attachmentOffered ? (
                   <label className={needsAttachment ? 'hr-drop is-required' : 'hr-drop'} htmlFor="leave-attachment">
                     <IconDoc />
-                    {attachment ? attachment.name : needsAttachment ? 'Drop MC or photo here — required' : 'Drop MC or photo here'}
+                    {attachment ? attachment.name : needsAttachment ? 'Take a photo or choose a file — needed' : 'Take a photo or choose a file'}
                     <input
                       id="leave-attachment"
                       type="file"
@@ -310,6 +340,20 @@ export function MyLeavePage() {
                       <td>
                         <b>{nameOf(row.leaveType)}</b> · {dayRange(row.startDate, row.endDate)}
                         {row.decidedBy ? <div className="hr-tdSub">Decided by {row.decidedBy}</div> : null}
+                        {row.status === 'PENDING' ? (
+                          <div className="hr-tdSub">
+                            <CancelLeaveButton
+                              id={row.id}
+                              busy={cancelLeave.isPending}
+                              onCancel={(id) =>
+                                cancelLeave.mutate(id, {
+                                  onSuccess: () => message.success('Leave request cancelled.'),
+                                  onError: (error) => message.error(error instanceof ApiError ? error.message : 'Could not cancel that.'),
+                                })
+                              }
+                            />
+                          </div>
+                        ) : null}
                         {row.attachments.length > 0 ? (
                           <div className="hr-tdSub hr-dots">
                             {row.attachments.map((file) =>

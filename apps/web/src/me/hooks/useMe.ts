@@ -27,8 +27,23 @@ export interface MyProfile {
     startDate: string | null;
     phone: string | null;
     email: string | null;
+    address?: string | null;
+    postcode?: string | null;
+    city?: string | null;
+    state?: string | null;
+    emergencyContactName?: string | null;
+    emergencyContactPhone?: string | null;
+    emergencyContactRelation?: string | null;
   } | null;
 }
+
+/** My bank account as HR holds it, and my latest change request (testing, 15 October 2026). */
+export interface MyBankChange {
+  current: { bankName: string | null; lastFour: string } | null;
+  request: { id: string; bankName: string; lastFour: string; status: string; decidedBy: string | null; decisionNote: string | null; createdAt: string } | null;
+}
+
+export type MyContact = Partial<Record<'phone' | 'email' | 'address' | 'postcode' | 'city' | 'state' | 'emergencyContactName' | 'emergencyContactPhone' | 'emergencyContactRelation', string>>;
 
 export interface MyShift {
   id: string;
@@ -122,7 +137,7 @@ export interface MyClaimPolicy {
   types?: import('./../claim-form').ClaimKind[];
 }
 
-export type StaffFileKind = 'RECEIPT' | 'MEDICAL_CERTIFICATE' | 'SELFIE';
+export type StaffFileKind = 'RECEIPT' | 'MEDICAL_CERTIFICATE' | 'SELFIE' | 'BANK_PROOF';
 
 export interface UploadedStaffFile {
   id: string;
@@ -358,6 +373,24 @@ function useMyMutation<TBody, TResult>(fn: (body: TBody) => Promise<TResult>) {
 }
 
 /** The signed-in person's own display name (owner, 12 October 2026), logged. */
+export function useUpdateMyContact() {
+  return useMyMutation((body: MyContact) => apiClient.patch('/me/contact', body));
+}
+
+export function useMyBankChange() {
+  return useQuery({ queryKey: [...MY, 'bank-change'], queryFn: () => apiClient.get<MyBankChange>('/me/bank-change') });
+}
+
+export function useRequestBankChange() {
+  return useMyMutation((body: { bankName: string; bankAccountNo: string; bankAccountName: string; proofFileId: string }) =>
+    apiClient.post('/me/bank-change', body),
+  );
+}
+
+export function useCancelBankChange() {
+  return useMyMutation((id: string) => apiClient.post(`/me/bank-change/${id}/cancel`, {}));
+}
+
 export function useRenameSelf() {
   return useMyMutation((body: { fullName: string }) => apiClient.patch<{ id: string; fullName: string }>('/me/name', body));
 }
@@ -394,6 +427,15 @@ export function useRequestLeave() {
     (body: { leaveType: string; startDate: string; endDate: string; reason?: string; halfDay?: boolean; attachmentFileId?: string }) =>
       apiClient.post('/me/leave', body),
   );
+}
+
+/** Withdraw my own pending leave or claim (testing, 15 October 2026). */
+export function useCancelLeave() {
+  return useMyMutation((id: string) => apiClient.post(`/me/leave/${id}/cancel`, {}));
+}
+
+export function useCancelClaim() {
+  return useMyMutation((id: string) => apiClient.post(`/me/claims/${id}/cancel`, {}));
 }
 
 export function useSubmitClaim() {

@@ -20,13 +20,7 @@ import { claimTypeFor } from '../workforce/claim-types';
 import { benefitAlert } from '../workforce/benefit-allowance';
 import { leaveDays, leaveDaysInYear } from '../workforce/leave-balance';
 import { workforceCategoryOf } from '../workforce/workforce-category';
-import {
-  AttachReceiptDto,
-  ClockSelfDto,
-  RequestAttendanceCorrectionDto,
-  RequestLeaveDto,
-  SubmitClaimDto,
-} from './dto/self-service.dto';
+import { AttachReceiptDto, ClockSelfDto, RequestAttendanceCorrectionDto, RequestLeaveDto, SubmitClaimDto, RequestBankChangeDto, UpdateMyContactDto } from './dto/self-service.dto';
 
 /**
  * MY KUWICK — everything a member of staff may see and do about THEMSELVES.
@@ -113,6 +107,13 @@ export class MeService {
           startDate: true,
           phone: true,
           email: true,
+          address: true,
+          postcode: true,
+          city: true,
+          state: true,
+          emergencyContactName: true,
+          emergencyContactPhone: true,
+          emergencyContactRelation: true,
           selfieConsentAt: true,
         },
       }),
@@ -143,6 +144,13 @@ export class MeService {
             startDate: employment.startDate?.toISOString().slice(0, 10) ?? null,
             phone: employment.phone,
             email: employment.email,
+            address: employment.address,
+            postcode: employment.postcode,
+            city: employment.city,
+            state: employment.state,
+            emergencyContactName: employment.emergencyContactName,
+            emergencyContactPhone: employment.emergencyContactPhone,
+            emergencyContactRelation: employment.emergencyContactRelation,
           }
         : null,
     };
@@ -168,8 +176,8 @@ export class MeService {
     const year = today.getUTCFullYear();
 
     const [
-      todayShifts,
-      nextShift,
+      todayRostered,
+      upcomingRostered,
       todayRecord,
       openRecord,
       pendingLeave,
@@ -187,7 +195,7 @@ export class MeService {
         where: { staffId: actor.id, shiftDate: today },
         orderBy: { startsAt: 'asc' },
       }),
-      this.prisma.providerShift.findFirst({
+      this.prisma.providerShift.findMany({
         where: { staffId: actor.id, shiftDate: { gte: tomorrow, lte: horizon } },
         orderBy: [{ shiftDate: 'asc' }, { startsAt: 'asc' }],
       }),
@@ -253,6 +261,13 @@ export class MeService {
       }),
       this.leaveService.balancesForSelf(actor.id, year),
     ]);
+    // PUBLISHED ONLY, as on the roster tab: a draft month is not shown to staff (testing, 15 October 2026).
+    const publishedMonths = new Set(
+      (await this.prisma.rosterPublication.findMany({ select: { clinicId: true, month: true } })).map((row) => `${row.clinicId}:${row.month}`),
+    );
+    const isPublished = (shift: { clinicId: string; shiftDate: Date }) => publishedMonths.has(`${shift.clinicId}:${shift.shiftDate.toISOString().slice(0, 7)}`);
+    const todayShifts = todayRostered.filter(isPublished);
+    const nextShift = upcomingRostered.find(isPublished) ?? null;
 
     const onDuty = openRecord?.kind === 'IN';
     const annual = balances.balances.find((row) => row.leaveType === LeaveType.ANNUAL) ?? null;
@@ -657,6 +672,28 @@ export class MeService {
    * A second "self-service leave" table would be a second answer to when
    * somebody was away.
    */
+  /**
+   * Withdraw my own pending leave (testing, 15 October 2026). A request nobody
+   * decided has no effect on pay or balance, so it is removed, with an audit row.
+   */
+  async cancelLeave(id: string) {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      const row = await tx.leaveRequest.findUnique({ where: { id } });
+      if (!row || row.staffId !== actor.id) throw new NotFoundException('Leave request not found.');
+      if (row.status !== 'PENDING') throw new BadRequestException('That request has already been decided. Ask your manager to change it.');
+      await tx.leaveRequest.delete({ where: { id } });
+      await recordAudit(tx, actor, {
+        action: 'leaveRequest.cancelled',
+        entityType: 'LeaveRequest',
+        entityId: id,
+        before: { leaveType: row.leaveType, startDate: row.startDate.toISOString().slice(0, 10), endDate: row.endDate.toISOString().slice(0, 10) },
+        source: 'me.leave',
+      });
+      return { id, cancelled: true };
+    });
+  }
+
   async requestLeave(dto: RequestLeaveDto) {
     return withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
@@ -789,6 +826,112 @@ export class MeService {
   }
 
   /** Submit a claim for myself. Never for anybody else — there is no field for it. */
+  // ---------------------------------------------------------------------------
+  // MY DETAILS (testing, 15 October 2026)
+  // ---------------------------------------------------------------------------
+
+  /** Phone, email, address and emergency contact: mine to keep up to date. */
+  async updateContact(dto: UpdateMyContactDto) {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      const profile = await tx.employeeProfile.findUnique({ where: { staffId: actor.id } });
+      if (!profile) throw new BadRequestException('Your employment record is not finished yet. Ask HR to complete it first.');
+      const data = Object.fromEntries(
+        Object.entries(dto)
+          .filter(([, value]) => value !== undefined)
+          .map(([key, value]) => [key, typeof value === 'string' && value.trim() ? value.trim() : null]),
+      );
+      const saved = await tx.employeeProfile.update({ where: { staffId: actor.id }, data });
+      await recordAudit(tx, actor, {
+        action: 'me.contactUpdated',
+        entityType: 'EmployeeProfile',
+        entityId: profile.id,
+        after: { fields: Object.keys(data) },
+        source: 'me.profile',
+      });
+      return { phone: saved.phone, email: saved.email, address: saved.address, postcode: saved.postcode, city: saved.city, state: saved.state, emergencyContactName: saved.emergencyContactName, emergencyContactPhone: saved.emergencyContactPhone, emergencyContactRelation: saved.emergencyContactRelation };
+    });
+  }
+
+  /** My bank account as HR holds it (last four digits only), and my latest change request. */
+  async bankChange() {
+    const actor = await this.me();
+    const [profile, latest] = await Promise.all([
+      this.prisma.employeeProfile.findUnique({ where: { staffId: actor.id }, select: { bankName: true, bankAccountNo: true } }),
+      this.prisma.bankChangeRequest.findFirst({ where: { staffId: actor.id }, orderBy: { createdAt: 'desc' }, include: { decidedBy: { select: { fullName: true } } } }),
+    ]);
+    return {
+      current: profile?.bankAccountNo ? { bankName: profile.bankName, lastFour: profile.bankAccountNo.replace(/\D/g, '').slice(-4) } : null,
+      request: latest
+        ? {
+            id: latest.id,
+            bankName: latest.bankName,
+            lastFour: latest.bankAccountNo.replace(/\D/g, '').slice(-4),
+            status: latest.status,
+            decidedBy: latest.decidedBy?.fullName ?? null,
+            decisionNote: latest.decisionNote,
+            createdAt: latest.createdAt.toISOString(),
+          }
+        : null,
+    };
+  }
+
+  /** Ask for pay to go to a new account. HR checks the proof and approves it. */
+  async requestBankChange(dto: RequestBankChangeDto) {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      const profile = await tx.employeeProfile.findUnique({ where: { staffId: actor.id }, select: { id: true } });
+      if (!profile) throw new BadRequestException('Your employment record is not finished yet. Ask HR to complete it first.');
+      await this.files.claimOwn(tx, actor.id, dto.proofFileId, 'BANK_PROOF');
+      // One open request at a time: a new one replaces the one still waiting.
+      await tx.bankChangeRequest.updateMany({ where: { staffId: actor.id, status: 'PENDING' }, data: { status: 'CANCELLED' } });
+      const saved = await tx.bankChangeRequest.create({
+        data: {
+          tenantId: currentTenantId(),
+          staffId: actor.id,
+          bankName: dto.bankName.trim(),
+          bankAccountNo: dto.bankAccountNo.replace(/[\s-]/g, ''),
+          bankAccountName: dto.bankAccountName.trim(),
+          proofFileId: dto.proofFileId,
+        },
+      });
+      await recordAudit(tx, actor, {
+        action: 'bankChange.requested',
+        entityType: 'BankChangeRequest',
+        entityId: saved.id,
+        after: { bankName: saved.bankName, lastFour: saved.bankAccountNo.slice(-4) },
+        source: 'me.profile',
+      });
+      return { id: saved.id, status: saved.status };
+    });
+  }
+
+  async cancelBankChange(id: string) {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      const row = await tx.bankChangeRequest.findUnique({ where: { id } });
+      if (!row || row.staffId !== actor.id) throw new NotFoundException('Bank change request not found.');
+      if (row.status !== 'PENDING') throw new BadRequestException('That request has already been decided.');
+      return tx.bankChangeRequest.update({ where: { id }, data: { status: 'CANCELLED' }, select: { id: true, status: true } });
+    });
+  }
+
+  /** Withdraw my own claim while nobody has decided it (testing, 15 October 2026). */
+  async cancelClaim(id: string) {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      const row = await tx.staffClaim.findUnique({ where: { id } });
+      if (!row || row.staffId !== actor.id) throw new NotFoundException('Claim not found.');
+      if (row.status !== 'SUBMITTED' && row.status !== 'DRAFT') throw new BadRequestException('That claim has already been decided. Ask HR to change it.');
+      const saved = await tx.staffClaim.update({ where: { id }, data: { status: 'CANCELLED' } });
+      await tx.staffClaimEvent.create({
+        data: { tenantId: currentTenantId(), staffClaimId: id, actorStaffId: actor.id, event: 'cancelled', detail: 'Withdrawn by the employee', fromStatus: row.status, toStatus: 'CANCELLED' },
+      });
+      await recordAudit(tx, actor, { action: 'staffClaim.cancelled', entityType: 'StaffClaim', entityId: id, source: 'me.claims' });
+      return saved;
+    });
+  }
+
   async submitClaim(dto: SubmitClaimDto) {
     return withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);

@@ -3726,3 +3726,48 @@ textarea.hr-f {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* My Kuwick, leave: the balances first, so staff see what they have before they ask (testing, 15 October 2026). */
+.hr-balanceStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.hr-balanceStrip span {
+  padding: 6px 12px;
+  border: 1px solid var(--hr-line);
+  border-radius: 999px;
+  background: var(--hr-surface, #fff);
+  font-size: 13px;
+}
+.hr-balanceStrip span.is-chosen {
+  border-color: var(--hr-indigo, currentColor);
+  font-weight: 600;
+}
+
+/* My Kuwick on a phone (testing, 15 October 2026): the six tabs in one row
+   that scrolls sideways, money that does not break over two lines, a column
+   only a wide screen needs hidden, and row buttons that wrap rather than
+   fall off the edge. */
+@media (max-width: 720px) {
+  .hr-portal .hr-ptabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .hr-portal .hr-ptabs a {
+    flex: 0 0 auto;
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .hr-portal .hr-num {
+    white-space: nowrap;
+  }
+  .hr-portal .hr-hideNarrow {
+    display: none;
+  }
+  .hr-portal .hr-dots {
+    flex-wrap: wrap;
+  }
+}

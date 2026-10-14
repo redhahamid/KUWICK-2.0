@@ -6,6 +6,7 @@ import { ApiError, downloadFile } from '../core/api-client';
 import { Panel, PanelHead, StatCard } from '../admin/hr/ui';
 import { IconCalendar, IconClaims, IconClock, IconDoc, IconEdit, IconPlus } from '../admin/hr/ui/icons';
 import { ClockButton } from './clock';
+import { ScanClock } from './ScanClock';
 import { myPayslipPdfPath, useMyHome, type MyPaidPayslip } from './hooks/useMe';
 import { IconCard, PortalEmpty, greetingName, monthLabel, monthShort, rm } from './portal';
 
@@ -58,6 +59,7 @@ export function MyHomePage() {
         </div>
         <div className="hr-pageHead__actions">
           {onDuty ? <span className="hr-clockState">On duty since {time(data?.clock.since)}</span> : null}
+          <ScanClock onDuty={onDuty} />
           <ClockButton onDuty={onDuty} disabled={isLoading} />
         </div>
       </div>

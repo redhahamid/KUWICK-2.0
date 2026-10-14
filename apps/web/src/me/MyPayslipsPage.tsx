@@ -73,7 +73,7 @@ export function MyPayslipsPage() {
             <thead>
               <tr>
                 <th>Month</th>
-                <th className="hr-num">Gross</th>
+                <th className="hr-num hr-hideNarrow">Gross</th>
                 <th className="hr-num">Net</th>
                 <th />
               </tr>
@@ -87,7 +87,7 @@ export function MyPayslipsPage() {
                       {row.paymentDate ? `Paid ${dayjs(row.paymentDate).format('D MMM')}` : 'Paid'}
                     </div>
                   </td>
-                  <td className="hr-num">{rm(row.grossPay)}</td>
+                  <td className="hr-num hr-hideNarrow">{rm(row.grossPay)}</td>
                   <td className="hr-num hr-strong">{rm(row.netPay)}</td>
                   <td className="hr-num">
                     <span className="hr-dots">

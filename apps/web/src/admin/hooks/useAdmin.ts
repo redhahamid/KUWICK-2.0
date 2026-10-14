@@ -2366,6 +2366,28 @@ export function usePayrollPcbSummaryReport(runId: string | undefined) {
   });
 }
 
+/** New bank accounts asked for in My Kuwick, waiting for HR (testing, 15 October 2026). */
+export interface BankChangeRow {
+  id: string;
+  staffId: string;
+  name: string;
+  requestedAt: string;
+  next: { bankName: string; bankAccountNo: string; bankAccountName: string };
+  current: { bankName: string | null; bankAccountNo: string; bankAccountName: string | null } | null;
+  proofPath: string | null;
+}
+
+export function useBankChanges() {
+  return useQuery({ queryKey: ["admin-hr", "bank-changes"], queryFn: () => apiClient.get<BankChangeRow[]>("/workforce/bank-changes") });
+}
+
+export function useDecideBankChange() {
+  return useAdminMutation(
+    ({ id, ...body }: { id: string; approve: boolean; note?: string }) => apiClient.post(`/workforce/bank-changes/${id}/decide`, body),
+    ["admin-hr"],
+  );
+}
+
 /** Borang EA for the year: every form with what is missing (overnight brief, 15 October 2026). */
 export function useEaForms(params: { year: number; legalEmployerId?: string; clinicId?: string }) {
   return useQuery({

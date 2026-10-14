@@ -6,7 +6,7 @@ import { ApiError } from '../core/api-client';
 import { Panel, PanelHead, StatusChip } from '../admin/hr/ui';
 import { IconDoc } from '../admin/hr/ui/icons';
 import { AuthImage } from '../admin/hr/ui';
-import { myFilePath, uploadMyFile, useMyBenefits, useMyClaimPolicy, useMyClaims, useSubmitClaim, type MyClaim } from './hooks/useMe';
+import { myFilePath, uploadMyFile, useCancelClaim, useMyBenefits, useMyClaimPolicy, useMyClaims, useSubmitClaim, type MyClaim } from './hooks/useMe';
 import { IconCheckCircle, PortalEmpty, monthShort, rm } from './portal';
 
 /**
@@ -55,6 +55,7 @@ export function MyClaimsPage() {
   const { data: benefits } = useMyBenefits();
   const { data: policy } = useMyClaimPolicy();
   const submit = useSubmitClaim();
+  const cancelClaim = useCancelClaim();
   const [sending, setSending] = useState(false);
 
   const [type, setType] = useState('MILEAGE');
@@ -250,7 +251,7 @@ export function MyClaimsPage() {
                 <label htmlFor="claim-receipt">Receipts / photos</label>
                 <label className={receiptRequired ? 'hr-drop is-required' : 'hr-drop'} htmlFor="claim-receipt">
                   <IconDoc />
-                  {receiptRequired ? 'Drop receipt, invoice or odometer photo here — required' : 'Drop receipt, invoice or odometer photo here'}
+                  {receiptRequired ? 'Take a photo of the receipt or choose a file — needed' : 'Take a photo of the receipt or choose a file'}
                   <input
                     id="claim-receipt"
                     type="file"
@@ -312,6 +313,21 @@ export function MyClaimsPage() {
                           Submitted {dayjs(claim.submittedAt ?? claim.createdAt).format('D MMM')}
                           {claim.distanceKm && claim.mileageRate ? ` · ${Number(claim.distanceKm)} km × RM ${Number(claim.mileageRate).toFixed(2)}` : ''}
                           {claim.unpaidNote ? ` · ${claim.unpaidNote}` : ''}
+                          {claim.status === 'SUBMITTED' ? (
+                            <button
+                              type="button"
+                              className="hr-btn hr-btn--sm hr-btn--ghost"
+                              disabled={cancelClaim.isPending}
+                              onClick={() =>
+                                cancelClaim.mutate(claim.id, {
+                                  onSuccess: () => message.success('Claim withdrawn.'),
+                                  onError: (error) => message.error(error instanceof ApiError ? error.message : 'Could not withdraw that.'),
+                                })
+                              }
+                            >
+                              Withdraw
+                            </button>
+                          ) : null}
                           {claim.attachments.map((file) =>
                             file.mimeType.startsWith('image/') ? (
                               <AuthImage key={file.id} path={myFilePath(fileIdOf(file.filePath) ?? file.id)} alt={file.fileName} className="hr-proof" />

@@ -23,7 +23,7 @@ import { recordAudit } from '../finance/admin-audit';
  */
 export const MAX_STAFF_FILE_BYTES = 8 * 1024 * 1024;
 export const STAFF_FILE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'] as const;
-export const STAFF_FILE_KINDS: readonly StaffFileKind[] = ['RECEIPT', 'MEDICAL_CERTIFICATE', 'SELFIE'];
+export const STAFF_FILE_KINDS: readonly StaffFileKind[] = ['RECEIPT', 'MEDICAL_CERTIFICATE', 'SELFIE', 'BANK_PROOF'];
 
 export interface UploadedStaffFile {
   originalname?: string;

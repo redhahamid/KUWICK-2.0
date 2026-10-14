@@ -56,7 +56,7 @@ export function MyAttendancePage() {
         requestedClockOutAt: at(asking.workDate, clockOut),
         reason: reason.trim(),
       });
-      message.success('Sent to your manager.');
+      message.success('Sent to your manager. The day shows "waiting" until they decide.');
       setAsking(null);
       setClockIn('');
       setClockOut('');
@@ -93,17 +93,45 @@ export function MyAttendancePage() {
         </div>
         <div className="hr-pageHead__actions">
           {onDuty ? <span className="hr-clockState">On duty since {time(home?.clock.since)}</span> : null}
-          <ScanClock />
+          <ScanClock onDuty={onDuty} />
           <ClockButton onDuty={onDuty} />
         </div>
       </div>
 
-      {/* The PIN for the clinic screen, for a day the phone cannot scan. */}
+
       <Panel>
-        <PanelHead title="Kiosk PIN" sub="Typed at the clinic screen when your phone cannot scan the code. HR sees every PIN clock-in." />
-        <div className="hr-pad">
-          <KioskPinForm />
-        </div>
+        <PanelHead title="My roster" sub="Your published shifts this month. If one is wrong, tell whoever manages the roster." />
+        {schedule && shiftsByDay.size === 0 ? (
+          <PortalEmpty title="No shifts published for this month">Shifts appear here as soon as the roster for the month is written.</PortalEmpty>
+        ) : (
+          <table className="hr-table">
+            <tbody>
+              {[...shiftsByDay.entries()]
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([date, shifts]) => {
+                  const leave = leaveOn(date);
+                  return (
+                    <tr key={date}>
+                      <td>
+                        <b>{clinicDayjs(`${date}T00:00:00`).format('ddd D MMM')}</b>
+                      </td>
+                      <td>
+                        {shifts.map((shift) => (
+                          <div key={shift.id}>
+                            {time(shift.startsAt)}–{time(shift.endsAt)}
+                            {clinicDayjs(shift.endsAt).format('YYYY-MM-DD') !== date ? ' (next morning)' : ''}
+                            {shift.shiftType !== 'WORKING' ? ` · ${shift.shiftType.toLowerCase()}` : ''}
+                            {shift.note ? ` · ${shift.note}` : ''}
+                          </div>
+                        ))}
+                      </td>
+                      <td>{leave ? <StatusChip tone="attn">{leave.leaveType.toLowerCase()} leave</StatusChip> : null}</td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        )}
       </Panel>
       <div className="hr-mt" />
 
@@ -136,7 +164,6 @@ export function MyAttendancePage() {
                   <th>Punches</th>
                   <th className="hr-num">Hours</th>
                   <th>Status</th>
-                  <th />
                 </tr>
               </thead>
               <tbody>
@@ -155,6 +182,13 @@ export function MyAttendancePage() {
                           {day.correctionRequest.decisionNote ? `: ${day.correctionRequest.decisionNote}` : ''}
                         </div>
                       ) : null}
+                      {!day.correctionRequest || day.correctionRequest.status !== 'PENDING' ? (
+                        <button type="button" className="hr-btn hr-btn--sm hr-btn--ghost" onClick={() => setAsking(day)}>
+                          Ask for a fix
+                        </button>
+                      ) : (
+                        <div className="hr-tdSub">Fix asked for · waiting for your manager</div>
+                      )}
                     </td>
                     <td>{day.scheduledStart ? `${time(day.scheduledStart)}–${time(day.scheduledEnd)}` : <span className="hr-faint">No shift</span>}</td>
                     <td>
@@ -193,15 +227,6 @@ export function MyAttendancePage() {
                         {day.source === 'MANUAL' ? <StatusChip tone="muted">Entered by HR</StatusChip> : null}
                       </span>
                     </td>
-                    <td className="hr-num">
-                      {!day.correctionRequest || day.correctionRequest.status !== 'PENDING' ? (
-                        <button type="button" className="hr-btn hr-btn--sm" onClick={() => setAsking(day)}>
-                          Ask for a fix
-                        </button>
-                      ) : (
-                        <StatusChip tone="attn">Waiting</StatusChip>
-                      )}
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -210,39 +235,13 @@ export function MyAttendancePage() {
         )}
       </Panel>
 
-      <Panel className="hr-mt">
-        <PanelHead title="Roster" sub="Published by whoever manages the roster. If something here is wrong, tell them." />
-        {schedule && shiftsByDay.size === 0 ? (
-          <PortalEmpty title="No shifts published for this month">Shifts appear here as soon as the roster for the month is written.</PortalEmpty>
-        ) : (
-          <table className="hr-table">
-            <tbody>
-              {[...shiftsByDay.entries()]
-                .sort(([a], [b]) => a.localeCompare(b))
-                .map(([date, shifts]) => {
-                  const leave = leaveOn(date);
-                  return (
-                    <tr key={date}>
-                      <td>
-                        <b>{clinicDayjs(`${date}T00:00:00`).format('ddd D MMM')}</b>
-                      </td>
-                      <td>
-                        {shifts.map((shift) => (
-                          <div key={shift.id}>
-                            {time(shift.startsAt)}–{time(shift.endsAt)}
-                            {clinicDayjs(shift.endsAt).format('YYYY-MM-DD') !== date ? ' (next morning)' : ''}
-                            {shift.shiftType !== 'WORKING' ? ` · ${shift.shiftType.toLowerCase()}` : ''}
-                            {shift.note ? ` · ${shift.note}` : ''}
-                          </div>
-                        ))}
-                      </td>
-                      <td>{leave ? <StatusChip tone="attn">{leave.leaveType.toLowerCase()} leave</StatusChip> : null}</td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
-        )}
+      {/* The PIN for the clinic screen, for a day the phone cannot scan. */}
+      <div className="hr-mt" />
+      <Panel>
+        <PanelHead title="Kiosk PIN" sub="Typed at the clinic screen when your phone cannot scan the code. HR sees every PIN clock-in." />
+        <div className="hr-pad">
+          <KioskPinForm />
+        </div>
       </Panel>
 
       <Drawer

@@ -6,14 +6,7 @@ import type { Request, Response } from 'express';
 import { renderPayslipPdf } from '../workforce/payroll-payslip-pdf';
 import { MeService } from './me.service';
 import { clientIp } from '../workforce/attendance-qr';
-import {
-  AttachReceiptDto,
-  ClockSelfDto,
-  SetAttendancePinDto,
-  RequestAttendanceCorrectionDto,
-  RequestLeaveDto,
-  SubmitClaimDto,
-} from './dto/self-service.dto';
+import { AttachReceiptDto, ClockSelfDto, SetAttendancePinDto, RequestAttendanceCorrectionDto, RequestLeaveDto, SubmitClaimDto, RequestBankChangeDto, UpdateMyContactDto } from './dto/self-service.dto';
 
 /**
  * MY KUWICK — the staff-facing half of the workforce product.
@@ -131,6 +124,12 @@ export class MeController {
     return this.me.requestLeave(dto);
   }
 
+  /** Withdraw my own leave request while nobody has decided it. */
+  @Post('leave/:id/cancel')
+  cancelLeave(@Param('id') id: string) {
+    return this.me.cancelLeave(id);
+  }
+
   // --- Claims ---------------------------------------------------------------
 
   @Get('claims')
@@ -141,6 +140,32 @@ export class MeController {
   @Post('claims')
   submitClaim(@Body() dto: SubmitClaimDto) {
     return this.me.submitClaim(dto);
+  }
+
+  /** Withdraw my own claim while nobody has decided it. */
+  @Patch('contact')
+  updateContact(@Body() dto: UpdateMyContactDto) {
+    return this.me.updateContact(dto);
+  }
+
+  @Get('bank-change')
+  bankChange() {
+    return this.me.bankChange();
+  }
+
+  @Post('bank-change')
+  requestBankChange(@Body() dto: RequestBankChangeDto) {
+    return this.me.requestBankChange(dto);
+  }
+
+  @Post('bank-change/:id/cancel')
+  cancelBankChange(@Param('id') id: string) {
+    return this.me.cancelBankChange(id);
+  }
+
+  @Post('claims/:id/cancel')
+  cancelClaim(@Param('id') id: string) {
+    return this.me.cancelClaim(id);
   }
 
   @Post('claims/:id/receipts')

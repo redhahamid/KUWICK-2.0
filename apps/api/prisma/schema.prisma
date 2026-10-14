@@ -359,6 +359,7 @@ model Tenant {
   attendancePunches          AttendancePunch[]
   attendancePolicies         AttendancePolicy[]
   attendanceCorrections      AttendanceCorrectionRequest[]
+  bankChangeRequests         BankChangeRequest[]
   leavePolicies              LeavePolicy[]
   leavePolicyEntitlements    LeavePolicyEntitlement[]
   leaveBalances              LeaveBalance[]
@@ -1144,6 +1145,8 @@ model Staff {
   attendancePoliciesAuthored          AttendancePolicy[]            @relation("AttendancePolicyAuthor")
   attendanceCorrectionsAsked          AttendanceCorrectionRequest[] @relation("AttendanceCorrectionRequester")
   attendanceCorrectionsDecided        AttendanceCorrectionRequest[] @relation("AttendanceCorrectionDecider")
+  bankChangesAsked                    BankChangeRequest[]           @relation("BankChangeRequester")
+  bankChangesDecided                  BankChangeRequest[]           @relation("BankChangeDecider")
   attendanceCorrections               AttendanceRecord[]            @relation("AttendanceCorrectedBy")
   overtimeApprovals                   AttendanceRecord[]            @relation("AttendanceOvertimeApprover")
   attendancePunches                   AttendancePunch[]             @relation("AttendancePunchStaff")
@@ -6887,6 +6890,39 @@ enum StaffFileKind {
   RECEIPT
   MEDICAL_CERTIFICATE
   SELFIE
+  BANK_PROOF
+}
+
+/// A new bank account an employee asks for in My Kuwick (testing, 15 October
+/// 2026). Pay goes only to an account HR has checked, so the employee never
+/// changes it directly: HR approves the request and the account is copied
+/// onto the employee record then.
+model BankChangeRequest {
+  id              String @id @default(uuid())
+  tenantId        String @map("tenant_id")
+  staffId         String @map("staff_id")
+  bankName        String @map("bank_name")
+  bankAccountNo   String @map("bank_account_no")
+  bankAccountName String @map("bank_account_name")
+  /// A photo of a bank statement header or card, kind BANK_PROOF.
+  proofFileId     String? @map("proof_file_id")
+  /// PENDING, APPROVED, REJECTED or CANCELLED.
+  status          String @default("PENDING")
+
+  decidedByStaffId String?   @map("decided_by_staff_id")
+  decidedAt        DateTime? @map("decided_at")
+  decisionNote     String?   @map("decision_note")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  staff     Staff  @relation("BankChangeRequester", fields: [staffId], references: [id], onDelete: Cascade)
+  decidedBy Staff? @relation("BankChangeDecider", fields: [decidedByStaffId], references: [id])
+
+  @@index([tenantId, status])
+  @@index([tenantId, staffId])
+  @@map("bank_change_requests")
 }
 
 /// One person, one day, at one branch.

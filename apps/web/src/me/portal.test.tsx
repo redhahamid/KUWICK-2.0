@@ -66,6 +66,8 @@ const consentMutate = vi.fn().mockResolvedValue({ selfieConsentAt: '2026-09-11T0
 const requestLeave = vi.fn().mockResolvedValue({});
 const uploadMyFile = vi.fn().mockResolvedValue({ id: 'f1', kind: 'MEDICAL_CERTIFICATE', fileName: 'mc.jpg', contentType: 'image/jpeg', byteSize: 3, path: '/me/files/f1' });
 
+const cancelLeave = vi.fn();
+
 vi.mock('./hooks/useMe', () => ({
   useMyHome: () => ({ data: home, isLoading: false }),
   useMyProfile: () => ({ data: profile.current }),
@@ -91,6 +93,8 @@ vi.mock('./hooks/useMe', () => ({
   useMyLeaveBalances: () => ({ data: balances }),
   useMyLeavePreview: (params: unknown) => ({ data: params ? preview : undefined }),
   useRequestLeave: () => ({ mutateAsync: requestLeave, isPending: false }),
+  useCancelLeave: () => ({ mutate: cancelLeave, isPending: false }),
+  useCancelClaim: () => ({ mutate: vi.fn(), isPending: false }),
   useMyClaimPolicy: () => ({ data: { mileageRatePerKm: '0.60', receiptRequired: true, updatedAt: '' } }),
   uploadMyFile: (...args: unknown[]) => uploadMyFile(...args),
   myFilePath: (id: string) => `/me/files/${id}`,
@@ -209,6 +213,14 @@ describe('Leave', () => {
     expect(screen.queryByText(/-1 of 0/)).not.toBeInTheDocument();
   });
 
+  it('shows the balances before the form and cancels a pending request after a second tap', () => {
+    mount(<MyLeavePage />);
+    expect(screen.getByTestId('leave-balance-strip').textContent).toContain('10');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel request' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, cancel it' }));
+    expect(cancelLeave.mock.calls[0][0]).toBe('l1');
+  });
+
   it('sends the request with the dates typed and the half-day flag', async () => {
     mount(<MyLeavePage />);
     fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-09-21' } });
@@ -231,10 +243,10 @@ describe('Leave', () => {
   it('holds a medical request until the MC is attached, then sends the file first', async () => {
     mount(<MyLeavePage />);
     fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'MEDICAL' } });
-    expect(screen.getByText('Drop MC or photo here — required')).toBeInTheDocument();
+    expect(screen.getByText('Take a photo or choose a file — needed')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Submit request/ })).toBeDisabled();
     const file = new File(['mc'], 'mc.jpg', { type: 'image/jpeg' });
-    fireEvent.change(screen.getByLabelText('Attachment (needed for medical leave)'), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText('Document (MC or letter)'), { target: { files: [file] } });
     expect(screen.getByRole('button', { name: /Submit request/ })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: /Submit request/ }));
     await waitFor(() => expect(requestLeave).toHaveBeenCalledTimes(1));

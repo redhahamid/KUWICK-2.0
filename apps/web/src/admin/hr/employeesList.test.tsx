@@ -28,6 +28,8 @@ const person = (over: Record<string, unknown>) => ({
 });
 vi.mock('../hooks/useAdmin', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../hooks/useAdmin')>()),
+  useBankChanges: () => ({ data: [] }),
+  useDecideBankChange: () => ({ mutate: vi.fn(), isPending: false }),
   useEmployees: () => ({
     data: [
       person({ staffId: 's-1', fullName: 'Demo Nurse' }),

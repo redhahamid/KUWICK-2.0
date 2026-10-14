@@ -800,7 +800,7 @@ async function reset() {
     // world comes apart in, and a child missing from it reads as an
     // oversight rather than a cascade somebody verified.
     'attendance_punches',
-    'attendance_correction_requests', 'attendance_records', 'attendance_policies', 'employee_profiles',
+    'bank_change_requests', 'attendance_correction_requests', 'attendance_records', 'attendance_policies', 'employee_profiles',
     // The clinic's job titles, pointed at by `employee_profiles.job_title_id` (SET NULL), so after the profiles.
     'job_titles',
     // AFTER the profiles that reference them, BEFORE the staff that authored

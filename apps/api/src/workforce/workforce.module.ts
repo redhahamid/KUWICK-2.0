@@ -35,6 +35,7 @@ import { PayrollFilingService } from './payroll-filing.service';
 import { PayrollTaxService } from './payroll-tax.service';
 import { PayrollReportService } from './payroll-report.service';
 import { EaFormService } from './ea-form.service';
+import { BankChangeService } from './bank-change.service';
 import { PayrollFinanceService } from './payroll-finance.service';
 
 /**
@@ -87,6 +88,7 @@ import { PayrollFinanceService } from './payroll-finance.service';
     PayrollTaxService,
     PayrollReportService,
     EaFormService,
+    BankChangeService,
     PayrollFinanceService,
   ],
   exports: [
