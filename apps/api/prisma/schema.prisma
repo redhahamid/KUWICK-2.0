@@ -1006,6 +1006,11 @@ model Staff {
   /// role. The owner can be a doctor." NULL until somebody says, and then the
   /// account role decides, as it always did.
   staffGroup                      ShiftGroup?      @map("staff_group")
+  /// CLINICAL ACCESS (UAT, 15 October 2026): consult, notes, MC. Null follows
+  /// the employee record: a doctor has it, staff do not. The owner can turn it
+  /// off for a doctor (false) or on for anyone (true). Signing a note still
+  /// needs a verified registration number.
+  clinicalAccess Boolean? @map("clinical_access")
   /// The person's own kiosk PIN, hashed (UAT, 14 October 2026). Set in My Kuwick.
   attendancePinHash               String?          @map("attendance_pin_hash")
   medicalRegistrationNo           String?          @map("medical_registration_no")

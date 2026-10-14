@@ -777,6 +777,14 @@ export class WorkforceController {
     return this.employees.setDoctorRates(staffId, dto);
   }
 
+  /** Clinical access, the owner's switch (UAT, 15 October 2026). Null: follows doctor or staff. */
+  @Patch('employees/:staffId/clinical-access')
+  setClinicalAccess(@Param('staffId') staffId: string, @Body() body: { clinicalAccess?: boolean | null }) {
+    const value = body?.clinicalAccess ?? null;
+    if (value !== null && typeof value !== 'boolean') throw new BadRequestException('clinicalAccess is true, false or null.');
+    return this.employees.setClinicalAccess(staffId, value);
+  }
+
   /** Doctor or staff, on the employee record (UAT, 14 October 2026). Null: from the account role. */
   @Patch('employees/:staffId/group')
   setStaffGroup(@Param('staffId') staffId: string, @Body() body: { staffGroup?: string | null }) {

@@ -6,6 +6,32 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 60 (Malam 1) — 15 Oktober 2026 — Akses klinikal doktor, sebab pembetulan gaji
+
+**Migrasi:** `20261016090000_clinical_access` (satu lajur `staff.clinical_access`,
+kosong = ikut doktor atau staf), dijalankan di staging dengan *Migrate only*
+sebelum master — run #MIGRATE_RUN.
+
+- `[D]` Pekerja yang ditanda **Doctor** dalam HR kini mendapat akses klinikal
+  (konsultasi, nota, MC) secara lalai, walaupun peranan akaunnya lain.
+- `[D]` Pemilik (kebenaran *users.manage*) boleh menukar di Employees → Edit →
+  Employment → **Clinical access**: *Doctors yes, staff no* / *Clinical access* /
+  *No clinical access*. Ditutup = peranan Doctor dibuang daripada akaun itu.
+  Setiap perubahan direkod dalam audit.
+- `[D]` Label baris pekerja: "Clinical access" / "No clinical access" (bukan
+  "Not a clinician").
+- `[D]` Menandatangani nota masih memerlukan kelayakan MMC yang lengkap,
+  seperti sebelum ini; akses klinikal tidak memberi hak tandatangan.
+- `[D]` Baris gaji yang dibetulkan atau dipadam kini menunjukkan sebabnya di
+  lajur Reason, cth. "Increment. Corrected: keying error" atau
+  "… The row from 2026-11-01 was deleted: …".
+
+**Cara uji:** Employees → doktor → label *Clinical access*. Edit → Employment →
+*No clinical access* → simpan → log masuk sebagai doktor itu: tiada menu
+klinikal. Pay → betulkan baris gaji dengan sebab → lajur Reason.
+
+---
+
 ## Batch 58 (Seksyen C, D, E, F) — 15 Oktober 2026 — Lebih masa mingguan, cuti, tuntutan, faedah perubatan
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi:**

@@ -33,6 +33,7 @@ describe('correcting and deleting salary rows (e2e)', () => {
       amount: string;
       effectiveFrom: string;
       effectiveTo: string | null;
+      reason: string | null;
     }[];
   const rowFrom = async (day: string) => (await history()).find((row) => row.effectiveFrom === day)!;
   const correct = (id: string, body: Record<string, unknown>, auth = bearer) =>
@@ -153,6 +154,8 @@ describe('correcting and deleting salary rows (e2e)', () => {
       ['2026-06-01', '2000.00', null],
       ['2026-01-01', '1900.00', '2026-05-31'],
     ]);
+    // The row that runs on says why (UAT, 15 October 2026).
+    expect(rows[0].reason).toBe('Increment. The row from 2026-11-01 was deleted: Added by mistake while fixing June');
     const [logged] = await audit('employeeSalary.deleted');
     expect(logged.before).toMatchObject({ amount: '2100.00', effectiveFrom: '2026-11-01', effectiveTo: null });
     expect(logged.after).toMatchObject({ runsOn: { amount: '2000.00', effectiveFrom: '2026-06-01' }, effectiveTo: null, _actor: { staffId: expect.any(String) } });
@@ -168,6 +171,8 @@ describe('correcting and deleting salary rows (e2e)', () => {
     await request(server()).patch(`/workforce/payroll/runs/${runs['2026-06']}/reopen`).set('Authorization', bearer).send({ reason: 'Correct no. 42 salary' }).expect(200);
     await correct(june.id, { amount: '2100.00', reason: 'Keying error: RM2,100 agreed' }).expect(200);
     expect((await rowFrom('2026-06-01')).amount).toBe('2100.00');
+    // The Reason column says it was corrected, and why (UAT, 15 October 2026).
+    expect((await rowFrom('2026-06-01')).reason).toMatch(/Corrected: Keying error: RM2,100 agreed$/);
     const [logged] = await audit('employeeSalary.corrected');
     expect(logged.before).toMatchObject({ amount: '2000.00', basis: 'MONTHLY' });
     expect(logged.after).toMatchObject({ amount: '2100.00', basis: 'MONTHLY' });

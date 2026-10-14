@@ -19,6 +19,7 @@ import type { EmployeeRecord } from '../types';
  */
 const assignMutate = vi.fn().mockResolvedValue({});
 const groupMutate = vi.fn().mockResolvedValue({});
+const clinicalMutate = vi.fn().mockResolvedValue({});
 const upsertMutate = vi.fn().mockResolvedValue({});
 const standingMutate = vi.fn().mockResolvedValue({});
 
@@ -56,11 +57,14 @@ vi.mock('../hooks/useAdmin', () => ({
   useUpsertEmployee: () => ({ mutateAsync: upsertMutate, isPending: false }),
   useAssignEmployer: () => ({ mutateAsync: assignMutate, isPending: false }),
   useSetStaffGroup: () => ({ mutateAsync: groupMutate, isPending: false }),
+  useSetClinicalAccess: () => ({ mutateAsync: clinicalMutate, isPending: false }),
   useEmployees: () => ({ data: [] }),
   useLegalEmployers: () => ({ data: EMPLOYERS }),
   useStatutoryClassifications: () => ({ data: versions, isLoading: false }),
   useRecordStatutoryClassification: () => ({ mutateAsync: standingMutate, isPending: false }),
 }));
+
+vi.mock('../../core/hooks/useCan', () => ({ useCan: () => true }));
 
 const { EmployeeEditDrawer } = await import('./EmployeeEditDrawer');
 
@@ -98,6 +102,7 @@ function record(over: Partial<EmployeeRecord['employment']> = {}): EmployeeRecor
 function open(over: Partial<EmployeeRecord['employment']> = {}) {
   assignMutate.mockClear();
   groupMutate.mockClear();
+  clinicalMutate.mockClear();
   upsertMutate.mockClear();
   standingMutate.mockClear();
   assignMutate.mockResolvedValue({});
@@ -129,6 +134,15 @@ describe('doctor or staff, on the employee record (UAT, 14 October 2026)', () =>
     fireEvent.click(saveButton());
     await waitFor(() => expect(upsertMutate).toHaveBeenCalled());
     expect(groupMutate).not.toHaveBeenCalled();
+    expect(clinicalMutate).not.toHaveBeenCalled();
+  });
+
+  it('lets the owner turn clinical access off for a doctor', async () => {
+    open({ staffGroup: 'DOCTOR', group: 'DOCTOR', groupFromRole: 'STAFF', clinicalAccessSetting: null });
+    fireEvent.mouseDown(screen.getByLabelText('Clinical access'));
+    fireEvent.click(await screen.findByTitle('No clinical access'));
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(clinicalMutate).toHaveBeenCalledWith({ staffId: 'staff-1', clinicalAccess: false }));
   });
 });
 

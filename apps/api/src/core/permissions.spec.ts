@@ -244,6 +244,20 @@ describe('migrating what already exists', () => {
     expect(can(admin(), 'note.write')).toBe(false);
   });
 
+  it('a doctor on the HR record has clinical access unless the owner turns it off (UAT, 15 October 2026)', () => {
+    // A front-desk account recorded as a doctor in HR, with no registration yet.
+    const hrDoctor = admin({ role: 'FRONT_DESK_CLINICAL_STAFF' as Role, staffGroup: 'DOCTOR' });
+    expect(rolesOf(hrDoctor, undefined)).toContain('DOCTOR');
+    expect(can(hrDoctor, 'note.write')).toBe(true);
+    // Signing still needs a verified registration.
+    expect(can(hrDoctor, 'note.sign')).toBe(false);
+    const switchedOff = staffOf({ staffGroup: 'DOCTOR', clinicalAccess: false });
+    expect(rolesOf(switchedOff, undefined)).not.toContain('DOCTOR');
+    expect(can(switchedOff, 'note.write')).toBe(false);
+    // Staff on the record gain nothing.
+    expect(rolesOf(admin({ staffGroup: 'STAFF' }), undefined)).toEqual(['OWNER', 'ADMINISTRATOR']);
+  });
+
   it('a CREDENTIALED legacy OWNER_ADMIN keeps the clinical ability they had', () => {
     // The owner-doctor has been authoring notes all along. The migration must
     // not take that away on the day roles ship — and an owner who is NOT a

@@ -948,6 +948,15 @@ export function useSetStaffGroup() {
   );
 }
 
+/** Clinical access on or off; null follows doctor or staff (testing, 15 October 2026). */
+export function useSetClinicalAccess() {
+  return useAdminMutation(
+    ({ staffId, clinicalAccess }: { staffId: string; clinicalAccess: boolean | null }) =>
+      apiClient.patch(`/workforce/employees/${staffId}/clinical-access`, { clinicalAccess }),
+    ["admin-hr"],
+  );
+}
+
 /** A doctor's own locum and night rates (Section C). */
 export function useSetDoctorRates() {
   return useAdminMutation(

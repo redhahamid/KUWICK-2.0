@@ -40,7 +40,7 @@ import type { EmployeeRow, PayrollReadinessItem } from '../types';
  * "Record" is the payroll gate's own checklist for this month, so a person
  * this page calls Complete is a person the run can pay.
  *
- * THE CLINICAL CREDENTIAL STAYS ON THE ROW. "Doctor · may sign" beside a
+ * THE CLINICAL CREDENTIAL STAYS ON THE ROW. "Clinical access" beside a
  * position is a fact about the job, not about employment, and the browser
  * guarantee from the employee-master work holds it here: an account, an
  * employment and a clinical credential are three separate facts.
@@ -350,9 +350,7 @@ export function EmployeesPage() {
                         <div className="hr-who__name">{value}</div>
                         <div className="hr-who__role">
                           {row.position ?? (row.hasProfile ? 'No position recorded' : 'No employment record')}
-                          {row.professionalType === 'MEDICAL_DOCTOR'
-                            ? ` · Doctor, ${row.canSignClinicalNotes ? 'may sign' : 'not cleared to sign'}`
-                            : ' · Not a clinician'}
+                          {row.clinicalAccess ?? row.canSignClinicalNotes ? ' · Clinical access' : ' · No clinical access'}
                         </div>
                       </div>
                     </div>

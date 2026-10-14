@@ -4,6 +4,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import {
   useAssignEmployer,
   useSetStaffGroup,
+  useSetClinicalAccess,
   useSetDoctorRates,
   useEmployees,
   useLegalEmployers,
@@ -19,6 +20,7 @@ import { NO_FIXED_DAY_HELP, REST_DAY_CHOICES, restDayBody, restDayChoiceOf, type
 import { JobTitlePicker } from './JobTitlePicker';
 import { MALAYSIAN_STATES } from './malaysianStates';
 import type { EmployeeRecord } from '../types';
+import { useCan } from '../../core/hooks/useCan';
 
 /**
  * EDITING THE RECORD — one drawer, opened on the section that was asked for.
@@ -75,6 +77,8 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
   const assignEmployer = useAssignEmployer();
   const setGroup = useSetStaffGroup();
   const setDoctorRates = useSetDoctorRates();
+  const setClinical = useSetClinicalAccess();
+  const canManageAccounts = useCan('users.manage');
   const people = useEmployees({});
   const employers = useLegalEmployers();
   const standing = useStatutoryClassifications(staffId);
@@ -108,6 +112,8 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
   const [employmentType, setEmploymentType] = useState<string | undefined>();
   // Doctor or staff: 'ROLE' leaves it to the account role.
   const [staffGroup, setStaffGroup] = useState<'DOCTOR' | 'STAFF' | 'ROLE'>('ROLE');
+  // Clinical access: 'AUTO' follows doctor or staff; the owner may turn it on or off.
+  const [clinical, setClinicalChoice] = useState<'AUTO' | 'ON' | 'OFF'>('AUTO');
   // A doctor's own rates (Section C). Blank uses the rule set's and the night template's.
   const [locumRate, setLocumRate] = useState('');
   const [nightMode, setNightMode] = useState<'PER_SHIFT' | 'PER_HOUR'>('PER_SHIFT');
@@ -161,6 +167,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
     setDepartment(em.department ?? '');
     setEmploymentType(em.employmentType);
     setStaffGroup(em.staffGroup ?? 'ROLE');
+    setClinicalChoice(em.clinicalAccessSetting === true ? 'ON' : em.clinicalAccessSetting === false ? 'OFF' : 'AUTO');
     setLocumRate(em.doctorRates?.locumRate ?? '');
     setNightMode(em.doctorRates?.nightPayMode ?? 'PER_SHIFT');
     setNightRate(em.doctorRates?.nightRate ?? '');
@@ -303,6 +310,10 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
       await upsert.mutateAsync({ staffId, ...body });
       if (section === 'employment' && (staffGroup === 'ROLE' ? null : staffGroup) !== (data.employment.staffGroup ?? null)) {
         await setGroup.mutateAsync({ staffId, staffGroup: staffGroup === 'ROLE' ? null : staffGroup });
+      }
+      const clinicalAccess = clinical === 'AUTO' ? null : clinical === 'ON';
+      if (section === 'employment' && canManageAccounts && clinicalAccess !== (data.employment.clinicalAccessSetting ?? null)) {
+        await setClinical.mutateAsync({ staffId, clinicalAccess });
       }
       const rates = { locumRate: locumRate.trim() || null, nightPayMode: nightRate.trim() ? nightMode : null, nightRate: nightRate.trim() || null };
       const had = data.employment.doctorRates;
@@ -528,6 +539,23 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
                 />
                 <div className="hr-form__help">Decides the roster group, the shifts offered and doctor or staff pay rules.</div>
               </div>
+              {canManageAccounts ? (
+                <div>
+                  <label htmlFor="ed-clinical">Clinical access</label>
+                  <Select
+                    id="ed-clinical"
+                    value={clinical}
+                    onChange={setClinicalChoice}
+                    style={{ width: '100%' }}
+                    options={[
+                      { value: 'AUTO', label: 'Doctors yes, staff no' },
+                      { value: 'ON', label: 'Clinical access' },
+                      { value: 'OFF', label: 'No clinical access' },
+                    ]}
+                  />
+                  <div className="hr-form__help">Consultations, clinical notes and MCs. Doctors have it unless you turn it off.</div>
+                </div>
+              ) : null}
               {(staffGroup === 'ROLE' ? data.employment.groupFromRole : staffGroup) === 'DOCTOR' ? (
                 <div>
                   <label htmlFor="ed-locum-rate">Locum rate (RM an hour)</label>

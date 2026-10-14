@@ -209,7 +209,11 @@ export class EmployeeSalaryService {
         throw new BadRequestException('That is the figure already on record. Nothing to correct.');
       }
       await refuseOverApproved(tx, staffId, row.effectiveFrom, row.effectiveTo);
-      const saved = await tx.employeeSalary.update({ where: { id }, data: { amount: dto.amount, basis } });
+      // The correction's reason goes on the row, so the Reason column says it (UAT, 15 October 2026).
+      const saved = await tx.employeeSalary.update({
+        where: { id },
+        data: { amount: dto.amount, basis, reason: withCorrection(row.reason, `Corrected: ${reason}`) },
+      });
       await recordAudit(tx, actor, {
         action: 'employeeSalary.corrected',
         entityType: 'EmployeeSalary',
@@ -237,7 +241,16 @@ export class EmployeeSalaryService {
         orderBy: { effectiveFrom: 'desc' },
       });
       await tx.employeeSalary.delete({ where: { id } });
-      if (previous) await tx.employeeSalary.update({ where: { id: previous.id }, data: { effectiveTo: row.effectiveTo } });
+      if (previous) {
+        // The row that runs on says why it now does (UAT, 15 October 2026).
+        await tx.employeeSalary.update({
+          where: { id: previous.id },
+          data: {
+            effectiveTo: row.effectiveTo,
+            reason: withCorrection(previous.reason, `The row from ${isoDay(row.effectiveFrom)} was deleted: ${reason}`),
+          },
+        });
+      }
       await recordAudit(tx, actor, {
         action: 'employeeSalary.deleted',
         entityType: 'EmployeeSalary',
@@ -352,4 +365,9 @@ export class EmployeeSalaryService {
       return saved;
     });
   }
+}
+
+/** The row's own reason, then what changed it. */
+function withCorrection(original: string | null, correction: string): string {
+  return original ? `${original}. ${correction}` : correction;
 }

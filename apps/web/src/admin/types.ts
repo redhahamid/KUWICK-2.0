@@ -752,6 +752,10 @@ export interface EmployeeRow {
   professionalType: string;
   professionalActive: boolean;
   canSignClinicalNotes: boolean;
+  /** May consult, write notes and issue MCs: a doctor on the HR record, unless the owner switched it off. */
+  clinicalAccess?: boolean;
+  /** The owner's switch: null follows doctor or staff. */
+  clinicalAccessSetting?: boolean | null;
   hasProfile: boolean;
   employeeNo: string | null;
   position: string | null;
@@ -1523,6 +1527,8 @@ export interface EmployeeRecord {
     /** In force: the recorded value, or what the account role says. */
     group?: 'DOCTOR' | 'STAFF';
     groupFromRole?: 'DOCTOR' | 'STAFF';
+    clinicalAccess?: boolean;
+    clinicalAccessSetting?: boolean | null;
     employeeNo: string | null;
     position: string | null;
     /** The clinic's own job title the position came from, when it came from the list. */

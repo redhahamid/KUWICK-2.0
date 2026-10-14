@@ -17,6 +17,7 @@ import { toClassificationRow } from './statutory-classification.service';
 import { buildPayrollReadiness, monthsWithoutPay } from './payroll-readiness';
 import { LINDUNG_EFFECTIVE_FROM } from '../statutory/lindung-24-jam';
 import { credentialedClinicianFields } from '../core/credentialing';
+import { hasDoctorIdentity } from '../core/permissions';
 
 /**
  * THE EMPLOYEE PROFILE — the employment half of a person.
@@ -86,6 +87,9 @@ export class EmployeeService {
         professionalType: row.professionalType,
         professionalActive: row.professionalActive,
         canSignClinicalNotes: row.canSignClinicalNotes,
+        /** Consult, notes and MC (UAT, 15 October 2026): a doctor on the record has it unless the owner turned it off. */
+        clinicalAccess: hasDoctorIdentity(row),
+        clinicalAccessSetting: row.clinicalAccess,
         hasProfile: row.employeeProfile !== null,
         employeeNo: row.employeeProfile?.employeeNo ?? null,
         position: row.employeeProfile?.position ?? null,
@@ -158,7 +162,9 @@ export class EmployeeService {
     const profile = await this.prisma.employeeProfile.findUnique({
       where: { staffId },
       include: {
-        staff: { select: { id: true, fullName: true, role: true, active: true, clinicId: true, professionalType: true, staffGroup: true } },
+        staff: {
+          select: { id: true, fullName: true, role: true, active: true, clinicId: true, professionalType: true, professionalActive: true, staffGroup: true, clinicalAccess: true },
+        },
         manager: { select: { id: true, fullName: true } },
         leavePolicy: { select: { id: true, name: true, entitlements: { select: { leaveType: true, daysPerYear: true } } } },
         // WHO EMPLOYS THEM, which is not where they work. Stage 1 made the
@@ -323,6 +329,9 @@ export class EmployeeService {
       employment: {
         // Doctor or staff (UAT, 14 October 2026): as recorded, and what the account role alone would say.
         staffGroup: profile.staff.staffGroup,
+        /** Consult, notes and MC; the owner's switch (null follows doctor or staff). */
+        clinicalAccess: hasDoctorIdentity(profile.staff as Parameters<typeof hasDoctorIdentity>[0]),
+        clinicalAccessSetting: profile.staff.clinicalAccess,
         group: workforceCategoryOf(profile.staff) === 'DOCTOR' ? 'DOCTOR' : 'STAFF',
         groupFromRole: workforceCategoryOf({ role: profile.staff.role, professionalType: profile.staff.professionalType }) === 'DOCTOR' ? 'DOCTOR' : 'STAFF',
         /** A doctor's own locum and night rates (Section C). Null: the rule set's and the night template's. */
@@ -921,6 +930,27 @@ export class EmployeeService {
    * doctor." Decides the roster group, the shift templates offered and the
    * doctor or staff pay rules. Null goes back to the account role.
    */
+  /**
+   * CLINICAL ACCESS, THE OWNER'S SWITCH (UAT, 15 October 2026): null follows
+   * the employee record (doctors have it), false turns it off, true turns it on.
+   */
+  async setClinicalAccess(staffId: string, clinicalAccess: boolean | null) {
+    return withAdminTx(this.rawPrisma, 'users.manage', async (tx, actor) => {
+      const before = await tx.staff.findUnique({ where: { id: staffId }, select: { clinicalAccess: true } });
+      if (!before) throw new NotFoundException('Staff member not found');
+      const saved = await tx.staff.update({ where: { id: staffId }, data: { clinicalAccess } });
+      await recordAudit(tx, actor, {
+        action: 'staff.clinicalAccessChanged',
+        entityType: 'Staff',
+        entityId: staffId,
+        before: { clinicalAccess: before.clinicalAccess },
+        after: { clinicalAccess: saved.clinicalAccess },
+        source: 'hr.employee',
+      });
+      return { staffId, clinicalAccess: hasDoctorIdentity(saved), clinicalAccessSetting: saved.clinicalAccess };
+    });
+  }
+
   async setGroup(staffId: string, staffGroup: 'DOCTOR' | 'STAFF' | null) {
     return withAdminTx(this.rawPrisma, 'hr.employee.manage', async (tx, actor) => {
       const before = await tx.staff.findUnique({ where: { id: staffId }, select: { id: true, staffGroup: true } });

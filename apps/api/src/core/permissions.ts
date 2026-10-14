@@ -610,7 +610,20 @@ export const LEGACY_ROLE_PERMISSIONS: Partial<Record<Role, Permission[]>> = {
  * has today, which a migration must not do.
  */
 export function hasDoctorIdentity(staff: Staff): boolean {
-  return staff.active && staff.professionalType === 'MEDICAL_DOCTOR' && staff.professionalActive;
+  if (!staff.active || staff.clinicalAccess === false) return false;
+  // A doctor on the HR employee record is one (UAT, 15 October 2026).
+  return (staff.professionalType === 'MEDICAL_DOCTOR' && staff.professionalActive) || hasClinicalAccess(staff);
+}
+
+/**
+ * CLINICAL ACCESS FROM THE EMPLOYEE RECORD (UAT, 15 October 2026): somebody
+ * recorded as a doctor in HR may consult, write notes and issue MCs unless
+ * the owner turned it off. Signing a note still needs a verified
+ * registration number (`isCredentialedClinician`).
+ */
+export function hasClinicalAccess(staff: Pick<Staff, 'clinicalAccess' | 'staffGroup'>): boolean {
+  if (staff.clinicalAccess === false) return false;
+  return staff.clinicalAccess === true || staff.staffGroup === 'DOCTOR';
 }
 
 export function isCredentialedClinician(staff: Staff): boolean {
@@ -641,7 +654,15 @@ export function isCredentialedClinician(staff: Staff): boolean {
  * must not have the old one silently added back.
  */
 export function rolesOf(staff: Staff, assigned: SystemRole[] | undefined): SystemRole[] {
-  if (assigned && assigned.length > 0) return [...new Set(assigned)];
+  const roles = assigned && assigned.length > 0 ? [...new Set(assigned)] : legacyRolesOf(staff);
+  // The employee record's clinical access (UAT, 15 October 2026): the owner
+  // turning it off takes DOCTOR away; a doctor on the record has it.
+  if (staff.clinicalAccess === false) return roles.filter((role) => role !== 'DOCTOR');
+  if (staff.active && hasClinicalAccess(staff) && !roles.includes('DOCTOR')) roles.push('DOCTOR');
+  return roles;
+}
+
+function legacyRolesOf(staff: Staff): SystemRole[] {
 
   const fallback = [...(LEGACY_ROLE_FALLBACK[staff.role] ?? [])];
 
