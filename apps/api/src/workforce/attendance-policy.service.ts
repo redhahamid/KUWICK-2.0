@@ -102,6 +102,10 @@ export class AttendancePolicyService {
       }
 
       if (dto.weekStartDay !== undefined) data.weekStartDay = dto.weekStartDay;
+      if (dto.qrRotateSeconds !== undefined) data.qrRotateSeconds = dto.qrRotateSeconds;
+      if (dto.locationMode !== undefined) data.locationMode = dto.locationMode;
+      if (dto.clinicNetworks !== undefined) data.clinicNetworks = dto.clinicNetworks?.trim() || null;
+      if (dto.paidHoursRule !== undefined) data.paidHoursRule = dto.paidHoursRule;
       // Opening hours are one fact: all day, or an open and a close; or cleared.
       if (dto.open24Hours !== undefined || dto.openTime !== undefined || dto.closeTime !== undefined) {
         const allDay = dto.open24Hours ?? null;

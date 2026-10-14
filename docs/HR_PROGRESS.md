@@ -6,6 +6,37 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 56 (Seksyen B) — 15 Oktober 2026 — Kehadiran QR, PIN kiosk, lokasi, peraturan jam dibayar
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi:**
+`20261015120000_qr_attendance` (nilai `PIN` untuk sumber kehadiran; lajur
+`attendance_policies.qr_rotate_seconds`, `location_mode`, `clinic_networks`,
+`paid_hours_rule`; `staff.attendance_pin_hash`), dijalankan di staging dengan
+*Migrate only* sebelum master — run #MIGRATE_RUN.
+
+- `[D]` **Kiosk**: `/kiosk/attendance?clinicId=…` (perlu `hr.attendance.manage`)
+  memaparkan kod QR yang bertukar setiap 30 saat (tetapan cawangan). Kod
+  ditandatangani pelayan; kod lama ditolak selepas beberapa saat masa ihsan.
+- `[D]` **My Kuwick → My attendance → Scan to clock**: imbas kod di kiosk
+  dengan kamera telefon; cawangan diambil daripada kod.
+- `[D]` **PIN**: setiap orang tetapkan PIN 4–6 digit di My Kuwick. Di kiosk,
+  pilih nama dan masukkan PIN. Rekod bertanda *PIN* dan sentiasa ditunjukkan
+  kepada HR. 5 cubaan salah dalam 15 minit = dikunci sementara.
+- `[D]` **Lokasi** (tetapan cawangan): Off, Flag (lalai) atau Refuse. WiFi
+  klinik (alamat IP dalam *Clinic networks*) atau GPS dalam radius dikira
+  "di klinik".
+- `[D]` **Peraturan jam dibayar** (tetapan cawangan, dipakai di Seksyen C):
+  ikut roster selepas imbas masuk (lalai), imbasan dihadkan kepada roster, atau
+  imbasan sahaja.
+- `[D]` Imbasan kedua dalam 60 saat ditolak dengan mesej mesra.
+- `[D]` **Timesheet → Exceptions only**: tertinggal imbas, lewat, balik awal,
+  imbas tanpa syif, PIN di kiosk, jauh dari klinik.
+- `[D]` **Ujian**: unit `attendance-qr` (4); API `qr-attendance` (3).
+- `[A]` Alamat IP pekerja dibaca daripada `x-forwarded-for` hop pertama;
+  betul di belakang proksi staging, perlu disemak jika hos berubah.
+
+---
+
 ## Batch 55 (Roster A4) — 15 Oktober 2026 — "Doktor atau staf" pada rekod pekerja
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi:**

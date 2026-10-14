@@ -1,5 +1,5 @@
 import { AttendanceSource } from '@prisma/client';
-import { IsIn, IsISO8601, IsNumber, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { IsIn, IsISO8601, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
 
 export class ClockDto {
   @IsOptional() @IsUUID() staffId?: string;
@@ -12,4 +12,6 @@ export class ClockDto {
   @IsOptional() @IsUUID() proofFileId?: string;
   /** Where the punch came from. Clocking somebody else in is always MANUAL, whatever is sent. */
   @IsOptional() @IsIn(['PORTAL', 'QR', 'DEVICE', 'MANUAL']) source?: AttendanceSource;
+  /** The code scanned from the branch kiosk; it names the branch (UAT, 14 October 2026). */
+  @IsOptional() @IsString() @MaxLength(200) qr?: string;
 }

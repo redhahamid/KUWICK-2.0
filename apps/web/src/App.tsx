@@ -29,6 +29,7 @@ import { ClinicsPage } from './core/ClinicsPage';
 import { PatientsPage } from './core/PatientsPage';
 import { PublicHolidaysPage } from './admin/hr/PublicHolidaysPage';
 import { ShiftSettingsPage } from './admin/hr/ShiftSettingsPage';
+import { AttendanceKioskPage } from './admin/hr/AttendanceKioskPage';
 import { ServicesPage } from './clinical/ServicesPage';
 import { ConsultationTariffsPage } from './clinical/ConsultationTariffsPage';
 import { PanelClinicsPage } from './clinical/PanelClinicsPage';
@@ -167,6 +168,8 @@ export function App() {
         * never offered them.
         */}
       <Route element={<RequireAuth />}>
+        {/* The branch kiosk: full screen, no navigation (UAT, 14 October 2026). */}
+        <Route path="/kiosk/attendance" element={<AttendanceKioskPage />} />
         <Route element={<MyKuwickLayout />}>
           <Route path="/my" element={<MyHomePage />} />
           {/* The portal mockups carry no Schedule tab: the roster is on Attendance. */}

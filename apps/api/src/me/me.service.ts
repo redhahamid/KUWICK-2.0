@@ -422,15 +422,24 @@ export class MeService {
    * clinic-local day, the roster lookup, the policy and the overnight rule are
    * the same whether a punch comes from the phone or from the front desk.
    */
-  async clock(dto: ClockSelfDto) {
+  async clock(dto: ClockSelfDto, ip?: string | null) {
     const actor = await this.me();
-    return this.attendance.clock({
-      staffId: actor.id,
-      clinicId: dto.clinicId ?? actor.clinicId ?? undefined,
-      lat: dto.lat,
-      lng: dto.lng,
-      proofFileId: dto.proofFileId,
-    });
+    return this.attendance.clock(
+      {
+        staffId: actor.id,
+        clinicId: dto.clinicId ?? actor.clinicId ?? undefined,
+        lat: dto.lat,
+        lng: dto.lng,
+        proofFileId: dto.proofFileId,
+        qr: dto.qr,
+      },
+      { ip },
+    );
+  }
+
+  /** The person's own kiosk PIN (UAT, 14 October 2026). */
+  async setAttendancePin(pin: string) {
+    return this.attendance.setOwnPin(pin);
   }
 
   /**

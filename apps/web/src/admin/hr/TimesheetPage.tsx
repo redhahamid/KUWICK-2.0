@@ -242,6 +242,26 @@ export function TimesheetPage() {
     return [...byStaff.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [today.data, roster.data, leave.data, nameOf, day]);
 
+  // EXCEPTIONS ONLY (UAT, 14 October 2026): "HR sees exceptions only: late,
+  // left early, missed scan, scan without shift", and every PIN or
+  // away-from-clinic clock-in.
+  const [exceptionsOnly, setExceptionsOnly] = useState(false);
+  const exceptionsOf = (row: DayRow): string[] => {
+    const record = row.record;
+    const reasons: string[] = [];
+    if (row.leaveType) return reasons;
+    if (!record && row.shiftStart && new Date(row.shiftStart) < new Date()) reasons.push('Missed scan');
+    if (!record) return reasons;
+    if ((record.lateMinutes ?? 0) > 0) reasons.push('Late');
+    if ((record.earlyOutMinutes ?? 0) > 0) reasons.push('Left early');
+    if (!row.onDuty && record.clockInAt && !record.clockOutAt) reasons.push('Missed scan');
+    if (!row.shiftStart && record.clockInAt) reasons.push('Scan without shift');
+    if (record.source === 'PIN') reasons.push('PIN at kiosk');
+    if (record.outsideClinic) reasons.push('Away from clinic');
+    return reasons;
+  };
+  const shown = exceptionsOnly ? rows.filter((row) => exceptionsOf(row).length > 0) : rows;
+
   const onLeave = rows.filter((row) => row.leaveType !== null).length;
   const expected = rows.length - onLeave;
   const punched = rows.filter((row) => row.record?.clockInAt);
@@ -405,7 +425,7 @@ export function TimesheetPage() {
         {tab === 'timesheet' ? (
           <>
             <Table<DayRow>
-              rows={rows}
+              rows={shown}
               loading={today.isLoading}
               rowKey="staffId"
               searchFields={['name']}
@@ -430,6 +450,16 @@ export function TimesheetPage() {
                   </button>
                 </div>
               }
+              toolbar={
+                <button
+                  type="button"
+                  className={exceptionsOnly ? 'hr-btn hr-btn--sm hr-btn--primary' : 'hr-btn hr-btn--sm'}
+                  aria-pressed={exceptionsOnly}
+                  onClick={() => setExceptionsOnly((value) => !value)}
+                >
+                  Exceptions only
+                </button>
+              }
               toolbarRight={
                 <span className="hr-legend">
                   <span className="hr-tg">● On time</span>
@@ -447,6 +477,7 @@ export function TimesheetPage() {
                       <div>
                         <div className="hr-who__name">{value}</div>
                         {row.record?.source === 'MANUAL' ? <div className="hr-who__role">Entered by HR</div> : null}
+                        {exceptionsOf(row).length > 0 ? <div className="hr-who__role">{exceptionsOf(row).join(' · ')}</div> : null}
                       </div>
                     </div>
                   ),

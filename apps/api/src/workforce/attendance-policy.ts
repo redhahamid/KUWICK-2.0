@@ -31,6 +31,14 @@ export interface AttendancePolicy {
   weekStartDay: number;
   /** The branch's opening hours; null when nobody has said. */
   openingHours: OpeningHours | null;
+  /** QR attendance (UAT, 14 October 2026): how often the kiosk code changes. */
+  qrRotateSeconds: number;
+  /** What a clock-in outside the clinic's location does. */
+  locationMode: 'OFF' | 'FLAG' | 'REFUSE';
+  /** The clinic's internet addresses or prefixes; empty means not checked. */
+  clinicNetworks: string[];
+  /** Which hours are paid: roster confirmed by scans, scans capped, or scans. */
+  paidHoursRule: 'ROSTER_CONFIRMED' | 'SCANS_CAPPED' | 'SCANS';
 }
 
 /** Open all day, or from one wall-clock time to another (a close at or before the open is past midnight). */
@@ -66,6 +74,13 @@ export const DEFAULT_ATTENDANCE_POLICY: AttendancePolicy = {
   // Monday, as the brief's default. A setting, not a fact about Malaysia.
   weekStartDay: 1,
   openingHours: null,
+  // The brief's defaults: a code a screenshot is useless against within half
+  // a minute, an outside punch shown to HR rather than refused, and the roster
+  // as the hours paid.
+  qrRotateSeconds: 30,
+  locationMode: 'FLAG',
+  clinicNetworks: [],
+  paidHoursRule: 'ROSTER_CONFIRMED',
 };
 
 /** A stored row, with every field optional so a partial row still resolves. */
@@ -73,7 +88,13 @@ export const DEFAULT_ATTENDANCE_POLICY: AttendancePolicy = {
  * A stored row, as Prisma hands it back: the point arrives as Decimal, so it
  * is typed loosely here and read through Number() in one place.
  */
-export type AttendancePolicyRow = Partial<Omit<AttendancePolicy, 'geofenceLat' | 'geofenceLng' | 'weekStartDay' | 'openingHours'>> & {
+export type AttendancePolicyRow = Partial<
+  Omit<AttendancePolicy, 'geofenceLat' | 'geofenceLng' | 'weekStartDay' | 'openingHours' | 'qrRotateSeconds' | 'locationMode' | 'clinicNetworks' | 'paidHoursRule'>
+> & {
+  qrRotateSeconds?: number | null;
+  locationMode?: AttendancePolicy['locationMode'] | null;
+  clinicNetworks?: string | null;
+  paidHoursRule?: AttendancePolicy['paidHoursRule'] | null;
   clinicId?: string | null;
   weekStartDay?: number | null;
   open24Hours?: boolean | null;
@@ -96,12 +117,18 @@ export function resolveAttendancePolicy(
 ): AttendancePolicy {
   const forClinic = clinicId ? rows.find((row) => row.clinicId === clinicId) : undefined;
   const tenantDefault = rows.find((row) => !row.clinicId);
-  type Scalar = Exclude<keyof AttendancePolicy, 'geofenceLat' | 'geofenceLng' | 'weekStartDay' | 'openingHours'>;
+  type Scalar = Exclude<
+    keyof AttendancePolicy,
+    'geofenceLat' | 'geofenceLng' | 'weekStartDay' | 'openingHours' | 'qrRotateSeconds' | 'locationMode' | 'clinicNetworks' | 'paidHoursRule'
+  >;
+  const either = <K extends 'qrRotateSeconds' | 'locationMode' | 'paidHoursRule'>(key: K) =>
+    (forClinic?.[key] ?? tenantDefault?.[key] ?? DEFAULT_ATTENDANCE_POLICY[key]) as AttendancePolicy[K];
+  const networks = forClinic?.clinicNetworks ?? tenantDefault?.clinicNetworks ?? '';
   const pick = <K extends Scalar>(key: K): AttendancePolicy[K] => {
     const fromClinic = forClinic?.[key];
-    if (fromClinic !== undefined && fromClinic !== null) return fromClinic as AttendancePolicy[K];
+    if (fromClinic !== undefined && fromClinic !== null) return fromClinic as unknown as AttendancePolicy[K];
     const fromTenant = tenantDefault?.[key];
-    if (fromTenant !== undefined && fromTenant !== null) return fromTenant as AttendancePolicy[K];
+    if (fromTenant !== undefined && fromTenant !== null) return fromTenant as unknown as AttendancePolicy[K];
     return DEFAULT_ATTENDANCE_POLICY[key];
   };
   return {
@@ -117,6 +144,10 @@ export function resolveAttendancePolicy(
     geofenceRadiusMetres: pick('geofenceRadiusMetres'),
     weekStartDay: forClinic?.weekStartDay ?? tenantDefault?.weekStartDay ?? DEFAULT_ATTENDANCE_POLICY.weekStartDay,
     openingHours: pickOpeningHours(forClinic, tenantDefault),
+    qrRotateSeconds: either('qrRotateSeconds'),
+    locationMode: either('locationMode'),
+    clinicNetworks: networks.split(/[\s,]+/).map((part) => part.trim()).filter(Boolean),
+    paidHoursRule: either('paidHoursRule'),
   };
 }
 

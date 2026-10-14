@@ -88,7 +88,7 @@ export function AttendanceRulesPanel() {
   const { data, isLoading } = useAttendancePolicy(editing);
   const save = useSaveAttendancePolicy();
   // The policy, plus a note about THIS change that is not part of the policy.
-  type PolicyForm = AttendancePolicy & { reason?: string };
+  type PolicyForm = Omit<AttendancePolicy, 'clinicNetworks'> & { clinicNetworks?: string; reason?: string };
   const [form] = Form.useForm<PolicyForm>();
   // Writing this is `hr.attendance.manage` — the same permission that corrects
   // a punch, because moving the grace period changes what tomorrow judges
@@ -124,7 +124,7 @@ export function AttendanceRulesPanel() {
   };
 
   useEffect(() => {
-    if (data) form.setFieldsValue(data.policy);
+    if (data) form.setFieldsValue({ ...data.policy, clinicNetworks: (data.policy.clinicNetworks ?? []).join('\n') });
   }, [data, form]);
 
   const onSave = async (values: PolicyForm) => {
@@ -265,9 +265,44 @@ export function AttendanceRulesPanel() {
           * Nothing is refused: a phone with no position clocks in unmarked.
           */}
         <div className="hr-notice hr-notice--info">
-          <strong>Clock-in from the portal.</strong> A punch further than the radius from this point is recorded and
-          marked <em>outside clinic</em> on the timesheet; it is never refused. Leave the point empty and no punch is
-          judged.
+          <strong>Clock-in location.</strong> A clock-in counts as at the clinic when it comes from the clinic&apos;s
+          network, or from within the radius of this point. Leave both empty and no clock-in is judged.
+        </div>
+        <div className="hr-grid3">
+          <Form.Item name="locationMode" label="Clock-in away from the clinic" extra="Flag shows it to HR; Refuse does not record it.">
+            <Select
+              options={[
+                { value: 'FLAG', label: 'Record and flag' },
+                { value: 'REFUSE', label: 'Refuse' },
+                { value: 'OFF', label: 'Do not check' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            name="clinicNetworks"
+            label="Clinic WiFi internet addresses"
+            extra="One per line, as the router reports it; end with a dot for a range, e.g. 203.106.12."
+          >
+            <Input.TextArea rows={2} placeholder="203.106.12.45" />
+          </Form.Item>
+          <Form.Item name="qrRotateSeconds" label="Kiosk code changes every" extra="An old code, or a photo of one, stops working after this.">
+            <InputNumber min={15} max={300} addonAfter="s" style={{ width: '100%' }} />
+          </Form.Item>
+        </div>
+        <div className="hr-grid3">
+          <Form.Item
+            name="paidHoursRule"
+            label="Hours paid"
+            extra="Arriving early or leaving late is not overtime unless it is on the roster or approved."
+          >
+            <Select
+              options={[
+                { value: 'ROSTER_CONFIRMED', label: 'Rostered hours, confirmed by scans' },
+                { value: 'SCANS_CAPPED', label: 'Scans, capped at roster plus approved overtime' },
+                { value: 'SCANS', label: 'Scans as recorded' },
+              ]}
+            />
+          </Form.Item>
         </div>
         <div className="hr-grid3">
           <Form.Item name="geofenceLat" label="Clinic latitude" extra="Six decimals, like 3.139003. Empty means no geofence.">

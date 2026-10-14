@@ -6,6 +6,7 @@ import { ApiError } from '../core/api-client';
 import { Drawer, Panel, PanelHead, StatusChip } from '../admin/hr/ui';
 import { AuthImage, duration } from '../admin/hr/ui';
 import { ClockButton } from './clock';
+import { KioskPinForm, ScanClock } from './ScanClock';
 import { myFilePath, useMyAttendance, useMyHome, useMySchedule, useRequestCorrection, type MyAttendanceDay } from './hooks/useMe';
 import { PortalEmpty } from './portal';
 
@@ -92,9 +93,19 @@ export function MyAttendancePage() {
         </div>
         <div className="hr-pageHead__actions">
           {onDuty ? <span className="hr-clockState">On duty since {time(home?.clock.since)}</span> : null}
+          <ScanClock />
           <ClockButton onDuty={onDuty} />
         </div>
       </div>
+
+      {/* The PIN for the clinic screen, for a day the phone cannot scan. */}
+      <Panel>
+        <PanelHead title="Kiosk PIN" sub="Typed at the clinic screen when your phone cannot scan the code. HR sees every PIN clock-in." />
+        <div className="hr-pad">
+          <KioskPinForm />
+        </div>
+      </Panel>
+      <div className="hr-mt" />
 
       <Panel>
         <PanelHead

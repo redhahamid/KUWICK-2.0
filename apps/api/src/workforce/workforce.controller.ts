@@ -1,10 +1,11 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { SetPayDateDto } from './dto/set-pay-date.dto';
 import { ChoosePayDateDto } from './dto/choose-pay-date.dto';
 import { AcknowledgeExceptionsDto } from './dto/acknowledge-exceptions.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { Response } from 'express';
+import { Request, Response } from 'express';
+import { clientIp } from './attendance-qr';
 import { EmploymentStatus, LeaveType, AttendanceCorrectionStatus } from '@prisma/client';
 import { EmployeeService } from './employee.service';
 import { JobTitleService } from './job-title.service';
@@ -784,6 +785,19 @@ export class WorkforceController {
   @Delete('shift-templates/:id')
   removeShiftTemplate(@Param('id') id: string) {
     return this.shiftTemplates.remove(id);
+  }
+
+  // --- QR kiosk (UAT, 14 October 2026) --------------------------------------------
+  /** The branch's current code for the kiosk screen, and who may use a PIN there. */
+  @Get('attendance/kiosk')
+  attendanceKiosk(@Query('clinicId') clinicId: string) {
+    return this.attendance.kiosk(clinicId);
+  }
+
+  /** A PIN typed at the kiosk when a phone cannot scan. Always shown to HR as PIN. */
+  @Post('attendance/kiosk/pin')
+  attendanceKioskPin(@Body() body: { clinicId: string; staffId: string; pin: string }, @Req() req: Request) {
+    return this.attendance.kioskPin(body, clientIp(req));
   }
 
   @Get('attendance/policy')

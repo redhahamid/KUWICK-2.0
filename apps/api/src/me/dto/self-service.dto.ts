@@ -1,5 +1,5 @@
 import { LeaveType, StaffClaimCategory } from '@prisma/client';
-import { IsBoolean, IsDateString, IsEnum, IsISO8601, IsInt, IsNumber, IsOptional, IsUUID, Length, Matches, Max, Min, ValidateIf } from 'class-validator';
+import { IsBoolean, IsDateString, IsEnum, IsISO8601, IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 
 /**
  * NOTHING HERE TAKES A `staffId`.
@@ -19,6 +19,13 @@ export class ClockSelfDto {
   @IsOptional() @IsNumber() @Min(-180) @Max(180) lng?: number;
   /** The selfie, uploaded first as a staff file of kind SELFIE. */
   @IsOptional() @IsUUID() proofFileId?: string;
+  /** The code scanned from the branch kiosk (UAT, 14 October 2026). */
+  @IsOptional() @IsString() @MaxLength(200) qr?: string;
+}
+
+/** The person's own kiosk PIN: 4 to 6 digits. */
+export class SetAttendancePinDto {
+  @Matches(/^\d{4,6}$/, { message: 'The PIN is 4 to 6 digits.' }) pin!: string;
 }
 
 export class RequestAttendanceCorrectionDto {

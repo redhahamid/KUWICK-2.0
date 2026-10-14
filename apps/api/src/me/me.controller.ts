@@ -1,13 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { MAX_STAFF_FILE_BYTES, StaffFileService } from '../workforce/staff-file.service';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { renderPayslipPdf } from '../workforce/payroll-payslip-pdf';
 import { MeService } from './me.service';
+import { clientIp } from '../workforce/attendance-qr';
 import {
   AttachReceiptDto,
   ClockSelfDto,
+  SetAttendancePinDto,
   RequestAttendanceCorrectionDto,
   RequestLeaveDto,
   SubmitClaimDto,
@@ -91,8 +93,14 @@ export class MeController {
   }
 
   @Post('attendance/clock')
-  clock(@Body() dto: ClockSelfDto) {
-    return this.me.clock(dto);
+  clock(@Body() dto: ClockSelfDto, @Req() req: Request) {
+    return this.me.clock(dto, clientIp(req));
+  }
+
+  /** The person's own kiosk PIN. */
+  @Put('attendance-pin')
+  setAttendancePin(@Body() dto: SetAttendancePinDto) {
+    return this.me.setAttendancePin(dto.pin);
   }
 
   @Get('attendance')

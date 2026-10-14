@@ -357,9 +357,14 @@ export function useRenameSelf() {
 }
 
 export function useClockSelf() {
-  return useMyMutation((body: { clinicId?: string; lat?: number; lng?: number; proofFileId?: string }) =>
+  return useMyMutation((body: { clinicId?: string; lat?: number; lng?: number; proofFileId?: string; qr?: string }) =>
     apiClient.post('/me/attendance/clock', body),
   );
+}
+
+/** The person's own kiosk PIN (UAT, 14 October 2026). */
+export function useSetAttendancePin() {
+  return useMyMutation((body: { pin: string }) => apiClient.put('/me/attendance-pin', body));
 }
 
 /** Agree, once, to a clock-in selfie being kept as proof. */

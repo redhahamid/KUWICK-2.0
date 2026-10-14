@@ -1,4 +1,4 @@
-import { IsBoolean, IsInt, IsNumber, IsOptional, IsUUID, Length, Matches, Max, Min, ValidateIf } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, Max, Min, ValidateIf } from 'class-validator';
 
 const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -36,6 +36,16 @@ export class SaveAttendancePolicyDto {
   @ValidateIf((o) => o.open24Hours !== null) @IsOptional() @IsBoolean() open24Hours?: boolean | null;
   @ValidateIf((o) => o.openTime !== null) @IsOptional() @Matches(TIME, { message: 'Times are HH:MM, e.g. 08:00.' }) openTime?: string | null;
   @ValidateIf((o) => o.closeTime !== null) @IsOptional() @Matches(TIME, { message: 'Times are HH:MM, e.g. 22:00.' }) closeTime?: string | null;
+
+  /** QR attendance (UAT, 14 October 2026). Null inherits. */
+  @ValidateIf((o) => o.qrRotateSeconds !== null) @IsOptional() @IsInt() @Min(15) @Max(300) qrRotateSeconds?: number | null;
+  @ValidateIf((o) => o.locationMode !== null) @IsOptional() @IsIn(['OFF', 'FLAG', 'REFUSE']) locationMode?: 'OFF' | 'FLAG' | 'REFUSE' | null;
+  @ValidateIf((o) => o.clinicNetworks !== null) @IsOptional() @IsString() @MaxLength(1000) clinicNetworks?: string | null;
+  @ValidateIf((o) => o.paidHoursRule !== null) @IsOptional() @IsIn(['ROSTER_CONFIRMED', 'SCANS_CAPPED', 'SCANS']) paidHoursRule?:
+    | 'ROSTER_CONFIRMED'
+    | 'SCANS_CAPPED'
+    | 'SCANS'
+    | null;
 
   @IsOptional() @Length(3, 500) reason?: string;
 }

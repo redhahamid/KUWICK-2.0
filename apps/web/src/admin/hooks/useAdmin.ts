@@ -2453,7 +2453,8 @@ export function useSaveAttendancePolicy() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (
-      body: Partial<Omit<AttendancePolicy, 'weekStartDay' | 'openingHours'>> & {
+      body: Partial<Omit<AttendancePolicy, 'weekStartDay' | 'openingHours' | 'clinicNetworks'>> & {
+        clinicNetworks?: string | null;
         clinicId?: string;
         reason?: string;
         weekStartDay?: number | null;

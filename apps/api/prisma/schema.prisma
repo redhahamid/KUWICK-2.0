@@ -1002,6 +1002,8 @@ model Staff {
   /// role. The owner can be a doctor." NULL until somebody says, and then the
   /// account role decides, as it always did.
   staffGroup                      ShiftGroup?      @map("staff_group")
+  /// The person's own kiosk PIN, hashed (UAT, 14 October 2026). Set in My Kuwick.
+  attendancePinHash               String?          @map("attendance_pin_hash")
   medicalRegistrationNo           String?          @map("medical_registration_no")
   // Normalised (uppercased, inner whitespace/punctuation stripped) copy used
   // for duplicate detection. Indexed but NOT unique in C0 — the hard
@@ -6778,6 +6780,24 @@ enum AttendanceSource {
   QR
   DEVICE
   MANUAL
+  /// Typed at the branch kiosk when the phone could not scan (UAT, 14 October 2026). Always shown to HR.
+  PIN
+}
+
+/// What a clock-in outside the clinic's location does (UAT, 14 October 2026).
+enum AttendanceLocationMode {
+  OFF
+  FLAG
+  REFUSE
+}
+
+/// Which hours are paid (UAT, 14 October 2026): (a) the roster's hours,
+/// confirmed by scans [default]; (b) the scans, capped at roster plus approved
+/// overtime; (c) the scans as they are.
+enum PaidHoursRule {
+  ROSTER_CONFIRMED
+  SCANS_CAPPED
+  SCANS
 }
 
 enum AttendancePunchKind {
@@ -6980,6 +7000,14 @@ model AttendancePolicy {
   /// The day a roster week starts, 0 Sunday … 6 Saturday (UAT, 14 October
   /// 2026). NULL inherits; Kuwick's built-in is Monday.
   weekStartDay Int?    @map("week_start_day")
+  /// QR ATTENDANCE (UAT, 14 October 2026). NULL inherits; built-ins: 30 s,
+  /// FLAG, ROSTER_CONFIRMED.
+  qrRotateSeconds Int?                    @map("qr_rotate_seconds")
+  locationMode    AttendanceLocationMode? @map("location_mode")
+  /// The clinic's own internet addresses (its WiFi), one per line; a prefix
+  /// such as "203.106.12." matches a range. Empty: not checked.
+  clinicNetworks  String?                 @map("clinic_networks")
+  paidHoursRule   PaidHoursRule?          @map("paid_hours_rule")
   /// The branch's opening hours, one fact read from one row: open all day,
   /// or from `openTime` to `closeTime` (HH:MM; a close at or before the open
   /// is past midnight). NULL on all three inherits.

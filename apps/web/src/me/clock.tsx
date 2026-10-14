@@ -26,7 +26,7 @@ import { useClockSelf, useGiveSelfieConsent, useMyProfile, uploadMyFile } from '
 
 type Position = { lat: number; lng: number } | null;
 
-function readPosition(): Promise<Position> {
+export function readPosition(): Promise<Position> {
   if (typeof navigator === 'undefined' || !navigator.geolocation) return Promise.resolve(null);
   return new Promise((resolve) => {
     const done = (value: Position) => resolve(value);

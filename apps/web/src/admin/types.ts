@@ -800,7 +800,7 @@ export interface TimesheetReport {
       corrected: boolean;
       correctionReason: string | null;
       /** Piece 3g: how the punch was made, and what it carried. */
-      source: "PORTAL" | "QR" | "DEVICE" | "MANUAL";
+      source: "PORTAL" | "QR" | "DEVICE" | "MANUAL" | "PIN";
       proofUrl: string | null;
       clockOutProofUrl: string | null;
       outsideClinic: boolean;
@@ -822,7 +822,7 @@ export interface AttendancePunchRow {
   id: string;
   at: string;
   kind: "IN" | "OUT";
-  source: "PORTAL" | "QR" | "DEVICE" | "MANUAL";
+  source: "PORTAL" | "QR" | "DEVICE" | "MANUAL" | "PIN";
   proofUrl: string | null;
   outsideClinic: boolean;
   distanceMetres: number | null;
@@ -3489,6 +3489,11 @@ export interface AttendancePolicy {
   weekStartDay?: number;
   /** The branch's opening hours; null when nobody has said. */
   openingHours?: { open24Hours: boolean; openTime: string | null; closeTime: string | null } | null;
+  /** QR attendance (UAT, 14 October 2026). */
+  qrRotateSeconds?: number;
+  locationMode?: 'OFF' | 'FLAG' | 'REFUSE';
+  clinicNetworks?: string[];
+  paidHoursRule?: 'ROSTER_CONFIRMED' | 'SCANS_CAPPED' | 'SCANS';
 }
 
 /** How the clinic prices and polices claims (Settings › Claims). */

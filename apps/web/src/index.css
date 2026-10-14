@@ -7075,3 +7075,9 @@ button.kw-stage__button:hover { background: var(--kw-surface-2); }
 .kw-runPayDates__what { flex: 1 1 260px; min-width: 0; }
 .kw-runPayDates__when { flex: 0 1 240px; display: grid; gap: 2px; }
 .kw-runPayDates__when .ant-picker { width: 100%; }
+
+/* The branch attendance kiosk (UAT, 14 October 2026). */
+.kw-kiosk { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; background: #fff; text-align: center; }
+.kw-kiosk h1 { font-size: 32px; margin: 0; }
+.kw-kiosk__code svg { width: min(70vw, 420px); height: auto; }
+.kw-kiosk__timer { color: #667085; font-size: 18px; margin: 0; }

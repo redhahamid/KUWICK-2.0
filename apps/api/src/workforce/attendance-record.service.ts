@@ -13,6 +13,8 @@ import { workforceCategoryOf } from './workforce-category';
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
 import { ClockDto } from './dto/clock.dto';
 import { isPlausiblePoint, judgeGeofence } from './attendance-geofence';
+import { kioskCode, onClinicNetwork, readKioskCode } from './attendance-qr';
+import { compare, hash } from 'bcryptjs';
 import { staffFilePath } from './staff-file.service';
 import { DecideCorrectionDto } from './dto/decide-correction.dto';
 
@@ -84,12 +86,17 @@ export class AttendanceRecordService {
    * The EARLIEST shift of the day, because a person clocking in once against a
    * split day is measured against the shift they turned up for.
    */
-  private async scheduledFor(staffId: string, day: Date) {
-    return this.prisma.providerShift.findFirst({
-      where: { staffId, shiftDate: day },
+  private async scheduledFor(staffId: string, day: Date, now?: Date) {
+    // Working shifts only: an OFF or LEAVE row is not a shift to be late for.
+    // On a split day, the shift that starts nearest the punch (UAT, 14 October 2026).
+    const shifts = await this.prisma.providerShift.findMany({
+      where: { staffId, shiftDate: day, shiftType: { in: ['WORKING', 'LOCUM'] } },
       orderBy: { startsAt: 'asc' },
       select: { startsAt: true, endsAt: true },
     });
+    if (!now || shifts.length < 2) return shifts[0] ?? null;
+    const gap = (shift: { startsAt: Date }) => Math.abs(shift.startsAt.getTime() - now.getTime());
+    return shifts.reduce((best, shift) => (gap(shift) < gap(best) ? shift : best));
   }
 
   /**
@@ -189,7 +196,7 @@ export class AttendanceRecordService {
    * their own arrival and departure; clocking somebody ELSE in is the
    * supervisory act, and that still needs `hr.attendance.manage`.
    */
-  async clock(dto: ClockDto) {
+  async clock(dto: ClockDto, context: { ip?: string | null; viaPin?: boolean } = {}) {
     return withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
       const staffId = dto.staffId ?? actor.id;
@@ -200,9 +207,15 @@ export class AttendanceRecordService {
       }
 
       const now = dto.at ? new Date(dto.at) : new Date();
-      const clinicId = dto.clinicId ?? actor.clinicId ?? null;
+      // A scanned kiosk code names the branch; it is checked against that branch's rotation.
+      const scannedClinic = dto.qr ? dto.qr.split('.')[1] : null;
+      const clinicId = scannedClinic ?? dto.clinicId ?? actor.clinicId ?? null;
       const timeZone = await this.timeZoneOf(clinicId);
       const policy = await this.policyFor(clinicId);
+      if (dto.qr) {
+        const read = readKioskCode(dto.qr, now, policy.qrRotateSeconds);
+        if ('refused' in read) throw new BadRequestException(read.refused);
+      }
       const today = clinicDay(now, timeZone);
 
       // An overnight shift's clock-out closes the day it STARTED on. Checked
@@ -210,7 +223,7 @@ export class AttendanceRecordService {
       const overnight = await this.openOvernightRecord(staffId, today, now);
       const day = overnight ? new Date(today.getTime() - 86400000) : today;
       const existing = overnight ?? (await tx.attendanceRecord.findFirst({ where: { staffId, workDate: day } }));
-      const shift = await this.scheduledFor(staffId, day);
+      const shift = await this.scheduledFor(staffId, day, now);
 
       const scheduledStart = shift?.startsAt ?? existing?.scheduledStart ?? null;
       const scheduledEnd = shift?.endsAt ?? existing?.scheduledEnd ?? null;
@@ -221,13 +234,20 @@ export class AttendanceRecordService {
       // carries neither. Outside the branch's radius the record is still
       // saved — the flag is for the manager, not a refusal.
       const forSomebodyElse = staffId !== actor.id;
-      const source: AttendanceSource = forSomebodyElse ? 'MANUAL' : (dto.source ?? 'PORTAL');
+      const source: AttendanceSource = context.viaPin ? 'PIN' : forSomebodyElse ? 'MANUAL' : dto.qr ? 'QR' : (dto.source ?? 'PORTAL');
       const point = isPlausiblePoint(dto.lat, dto.lng) ? { lat: dto.lat as number, lng: dto.lng as number } : null;
-      const fence = judgeGeofence(point, {
+      const gps = judgeGeofence(point, {
         lat: policy.geofenceLat,
         lng: policy.geofenceLng,
         radiusMetres: policy.geofenceRadiusMetres,
       });
+      // LOCATION (UAT, 14 October 2026): the clinic's WiFi or its GPS radius,
+      // whichever is set; either one passing is enough. A kiosk PIN is typed
+      // at the clinic, and HR's own entry is HR's word.
+      const fence = { distanceMetres: gps.distanceMetres, outside: this.outsideClinic(policy, point, gps.outside, context.ip) };
+      if (fence.outside && policy.locationMode === 'REFUSE' && !forSomebodyElse) {
+        throw new ForbiddenException('You are not at the clinic, so this clock-in is refused. Clock in on the clinic WiFi or at the clinic.');
+      }
       let proofPath: string | null = null;
       if (dto.proofFileId) {
         if (forSomebodyElse) throw new BadRequestException('A selfie is the employee’s own to give.');
@@ -259,6 +279,11 @@ export class AttendanceRecordService {
           })
         : [];
       const lastLive = live[live.length - 1] ?? null;
+      // A second scan within a minute is the same person scanning twice, not
+      // a clock-out: refused rather than closing the shift they just opened.
+      if (lastLive && now.getTime() - lastLive.at.getTime() < 60_000 && !forSomebodyElse) {
+        throw new BadRequestException('Already recorded a moment ago. Nothing more to do.');
+      }
       const isClockOut = lastLive?.kind === 'IN';
 
       const record = existing
@@ -293,12 +318,82 @@ export class AttendanceRecordService {
           distanceMetres: fence.distanceMetres,
           outsideClinic: fence.outside,
           // Null is the employee themselves. HR clocking somebody in is the
-          // supervisory act, and the record says whose hand it was.
+          // supervisory act, and the record says whose hand it was; a kiosk
+          // PIN names the account the kiosk is signed in as.
           recordedByStaffId: forSomebodyElse ? actor.id : null,
         },
       });
 
       return this.recomputeDay(tx, record.id);
+    });
+  }
+
+  /** Outside the clinic: by GPS and by network, with the location mode applied. */
+  private outsideClinic(policy: AttendancePolicy, point: { lat: number; lng: number } | null, gpsOutside: boolean, ip?: string | null): boolean {
+    if (policy.locationMode === 'OFF') return false;
+    const gpsSet = policy.geofenceLat !== null && policy.geofenceLng !== null;
+    const networkSet = policy.clinicNetworks.length > 0;
+    if (!gpsSet && !networkSet) return false;
+    if (networkSet && onClinicNetwork(ip, policy.clinicNetworks)) return false;
+    if (gpsSet && point && !gpsOutside) return false;
+    return true;
+  }
+
+  /**
+   * THE KIOSK (UAT, 14 October 2026): the branch's current code for the
+   * screen, and who may use a PIN there. The kiosk is a device signed in by
+   * somebody who manages attendance.
+   */
+  async kiosk(clinicIdInput: string) {
+    const { scope } = await requireScope(this.rawPrisma, 'hr.attendance.manage');
+    const clinicId = scope.require(clinicIdInput);
+    const [policy, clinic, people] = await Promise.all([
+      this.policyFor(clinicId),
+      this.prisma.clinic.findUnique({ where: { id: clinicId }, select: { name: true } }),
+      this.prisma.staff.findMany({
+        where: { clinicId, active: true, attendancePinHash: { not: null } },
+        select: { id: true, fullName: true },
+        orderBy: { fullName: 'asc' },
+      }),
+    ]);
+    return {
+      clinicId,
+      clinicName: clinic?.name ?? null,
+      periodSeconds: policy.qrRotateSeconds,
+      ...kioskCode(clinicId, new Date(), policy.qrRotateSeconds),
+      pinPeople: people.map((row) => ({ staffId: row.id, name: row.fullName })),
+    };
+  }
+
+  /**
+   * PIN FALLBACK at the kiosk: the person's own PIN, typed on the clinic
+   * screen when their phone cannot scan. Always marked PIN for HR to see;
+   * five wrong PINs in fifteen minutes lock it for that person until then.
+   */
+  async kioskPin(body: { clinicId: string; staffId: string; pin: string }, ip?: string | null) {
+    await withAdminTx(this.rawPrisma, 'hr.attendance.manage', async (tx, actor) => {
+      const staff = await tx.staff.findUnique({ where: { id: body.staffId }, select: { attendancePinHash: true, clinicId: true } });
+      if (!staff?.attendancePinHash) throw new BadRequestException('That person has not set a PIN. They set one in My Kuwick.');
+      const since = new Date(Date.now() - 15 * 60_000);
+      const failures = await tx.auditLog.count({
+        where: { action: 'attendance.pinFailed', entityId: body.staffId, createdAt: { gte: since } },
+      });
+      if (failures >= 5) throw new ForbiddenException('Too many wrong PINs. Try again in 15 minutes, or scan the code.');
+      if (!(await compare(String(body.pin ?? ''), staff.attendancePinHash))) {
+        await recordAudit(tx, actor, { action: 'attendance.pinFailed', entityType: 'Staff', entityId: body.staffId, before: null, after: { clinicId: body.clinicId } });
+        throw new BadRequestException('That PIN is not right.');
+      }
+    });
+    return this.clock({ staffId: body.staffId, clinicId: body.clinicId }, { viaPin: true, ip });
+  }
+
+  /** The person's own kiosk PIN, set in My Kuwick. Stored hashed, never shown. */
+  async setOwnPin(pin: string) {
+    if (!/^\d{4,6}$/.test(pin ?? '')) throw new BadRequestException('The PIN is 4 to 6 digits.');
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      await tx.staff.update({ where: { id: actor.id }, data: { attendancePinHash: await hash(pin, 10) } });
+      return { pinSet: true };
     });
   }
 
