@@ -10,7 +10,7 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 **Migrasi:** `20261016090000_clinical_access` (satu lajur `staff.clinical_access`,
 kosong = ikut doktor atau staf), dijalankan di staging dengan *Migrate only*
-sebelum master — run #MIGRATE_RUN.
+sebelum master — run #29.
 
 - `[D]` Pekerja yang ditanda **Doctor** dalam HR kini mendapat akses klinikal
   (konsultasi, nota, MC) secara lalai, walaupun peranan akaunnya lain.
