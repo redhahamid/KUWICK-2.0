@@ -11,7 +11,7 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi
 (A3):** `20261015100000_roster_publish_locums` (jadual `roster_publications`,
 `roster_locum_slots`), dijalankan di staging dengan *Migrate only* sebelum
-master — run #MIGRATE_RUN.
+master — run #25.
 
 **A2 — paparan**
 - `[D]` Roster kini ada empat paparan: *Everyone · month*, *Doctors · month*,
