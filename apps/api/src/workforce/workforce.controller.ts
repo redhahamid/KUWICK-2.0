@@ -6,7 +6,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Request, Response } from 'express';
 import { clientIp } from './attendance-qr';
-import { EmploymentStatus, LeaveType, AttendanceCorrectionStatus } from '@prisma/client';
+import { EmploymentStatus, AttendanceCorrectionStatus } from '@prisma/client';
 import { EmployeeService } from './employee.service';
 import { JobTitleService } from './job-title.service';
 import { CreateJobTitleDto, UpdateJobTitleDto } from './dto/job-title.dto';
@@ -21,6 +21,11 @@ import { UpsertEmployeeDto } from './dto/upsert-employee.dto';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { EmployeeIntakeDto } from './dto/employee-intake.dto';
 import { EmployeeIntakeService } from './employee-intake.service';
+import { DoctorRatesDto } from './dto/doctor-rates.dto';
+import { BenefitUsageDto, SaveBenefitPolicyDto } from './dto/benefit.dto';
+import { ImportOpeningBalancesDto } from './dto/import-opening-balances.dto';
+import { SaveLeaveTypeDto } from '../hr/dto/save-leave-type.dto';
+import { LeaveTypeService } from '../hr/leave-type.service';
 import { ClockDto } from './dto/clock.dto';
 import { SaveAttendancePolicyDto } from './dto/save-attendance-policy.dto';
 import { DecideCorrectionDto } from './dto/decide-correction.dto';
@@ -79,6 +84,7 @@ import { UpsertPayrollPolicyDto } from './dto/upsert-payroll-policy.dto';
 import { UpsertPayrollInputDto } from './dto/upsert-payroll-input.dto';
 import { SetApprovalPolicyDto } from './dto/set-approval-policy.dto';
 import { SaveClaimPolicyDto } from './dto/save-claim-policy.dto';
+import { SaveClaimTypeDto } from './dto/save-claim-type.dto';
 import { StaffFileService, MAX_STAFF_FILE_BYTES } from './staff-file.service';
 import { ClaimPolicyService } from './claim-policy.service';
 
@@ -92,6 +98,7 @@ export class WorkforceController {
     private readonly attendancePolicies: AttendancePolicyService,
     private readonly shiftTemplates: ShiftTemplateService,
     private readonly leave: LeaveService,
+    private readonly leaveTypes: LeaveTypeService,
     private readonly incentives: IncentiveService,
     private readonly payroll: PayrollService,
     private readonly benefits_: BenefitService,
@@ -743,9 +750,31 @@ export class WorkforceController {
     return this.claimPolicies.read();
   }
 
+  /** The clinic's claim types (Section E): rate per unit, daily cap, receipt. */
+  @Get('claim-types')
+  claimTypes() {
+    return this.claimPolicies.types();
+  }
+
+  @Post('claim-types')
+  createClaimType(@Body() dto: SaveClaimTypeDto) {
+    return this.claimPolicies.saveType(null, dto);
+  }
+
+  @Patch('claim-types/:id')
+  updateClaimType(@Param('id') id: string, @Body() dto: SaveClaimTypeDto) {
+    return this.claimPolicies.saveType(id, dto);
+  }
+
   @Put('claim-policy')
   saveClaimPolicy(@Body() dto: SaveClaimPolicyDto) {
     return this.claimPolicies.save(dto);
+  }
+
+  /** A doctor's own locum and night rates (Section C). */
+  @Patch('employees/:staffId/doctor-rates')
+  setDoctorRates(@Param('staffId') staffId: string, @Body() dto: DoctorRatesDto) {
+    return this.employees.setDoctorRates(staffId, dto);
   }
 
   /** Doctor or staff, on the employee record (UAT, 14 October 2026). Null: from the account role. */
@@ -874,10 +903,32 @@ export class WorkforceController {
     return this.leave.adjustBalance(dto);
   }
 
+  /** Leave taken before go-live, and days carried in, from a CSV (Section D). */
+  @Post('leave/balances/import')
+  importOpeningBalances(@Body() dto: ImportOpeningBalancesDto) {
+    return this.leave.importOpeningBalances(dto);
+  }
+
+  /** The clinic's own leave types (Section D). */
+  @Get('leave-types')
+  listLeaveTypes() {
+    return this.leaveTypes.list();
+  }
+
+  @Post('leave-types')
+  createLeaveType(@Body() dto: SaveLeaveTypeDto) {
+    return this.leaveTypes.save(null, dto);
+  }
+
+  @Patch('leave-types/:id')
+  updateLeaveType(@Param('id') id: string, @Body() dto: SaveLeaveTypeDto) {
+    return this.leaveTypes.save(id, dto);
+  }
+
   @Get('leave/availability')
   leaveAvailability(
     @Query('staffId') staffId: string,
-    @Query('leaveType') leaveType: LeaveType,
+    @Query('leaveType') leaveType: string,
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
   ) {
@@ -1092,6 +1143,12 @@ export class WorkforceController {
     return this.payroll.acknowledgeExceptions(id, dto.code, dto.reason);
   }
 
+  /** The week-by-week working behind this run's overtime, locum and night pay for one person. */
+  @Get('payroll/runs/:id/employees/:staffId/weeks')
+  payrollWeeks(@Param('id') id: string, @Param('staffId') staffId: string) {
+    return this.payroll.weeks(id, staffId);
+  }
+
   @Get('payroll/runs/:id/variance')
   payrollVariance(@Param('id') id: string, @Query('threshold') threshold?: string) {
     return this.payroll.variance(id, threshold ? Number(threshold) : undefined);
@@ -1278,5 +1335,29 @@ export class WorkforceController {
   @Get('benefits')
   benefits(@Query('year') year?: string, @Query('clinicId') clinicId?: string) {
     return this.benefits_.list({ year: year ? Number(year) : undefined, clinicId });
+  }
+
+  /** The clinic's medical benefit rules (Section F). */
+  @Get('benefits/policy')
+  benefitPolicy() {
+    return this.benefits_.policy();
+  }
+
+  @Put('benefits/policy')
+  saveBenefitPolicy(@Body() dto: SaveBenefitPolicyDto) {
+    return this.benefits_.savePolicy(dto);
+  }
+
+  /** Accounts for the year for everybody who has none, pro-rated for joiners. */
+  @Post('benefits/set-up')
+  setUpBenefitYear(@Body() body: { year?: number; clinicId?: string }) {
+    const year = Number(body?.year);
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) throw new BadRequestException('Give the benefit year, e.g. 2026.');
+    return this.benefits_.setUpYear(year, body.clinicId || undefined);
+  }
+
+  @Post('benefits/:accountId/usages')
+  addBenefitUsage(@Param('accountId') accountId: string, @Body() dto: BenefitUsageDto) {
+    return this.benefits_.addUsage(accountId, dto);
   }
 }

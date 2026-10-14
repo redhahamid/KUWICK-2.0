@@ -3,7 +3,7 @@ import { App } from 'antd';
 import dayjs from 'dayjs';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useCan, permissionHint } from '../../core/hooks/useCan';
-import { useEmployees, useLeaveBalances } from '../hooks/useAdmin';
+import { useEmployees, useLeaveBalances, useLeaveTypes } from '../hooks/useAdmin';
 import { useStaff } from '../../hr/hooks/useStaff';
 import {
   useApproveLeaveRequest,
@@ -19,15 +19,16 @@ import { Table } from './ui/Table';
 import { IconCalendar, IconDoc, IconPlus } from './ui/icons';
 import { initialsOf } from './ui/who';
 import { LeaveCalendar } from './LeaveCalendar';
+import { OpeningBalancesImport } from './OpeningBalancesImport';
 
-const TYPES: { value: LeaveType; label: string }[] = [
+/** Until the clinic's own list arrives (Section D). */
+const DEFAULT_TYPES: { value: LeaveType; label: string }[] = [
   { value: 'ANNUAL', label: 'Annual' },
   { value: 'MEDICAL', label: 'Medical' },
   { value: 'EMERGENCY', label: 'Emergency' },
   { value: 'UNPAID', label: 'Unpaid' },
   { value: 'OTHER', label: 'Other' },
 ];
-const TYPE_LABEL = (value: LeaveType) => TYPES.find((type) => type.value === value)?.label ?? value;
 
 const STATUS: Record<LeaveStatus, { tone: 'attn' | 'done' | 'block'; label: string }> = {
   PENDING: { tone: 'attn', label: 'Waiting' },
@@ -88,6 +89,12 @@ export function LeavePage() {
   // branch, or it fetches the whole tenant to label a handful of rows.
   const employees = useEmployees({ clinicId });
   const balances = useLeaveBalances({ clinicId, year: dayjs().year() });
+  const leaveTypes = useLeaveTypes();
+  const TYPES = leaveTypes.data?.length
+    ? leaveTypes.data.filter((type) => type.active).map((type) => ({ value: type.code, label: type.name }))
+    : DEFAULT_TYPES;
+  const TYPE_LABEL = (value: LeaveType) =>
+    leaveTypes.data?.find((type) => type.code === value)?.name ?? DEFAULT_TYPES.find((type) => type.value === value)?.label ?? value;
   const createRequest = useCreateLeaveRequest();
   const approve = useApproveLeaveRequest();
   const reject = useRejectLeaveRequest();
@@ -210,10 +217,13 @@ export function LeavePage() {
       sub="Requests come in from the staff portal. Balances are entitlement minus what's taken."
       error={requests.isError ? 'Leave requests could not be loaded.' : null}
       actions={
-        <button type="button" className="hr-btn hr-btn--primary" onClick={() => setRecording(true)}>
-          <IconPlus />
-          Record leave
-        </button>
+        <span style={{ display: 'inline-flex', gap: 8 }}>
+          <OpeningBalancesImport />
+          <button type="button" className="hr-btn hr-btn--primary" onClick={() => setRecording(true)}>
+            <IconPlus />
+            Record leave
+          </button>
+        </span>
       }
     >
       <StatRow>

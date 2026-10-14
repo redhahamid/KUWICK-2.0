@@ -7,7 +7,9 @@ import { useAttendancePolicy } from '../hooks/useAdmin';
 import { WEEK_DAYS } from './ShiftSettingsPage';
 import { AttendanceRulesPanel } from './AttendanceRulesPanel';
 import { ClaimPolicyPanel } from './ClaimPolicyPanel';
+import { ClaimTypesPanel } from './ClaimTypesPanel';
 import { LeavePolicyPanel } from './LeavePolicyPanel';
+import { LeaveTypesPanel } from './LeaveTypesPanel';
 
 /**
  * ATTENDANCE & LEAVE — its own settings area, public holidays included.
@@ -64,6 +66,9 @@ export function AttendanceSettingsPage() {
           employee meets them, and because the payout question below belongs to
           whoever is already reading what counts as a full day. */}
       <div className="hr-mt">
+        <LeaveTypesPanel />
+      </div>
+      <div className="hr-mt">
         <LeavePolicyPanel />
       </div>
       {/* Public holidays are part of this area (Settings has four cards, not
@@ -86,6 +91,9 @@ export function AttendanceSettingsPage() {
           sends from the portal, and the three rules a manager judges them by. */}
       <div className="hr-mt">
         <ClaimPolicyPanel />
+      </div>
+      <div className="hr-mt">
+        <ClaimTypesPanel />
       </div>
     </HrPage>
   );

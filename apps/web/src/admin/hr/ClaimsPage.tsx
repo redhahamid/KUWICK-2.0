@@ -16,7 +16,7 @@ import {
   useStaffClaims,
 } from '../hooks/useAdmin';
 import { ApiError } from '../../core/api-client';
-import { CLAIM_TYPES, DEFAULT_MILEAGE_RATE_RM, mileageAmount, type ClaimTypeValue } from '../../me/claim-form';
+import { DEFAULT_MILEAGE_RATE_RM, claimKindsOf, mileageAmount, paidKm, type ClaimTypeValue } from '../../me/claim-form';
 import { AuthImage, Drawer, HrPage, Panel, SegControl, StatCard, StatRow, StatusChip } from './ui';
 import { Table } from './ui/Table';
 import { IconDoc } from './ui/icons';
@@ -234,11 +234,14 @@ export function ClaimsPage() {
     }
   };
 
-  const recordMileage = recordForm.type === 'MILEAGE';
+  // The clinic's claim types (Section E): the type decides the rate, the daily cap and the receipt rule.
+  const kinds = claimKindsOf(policy.data);
+  const recordKind = kinds.find((row) => row.code === recordForm.type);
+  const recordMileage = recordKind?.unit === 'KM';
   const recordKm = Number(recordForm.distance);
-  const ratePerKm = policy.data ? Number(policy.data.mileageRatePerKm) : DEFAULT_MILEAGE_RATE_RM;
-  const receiptRequired = policy.data?.receiptRequired ?? true;
-  const recordComputed = recordMileage && Number.isFinite(recordKm) && recordKm > 0 ? mileageAmount(recordKm, ratePerKm) : null;
+  const ratePerKm = recordKind?.ratePerUnit ?? (policy.data ? Number(policy.data.mileageRatePerKm) : DEFAULT_MILEAGE_RATE_RM);
+  const receiptRequired = recordKind?.receiptRequired ?? policy.data?.receiptRequired ?? true;
+  const recordComputed = recordMileage && Number.isFinite(recordKm) && recordKm > 0 ? mileageAmount(paidKm(recordKm, recordKind), ratePerKm) : null;
   const recordAmount = recordComputed ?? Number(recordForm.amount);
   const canRecord =
     Boolean(recordForm.staffId) &&
@@ -252,7 +255,7 @@ export function ClaimsPage() {
 
   const recordClaim = async () => {
     if (!canRecord) return;
-    const category = CLAIM_TYPES.find((row) => row.value === recordForm.type)?.category ?? 'OTHER';
+    const category = recordForm.type;
     const description = recordMileage
       ? `Mileage ${recordKm} km, ${recordForm.fromPlace.trim()} to ${recordForm.toPlace.trim()}: ${recordForm.purpose.trim()}`
       : recordForm.purpose.trim();
@@ -653,9 +656,9 @@ export function ClaimsPage() {
           <div>
             <label htmlFor="rec-claim-type">Type</label>
             <select id="rec-claim-type" className="hr-f" value={recordForm.type} onChange={(event) => setRecord({ type: event.target.value as ClaimTypeValue })}>
-              {CLAIM_TYPES.map((row) => (
-                <option key={row.value} value={row.value}>
-                  {row.label}
+              {kinds.map((row) => (
+                <option key={row.code} value={row.code}>
+                  {row.name}
                 </option>
               ))}
             </select>

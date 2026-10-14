@@ -1,6 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { LeaveStatus, LeaveType, PrismaClient, Role } from '@prisma/client';
+import { LeaveStatus, PrismaClient, Role } from '@prisma/client';
+import { LeaveType } from '../src/hr/leave-types';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { createTestPrismaClient, randomId, withTenantContext } from './test-db';

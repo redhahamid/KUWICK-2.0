@@ -1,9 +1,9 @@
-import { IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min, MinLength } from 'class-validator';
-import { LeaveType } from '@prisma/client';
+import { IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, MaxLength, Min, MinLength } from 'class-validator';
+import { LEAVE_CODE } from '../../hr/leave-types';
 
 export class AdjustLeaveBalanceDto {
   @IsUUID() staffId!: string;
-  @IsEnum(LeaveType) leaveType!: LeaveType;
+  @Matches(LEAVE_CODE, { message: 'Leave type is a code, e.g. ANNUAL.' }) leaveType!: string;
   @IsInt() @Min(2000) benefitYear!: number;
 
   @IsOptional() @IsNumber() @Min(0) entitledDays?: number;

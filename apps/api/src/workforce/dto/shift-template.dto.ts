@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { IsBoolean, IsEnum, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import { ShiftGroup, ShiftTemplateKind } from '@prisma/client';
 
 const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -17,6 +17,9 @@ export class SaveShiftTemplateDto {
 
   @IsOptional() @IsInt() @Min(0) @Max(600) breakMinutes?: number;
   @IsOptional() @IsBoolean() night?: boolean;
+  /** Doctors' night pay on this template (Section C): per shift or per hour, in RM. */
+  @IsOptional() @IsIn(['PER_SHIFT', 'PER_HOUR', null]) nightPayMode?: 'PER_SHIFT' | 'PER_HOUR' | null;
+  @IsOptional() @Matches(/^\d{1,8}(\.\d{1,2})?$/, { message: 'Enter the night rate in ringgit, e.g. 350 or 35.' }) nightRate?: string | null;
 
   @Matches(/^#[0-9a-fA-F]{6}$/, { message: 'The colour is a #rrggbb value.' }) colour!: string;
 

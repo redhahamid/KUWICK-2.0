@@ -8,6 +8,7 @@ import { AuthImage } from '../admin/hr/ui';
 import { myFilePath, uploadMyFile, useMyLeave, useMyLeaveBalances, useMyLeavePreview, useRequestLeave } from './hooks/useMe';
 import { IconCheckCircle, PortalEmpty, dayRange } from './portal';
 
+/** Shown until the clinic's own list arrives (Section D: the types are the clinic's). */
 const LEAVE_TYPES = [
   { value: 'ANNUAL', label: 'Annual leave' },
   { value: 'MEDICAL', label: 'Medical leave' },
@@ -78,7 +79,12 @@ export function MyLeavePage() {
   // entitlement's requiresAttachment); the server refuses a request without
   // one, so the button waits for the file rather than letting the refusal
   // be the first anyone hears of it.
-  const needsAttachment = balances?.balances.find((row) => row.leaveType === leaveType)?.requiresAttachment ?? false;
+  const typeOptions = balances?.types?.map((type) => ({ value: type.code, label: type.name })) ?? LEAVE_TYPES;
+  const nameOf = (code: string) => balances?.types?.find((type) => type.code === code)?.name ?? TYPE_WORD[code] ?? code;
+  const needsAttachment =
+    balances?.balances.find((row) => row.leaveType === leaveType)?.requiresAttachment ??
+    balances?.types?.find((type) => type.code === leaveType)?.documentRequired ??
+    false;
   const attachmentOffered = needsAttachment || leaveType === 'MEDICAL';
 
   const submit = async () => {
@@ -133,7 +139,7 @@ export function MyLeavePage() {
               <div>
                 <label htmlFor="leave-type">Type</label>
                 <select id="leave-type" className="hr-f" value={leaveType} onChange={(event) => setLeaveType(event.target.value)}>
-                  {LEAVE_TYPES.map((type) => (
+                  {typeOptions.map((type) => (
                     <option key={type.value} value={type.value}>
                       {type.label}
                     </option>
@@ -270,7 +276,7 @@ export function MyLeavePage() {
             <div className="hr-kv">
               {balanceRows.map((row) => (
                 <span key={row.leaveType} style={{ display: 'contents' }}>
-                  <span className="hr-kv__k">{TYPE_WORD[row.leaveType] ?? row.leaveType}</span>
+                  <span className="hr-kv__k">{nameOf(row.leaveType)}</span>
                   <span className="hr-kv__v">
                     {row.remaining} of {row.available} left
                   </span>
@@ -302,7 +308,7 @@ export function MyLeavePage() {
                   return (
                     <tr key={row.id}>
                       <td>
-                        <b>{TYPE_WORD[row.leaveType] ?? row.leaveType}</b> · {dayRange(row.startDate, row.endDate)}
+                        <b>{nameOf(row.leaveType)}</b> · {dayRange(row.startDate, row.endDate)}
                         {row.decidedBy ? <div className="hr-tdSub">Decided by {row.decidedBy}</div> : null}
                         {row.attachments.length > 0 ? (
                           <div className="hr-tdSub hr-dots">

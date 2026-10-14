@@ -7,6 +7,7 @@ import { initialsOf } from './ui/who';
 import { humanise } from '../components/Chip';
 import { Drawer, Panel, SegControl, StatCard, StatRow, StatusChip } from './ui';
 import { Table } from './ui/Table';
+import { AddBenefitUsage, BenefitSetupBar } from './BenefitSetup';
 import type { StaffBenefitAccountRow } from '../types';
 
 /**
@@ -32,7 +33,8 @@ export function BenefitsView({ clinicId, tabs }: { clinicId?: string; tabs: Reac
   const remaining = accounts.reduce((total, row) => total + row.remaining, 0);
   const overdrawn = accounts.filter((row) => row.overdrawn > 0);
   // WHO IS ABOUT TO RUN OUT — the question a list of balances cannot answer.
-  const nearlyOut = accounts.filter((row) => row.overdrawn === 0 && row.allowance > 0 && row.remaining / row.allowance <= 0.2);
+  // At the clinic's own alert level (Section F), worked out by the server.
+  const nearlyOut = accounts.filter((row) => row.alert === 'LOW');
 
   const rows = useMemo(
     () =>
@@ -98,16 +100,19 @@ export function BenefitsView({ clinicId, tabs }: { clinicId?: string; tabs: Reac
             </>
           }
           toolbarRight={
-            nearlyOut.length > 0 && filter === 'ALL' ? (
+            <span style={{ display: 'inline-flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <BenefitSetupBar year={year} clinicId={clinicId} />
+            {nearlyOut.length > 0 && filter === 'ALL' ? (
               <span className="hr-small hr-muted">
-                {nearlyOut.length} {nearlyOut.length === 1 ? 'person has' : 'people have'} a fifth or less left:{' '}
+                {nearlyOut.length} {nearlyOut.length === 1 ? 'person is' : 'people are'} running low:{' '}
                 {nearlyOut
                   .slice(0, 3)
                   .map((row) => row.staffName)
                   .join(', ')}
                 {nearlyOut.length > 3 ? ` and ${nearlyOut.length - 3} more` : ''}
               </span>
-            ) : null
+            ) : null}
+            </span>
           }
           columns={[
             {
@@ -146,6 +151,8 @@ export function BenefitsView({ clinicId, tabs }: { clinicId?: string; tabs: Reac
               render: (value: number, row) =>
                 row.overdrawn > 0 ? (
                   <StatusChip tone="block">Overdrawn {money(row.overdrawn)}</StatusChip>
+                ) : row.alert === 'LOW' ? (
+                  <StatusChip tone="attn">Low · {money(value)}</StatusChip>
                 ) : (
                   <span className="hr-strong">{money(value)}</span>
                 ),
@@ -202,6 +209,7 @@ export function BenefitsView({ clinicId, tabs }: { clinicId?: string; tabs: Reac
             <h3 className="hr-form__group" style={{ marginTop: 18 }}>
               Uses · {selected.usages.length}
             </h3>
+            <AddBenefitUsage accountId={selected.id} />
             {selected.usages.length === 0 ? (
               <div className="hr-small hr-muted">Nothing drawn this year.</div>
             ) : (

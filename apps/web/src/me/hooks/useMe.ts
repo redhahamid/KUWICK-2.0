@@ -98,6 +98,8 @@ export interface MyLeaveBalance {
 export interface MyLeaveBalances {
   year: number;
   policyName: string | null;
+  /** The clinic's leave types a person can ask for (Section D). */
+  types?: { code: string; name: string; paid: boolean; documentRequired: boolean }[];
   balances: MyLeaveBalance[];
   unpaidTaken: { days: number; lastMonth: string | null };
 }
@@ -116,6 +118,8 @@ export interface MyClaimPolicy {
   mileageRatePerKm: string;
   receiptRequired: boolean;
   updatedAt: string;
+  /** The clinic's claim types (Section E). */
+  types?: import('./../claim-form').ClaimKind[];
 }
 
 export type StaffFileKind = 'RECEIPT' | 'MEDICAL_CERTIFICATE' | 'SELFIE';
@@ -213,6 +217,8 @@ export interface MyClaim {
   status: string;
   /** The sentence an employee reads instead of paymentRoute + payoutStatus. */
   whereTheMoneyIs: string;
+  /** What was not paid and why, e.g. kilometres over the daily cap (Section E). */
+  unpaidNote?: string | null;
   /** YYYY-MM of the payroll it is (or was) paid with, when routed to payroll. */
   payrollPeriod: string | null;
   /** Mileage: the kilometres and the rate frozen on the claim. */

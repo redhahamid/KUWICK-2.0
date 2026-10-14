@@ -7,6 +7,8 @@ type Basis = (typeof BASES)[number];
 const OVERTIME_MODES = ['STATUTORY', 'CLINIC_RATE'] as const;
 export type OvertimeModeCode = (typeof OVERTIME_MODES)[number];
 
+const OVERTIME_BASES = ['ACT', 'WEEKLY', 'AVERAGED'] as const;
+
 const CATEGORY_KEYS = WORKFORCE_CATEGORIES.map((row) => row.key);
 
 /** Ringgit and sen as a string, the shape every money DTO takes. */
@@ -115,6 +117,15 @@ export class UpsertPayrollPolicyDto {
    */
   @IsOptional() @IsBoolean() belowActAcknowledged?: boolean;
   @IsOptional() @IsString() @Length(4, 500) belowActReason?: string | null;
+  /*
+   * WEEK BY WEEK (Section C). Null keeps the old day-by-day approval. The
+   * wage limit can only raise the Act's RM4,000; the service refuses lower.
+   */
+  @IsOptional() @IsIn([...OVERTIME_BASES, null]) overtimeBasis?: (typeof OVERTIME_BASES)[number] | null;
+  @IsOptional() @IsNumber() @Min(1) @Max(84) weeklyNormalHours?: number;
+  @IsOptional() @Matches(MONEY, { message: MONEY_MESSAGE }) overtimeWageCeiling?: string | null;
+  @IsOptional() @Matches(MONEY, { message: MONEY_MESSAGE }) locumHourlyRate?: string | null;
+
   /** Which group of the workforce this rule set applies to, unless assigned by hand. */
   @IsOptional() @IsIn(CATEGORY_KEYS) workforceCategory?: string | null;
 

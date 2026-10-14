@@ -75,6 +75,8 @@ import { describeProration, partMonthPay, prorationFor, workingWeek } from './pr
 import { classifyDay, combinePricing, describePricedDay, priceOvertime } from './overtime-pricing';
 import { clinicRatesOf, multipliersOf, pcbProjectionOf, resolvePayrollPolicy } from './payroll-policy-resolution';
 import { workforceCategoryOf } from './workforce-category';
+import { payWeeks } from './weekly-pay';
+import { leaveKinds, unpaidLeaveCodes } from '../hr/leave-types';
 import { CatalogueRow, ResolvedComponent, catalogueFor, checkOrdinaryRateBase } from './component-liability';
 import {
   FIRST_SCHEDULE_WAGE_CEILING_CENTS,
@@ -759,16 +761,23 @@ export class PayrollService {
       // above an ordinary one, never below.
       const holidays = await tx.publicHoliday.findMany({
         where: { date: { gte: period, lt: periodEnd } },
-        select: { date: true, kind: true },
+        select: { date: true, kind: true, multiplier: true },
       });
       const publicHolidayDates = new Set(holidays.map((row) => row.date.toISOString().slice(0, 10)));
       const festiveHolidayDates = new Set(holidays.filter((row) => row.kind === 'FESTIVE').map((row) => row.date.toISOString().slice(0, 10)));
+      // Each holiday's own multiplier, where the clinic set one (decision 2).
+      const holidayMultipliers = new Map<string, number>();
+      const noteMultiplier = (row: { date: Date; multiplier: unknown }) => {
+        if (row.multiplier !== null) holidayMultipliers.set(row.date.toISOString().slice(0, 10), Number(row.multiplier));
+      };
+      holidays.forEach(noteMultiplier);
       // LAST MONTH'S TOO, for overtime this run pays from last month: a day is
       // priced as the kind of day it was when it was worked.
       for (const row of await tx.publicHoliday.findMany({
         where: { date: { gte: monthBefore(period), lt: period } },
-        select: { date: true, kind: true },
+        select: { date: true, kind: true, multiplier: true },
       })) {
+        noteMultiplier(row);
         publicHolidayDates.add(row.date.toISOString().slice(0, 10));
         if (row.kind === 'FESTIVE') festiveHolidayDates.add(row.date.toISOString().slice(0, 10));
       }
@@ -1062,6 +1071,7 @@ export class PayrollService {
       // the run and resolved per employee below: assigned by hand, then the
       // rule set for their workforce category, then the default, then the Act.
       const payrollPolicies = await tx.payrollPolicy.findMany();
+      const unpaidCodes = unpaidLeaveCodes(leaveKinds(await tx.leaveTypeSetting.findMany()));
 
       /*
        * THE EMPLOYER'S OWN DATED STANDING — today that is the HRD Corp
@@ -1677,7 +1687,8 @@ export class PayrollService {
         // materialised deduction can name the request behind it and the person
         // who approved it. "1 unpaid day" with no way back to the leave record
         // is what made payroll feel like a second place to key facts.
-        const unpaidTypes = new Set(['UNPAID']);
+        // Section D: every leave type the clinic marked unpaid, and UNPAID itself.
+        const unpaidTypes = unpaidCodes;
         const unpaidLeaveRows = leave
           .filter((row) => unpaidTypes.has(row.leaveType))
           .map((row) => ({
@@ -1740,7 +1751,8 @@ export class PayrollService {
           contractPolicy: typeof classification.overtimeContractPolicy,
           monthClinicRates: typeof clinicRates,
         ): OvertimeScope => {
-          const actScope = overtimeScope(monthlyCents, resolutionDay, contractPolicy);
+          const ceiling = policyResolution.policy?.overtimeWageCeiling;
+          const actScope = overtimeScope(monthlyCents, resolutionDay, contractPolicy, ceiling == null ? null : toCents(ceiling));
           return monthClinicRates && !actScope.withinFirstSchedule && actScope.basis === 'NONE'
             ? {
                 withinFirstSchedule: false,
@@ -1820,6 +1832,7 @@ export class PayrollService {
               // The clinic's own multipliers where it set any, the Act's where it
               // did not. Never below the Act's — refused before it is stored.
               multipliers: multipliersOf(month.policy),
+              holidayMultiplier: (date) => holidayMultipliers.get(date.toISOString().slice(0, 10)) ?? null,
             },
           );
         const standing = classificationByStaff.get(employee.staffId) ?? [];
@@ -1853,6 +1866,46 @@ export class PayrollService {
         const overtimeHours = pricing.normalDayHours;
 
         /*
+         * WEEK BY WEEK (Section C, 14 October 2026). With an overtime basis set
+         * on the rule set, the weeks that ended last month are worked out from
+         * the roster and attendance and paid in this run: overtime for staff,
+         * locum hours and night shifts for doctors. Extra time on normal days
+         * then stops coming from the day-by-day pricing above, and for doctors
+         * nothing comes from it, so nothing is paid twice.
+         */
+        const weeklyBasis = keyedOnly ? null : (policyResolution.policy?.overtimeBasis ?? null);
+        const isDoctor = workforceCategoryOf(employee.staff) === 'DOCTOR';
+        const dailyDays = !weeklyBasis ? pricing.days : isDoctor ? [] : pricing.days.filter((row) => row.dayType !== 'NORMAL_DAY');
+        let weeklyInputs: MaterialisedInput[] = [];
+        if (weeklyBasis && policyResolution.policy) {
+          const lastScope = scopeOf(lastMonthlyCents, lastMonthEnd, standingAtLastMonthEnd.overtimeContractPolicy, lastClinicRates);
+          const clinicHourly = lastClinicRates?.overtimeHourlyCents ?? null;
+          const locumRate = employee.locumRate ?? policyResolution.policy.locumHourlyRate;
+          weeklyInputs = await payWeeks(tx, {
+            staffId: employee.staffId,
+            clinicId: employee.staff.clinicId,
+            group: isDoctor ? 'DOCTOR' : 'STAFF',
+            basis: weeklyBasis,
+            earnedMonth: lastMonth,
+            weeklyNormalHours: Number(policyResolution.policy.weeklyNormalHours),
+            normalDayMinutes: Math.round(lastOrpConfig.hoursPerDay * 60),
+            restDayOfWeek: standingAtLastMonthEnd.restDayOfWeek,
+            employedFrom: employee.startDate,
+            employedTo: employee.endDate,
+            overtime:
+              clinicHourly && clinicHourly > 0
+                ? { hourlyCents: clinicHourly, multiplier: 1, paid: lastScope.basis !== 'NONE' }
+                : {
+                    hourlyCents: ordinaryRates(lastMonthlyCents, lastOrpConfig, daysInMonth(lastMonth)).overtimeHourlyCents,
+                    multiplier: multipliersOf(policyResolution.policy).normalDay,
+                    paid: lastScope.basis !== 'NONE',
+                  },
+            locumHourlyCents: locumRate == null ? null : toCents(locumRate),
+            doctorNightPay: { nightPayMode: employee.nightPayMode, nightRate: employee.nightRate },
+          });
+        }
+
+        /*
          * WHO IS BEING PAID BELOW THE ACT THIS MONTH, BY NAME.
          *
          * The clinic's figure is paid — it set the rate and acknowledged what
@@ -1881,8 +1934,9 @@ export class PayrollService {
         const desiredInputs = keyedOnly
           ? []
           : [
+          ...weeklyInputs,
           ...materialiseOvertimeDays(
-            pricing.days.map((row) => ({
+            dailyDays.map((row) => ({
               staffId: employee.staffId,
               attendanceId: row.attendanceId,
               dayType: row.dayType,
@@ -4352,6 +4406,27 @@ export class PayrollService {
    * Payroll errors are rarely subtle in size and almost always invisible in a
    * grid of plausible-looking rows. This says which people MOVED.
    */
+  /**
+   * WEEK BY WEEK (Section C): the weeks this run paid one person, as they were
+   * worked out — the weeks that ended in the month before the run's.
+   */
+  async weeks(runId: string, staffId: string) {
+    await requirePermission(this.rawPrisma, 'hr.payroll.view');
+    const run = await this.prisma.payrollRun.findFirst({ where: { id: runId }, select: { period: true } });
+    if (!run) throw new NotFoundException('Payroll run not found');
+    const rows = await this.prisma.workWeek.findMany({
+      where: { staffId, earnedMonth: monthBefore(run.period) },
+      orderBy: { weekStart: 'asc' },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      weekStart: row.weekStart.toISOString().slice(0, 10),
+      weekEnd: row.weekEnd.toISOString().slice(0, 10),
+      amount: fromCents(row.amountCents),
+      working: row.working,
+    }));
+  }
+
   async variance(runId: string, thresholdPercent = 20) {
     await requirePermission(this.rawPrisma, 'hr.payroll.view');
     const run = await this.prisma.payrollRun.findFirst({

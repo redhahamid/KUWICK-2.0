@@ -778,11 +778,11 @@ async function reset() {
     // Stage 2.5. Claims point AT payroll inputs, so the claim's children and
     // the claims themselves go before the inputs — otherwise the second run of
     // this seed fails on `staff_claims.payroll_input_entry_id`, and only then.
-    'staff_claim_events', 'staff_claim_attachments', 'staff_claims', 'claim_policies', 'locum_sessions',
+    'staff_claim_events', 'staff_claim_attachments', 'staff_claims', 'claim_policies', 'claim_types', 'locum_sessions',
     // Approvals point AT the run, so they go before it; the tenant-level
     // approval rule points at nothing but the tenant.
     'payroll_run_approvals', 'payroll_approval_policies',
-    'payroll_adjustments', 'payroll_lines', 'payroll_runs', 'payroll_input_entries', 'statutory_rule_sets',
+    'payroll_adjustments', 'payroll_lines', 'payroll_runs', 'work_weeks', 'payroll_input_entries', 'statutory_rule_sets',
     'employee_recurring_items', 'employee_ytd', 'employee_salaries',
     // TP1/TP3 point at staff and the legal employer; the dated classification
     // versions and the employer-selected contribution bases at staff. All
@@ -790,8 +790,8 @@ async function reset() {
     'employee_tp1_entries', 'employee_tp3_records', 'employee_statutory_classifications',
     'employee_contribution_bases',
     'incentive_results', 'incentive_runs', 'incentive_rules',
-    'staff_benefit_usages', 'staff_benefit_members', 'staff_benefit_accounts',
-    'leave_balances', 'leave_policy_entitlements', 'leave_policies',
+    'benefit_policies', 'staff_benefit_usages', 'staff_benefit_members', 'staff_benefit_accounts',
+    'leave_types', 'leave_balances', 'leave_policy_entitlements', 'leave_policies',
     // Correction requests point at the attendance record they ask to change,
     // so they go first; the policy points only at the clinic and the person who
     // last edited it, so it can go anywhere before `staff`.

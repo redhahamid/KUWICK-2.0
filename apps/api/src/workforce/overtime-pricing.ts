@@ -136,6 +136,12 @@ export interface PricingContext {
    * rather than on a number it replaced everywhere else.
    */
   readonly multipliers?: OvertimeMultipliers | null;
+  /**
+   * THE HOLIDAY'S OWN MULTIPLIER (decision 2, 14 October 2026), set per
+   * holiday in Settings. Null means the rule set's. For somebody the Act
+   * covers it never goes below the Act's.
+   */
+  readonly holidayMultiplier?: (date: Date) => number | null;
 }
 
 /** Which arithmetic produced a day's figure. */
@@ -322,12 +328,19 @@ function priceDayByTheAct(day: WorkedDay, dayType: DayType, context: PricingCont
   // itself under s.60(3)(b) or s.60D(3)(a)(i) — two days' wages for a public
   // holiday worked, however few hours — and the clinic does not set it. The
   // multiplier below applies only to the hours BEYOND normal hours.
-  const multiplier =
+  const ruleSetMultiplier =
     dayType === 'FESTIVE_HOLIDAY'
       ? (chosen.festiveHolidayExcess ?? chosen.publicHolidayExcess)
       : dayType === 'PUBLIC_HOLIDAY'
         ? chosen.publicHolidayExcess
         : chosen.restDayExcess;
+  const holidayOwn = isPublicHoliday(dayType) ? (context.holidayMultiplier?.(day.date) ?? null) : null;
+  const multiplier =
+    holidayOwn === null
+      ? ruleSetMultiplier
+      : context.scope.withinFirstSchedule
+        ? Math.max(holidayOwn, ACT_OVERTIME_MULTIPLIERS.publicHolidayExcess)
+        : holidayOwn;
   const dayPayCents = Math.round(dayRate.ordinaryRateDays * context.dailyOrpCents);
   const excessPayCents = Math.round(excessHours * context.hourlyOrpCents * multiplier);
 

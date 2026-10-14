@@ -29,7 +29,13 @@ export class PublicHolidayService {
       let holiday;
       try {
         holiday = await tx.publicHoliday.create({
-          data: { tenantId: currentTenantId(), date: new Date(dto.date), name: dto.name, kind: dto.kind ?? 'ORDINARY' },
+          data: {
+            tenantId: currentTenantId(),
+            date: new Date(dto.date),
+            name: dto.name,
+            kind: dto.kind ?? 'ORDINARY',
+            multiplier: dto.multiplier ?? null,
+          },
         });
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -41,7 +47,7 @@ export class PublicHolidayService {
         action: 'publicHoliday.created',
         entityType: 'PublicHoliday',
         entityId: holiday.id,
-        after: { date: dto.date, name: dto.name, kind: dto.kind ?? 'ORDINARY' },
+        after: { date: dto.date, name: dto.name, kind: dto.kind ?? 'ORDINARY', multiplier: dto.multiplier ?? null },
         source: 'hr.settings',
       });
       return holiday;
@@ -61,14 +67,18 @@ export class PublicHolidayService {
       }
       const saved = await tx.publicHoliday.update({
         where: { id },
-        data: { ...(dto.name === undefined ? {} : { name: dto.name }), ...(dto.kind === undefined ? {} : { kind: dto.kind }) },
+        data: {
+          ...(dto.name === undefined ? {} : { name: dto.name }),
+          ...(dto.kind === undefined ? {} : { kind: dto.kind }),
+          ...(dto.multiplier === undefined ? {} : { multiplier: dto.multiplier }),
+        },
       });
       await recordAudit(tx, actor, {
         action: 'publicHoliday.updated',
         entityType: 'PublicHoliday',
         entityId: id,
-        before: { date: holiday.date.toISOString().slice(0, 10), name: holiday.name, kind: holiday.kind },
-        after: { date: saved.date.toISOString().slice(0, 10), name: saved.name, kind: saved.kind },
+        before: { date: holiday.date.toISOString().slice(0, 10), name: holiday.name, kind: holiday.kind, multiplier: holiday.multiplier?.toString() ?? null },
+        after: { date: saved.date.toISOString().slice(0, 10), name: saved.name, kind: saved.kind, multiplier: saved.multiplier?.toString() ?? null },
         source: 'hr.settings',
       });
       return saved;

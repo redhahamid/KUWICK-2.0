@@ -1,13 +1,14 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { LeaveType } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { requirePermission, requireScope, withAdminTx } from '../finance/admin-actor';
+import { AdminTx, requirePermission, requireScope, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { computeLeaveBalance, leaveDays, proRateEntitlement } from './leave-balance';
 import { UpsertLeavePolicyDto } from './dto/upsert-leave-policy.dto';
 import { AdjustLeaveBalanceDto } from './dto/adjust-leave-balance.dto';
+import { ImportOpeningBalancesDto } from './dto/import-opening-balances.dto';
+import { LeaveKind, LeaveType, leaveKinds, proRatesOnJoin, statutoryFloor, yearsOfServiceAt } from '../hr/leave-types';
 
 /**
  * The three reads a balance is computed from, named so the single-person and
@@ -21,7 +22,7 @@ type LeaveProfile = {
     proRateOnJoin: boolean;
     /** Null means the policy names no cap, not that the cap is zero. */
     carryForwardDays: number | null;
-    entitlements: { leaveType: LeaveType; daysPerYear: unknown; paid: boolean }[];
+    entitlements: { leaveType: LeaveType; daysPerYear: unknown; paid: boolean; requiresAttachment?: boolean }[];
   } | null;
 };
 type StoredBalance = {
@@ -237,8 +238,9 @@ export class LeaveService {
         },
       }),
     ]);
+    const kinds = leaveKinds(await this.prisma.leaveTypeSetting.findMany({ orderBy: { sortOrder: 'asc' } }));
 
-    return this.balanceRow({ staffId, year, profile, stored, requests });
+    return this.balanceRow({ staffId, year, profile, stored, requests, kinds });
   }
 
   /**
@@ -262,8 +264,9 @@ export class LeaveService {
         },
       }),
     ]);
+    const kinds = leaveKinds(await this.prisma.leaveTypeSetting.findMany({ orderBy: { sortOrder: 'asc' } }));
 
-    return this.balanceRow({ staffId, year, profile, stored, requests });
+    return this.balanceRow({ staffId, year, profile, stored, requests, kinds });
   }
 
   /**
@@ -280,17 +283,25 @@ export class LeaveService {
     profile,
     stored,
     requests,
+    kinds,
   }: {
     staffId: string;
     year: number;
     profile: LeaveProfile | null;
     stored: StoredBalance[];
     requests: LeaveRequestRow[];
+    kinds: LeaveKind[];
   }) {
     const storedByType = new Map(stored.map((row) => [row.leaveType, row]));
-    const types: LeaveType[] = profile?.leavePolicy?.entitlements.map((entitlement) => entitlement.leaveType) ?? [
-      ...new Set([...stored.map((row) => row.leaveType), ...requests.map((row) => row.leaveType)]),
-    ];
+    const kindOf = new Map(kinds.map((kind) => [kind.code, kind]));
+    // THE CLINIC'S LEAVE TYPES (Section D): a person with a policy has the
+    // policy's types; without one, every active type with yearly days. Any
+    // type they have a stored row or a request for is shown too.
+    const listed = profile?.leavePolicy
+      ? profile.leavePolicy.entitlements.map((entitlement) => entitlement.leaveType)
+      : kinds.filter((kind) => kind.active && kind.daysPerYear !== null).map((kind) => kind.code);
+    const types: LeaveType[] = [...new Set([...listed, ...stored.map((row) => row.leaveType), ...requests.map((row) => row.leaveType)])];
+    const years = yearsOfServiceAt(profile?.startDate, year);
 
     return {
       staffId,
@@ -305,20 +316,23 @@ export class LeaveService {
        * see is a cap nobody can be held to, which is why it goes out with the
        * balances rather than waiting for a policy editor that does not exist.
        */
-      carryForwardCap: profile?.leavePolicy?.carryForwardDays ?? null,
+      carryForwardCap: profile?.leavePolicy?.carryForwardDays ?? kindOf.get(LeaveType.ANNUAL)?.carryForwardCap ?? null,
       // A person with no policy is reported as such, not silently given zero:
       // "nobody has assigned a leave policy" is a piece of HR work.
       policyAssigned: Boolean(profile?.leavePolicy),
       balances: types.map((leaveType) => {
         const entitlement = profile?.leavePolicy?.entitlements.find((row) => row.leaveType === leaveType);
+        const kind = kindOf.get(leaveType);
         const storedRow = storedByType.get(leaveType);
-        const fullYear = Number(entitlement?.daysPerYear ?? 0);
-        const entitled =
-          storedRow !== undefined
-            ? Number(storedRow.entitledDays)
-            : profile?.leavePolicy?.proRateOnJoin
-              ? proRateEntitlement(fullYear, year, profile.startDate, profile.endDate)
-              : fullYear;
+        // The policy's days, else the type's; never below the Act for a statutory type (decision 6).
+        const fullYear = Math.max(Number(entitlement?.daysPerYear ?? kind?.daysPerYear ?? 0), statutoryFloor(kind?.statutory, years));
+        const proRate = (profile?.leavePolicy ? profile.leavePolicy.proRateOnJoin : true) && proRatesOnJoin(kind?.statutory);
+        const fixed = storedRow?.entitledDays !== null && storedRow?.entitledDays !== undefined;
+        const entitled = fixed
+          ? Number(storedRow!.entitledDays)
+          : proRate && profile
+            ? proRateEntitlement(fullYear, year, profile.startDate, profile.endDate)
+            : fullYear;
 
         const balance = computeLeaveBalance({
           entitledDays: entitled,
@@ -336,8 +350,12 @@ export class LeaveService {
 
         return {
           leaveType,
-          paid: entitlement?.paid ?? true,
-          proRated: storedRow === undefined && Boolean(profile?.leavePolicy?.proRateOnJoin),
+          name: kind?.name ?? leaveType,
+          paid: entitlement?.paid ?? kind?.paid ?? true,
+          documentRequired: entitlement?.requiresAttachment ?? kind?.documentRequired ?? false,
+          carryForwardCap: kind?.carryForwardCap ?? null,
+          actMinimum: kind?.statutory ? statutoryFloor(kind.statutory, years) : null,
+          proRated: !fixed && proRate,
           fullYearEntitlement: fullYear,
           ...balance,
           adjustmentReason: storedRow?.adjustmentReason ?? null,
@@ -389,6 +407,7 @@ export class LeaveService {
       }),
     ]);
 
+    const kinds = leaveKinds(await this.prisma.leaveTypeSetting.findMany({ orderBy: { sortOrder: 'asc' } }));
     const storedByStaff = new Map<string, StoredBalance[]>();
     for (const row of stored) storedByStaff.set(row.staffId, [...(storedByStaff.get(row.staffId) ?? []), row]);
     const requestsByStaff = new Map<string, LeaveRequestRow[]>();
@@ -405,6 +424,7 @@ export class LeaveService {
             profile,
             stored: storedByStaff.get(profile.staffId) ?? [],
             requests: requestsByStaff.get(profile.staffId) ?? [],
+            kinds,
           }),
         }))
         .sort((a, b) => a.name.localeCompare(b.name)),
@@ -427,29 +447,13 @@ export class LeaveService {
        * is somebody typing it here. A cap that the one writer ignores is not a
        * policy, it is a note.
        *
-       * ANNUAL ONLY, because that is what the field means — the schema says
-       * "whether unused annual leave carries into the next year, and how much".
-       * Capping sick or maternity leave with it would be inventing a rule the
-       * clinic never set.
-       *
-       * A policy with no cap recorded (null) is not a cap of zero: it is a
-       * clinic that has not decided, and this refuses nothing.
+       * Section D (14 October 2026): the cap is the leave type's own setting;
+       * for annual leave the person's policy cap applies where the type has
+       * none. No cap recorded refuses nothing.
        */
-      if (dto.carriedInDays !== undefined && dto.leaveType === LeaveType.ANNUAL) {
-        const profile = await tx.employeeProfile.findFirst({
-          where: { staffId: dto.staffId },
-          select: { leavePolicy: { select: { name: true, carryForwardDays: true } } },
-        });
-        const cap = profile?.leavePolicy?.carryForwardDays ?? null;
-        if (cap !== null && dto.carriedInDays > cap) {
-          throw new BadRequestException(
-            `${profile?.leavePolicy?.name ?? 'This leave policy'} carries forward at most ${cap} ` +
-              `${cap === 1 ? 'day' : 'days'} of annual leave, and ${dto.carriedInDays} was entered. ` +
-              'Raise the policy first if the clinic has decided to allow more.',
-          );
-        }
+      if (dto.carriedInDays !== undefined) {
+        await refuseOverCarryCap(tx, dto.staffId, dto.leaveType, dto.carriedInDays);
       }
-
       const saved = existing
         ? await tx.leaveBalance.update({
             where: { id: existing.id },
@@ -466,7 +470,8 @@ export class LeaveService {
               staffId: dto.staffId,
               leaveType: dto.leaveType,
               benefitYear: dto.benefitYear,
-              entitledDays: dto.entitledDays ?? 0,
+              // Null leaves the entitlement to the leave type or policy.
+              entitledDays: dto.entitledDays ?? null,
               carriedInDays: dto.carriedInDays ?? 0,
               adjustmentDays: dto.adjustmentDays ?? 0,
               adjustmentReason: dto.reason,
@@ -495,6 +500,61 @@ export class LeaveService {
   }
 
   /**
+   * OPENING BALANCES (Section D): leave already taken this year before the
+   * clinic started on Kuwick, and days carried in, from a CSV. Matched by
+   * Employee No. All or nothing: one bad line and nothing is written, and
+   * every problem is listed by line.
+   */
+  async importOpeningBalances(dto: ImportOpeningBalancesDto) {
+    return withAdminTx(this.rawPrisma, 'hr.leave.approve', async (tx, actor) => {
+      const kinds = leaveKinds(await tx.leaveTypeSetting.findMany());
+      const codes = new Set(kinds.map((kind) => kind.code));
+      const profiles = await tx.employeeProfile.findMany({
+        where: { employeeNo: { in: dto.rows.map((row) => row.employeeNo.trim()) } },
+        select: { staffId: true, employeeNo: true },
+      });
+      const staffOf = new Map(profiles.map((row) => [row.employeeNo, row.staffId]));
+      const problems: { line: number; message: string }[] = [];
+      dto.rows.forEach((row, index) => {
+        const line = index + 2; // the header is line 1
+        if (!staffOf.has(row.employeeNo.trim())) problems.push({ line, message: `No employee with Employee No. ${row.employeeNo}.` });
+        if (!codes.has(row.leaveType)) problems.push({ line, message: `${row.leaveType} is not one of the clinic's leave types.` });
+      });
+      for (const [index, row] of dto.rows.entries()) {
+        const staffId = staffOf.get(row.employeeNo.trim());
+        if (!staffId || row.carriedInDays === undefined) continue;
+        try {
+          await refuseOverCarryCap(tx, staffId, row.leaveType, row.carriedInDays);
+        } catch (error) {
+          problems.push({ line: index + 2, message: (error as Error).message });
+        }
+      }
+      if (problems.length > 0) return { imported: 0, problems };
+
+      for (const row of dto.rows) {
+        const staffId = staffOf.get(row.employeeNo.trim())!;
+        const key = { staffId, leaveType: row.leaveType, benefitYear: dto.year };
+        const existing = await tx.leaveBalance.findFirst({ where: key });
+        const data = {
+          adjustmentDays: -row.takenDays,
+          adjustmentReason: 'Taken before Kuwick (opening balance)',
+          ...(row.carriedInDays === undefined ? {} : { carriedInDays: row.carriedInDays }),
+        };
+        if (existing) await tx.leaveBalance.update({ where: { id: existing.id }, data });
+        else await tx.leaveBalance.create({ data: { ...key, ...data, tenantId: currentTenantId() } });
+      }
+      await recordAudit(tx, actor, {
+        action: 'leave.openingBalancesImported',
+        entityType: 'LeaveBalance',
+        entityId: `year-${dto.year}`,
+        after: { year: dto.year, rows: dto.rows.length },
+        source: 'hr.leaveBalances',
+      });
+      return { imported: dto.rows.length, problems };
+    });
+  }
+
+  /**
    * Whether somebody has the days for a request. Called before approval so a
    * manager sees the consequence before they cause it.
    */
@@ -515,5 +575,23 @@ export class LeaveService {
       exceedsEntitlement: balance.remaining - days < 0,
       paid: balance.paid,
     };
+  }
+}
+
+/** Carried-in days may not pass the leave type's cap, or for annual leave the person's policy cap. */
+async function refuseOverCarryCap(tx: AdminTx, staffId: string, leaveType: string, carriedInDays: number) {
+  const [kind, profile] = await Promise.all([
+    tx.leaveTypeSetting.findFirst({ where: { code: leaveType }, select: { name: true, carryForwardCap: true } }),
+    tx.employeeProfile.findFirst({ where: { staffId }, select: { leavePolicy: { select: { name: true, carryForwardDays: true } } } }),
+  ]);
+  const typeCap = kind?.carryForwardCap === null || kind?.carryForwardCap === undefined ? null : Number(kind.carryForwardCap);
+  const policyCap = leaveType === LeaveType.ANNUAL ? (profile?.leavePolicy?.carryForwardDays ?? null) : null;
+  const cap = typeCap ?? policyCap;
+  if (cap !== null && carriedInDays > cap) {
+    const whose = typeCap !== null ? (kind?.name ?? leaveType) : `${profile?.leavePolicy?.name ?? 'This leave policy'}'s annual leave`;
+    throw new BadRequestException(
+      `${whose} carries forward at most ${cap} ${cap === 1 ? 'day' : 'days'}, and ${carriedInDays} was entered. ` +
+        'Raise the cap first if the clinic has decided to allow more.',
+    );
   }
 }

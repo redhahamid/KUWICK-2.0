@@ -31,6 +31,8 @@ export function describeTemplate(row: ShiftTemplate) {
     endTime: row.endTime,
     breakMinutes: row.breakMinutes,
     night: row.night,
+    nightPayMode: row.nightPayMode,
+    nightRate: row.nightRate?.toFixed(2) ?? null,
     colour: row.colour,
     sortOrder: row.sortOrder,
     active: row.active,
@@ -174,6 +176,9 @@ export class ShiftTemplateService {
       endTime,
       breakMinutes,
       night: kind === 'WORKING' ? (dto.night ?? false) : false,
+      // Night pay belongs to a night shift only.
+      nightPayMode: kind === 'WORKING' && dto.night ? (dto.nightPayMode ?? null) : null,
+      nightRate: kind === 'WORKING' && dto.night ? (dto.nightRate ?? null) : null,
       colour: dto.colour.toLowerCase(),
       clinicId,
       ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),

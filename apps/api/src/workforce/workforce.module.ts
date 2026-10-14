@@ -8,6 +8,7 @@ import { AttendanceRecordService } from './attendance-record.service';
 import { AttendancePolicyService } from './attendance-policy.service';
 import { ShiftTemplateService } from './shift-template.service';
 import { LeaveService } from './leave.service';
+import { LeaveTypeService } from '../hr/leave-type.service';
 import { IncentiveService } from './incentive.service';
 import { PayrollService } from './payroll.service';
 import { BenefitService } from './benefit.service';
@@ -58,6 +59,7 @@ import { PayrollFinanceService } from './payroll-finance.service';
     AttendancePolicyService,
     ShiftTemplateService,
     LeaveService,
+    LeaveTypeService,
     IncentiveService,
     PayrollService,
     BenefitService,

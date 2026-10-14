@@ -278,7 +278,9 @@ export function claimCategoryLabel(category: string): string {
     case 'TRAINING': return 'Training';
     case 'EQUIPMENT': return 'Equipment';
     case 'PROFESSIONAL_FEE': return 'Professional fee';
-    default: return 'Other';
+    case 'OTHER': return 'Other';
+    // A clinic's own type (Section E): its code in words, e.g. PARKING_FEE → Parking fee.
+    default: return category.charAt(0) + category.slice(1).toLowerCase().replace(/_/g, ' ');
   }
 }
 

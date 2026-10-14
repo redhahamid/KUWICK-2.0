@@ -6,6 +6,65 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 58 (Seksyen C, D, E, F) — 15 Oktober 2026 — Lebih masa mingguan, cuti, tuntutan, faedah perubatan
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi:**
+`20261015130000_weekly_hours`, `20261015140000_clinic_leave_types`,
+`20261015150000_clinic_claim_types`, `20261015160000_benefit_policy`,
+dijalankan di staging dengan *Migrate only* sebelum master — run #MIGRATE_RUN.
+Semua peraturan ialah tetapan klinik. Serahan: `docs/HR_HANDOVER.md`.
+
+**C — Lebih masa dan lokum, minggu demi minggu**
+- `[D]` Set peraturan gaji → **How overtime is counted**: Employment Act (lalai
+  untuk set baharu), Weekly only (dengan amaran), s.60C 3 minggu; serta
+  *Weekly normal hours* (lalai 45), *Overtime for wages up to* (hanya boleh
+  dinaikkan dari RM4,000), *Doctors' locum rate*.
+- `[D]` Set sedia ada kekal "day by day, approved on the Timesheet" sehingga
+  klinik memilih asas, supaya bulan yang sudah dibayar tidak dibayar lagi.
+- `[D]` Minggu yang tamat dalam bulan lalu dibayar dalam run bulan ini,
+  "earned in" bulan lalu. Roster yang diterbitkan ialah kelulusan; masa
+  melebihi roster masih perlu kelulusan di Timesheet.
+- `[D]` Cuti umum mengurangkan satu hari biasa; minggu separa dipotong ikut
+  hari bekerja.
+- `[D]` Doktor: jam siang melebihi normal mingguan = jam lokum (kadar doktor,
+  jika tiada kadar set peraturan); cuti umum ikut pengganda cuti itu (1× jika
+  kosong); syif malam berasingan: tetap per syif atau per jam, per doktor atau
+  per templat malam.
+- `[D]` Cuti umum → *Hours paid at*: pengganda per cuti; staf di bawah Akta
+  tidak kurang daripada 3×.
+- `[D]` Halaman gaji seseorang → **Week by week**.
+- `[A]` Tukar asas pada bulan peralihan: minggu yang tamat pada bulan lalu
+  dikira semula dari roster; masa tambahan yang sudah dibayar hari demi hari
+  untuk minggu itu tidak ditolak secara automatik. Semak run pertama.
+
+**D — Cuti asas**
+- `[D]` Settings → Attendance & leave → **Leave types**: jenis klinik sendiri
+  (dibayar/tidak, hari setahun, dokumen, had bawa ke hadapan). Jenis berkanun
+  tidak boleh kurang daripada Akta; setiap orang mendapat lantai Akta ikut
+  tahun perkhidmatan.
+- `[D]` My Kuwick menyenaraikan jenis klinik; dokumen diminta jika ditetapkan.
+- `[D]` Semua jenis tidak dibayar dipotong dalam gaji.
+- `[D]` Leave → **Import opening balances** (CSV: employee_no, leave_type,
+  taken_days, carried_in_days). Semua atau tiada; setiap masalah disenaraikan.
+- `[D]` Data sedia ada kekal: lajur jenis cuti ditukar kepada teks di tempat.
+
+**E — Tuntutan asas**
+- `[D]` Settings → Attendance & leave → **Claim types**: kadar per km dan had
+  km sehari, atau jumlah; resit per jenis.
+- `[D]` Melebihi had: dibayar sehingga had, tuntutan menyatakan km yang tidak
+  dibayar dan sebabnya. Data sedia ada kekal (kategori ditukar kepada teks).
+- `[D]` Cukai tuntutan: kekal "to confirm with your tax adviser".
+
+**F — Faedah perubatan minimum**
+- `[D]` Employees → Benefits → **Benefit settings**: had setahun, hari potong
+  bulan masuk (cth. 15), paras amaran (%). **Open 2026 accounts** membuka akaun
+  untuk semua, pekerja baharu ikut bulan penuh yang tinggal ÷ 12.
+- `[D]` Penggunaan dimasukkan secara manual dari laci akaun; amaran "Low" dan
+  "Overdrawn" ikut paras klinik, juga di My Kuwick.
+
+**Ujian**: unit `weekly-hours` (10), `benefit-allowance` (4); API
+`weekly-pay`, `leave-types`, `claim-types`, `benefit-policy`; web
+`weekByWeek`, `leaveOpeningBalances`.
 ## Batch 59 — 15 Oktober 2026 — Roster masih kosong di staging: semakan pemilik, tiada logik "provider"
 
 Tiada migrasi.

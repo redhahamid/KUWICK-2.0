@@ -101,6 +101,12 @@ export function overtimeScope(
   monthlyWagesCents: number,
   on: Date,
   contractualPolicy: 'PAY_AT_STATUTORY_RATES' | 'NOT_PAID' | null,
+  /**
+   * The clinic's own wage limit for overtime (decision 1, 14 October 2026).
+   * It can only raise the Act's RM4,000, to give overtime to more staff; a
+   * lower figure is ignored.
+   */
+  clinicCeilingCents: number | null = null,
 ): OvertimeScope {
   // Before the limitation took its current form this system holds no rule to
   // apply, so it says so rather than assuming today's threshold applied then.
@@ -110,6 +116,14 @@ export function overtimeScope(
       basis: 'NONE',
       reason:
         'This period predates the First Schedule limitation this system holds (1 January 2023), so overtime entitlement cannot be determined for it.',
+    };
+  }
+
+  if (clinicCeilingCents !== null && monthlyWagesCents > FIRST_SCHEDULE_WAGE_CEILING_CENTS && monthlyWagesCents <= clinicCeilingCents) {
+    return {
+      withinFirstSchedule: true,
+      basis: 'STATUTORY',
+      reason: `Wages are within the clinic's overtime limit of RM${(clinicCeilingCents / 100).toLocaleString('en-MY')} a month, so the Act's overtime rates apply as a floor.`,
     };
   }
 

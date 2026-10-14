@@ -1,12 +1,12 @@
-import { IsDateString, IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
-import { LeaveType } from '@prisma/client';
+import { IsDateString, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
+import { LEAVE_CODE } from '../leave-types';
 
 export class CreateLeaveRequestDto {
   @IsUUID()
   staffId!: string;
 
-  @IsEnum(LeaveType)
-  leaveType!: LeaveType;
+  @Matches(LEAVE_CODE, { message: 'Choose one of the clinic\'s leave types.' })
+  leaveType!: string;
 
   @IsDateString()
   startDate!: string;

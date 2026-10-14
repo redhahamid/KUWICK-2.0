@@ -20,6 +20,7 @@ import { toClassificationRow } from './statutory-classification.service';
 import { columnItems, monthBefore, monthLabel, itemAppliesTo } from './payroll-register-columns';
 import { hrdAdviceFor } from './hrd-advice';
 import { employedInMonth, finalPayLabel, paidThisMonth } from './employed-in-month';
+import { leaveKinds, unpaidLeaveCodes } from '../hr/leave-types';
 
 function monthStart(value: string | Date): Date {
   const date = typeof value === 'string' ? new Date(`${value.slice(0, 7)}-01T00:00:00.000Z`) : value;
@@ -139,6 +140,7 @@ export class PayrollJourneyService {
     const active = employees.filter(paidThisMonth);
     const staffIds = active.map((e) => e.staffId);
 
+    const unpaidCodes = unpaidLeaveCodes(leaveKinds(await this.prisma.leaveTypeSetting.findMany()));
     const [salaryRows, inputs, attendance, leave, incentives, claims, classificationRows] = await Promise.all([
       this.prisma.employeeSalary.findMany({ where: { staffId: { in: staffIds } } }),
       this.prisma.payrollInputEntry.findMany({ where: { staffId: { in: staffIds }, period } }),
@@ -149,7 +151,7 @@ export class PayrollJourneyService {
         where: {
           staffId: { in: staffIds },
           status: 'APPROVED',
-          leaveType: 'UNPAID',
+          leaveType: { in: [...unpaidCodes] },
           startDate: { lt: periodEnd },
           endDate: { gte: period },
         },
@@ -382,6 +384,8 @@ export class PayrollJourneyService {
 
   async journey(runId: string) {
     const actor = await requirePermission(this.rawPrisma, 'hr.payroll.view');
+    // Section D: every leave type the clinic marked unpaid, and UNPAID itself.
+    const unpaidCodes = unpaidLeaveCodes(leaveKinds(await this.prisma.leaveTypeSetting.findMany()));
     const run = await this.prisma.payrollRun.findUnique({
       where: { id: runId },
       include: {
@@ -529,8 +533,8 @@ export class PayrollJourneyService {
             overtimeApproved: row.overtimeApproved,
           })),
         );
-        const unpaid = leave.filter((l) => l.staffId === employee.staffId && l.leaveType === 'UNPAID');
-        const paidLeave = leave.filter((l) => l.staffId === employee.staffId && l.leaveType !== 'UNPAID');
+        const unpaid = leave.filter((l) => l.staffId === employee.staffId && unpaidCodes.has(l.leaveType));
+        const paidLeave = leave.filter((l) => l.staffId === employee.staffId && !unpaidCodes.has(l.leaveType));
         const line = lineByStaff.get(employee.staffId);
         return {
           staffId: employee.staffId,

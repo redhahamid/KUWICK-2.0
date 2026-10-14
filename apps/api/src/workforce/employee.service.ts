@@ -6,6 +6,7 @@ import { currentTenantId } from '../core/tenant-context';
 import { actorCan, requirePermission, requireScope, withAdminTx } from '../finance/admin-actor';
 import { diffOf, recordAudit } from '../finance/admin-audit';
 import { workforceCategoryOf } from './workforce-category';
+import { DoctorRatesDto } from './dto/doctor-rates.dto';
 import { UpsertEmployeeDto } from './dto/upsert-employee.dto';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import * as bcrypt from 'bcryptjs';
@@ -324,6 +325,12 @@ export class EmployeeService {
         staffGroup: profile.staff.staffGroup,
         group: workforceCategoryOf(profile.staff) === 'DOCTOR' ? 'DOCTOR' : 'STAFF',
         groupFromRole: workforceCategoryOf({ role: profile.staff.role, professionalType: profile.staff.professionalType }) === 'DOCTOR' ? 'DOCTOR' : 'STAFF',
+        /** A doctor's own locum and night rates (Section C). Null: the rule set's and the night template's. */
+        doctorRates: {
+          locumRate: profile.locumRate?.toFixed(2) ?? null,
+          nightPayMode: profile.nightPayMode,
+          nightRate: profile.nightRate?.toFixed(2) ?? null,
+        },
         employeeNo: profile.employeeNo,
         position: profile.position,
         jobTitleId: profile.jobTitleId,
@@ -928,6 +935,42 @@ export class EmployeeService {
         source: 'hr.employee',
       });
       return { staffId, staffGroup: saved.staffGroup };
+    });
+  }
+
+  /**
+   * A DOCTOR'S OWN RATES (Section C, 14 October 2026): RM per locum hour above
+   * the weekly normal, and night pay per shift or per hour. Blank uses the
+   * rule set's locum rate and the night shift template's night pay.
+   */
+  async setDoctorRates(staffId: string, dto: DoctorRatesDto) {
+    return withAdminTx(this.rawPrisma, 'hr.employee.manage', async (tx, actor) => {
+      const select = { locumRate: true, nightPayMode: true, nightRate: true } as const;
+      const before = await tx.employeeProfile.findUnique({ where: { staffId }, select });
+      if (!before) throw new NotFoundException('Add the employee record first.');
+      const saved = await tx.employeeProfile.update({
+        where: { staffId },
+        data: {
+          ...(dto.locumRate === undefined ? {} : { locumRate: dto.locumRate }),
+          ...(dto.nightPayMode === undefined ? {} : { nightPayMode: dto.nightPayMode }),
+          ...(dto.nightRate === undefined ? {} : { nightRate: dto.nightRate }),
+        },
+        select,
+      });
+      const plain = (row: typeof saved) => ({
+        locumRate: row.locumRate?.toFixed(2) ?? null,
+        nightPayMode: row.nightPayMode,
+        nightRate: row.nightRate?.toFixed(2) ?? null,
+      });
+      await recordAudit(tx, actor, {
+        action: 'employee.doctorRatesChanged',
+        entityType: 'EmployeeProfile',
+        entityId: staffId,
+        before: plain(before),
+        after: plain(saved),
+        source: 'hr.employee',
+      });
+      return { staffId, ...plain(saved) };
     });
   }
 

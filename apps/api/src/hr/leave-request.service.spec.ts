@@ -1,5 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
-import { LeaveType } from '@prisma/client';
+import { LeaveType } from './leave-types';
 import { LeaveRequestService } from './leave-request.service';
 import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { tenantContextStorage } from '../core/tenant-context';

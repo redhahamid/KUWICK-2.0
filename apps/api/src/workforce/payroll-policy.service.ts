@@ -172,6 +172,11 @@ export class PayrollPolicyService {
           partMonthBasis: row.partMonthBasis,
           /** Null: a joiner's part month is paid that month. A day: after it, the next month. */
           lateJoinerCutoffDay: row.lateJoinerCutoffDay,
+          /** Week by week: null is the old day-by-day approval. */
+          overtimeBasis: row.overtimeBasis,
+          weeklyNormalHours: Number(row.weeklyNormalHours),
+          overtimeWageCeiling: row.overtimeWageCeiling === null ? null : row.overtimeWageCeiling.toFixed(2),
+          locumHourlyRate: row.locumHourlyRate === null ? null : row.locumHourlyRate.toFixed(2),
           overtimeMode: row.overtimeMode,
           // WHAT THE HOURS ARE PRICED AT, and whether the clinic chose it. The
           // screen needs both: the figure in force, and whether it is the
@@ -578,6 +583,11 @@ export class PayrollPolicyService {
         // Absent keeps what the rule set has; a new one starts on s.18A.
         ...(dto.partMonthBasis === undefined ? {} : { partMonthBasis: dto.partMonthBasis }),
         ...(dto.lateJoinerCutoffDay === undefined ? {} : { lateJoinerCutoffDay: dto.lateJoinerCutoffDay }),
+        // Absent keeps what the rule set has. Settings offers the Act first for a new rule set (decision 1).
+        ...(dto.overtimeBasis === undefined ? {} : { overtimeBasis: dto.overtimeBasis }),
+        ...(dto.weeklyNormalHours === undefined ? {} : { weeklyNormalHours: dto.weeklyNormalHours }),
+        ...(dto.overtimeWageCeiling === undefined ? {} : { overtimeWageCeiling: wageCeilingOf(dto.overtimeWageCeiling) }),
+        ...(dto.locumHourlyRate === undefined ? {} : { locumHourlyRate: dto.locumHourlyRate }),
         overtimeMode,
         ...rates,
         ...multipliers,
@@ -632,4 +642,15 @@ export class PayrollPolicyService {
       return saved;
     });
   }
+}
+
+/** The clinic's overtime wage limit can raise the Act's RM4,000, never lower it (decision 1). */
+function wageCeilingOf(value: string | null): string | null {
+  if (value === null) return null;
+  if (Math.round(Number(value) * 100) < FIRST_SCHEDULE_WAGE_CEILING_CENTS) {
+    throw new BadRequestException(
+      `The overtime wage limit cannot be below the Employment Act's RM${FIRST_SCHEDULE_WAGE_CEILING_CENTS / 100}. Leave it blank to use the Act's.`,
+    );
+  }
+  return value;
 }

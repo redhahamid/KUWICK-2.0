@@ -2,22 +2,22 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
-  IsEnum,
   IsInt,
   IsNumber,
   IsOptional,
   IsString,
   IsUUID,
   Length,
+  Matches,
   Max,
   MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
-import { LeaveType } from '@prisma/client';
+import { LEAVE_CODE } from '../../hr/leave-types';
 
 export class LeaveEntitlementDto {
-  @IsEnum(LeaveType) leaveType!: LeaveType;
+  @Matches(LEAVE_CODE, { message: 'Leave type is a code, e.g. ANNUAL.' }) leaveType!: string;
 
   /** Days per benefit year. Zero is legitimate — unpaid leave has no allowance. */
   @IsNumber() @Min(0) @Max(365) daysPerYear!: number;

@@ -14,7 +14,35 @@ export const CLAIM_TYPES = [
   { value: 'OTHER', label: 'Other', category: 'OTHER' },
 ] as const;
 
-export type ClaimTypeValue = (typeof CLAIM_TYPES)[number]['value'];
+export type ClaimTypeValue = string;
+
+/** One of the clinic's claim types, as the claim policy sends it (Section E). */
+export interface ClaimKind {
+  code: string;
+  name: string;
+  unit: string | null;
+  ratePerUnit: number | null;
+  dailyUnitCap: number | null;
+  receiptRequired: boolean;
+}
+
+/** The clinic's types, or the built-in list while the policy loads. */
+export function claimKindsOf(policy: { types?: ClaimKind[]; mileageRatePerKm: string; receiptRequired: boolean } | undefined): ClaimKind[] {
+  if (policy?.types?.length) return policy.types;
+  return CLAIM_TYPES.map((row) => ({
+    code: row.value,
+    name: row.label,
+    unit: row.value === 'MILEAGE' ? 'KM' : null,
+    ratePerUnit: row.value === 'MILEAGE' ? Number(policy?.mileageRatePerKm ?? DEFAULT_MILEAGE_RATE_RM) : null,
+    dailyUnitCap: null,
+    receiptRequired: policy?.receiptRequired ?? true,
+  }));
+}
+
+/** Kilometres paid, up to the type's daily cap (decision 9). */
+export function paidKm(km: number, kind: ClaimKind | undefined): number {
+  return kind?.dailyUnitCap !== null && kind?.dailyUnitCap !== undefined ? Math.min(km, kind.dailyUnitCap) : km;
+}
 
 /**
  * [D] RM per kilometre comes from the clinic's claim policy (Settings ›

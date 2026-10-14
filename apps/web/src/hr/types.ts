@@ -55,7 +55,8 @@ export type UpdateStaffDto = Partial<CreateStaffDto> & { active?: boolean; clini
 // HR, Phase 1c. Leave request/approval workflow — no accrual balances or
 // leave-type quotas yet, matching PRODUCT_REQUIREMENTS.md §14's MVP
 // wording. Doctor Incentive Engine stays unbuilt (parked on OQ#2).
-export type LeaveType = 'ANNUAL' | 'MEDICAL' | 'EMERGENCY' | 'UNPAID' | 'OTHER';
+/** A clinic leave type code (Section D): ANNUAL, MEDICAL, … or the clinic's own. */
+export type LeaveType = string;
 export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export interface LeaveRequest {
@@ -101,6 +102,8 @@ export interface PublicHoliday {
   name: string;
   /** ORDINARY unless the clinic marked it festive; a rule set may price a festive day apart. */
   kind: PublicHolidayKind;
+  /** The clinic's multiplier for hours on this day (Section C); null is the rule set's. */
+  multiplier?: string | null;
 }
 
 export interface CreatePublicHolidayDto {
@@ -112,6 +115,7 @@ export interface CreatePublicHolidayDto {
 export interface UpdatePublicHolidayDto {
   name?: string;
   kind?: PublicHolidayKind;
+  multiplier?: number | null;
 }
 
 // Attendance is a read-only derived report over Visit.checkInAt/checkOutAt

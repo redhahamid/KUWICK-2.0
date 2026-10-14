@@ -4,6 +4,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import {
   useAssignEmployer,
   useSetStaffGroup,
+  useSetDoctorRates,
   useEmployees,
   useLegalEmployers,
   useRecordStatutoryClassification,
@@ -73,6 +74,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
   const upsert = useUpsertEmployee();
   const assignEmployer = useAssignEmployer();
   const setGroup = useSetStaffGroup();
+  const setDoctorRates = useSetDoctorRates();
   const people = useEmployees({});
   const employers = useLegalEmployers();
   const standing = useStatutoryClassifications(staffId);
@@ -106,6 +108,10 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
   const [employmentType, setEmploymentType] = useState<string | undefined>();
   // Doctor or staff: 'ROLE' leaves it to the account role.
   const [staffGroup, setStaffGroup] = useState<'DOCTOR' | 'STAFF' | 'ROLE'>('ROLE');
+  // A doctor's own rates (Section C). Blank uses the rule set's and the night template's.
+  const [locumRate, setLocumRate] = useState('');
+  const [nightMode, setNightMode] = useState<'PER_SHIFT' | 'PER_HOUR'>('PER_SHIFT');
+  const [nightRate, setNightRate] = useState('');
   const [managerStaffId, setManagerStaffId] = useState<string | undefined>();
   const [startDate, setStartDate] = useState<Dayjs | null>(null);
   const [confirmedDate, setConfirmedDate] = useState<Dayjs | null>(null);
@@ -155,6 +161,9 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
     setDepartment(em.department ?? '');
     setEmploymentType(em.employmentType);
     setStaffGroup(em.staffGroup ?? 'ROLE');
+    setLocumRate(em.doctorRates?.locumRate ?? '');
+    setNightMode(em.doctorRates?.nightPayMode ?? 'PER_SHIFT');
+    setNightRate(em.doctorRates?.nightRate ?? '');
     setManagerStaffId(people.data?.find((row) => row.fullName === em.manager)?.staffId);
     setStartDate(parse(em.startDate));
     setConfirmedDate(parse(em.confirmedDate));
@@ -294,6 +303,15 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
       await upsert.mutateAsync({ staffId, ...body });
       if (section === 'employment' && (staffGroup === 'ROLE' ? null : staffGroup) !== (data.employment.staffGroup ?? null)) {
         await setGroup.mutateAsync({ staffId, staffGroup: staffGroup === 'ROLE' ? null : staffGroup });
+      }
+      const rates = { locumRate: locumRate.trim() || null, nightPayMode: nightRate.trim() ? nightMode : null, nightRate: nightRate.trim() || null };
+      const had = data.employment.doctorRates;
+      if (
+        section === 'employment' &&
+        had &&
+        (rates.locumRate !== had.locumRate || rates.nightRate !== had.nightRate || (rates.nightRate && rates.nightPayMode !== had.nightPayMode))
+      ) {
+        await setDoctorRates.mutateAsync({ staffId, ...rates });
       }
       if (section === 'employment') {
         // The record is written by now. A refusal here — a month already
@@ -510,6 +528,39 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
                 />
                 <div className="hr-form__help">Decides the roster group, the shifts offered and doctor or staff pay rules.</div>
               </div>
+              {(staffGroup === 'ROLE' ? data.employment.groupFromRole : staffGroup) === 'DOCTOR' ? (
+                <div>
+                  <label htmlFor="ed-locum-rate">Locum rate (RM an hour)</label>
+                  <Input
+                    id="ed-locum-rate"
+                    inputMode="decimal"
+                    placeholder="The rule set’s"
+                    value={locumRate}
+                    onChange={(event) => setLocumRate(event.target.value.replace(/[^0-9.]/g, ''))}
+                  />
+                  <label htmlFor="ed-night-mode" style={{ marginTop: 8 }}>Night shift pay</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Select
+                      id="ed-night-mode"
+                      value={nightMode}
+                      onChange={setNightMode}
+                      style={{ width: 170 }}
+                      options={[
+                        { value: 'PER_SHIFT', label: 'Fixed per night' },
+                        { value: 'PER_HOUR', label: 'Per night hour' },
+                      ]}
+                    />
+                    <Input
+                      aria-label="Night rate (RM)"
+                      inputMode="decimal"
+                      placeholder="The night shift’s"
+                      value={nightRate}
+                      onChange={(event) => setNightRate(event.target.value.replace(/[^0-9.]/g, ''))}
+                    />
+                  </div>
+                  <div className="hr-form__help">Day hours above the weekly normal are paid at the locum rate; night shifts are paid apart.</div>
+                </div>
+              ) : null}
               <div>
                 <label htmlFor="ed-pos">Job title</label>
                 <JobTitlePicker

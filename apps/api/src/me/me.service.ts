@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { AttendanceCorrectionStatus, LeaveStatus, LeaveType } from '@prisma/client';
+import { AttendanceCorrectionStatus, LeaveStatus } from '@prisma/client';
+import { LEAVE_CODE, LeaveType, leaveKinds, unpaidLeaveCodes } from '../hr/leave-types';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentStaffId, currentTenantId } from '../core/tenant-context';
@@ -15,6 +16,8 @@ import { payDateChoicesOf, paymentsOnChosenDates } from '../workforce/pay-dates'
 import { StaffFileService } from '../workforce/staff-file.service';
 import { ClaimPolicyService } from '../workforce/claim-policy.service';
 import { assertReceiptRule, priceClaim } from '../workforce/claim-pricing';
+import { claimTypeFor } from '../workforce/claim-types';
+import { benefitAlert } from '../workforce/benefit-allowance';
 import { leaveDays, leaveDaysInYear } from '../workforce/leave-balance';
 import { workforceCategoryOf } from '../workforce/workforce-category';
 import {
@@ -682,9 +685,16 @@ export class MeService {
           },
         },
       });
-      const requiresAttachment = withPolicy?.leavePolicy?.entitlements[0]?.requiresAttachment ?? false;
+      // The clinic's leave type (Section D): it must exist and be in use, and it says whether a document is needed.
+      const kind = leaveKinds(await tx.leaveTypeSetting.findMany()).find((row) => row.code === dto.leaveType && row.active);
+      if (!kind) throw new BadRequestException("That is not one of the clinic's leave types.");
+      const requiresAttachment = withPolicy?.leavePolicy?.entitlements[0]?.requiresAttachment ?? kind.documentRequired;
       if (requiresAttachment && !dto.attachmentFileId) {
-        throw new BadRequestException('This kind of leave needs the MC attached. Add it and send again.');
+        throw new BadRequestException(
+          dto.leaveType === LeaveType.MEDICAL
+            ? 'This kind of leave needs the MC attached. Add it and send again.'
+            : `${kind.name} needs a supporting document. Add it and send again.`,
+        );
       }
       const attachment = dto.attachmentFileId
         ? await this.files.claimOwn(tx, actor.id, dto.attachmentFileId, 'MEDICAL_CERTIFICATE')
@@ -749,6 +759,8 @@ export class MeService {
       payrollPeriod: row.payrollPeriod ? yearMonth(row.payrollPeriod) : null,
       distanceKm: row.distanceKm,
       mileageRate: row.mileageRate,
+      /** What was not paid and why, e.g. kilometres over the daily cap. */
+      unpaidNote: row.unpaidNote,
       attachments: row.attachments,
       submittedAt: row.submittedAt ?? row.createdAt,
       createdAt: row.createdAt,
@@ -791,10 +803,12 @@ export class MeService {
       // the price, whatever the phone showed.
       const policy = await this.claimPolicies.current();
       // The same price and the same receipt rule HR's route applies (claim-pricing.ts).
-      const priced = priceClaim({ amountClaimed: dto.amountClaimed, distanceKm: dto.distanceKm }, policy);
-      assertReceiptRule(policy, dto.receiptFileId);
+      // The clinic's claim type prices it and says whether a receipt is needed (Section E).
+      const { kind, unitsAlreadyThatDay } = await claimTypeFor(tx, policy, { staffId: actor.id, code: dto.category, claimDate: dto.claimDate });
+      const priced = priceClaim({ amountClaimed: dto.amountClaimed, distanceKm: dto.distanceKm }, policy, kind, unitsAlreadyThatDay);
+      assertReceiptRule(policy, dto.receiptFileId, kind);
       const mileage = priced.distanceKm !== null;
-      const rate = Number(policy.mileageRatePerKm);
+      const rate = Number(priced.mileageRate ?? policy.mileageRatePerKm);
       const amountClaimed = priced.amountClaimed;
       const receipt = dto.receiptFileId ? await this.files.claimOwn(tx, actor.id, dto.receiptFileId, 'RECEIPT') : null;
 
@@ -807,6 +821,7 @@ export class MeService {
           amountClaimed,
           distanceKm: mileage ? (dto.distanceKm as number) : null,
           mileageRate: mileage ? rate.toFixed(2) : null,
+          unpaidNote: priced.unpaidNote,
           claimDate: new Date(`${dto.claimDate.slice(0, 10)}T00:00:00.000Z`),
           description: dto.description,
           status: 'SUBMITTED',
@@ -992,38 +1007,37 @@ export class MeService {
   async leaveBalances() {
     const actor = await this.me();
     const year = new Date().getUTCFullYear();
-    const [row, unpaid, withPolicy] = await Promise.all([
+    const kinds = leaveKinds(await this.prisma.leaveTypeSetting.findMany({ orderBy: { sortOrder: 'asc' } }));
+    const [row, unpaid] = await Promise.all([
       this.leaveService.balancesForSelf(actor.id, year),
       this.prisma.leaveRequest.findMany({
         where: {
           staffId: actor.id,
-          leaveType: LeaveType.UNPAID,
+          leaveType: { in: [...unpaidLeaveCodes(kinds)] },
           status: LeaveStatus.APPROVED,
           startDate: { lte: new Date(Date.UTC(year, 11, 31)) },
           endDate: { gte: new Date(Date.UTC(year, 0, 1)) },
         },
         orderBy: { startDate: 'desc' },
       }),
-      this.prisma.employeeProfile.findUnique({
-        where: { staffId: actor.id },
-        select: { leavePolicy: { select: { entitlements: { select: { leaveType: true, requiresAttachment: true } } } } },
-      }),
     ]);
-    const needsAttachment = new Map(
-      (withPolicy?.leavePolicy?.entitlements ?? []).map((row) => [row.leaveType, row.requiresAttachment] as const),
-    );
     const unpaidDays = unpaid.reduce((sum, request) => sum + leaveDaysInYear(request, year), 0);
     return {
       year,
       policyName: row.policyName,
+      /** Every leave type the person can ask for, in the clinic's order (Section D). */
+      types: kinds
+        .filter((kind) => kind.active)
+        .map((kind) => ({ code: kind.code, name: kind.name, paid: kind.paid, documentRequired: kind.documentRequired })),
       balances: row.balances.map((balance) => ({
         leaveType: balance.leaveType,
+        name: balance.name,
         paid: balance.paid,
         available: balance.available,
         taken: balance.taken,
         pending: balance.pending,
         remaining: balance.remaining,
-        requiresAttachment: needsAttachment.get(balance.leaveType) ?? false,
+        requiresAttachment: balance.documentRequired,
       })),
       unpaidTaken: { days: unpaidDays, lastMonth: unpaid[0] ? monthShort(unpaid[0].startDate) : null },
     };
@@ -1047,9 +1061,7 @@ export class MeService {
     const start = this.dateOnly(query.startDate);
     const end = this.dateOnly(query.endDate);
     if (end < start) throw new BadRequestException('Leave cannot end before it starts.');
-    const leaveType = (Object.values(LeaveType) as string[]).includes(query.leaveType ?? '')
-      ? (query.leaveType as LeaveType)
-      : null;
+    const leaveType = LEAVE_CODE.test(query.leaveType ?? '') ? (query.leaveType as string) : null;
     const halfDay = query.halfDay === 'true';
     const days = leaveDays({ startDate: start, endDate: end });
     const year = start.getUTCFullYear();
@@ -1114,9 +1126,16 @@ export class MeService {
     if (!account) return { year, medical: null };
     const allowance = Number(account.allowance);
     const used = account.usages.reduce((sum, usage) => sum + Number(usage.amount), 0);
+    // The clinic's alert level (Section F), so the person sees "running low" the same way HR does.
+    const policy = await this.prisma.benefitPolicy.findFirst({ select: { alertBelowPercent: true } });
     return {
       year,
-      medical: { allowance: allowance.toFixed(2), used: used.toFixed(2), remaining: Math.max(0, allowance - used).toFixed(2) },
+      medical: {
+        allowance: allowance.toFixed(2),
+        used: used.toFixed(2),
+        remaining: Math.max(0, allowance - used).toFixed(2),
+        alert: benefitAlert(Math.round(allowance * 100), Math.round(used * 100), policy?.alertBelowPercent ?? 20),
+      },
     };
   }
 

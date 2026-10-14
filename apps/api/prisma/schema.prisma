@@ -266,6 +266,10 @@ model Tenant {
   shiftTemplates              ShiftTemplate[]
   rosterPublications          RosterPublication[]
   rosterLocumSlots            RosterLocumSlot[]
+  workWeeks                   WorkWeek[]
+  leaveTypes                  LeaveTypeSetting[]
+  claimTypes                  ClaimTypeSetting[]
+  benefitPolicy               BenefitPolicy?
   providerScheduleModePeriods ProviderScheduleModePeriod[]
   staffNotifications          StaffNotification[]
   mediaAssets                 MediaAsset[]
@@ -1035,6 +1039,7 @@ model Staff {
   shiftTemplatesCreated               ShiftTemplate[]               @relation("ShiftTemplateAuthor")
   rosterPublications                  RosterPublication[]           @relation("RosterPublisher")
   rosterLocumSlotsCreated             RosterLocumSlot[]             @relation("RosterLocumSlotAuthor")
+  workWeeks                           WorkWeek[]                    @relation("WorkWeekStaff")
   scheduleModePeriods                 ProviderScheduleModePeriod[]  @relation("ScheduleModePeriodProvider")
   staffNotifications                  StaffNotification[]
   changeRequestsDecided               AppointmentChangeRequest[]
@@ -1211,13 +1216,6 @@ model Staff {
   @@map("staff")
 }
 
-enum LeaveType {
-  ANNUAL
-  MEDICAL
-  EMERGENCY
-  UNPAID
-  OTHER
-}
 
 enum LeaveStatus {
   PENDING
@@ -1235,7 +1233,7 @@ model LeaveRequest {
   id                String      @id @default(uuid())
   tenantId          String      @map("tenant_id")
   staffId           String      @map("staff_id")
-  leaveType         LeaveType   @map("leave_type")
+  leaveType         String      @map("leave_type")
   startDate         DateTime    @map("start_date") @db.Date
   endDate           DateTime    @map("end_date") @db.Date
   reason            String?
@@ -1298,6 +1296,9 @@ model PublicHoliday {
   date      DateTime          @db.Date
   name      String
   kind      PublicHolidayKind @default(ORDINARY)
+  /// The clinic's multiplier for hours on this holiday. Blank is the rule
+  /// set's. Never below the Act for staff it covers; doctors can be 1x.
+  multiplier Decimal?         @db.Decimal(4, 2)
   createdAt DateTime          @default(now()) @map("created_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
@@ -5355,6 +5356,9 @@ model ShiftTemplate {
   /// Unpaid rest inside the shift, in minutes.
   breakMinutes Int               @default(0) @map("break_minutes")
   night        Boolean           @default(false)
+  /// Night pay for doctors on this template: per shift or per hour, and the RM.
+  nightPayMode NightPayMode?     @map("night_pay_mode")
+  nightRate    Decimal?          @map("night_rate") @db.Decimal(10, 2)
   /// A #rrggbb colour for the roster cell.
   colour       String
   sortOrder    Int               @default(0) @map("sort_order")
@@ -6668,6 +6672,12 @@ model EmployeeProfile {
   basicSalary Decimal? @map("basic_salary") @db.Decimal(12, 2)
   /// For hourly/locum staff, where basic salary does not apply.
   hourlyRate  Decimal? @map("hourly_rate") @db.Decimal(10, 2)
+  /// An employed doctor's RM per locum hour above the weekly normal (Section C).
+  /// Blank uses the rule set's.
+  locumRate    Decimal?      @map("locum_rate") @db.Decimal(10, 2)
+  /// A doctor's own night pay, ahead of the night shift template's.
+  nightPayMode NightPayMode? @map("night_pay_mode")
+  nightRate    Decimal?      @map("night_rate") @db.Decimal(10, 2)
 
   bankName        String? @map("bank_name")
   bankAccountNo   String? @map("bank_account_no")
@@ -7147,7 +7157,7 @@ model LeavePolicyEntitlement {
   id                 String    @id @default(uuid())
   tenantId           String    @map("tenant_id")
   leavePolicyId      String    @map("leave_policy_id")
-  leaveType          LeaveType @map("leave_type")
+  leaveType          String    @map("leave_type")
   /// Days per benefit year. Zero means the type exists but carries no
   /// entitlement (unpaid leave), which is different from the type being absent.
   daysPerYear        Decimal   @map("days_per_year") @db.Decimal(5, 1)
@@ -7172,10 +7182,11 @@ model LeaveBalance {
   id               String    @id @default(uuid())
   tenantId         String    @map("tenant_id")
   staffId          String    @map("staff_id")
-  leaveType        LeaveType @map("leave_type")
+  leaveType        String    @map("leave_type")
   /// The calendar year the entitlement belongs to.
   benefitYear      Int       @map("benefit_year")
-  entitledDays     Decimal   @map("entitled_days") @db.Decimal(5, 1)
+  /// Null: the leave type's (or the person's leave policy's) yearly days, with the Act's floor.
+  entitledDays     Decimal?  @map("entitled_days") @db.Decimal(5, 1)
   carriedInDays    Decimal   @default(0) @map("carried_in_days") @db.Decimal(5, 1)
   adjustmentDays   Decimal   @default(0) @map("adjustment_days") @db.Decimal(5, 1)
   adjustmentReason String?   @map("adjustment_reason")
@@ -8555,6 +8566,23 @@ enum OvertimeMode {
   CLINIC_RATE
 }
 
+/// HOW EXTRA HOURS ON NORMAL DAYS ARE COUNTED (HR decisions, 14 October 2026).
+/// ACT: past the normal day, then past the weekly normal not already counted.
+/// WEEKLY: past the weekly normal only, which can pay less than the Act.
+/// AVERAGED: shift-work averaging under s.60C, over a 3-week cycle.
+enum OvertimeBasis {
+  ACT
+  WEEKLY
+  AVERAGED
+}
+
+/// A DOCTOR'S NIGHT SHIFT (decision 4): a fixed amount per shift, or an
+/// hourly night rate times the night hours worked.
+enum NightPayMode {
+  PER_SHIFT
+  PER_HOUR
+}
+
 /// THE PRORATION ENGINE, AS ONE OBJECT.
 ///
 /// Five independent bases. PayrollPanda has four; the fifth — termination — is
@@ -8678,6 +8706,20 @@ model PayrollPolicy {
   publicHolidayMultiplier  Decimal? @map("public_holiday_multiplier") @db.Decimal(4, 2)
   /// The hours beyond normal hours on a FESTIVE public holiday. Blank means the public holiday multiplier.
   festiveHolidayMultiplier Decimal? @map("festive_holiday_multiplier") @db.Decimal(4, 2)
+
+  /// WEEK BY WEEK (Section C, 14 October 2026). NULL is the old way: extra
+  /// time is approved day by day on the Timesheet and paid in its own month.
+  /// Set, the published roster is the approval and extra hours are worked out
+  /// per week, paid in the month after the week ends.
+  overtimeBasis       OvertimeBasis? @map("overtime_basis")
+  /// The clinic's weekly normal hours. A public holiday in the week takes one
+  /// normal day off it; a part week is cut to the days employed.
+  weeklyNormalHours   Decimal        @default(45) @map("weekly_normal_hours") @db.Decimal(5, 2)
+  /// Overtime for wages up to this amount a month. Blank is the Act's
+  /// RM4,000; it can only be raised, to give overtime to more staff.
+  overtimeWageCeiling Decimal?       @map("overtime_wage_ceiling") @db.Decimal(12, 2)
+  /// Doctors: RM per locum hour above the weekly normal, unless the doctor has their own rate.
+  locumHourlyRate     Decimal?       @map("locum_hourly_rate") @db.Decimal(10, 2)
 
   /// A CLINIC THAT CHOSE TO PAY BELOW THE ACT, AND SAID SO.
   ///
@@ -9230,15 +9272,6 @@ enum StaffClaimStatus {
   CANCELLED
 }
 
-enum StaffClaimCategory {
-  MEDICAL
-  TRAVEL
-  MEAL
-  TRAINING
-  EQUIPMENT
-  PROFESSIONAL_FEE
-  OTHER
-}
 
 /// Where an approved amount has got to on its way out of the door.
 enum PayoutStatus {
@@ -9264,7 +9297,8 @@ model StaffClaim {
   clinicId String? @map("clinic_id")
   staffId  String  @map("staff_id")
 
-  category       StaffClaimCategory
+  /// A clinic claim type code (Section E): MILEAGE, MEAL, … or the clinic's own.
+  category       String
   /// What the employee asked for.
   amountClaimed  Decimal            @map("amount_claimed") @db.Decimal(12, 2)
   /// What was actually approved. NULL until a decision is made — never
@@ -9298,6 +9332,8 @@ model StaffClaim {
   /// on the claim so a later change to the clinic's rate never reprices it.
   distanceKm          Decimal?      @map("distance_km") @db.Decimal(7, 1)
   mileageRate         Decimal?      @map("mileage_rate") @db.Decimal(6, 2)
+  /// What was not paid and why, e.g. kilometres over the daily cap (decision 9).
+  unpaidNote          String?       @map("unpaid_note")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -9574,4 +9610,108 @@ model PayrollPayslipCheck {
   @@unique([payrollRunId, staffId])
   @@index([tenantId])
   @@map("payroll_payslip_checks")
+}
+
+/// ONE PERSON'S WEEK, AS PAYROLL WORKED IT OUT (Section C, 14 October 2026).
+/// Written when a run is worked out, for the weeks ending in the month before
+/// the run's month; each payroll item from the week points here, and the
+/// payroll page shows `working` as the week-by-week breakdown.
+model WorkWeek {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  staffId         String   @map("staff_id")
+  weekStart       DateTime @map("week_start") @db.Date
+  weekEnd         DateTime @map("week_end") @db.Date
+  /// First of the month the week ends in.
+  earnedMonth     DateTime @map("earned_month") @db.Date
+  overtimeMinutes Int      @default(0) @map("overtime_minutes")
+  locumMinutes    Int      @default(0) @map("locum_minutes")
+  nightShifts     Int      @default(0) @map("night_shifts")
+  /// Total RM for the week, in sen.
+  amountCents     Int      @default(0) @map("amount_cents")
+  /// The full working: days, normal hours, notes and each amount.
+  working         Json
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  staff  Staff  @relation("WorkWeekStaff", fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, weekStart])
+  @@index([tenantId, earnedMonth])
+  @@map("work_weeks")
+}
+
+/// A CLINIC'S OWN LEAVE TYPE (Section D, 14 October 2026). The code is what
+/// leave requests, balances and policies store; everything else is the
+/// clinic's setting. A statutory type never gives less than the Employment
+/// Act's floor for the person's years of service.
+model LeaveTypeSetting {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  /// ANNUAL, MEDICAL, … or the clinic's own, e.g. STUDY.
+  code             String
+  name             String
+  paid             Boolean  @default(true)
+  /// Days a year. Null: no yearly limit is tracked (unpaid leave, say).
+  daysPerYear      Decimal? @map("days_per_year") @db.Decimal(5, 1)
+  documentRequired Boolean  @default(false) @map("document_required")
+  /// Most days that may be carried into next year. Null: none.
+  carryForwardCap  Decimal? @map("carry_forward_cap") @db.Decimal(5, 1)
+  /// ANNUAL, SICK, HOSPITALISATION, MATERNITY or PATERNITY: which Act floor applies.
+  statutory        String?
+  active           Boolean  @default(true)
+  sortOrder        Int      @default(0) @map("sort_order")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, code])
+  @@map("leave_types")
+}
+
+/// A CLINIC'S OWN CLAIM TYPE (Section E, 14 October 2026). A type with a unit
+/// is priced by the server: units × rate, never more units a day than the cap.
+model ClaimTypeSetting {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  /// MILEAGE, MEAL, … or the clinic's own, e.g. PARKING.
+  code            String
+  name            String
+  /// KM for a mileage claim; null for a claim of an amount.
+  unit            String?
+  /// RM per unit.
+  ratePerUnit     Decimal? @map("rate_per_unit") @db.Decimal(8, 2)
+  /// Most units paid for one day. Null: no cap.
+  dailyUnitCap    Decimal? @map("daily_unit_cap") @db.Decimal(7, 1)
+  receiptRequired Boolean  @default(true) @map("receipt_required")
+  active          Boolean  @default(true)
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, code])
+  @@map("claim_types")
+}
+
+/// THE CLINIC'S MEDICAL BENEFIT RULES (Section F, 14 October 2026). One row
+/// per clinic group. The yearly limit is the default each person's account
+/// starts from; a joiner's is pro-rated by the whole months left in the year
+/// (decision 11). Every figure is the clinic's.
+model BenefitPolicy {
+  id          String  @id @default(uuid())
+  tenantId    String  @unique @map("tenant_id")
+  /// RM a person may use in a year.
+  yearlyLimit Decimal @default(0) @map("yearly_limit") @db.Decimal(10, 2)
+  /// The joining month counts when somebody joined on or before this day. Null: it never counts.
+  joiningMonthCutoffDay Int? @map("joining_month_cutoff_day") @db.SmallInt
+  /// Warn when what is left falls to this percentage of the allowance.
+  alertBelowPercent Int @default(20) @map("alert_below_percent") @db.SmallInt
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("benefit_policies")
 }

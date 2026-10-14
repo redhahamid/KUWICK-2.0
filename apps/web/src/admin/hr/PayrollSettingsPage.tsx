@@ -231,6 +231,11 @@ export function PayrollSettingsPage() {
   const [partMonth, setPartMonth] = useState<'CALENDAR_DAYS' | 'WORKING_DAYS'>('CALENDAR_DAYS');
   // LATE JOINERS: blank is "same month", the default; a day is the cut-off.
   const [lateJoinerCutoff, setLateJoinerCutoff] = useState('');
+  // WEEK BY WEEK (Section C). '' is the old day-by-day approval.
+  const [overtimeBasis, setOvertimeBasis] = useState<'' | 'ACT' | 'WEEKLY' | 'AVERAGED'>('ACT');
+  const [weeklyHours, setWeeklyHours] = useState('45');
+  const [wageCeiling, setWageCeiling] = useState('');
+  const [locumRate, setLocumRate] = useState('');
   const [hoursDay, setHoursDay] = useState('7.5');
   // THE CLINIC'S OWN MULTIPLIERS, blank for "the Act's". Strings for the same
   // reason the divisors are: "2." mid-keystroke is not the number 2.
@@ -267,6 +272,10 @@ export function PayrollSettingsPage() {
     setPcbProjection('CURRENT_MONTH');
     setPartMonth('CALENDAR_DAYS');
     setLateJoinerCutoff('');
+    setOvertimeBasis('ACT');
+    setWeeklyHours('45');
+    setWageCeiling('');
+    setLocumRate('');
     setHoursDay('7.5');
     setMultipliers({ 'ruleset-ot-multiplier': '', 'ruleset-restday-multiplier': '', 'ruleset-holiday-multiplier': '', 'ruleset-festive-multiplier': '' });
     setBelowActOk(false);
@@ -287,6 +296,10 @@ export function PayrollSettingsPage() {
     setPcbProjection(row.pcbProjectionBasis ?? 'CURRENT_MONTH');
     setPartMonth(row.partMonthBasis ?? 'CALENDAR_DAYS');
     setLateJoinerCutoff(row.lateJoinerCutoffDay ? String(row.lateJoinerCutoffDay) : '');
+    setOvertimeBasis(row.overtimeBasis ?? '');
+    setWeeklyHours(String(row.weeklyNormalHours ?? 45));
+    setWageCeiling(row.overtimeWageCeiling ?? '');
+    setLocumRate(row.locumHourlyRate ?? '');
     setHoursDay(String(row.overtime.hoursPerDay));
     // A box left blank is on the Act's, and stays blank so the placeholder can
     // say which figure that is rather than the clinic having to remember.
@@ -431,6 +444,10 @@ export function PayrollSettingsPage() {
         pcbProjectionBasis: pcbProjection,
         partMonthBasis: partMonth,
         lateJoinerCutoffDay: cutoffNum,
+        overtimeBasis: overtimeBasis === '' ? null : overtimeBasis,
+        weeklyNormalHours: Number(weeklyHours) || 45,
+        overtimeWageCeiling: wageCeiling.trim() === '' ? null : wageCeiling.trim(),
+        locumHourlyRate: locumRate.trim() === '' ? null : locumRate.trim(),
         overtimeMode: mode,
         // Null clears a raised multiplier back to the Act's. Sent on every
         // save, in both modes: a clinic-rate rule set falls back to the Act's
@@ -641,6 +658,12 @@ export function PayrollSettingsPage() {
                   {row.lateJoinerCutoffDay ? (
                     <span className="hr-faint"> · joiners after day {row.lateJoinerCutoffDay} paid the next month</span>
                   ) : null}
+                  <span className="hr-faint">
+                    {' · '}
+                    {row.overtimeBasis
+                      ? `overtime ${{ ACT: 'by the Act', WEEKLY: 'weekly only', AVERAGED: 'averaged over 3 weeks' }[row.overtimeBasis]}, ${row.weeklyNormalHours ?? 45} h a week`
+                      : 'overtime approved day by day'}
+                  </span>
                   {row.belowAct ? (
                     <>
                       {' '}
@@ -880,6 +903,79 @@ export function PayrollSettingsPage() {
             </div>
             <div className="hr-form__help">Unpaid leave keeps its own divisor: the days in the month.</div>
           </div>
+          {/*
+            * WEEK BY WEEK (Section C, 14 October 2026). How extra hours are
+            * counted, the weekly normal, who gets overtime, and doctors'
+            * locum rate. Every figure is the clinic's.
+            */}
+          <div>
+            <label htmlFor="ruleset-ot-basis">How overtime is counted</label>
+            <Select
+              id="ruleset-ot-basis"
+              value={overtimeBasis}
+              onChange={setOvertimeBasis}
+              style={{ width: '100%', maxWidth: 460 }}
+              options={[
+                { value: 'ACT', label: 'Employment Act: past the normal day, then past the weekly normal' },
+                { value: 'WEEKLY', label: 'Weekly only: past the weekly normal' },
+                { value: 'AVERAGED', label: 'Shift-work averaging (s.60C): over a 3-week cycle' },
+                { value: '', label: 'Day by day, approved on the Timesheet (the old way)' },
+              ]}
+            />
+            <div className="hr-form__help">
+              {overtimeBasis === ''
+                ? 'Each day’s extra time needs a manager’s approval and is paid in its own month.'
+                : 'The published roster is the approval; only time past the roster needs approving. Each week is paid in the month after the month it ends in. Doctors’ extra day hours are locum hours, worked out weekly.'}
+            </div>
+            {overtimeBasis === 'WEEKLY' ? (
+              <div className="hr-warn" style={{ marginTop: 8 }}>
+                <span>!</span>
+                <span>Weekly only can pay less than the Employment Act. The payroll page shows each week where it does.</span>
+              </div>
+            ) : null}
+            {overtimeBasis === 'AVERAGED' ? (
+              <div className="hr-form__help">A day over 12 hours is flagged on the week, the s.60C limit.</div>
+            ) : null}
+          </div>
+          {overtimeBasis !== '' ? (
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              <div>
+                <label htmlFor="ruleset-weekly-hours">Weekly normal hours</label>
+                <Input
+                  id="ruleset-weekly-hours"
+                  inputMode="decimal"
+                  value={weeklyHours}
+                  onChange={(event) => setWeeklyHours(event.target.value.replace(/[^0-9.]/g, ''))}
+                  style={{ width: 110 }}
+                />
+              </div>
+              <div>
+                <label htmlFor="ruleset-wage-ceiling">Overtime for wages up to (RM a month)</label>
+                <Input
+                  id="ruleset-wage-ceiling"
+                  inputMode="decimal"
+                  placeholder="4000 (the Act)"
+                  value={wageCeiling}
+                  onChange={(event) => setWageCeiling(event.target.value.replace(/[^0-9.]/g, ''))}
+                  style={{ width: 160 }}
+                />
+              </div>
+              <div>
+                <label htmlFor="ruleset-locum-rate">Doctors’ locum rate (RM an hour)</label>
+                <Input
+                  id="ruleset-locum-rate"
+                  inputMode="decimal"
+                  placeholder="Set per doctor"
+                  value={locumRate}
+                  onChange={(event) => setLocumRate(event.target.value.replace(/[^0-9.]/g, ''))}
+                  style={{ width: 140 }}
+                />
+              </div>
+              <div className="hr-form__help" style={{ flexBasis: '100%' }}>
+                A public holiday takes one normal day off the week. The wage limit can only be raised above the Act’s RM4,000. A doctor’s own rate, set on their employee record, comes first.
+              </div>
+            </div>
+          ) : null}
           {/*
             * LATE JOINERS (UAT, 10 October 2026): some clinics pay the days of
             * somebody who joins near the month's end in the next month's run.

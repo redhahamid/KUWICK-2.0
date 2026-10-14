@@ -1423,6 +1423,8 @@ export interface StaffBenefitAccountRow {
   used: number;
   remaining: number;
   overdrawn: number;
+  /** LOW at the clinic's alert level, OVERDRAWN past the allowance (Section F). */
+  alert?: 'LOW' | 'OVERDRAWN' | null;
   notes: string | null;
   members: {
     id: string;
@@ -1516,6 +1518,8 @@ export interface EmployeeRecord {
   employment: {
     /** Doctor or staff as recorded; null leaves it to the account role (UAT, 14 October 2026). */
     staffGroup?: 'DOCTOR' | 'STAFF' | null;
+    /** A doctor's own locum and night rates (Section C). Null: the rule set's and the night template's. */
+    doctorRates?: { locumRate: string | null; nightPayMode: 'PER_SHIFT' | 'PER_HOUR' | null; nightRate: string | null };
     /** In force: the recorded value, or what the account role says. */
     group?: 'DOCTOR' | 'STAFF';
     groupFromRole?: 'DOCTOR' | 'STAFF';
@@ -3501,6 +3505,20 @@ export interface ClaimPolicy {
   mileageRatePerKm: string;
   receiptRequired: boolean;
   updatedAt: string;
+  /** The clinic's claim types (Section E). */
+  types?: import('../me/claim-form').ClaimKind[];
+}
+
+/** A claim type as Settings edits it (Section E). */
+export interface ClaimTypeRow {
+  id: string;
+  code: string;
+  name: string;
+  unit: 'KM' | null;
+  ratePerUnit: number | null;
+  dailyUnitCap: number | null;
+  receiptRequired: boolean;
+  active: boolean;
 }
 
 export interface EffectiveAttendancePolicy {
@@ -3736,6 +3754,13 @@ export interface PayrollPolicyRow {
   partMonthBasis: "CALENDAR_DAYS" | "WORKING_DAYS";
   /** Joiners after this day are paid their first days in the next month's run; null = same month. */
   lateJoinerCutoffDay?: number | null;
+  /** Week by week (Section C). Null: the old day-by-day approval on the Timesheet. */
+  overtimeBasis?: "ACT" | "WEEKLY" | "AVERAGED" | null;
+  weeklyNormalHours?: number;
+  /** Overtime for wages up to this a month; null is the Act's RM4,000. */
+  overtimeWageCeiling?: string | null;
+  /** Doctors' RM per locum hour, unless the doctor has their own. */
+  locumHourlyRate?: string | null;
   /** §6 — how extra hours, rest days and public holidays are priced. */
   overtimeMode: OvertimeMode;
   clinicRates: ClinicRateFields | null;
@@ -4044,4 +4069,26 @@ export interface EpfBasisForBranchResult {
   blocked: number;
   committed: boolean;
   rows: { staffId: string; name: string; employeeNo: string | null; current: string; action: "CHANGE" | "SAME" | "BLOCKED" }[];
+}
+
+/** One week of a run's week-by-week working (Section C). */
+export interface PayrollWeek {
+  id: string;
+  weekStart: string;
+  weekEnd: string;
+  amount: string;
+  working: {
+    group: "DOCTOR" | "STAFF";
+    basis: "ACT" | "WEEKLY" | "AVERAGED";
+    normalMinutes: number;
+    countedMinutes: number;
+    dailyOvertimeMinutes: number;
+    weeklyOvertimeMinutes: number;
+    overtimeMinutes: number;
+    locumMinutes: number;
+    holidayLocum: { date: string; name: string; minutes: number; multiplier: number }[];
+    nights: { date: string; minutes: number }[];
+    notes: string[];
+    pay: { overtimeCents: number; locumCents: number; holidayCents: number; nightCents: number };
+  };
 }

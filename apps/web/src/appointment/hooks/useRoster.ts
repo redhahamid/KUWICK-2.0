@@ -144,6 +144,9 @@ export interface ShiftTemplate {
   endTime: string | null;
   breakMinutes: number;
   night: boolean;
+  /** Doctors' night pay on this template (Section C). */
+  nightPayMode?: 'PER_SHIFT' | 'PER_HOUR' | null;
+  nightRate?: string | null;
   colour: string;
   sortOrder: number;
   active: boolean;
@@ -151,7 +154,10 @@ export interface ShiftTemplate {
   workedMinutes: number;
 }
 
-export type ShiftTemplateInput = Pick<ShiftTemplate, 'group' | 'name' | 'kind' | 'startTime' | 'endTime' | 'breakMinutes' | 'night' | 'colour' | 'clinicId'> & {
+export type ShiftTemplateInput = Pick<
+  ShiftTemplate,
+  'group' | 'name' | 'kind' | 'startTime' | 'endTime' | 'breakMinutes' | 'night' | 'nightPayMode' | 'nightRate' | 'colour' | 'clinicId'
+> & {
   sortOrder?: number;
 };
 

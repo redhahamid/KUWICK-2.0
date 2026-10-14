@@ -10,6 +10,7 @@ import { CreateStaffClaimDto, DecideStaffClaimDto, SettleStaffClaimDto } from '.
 import { ClaimPolicyService } from './claim-policy.service';
 import { StaffFileService } from './staff-file.service';
 import { assertReceiptRule, priceClaim } from './claim-pricing';
+import { claimTypeFor } from './claim-types';
 
 function monthStart(value: Date): Date {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
@@ -106,6 +107,7 @@ export class StaffClaimService {
       // rewrite what was approved.
       distanceKm: row.distanceKm === null ? null : String(row.distanceKm),
       mileageRate: row.mileageRate === null ? null : String(row.mileageRate),
+      unpaidNote: row.unpaidNote,
       attachments: row.attachments,
       // Said in words on every row, because "where is this being paid from" is
       // the question a duplicate payment turns on.
@@ -155,8 +157,10 @@ export class StaffClaimService {
       if (!profile) throw new NotFoundException('No employment record for this person.');
 
       const policy = await this.claimPolicies.current();
-      const priced = priceClaim({ amountClaimed: dto.amountClaimed, distanceKm: dto.distanceKm }, policy);
-      assertReceiptRule(policy, dto.receiptFileId);
+      // The clinic's claim type prices it and says whether a receipt is needed (Section E).
+      const { kind, unitsAlreadyThatDay } = await claimTypeFor(tx, policy, { staffId: dto.staffId, code: dto.category, claimDate: dto.claimDate });
+      const priced = priceClaim({ amountClaimed: dto.amountClaimed, distanceKm: dto.distanceKm }, policy, kind, unitsAlreadyThatDay);
+      assertReceiptRule(policy, dto.receiptFileId, kind);
       const receipt = dto.receiptFileId ? await this.files.claimOwn(tx, dto.staffId, dto.receiptFileId, 'RECEIPT') : null;
       const claimDate = dto.claimDate.slice(0, 10);
       const claimed = toCents(priced.amountClaimed);
@@ -170,6 +174,7 @@ export class StaffClaimService {
           amountClaimed: priced.amountClaimed,
           distanceKm: priced.distanceKm,
           mileageRate: priced.mileageRate,
+          unpaidNote: priced.unpaidNote,
           claimDate: new Date(`${claimDate}T00:00:00.000Z`),
           description: dto.description,
           status: 'SUBMITTED',

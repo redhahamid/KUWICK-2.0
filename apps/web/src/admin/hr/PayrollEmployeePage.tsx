@@ -24,6 +24,7 @@ import { HrPage, Panel, PanelHead, StatusChip } from './ui';
 import { IconDownload, IconPlus } from './ui/icons';
 import { initialsOf } from './ui/who';
 import { PayslipWorkings } from './PayslipWorkings';
+import { WeekByWeek } from './WeekByWeek';
 import type { PayrollJourney } from '../types';
 
 /** The query's own error, as a sentence, or nothing. */
@@ -500,6 +501,8 @@ export function PayrollEmployeePage() {
                 </div>
               ) : null}
             </Panel>
+
+            {runId && staffId ? <WeekByWeek runId={runId} staffId={staffId} /> : null}
 
             <Panel className="hr-mt">
               <PanelHead title="Year to date" actions={ytdText.range ? <span className="hr-eff" data-testid="ytd-range">{ytdText.range}</span> : null} />

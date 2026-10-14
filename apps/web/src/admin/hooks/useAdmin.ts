@@ -95,9 +95,11 @@ import type {
   PayrollReportCatalogue,
   PayrollStatutoryReport,
   PayrollVarianceReport,
+  PayrollWeek,
   PayrollJourney,
   AttendancePolicy,
   ClaimPolicy,
+  ClaimTypeRow,
   EffectiveAttendancePolicy,
   StatutoryRates,
   StatutoryCheck,
@@ -946,6 +948,15 @@ export function useSetStaffGroup() {
   );
 }
 
+/** A doctor's own locum and night rates (Section C). */
+export function useSetDoctorRates() {
+  return useAdminMutation(
+    ({ staffId, ...body }: { staffId: string; locumRate: string | null; nightPayMode: 'PER_SHIFT' | 'PER_HOUR' | null; nightRate: string | null }) =>
+      apiClient.patch(`/workforce/employees/${staffId}/doctor-rates`, body),
+    ["admin-hr"],
+  );
+}
+
 export function useUpsertEmployee() {
   return useAdminMutation(
     ({ staffId, ...body }: { staffId: string } & Record<string, unknown>) =>
@@ -1386,6 +1397,36 @@ export function useStaffBenefits(params: { year?: number; clinicId?: string }) {
   });
 }
 
+/** The clinic's medical benefit rules (Section F). */
+export interface BenefitPolicyView {
+  yearlyLimit: string;
+  joiningMonthCutoffDay: number | null;
+  alertBelowPercent: number;
+}
+
+export function useBenefitPolicy() {
+  return useQuery({ queryKey: ["admin-hr", "benefit-policy"], queryFn: () => apiClient.get<BenefitPolicyView>("/workforce/benefits/policy") });
+}
+
+export function useSaveBenefitPolicy() {
+  return useAdminMutation((body: Partial<BenefitPolicyView>) => apiClient.put<BenefitPolicyView>("/workforce/benefits/policy", body), ["admin-hr"]);
+}
+
+export function useSetUpBenefitYear() {
+  return useAdminMutation(
+    (body: { year: number; clinicId?: string }) => apiClient.post<{ year: number; created: number }>("/workforce/benefits/set-up", body),
+    ["admin-hr"],
+  );
+}
+
+export function useAddBenefitUsage() {
+  return useAdminMutation(
+    ({ accountId, ...body }: { accountId: string; usedAt: string; amount: string; notes: string }) =>
+      apiClient.post<{ id: string }>(`/workforce/benefits/${accountId}/usages`, body),
+    ["admin-hr"],
+  );
+}
+
 export function useEmployeeRecord(staffId: string | undefined, year?: number) {
   return useQuery({
     queryKey: ["admin-hr", "employee-record", staffId, year],
@@ -1755,6 +1796,15 @@ export function useEmployeeYtd(staffId: string | undefined, taxYear: number, thr
         `/workforce/payroll/employees/${staffId}/ytd?year=${taxYear}${throughMonth ? `&throughMonth=${throughMonth}` : ""}`,
       ),
     enabled: Boolean(staffId),
+  });
+}
+
+/** The week-by-week working behind a run's overtime, locum and night pay for one person (Section C). */
+export function usePayrollWeeks(runId: string | undefined, staffId: string | undefined) {
+  return useQuery({
+    queryKey: ["admin-hr", "payroll-weeks", runId, staffId],
+    queryFn: () => apiClient.get<PayrollWeek[]>(`/workforce/payroll/runs/${runId}/employees/${staffId}/weeks`),
+    enabled: Boolean(runId && staffId),
   });
 }
 
@@ -2429,6 +2479,18 @@ export function useAttendancePolicy(clinicId?: string) {
   });
 }
 
+export function useClaimTypes() {
+  return useQuery({ queryKey: ["admin-hr", "claim-types"], queryFn: () => apiClient.get<ClaimTypeRow[]>("/workforce/claim-types") });
+}
+
+export function useSaveClaimType() {
+  return useAdminMutation(
+    ({ id, ...body }: Partial<ClaimTypeRow> & { name: string }) =>
+      id ? apiClient.patch<ClaimTypeRow>(`/workforce/claim-types/${id}`, body) : apiClient.post<ClaimTypeRow>("/workforce/claim-types", body),
+    ["admin-hr"],
+  );
+}
+
 export function useClaimPolicy() {
   return useQuery({
     queryKey: ["admin-hr", "claim-policy"],
@@ -2495,6 +2557,44 @@ export function useSaveAttendancePolicy() {
  * computes each row through the same function `GET leave/balances/:staffId`
  * uses, so a figure here cannot disagree with the one on somebody's record.
  */
+/** One of the clinic's leave types (Section D). */
+export interface LeaveTypeRow {
+  id: string;
+  code: string;
+  name: string;
+  paid: boolean;
+  daysPerYear: number | null;
+  documentRequired: boolean;
+  carryForwardCap: number | null;
+  statutory: string | null;
+  actMinimum: number | null;
+  active: boolean;
+}
+
+export function useLeaveTypes() {
+  return useQuery({
+    queryKey: ["admin-hr", "leave-types"],
+    queryFn: () => apiClient.get<LeaveTypeRow[]>("/workforce/leave-types"),
+  });
+}
+
+export function useSaveLeaveType() {
+  return useAdminMutation(
+    ({ id, ...body }: Partial<LeaveTypeRow> & { name: string }) =>
+      id ? apiClient.patch<LeaveTypeRow>(`/workforce/leave-types/${id}`, body) : apiClient.post<LeaveTypeRow>("/workforce/leave-types", body),
+    ["admin-hr"],
+  );
+}
+
+/** Leave taken before go-live and days carried in (Section D). */
+export function useImportOpeningBalances() {
+  return useAdminMutation(
+    (body: { year: number; rows: { employeeNo: string; leaveType: string; takenDays: number; carriedInDays?: number }[] }) =>
+      apiClient.post<{ imported: number; problems: { line: number; message: string }[] }>("/workforce/leave/balances/import", body),
+    ["admin-hr"],
+  );
+}
+
 export function useLeaveBalances(
   params: { clinicId?: string; year?: number } = {},
 ) {

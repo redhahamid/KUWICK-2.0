@@ -1,3 +1,4 @@
+import { CLAIM_CODE } from '../claim-types';
 import { IsIn, IsISO8601, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min } from 'class-validator';
 
 const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
@@ -15,7 +16,8 @@ export const CLAIM_CATEGORIES = [
 export class CreateStaffClaimDto {
   @IsUUID() staffId!: string;
   @IsOptional() @IsUUID() clinicId?: string;
-  @IsIn(CLAIM_CATEGORIES) category!: (typeof CLAIM_CATEGORIES)[number];
+  /** One of the clinic's claim types, by code (Section E). */
+  @Matches(CLAIM_CODE, { message: "Choose one of the clinic's claim types." }) category!: string;
   @Matches(MONEY, { message: 'amountClaimed must be a positive number with at most two decimal places' })
   amountClaimed!: string;
   @IsISO8601() claimDate!: string;

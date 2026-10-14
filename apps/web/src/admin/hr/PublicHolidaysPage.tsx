@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { App, DatePicker, Form, Input, Popconfirm, Radio } from 'antd';
+import { App, DatePicker, Form, Input, InputNumber, Popconfirm, Radio } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { Link } from 'react-router-dom';
 import { Drawer, HrPage, IconButton, Panel, StatusChip } from './ui';
@@ -67,6 +67,21 @@ export function PublicHolidaysPage() {
     }
   };
 
+  /**
+   * THE HOLIDAY'S OWN MULTIPLIER (decision 2). Blank is the rule set's. Staff
+   * the Employment Act covers are never paid below the Act's 3× for hours past
+   * the normal day; doctors' locum hours can be 1×.
+   */
+  const setMultiplier = async (row: PublicHoliday, value: number | null) => {
+    if ((row.multiplier === null || row.multiplier === undefined ? null : Number(row.multiplier)) === value) return;
+    try {
+      await updateHoliday.mutateAsync({ id: row.id, multiplier: value });
+      message.success(value === null ? `${row.name} uses the rule set's rate.` : `${row.name} pays ${value}× for hours worked.`);
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : 'Failed to change the holiday');
+    }
+  };
+
   return (
     <HrPage
       crumb={
@@ -75,7 +90,7 @@ export function PublicHolidaysPage() {
         </>
       }
       title="Public holidays"
-      sub="The days the clinic is closed, which attendance, leave and payroll all read. A festive holiday is one the payroll rule set may price apart from an ordinary one."
+      sub="The days the clinic is closed, which attendance, leave and payroll all read. A festive holiday is one the payroll rule set may price apart from an ordinary one. “Hours paid at” sets this day’s own multiplier; staff the Act covers never get less than the Act."
       actions={
         mayWrite ? (
           <button type="button" className="hr-btn hr-btn--primary" onClick={() => setOpen(true)}>
@@ -130,6 +145,32 @@ export function PublicHolidaysPage() {
                   ) : null}
                 </span>
               ),
+            },
+            {
+              title: 'Hours paid at',
+              dataIndex: 'multiplier',
+              width: 150,
+              render: (value: string | null | undefined, row: PublicHoliday) =>
+                mayWrite ? (
+                  <InputNumber
+                    aria-label={`Multiplier for ${row.name}`}
+                    min={1}
+                    max={10}
+                    step={0.5}
+                    placeholder="Rule set"
+                    defaultValue={value === null || value === undefined ? undefined : Number(value)}
+                    onBlur={(event) => {
+                      const typed = event.target.value.trim();
+                      void setMultiplier(row, typed === '' ? null : Number(typed));
+                    }}
+                    addonAfter="×"
+                    style={{ width: 120 }}
+                  />
+                ) : value ? (
+                  `${Number(value)}×`
+                ) : (
+                  <span className="hr-faint">Rule set</span>
+                ),
             },
             {
               title: '',

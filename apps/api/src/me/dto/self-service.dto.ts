@@ -1,5 +1,6 @@
-import { LeaveType, StaffClaimCategory } from '@prisma/client';
-import { IsBoolean, IsDateString, IsEnum, IsISO8601, IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { LEAVE_CODE } from '../../hr/leave-types';
+import { CLAIM_CODE } from '../../workforce/claim-types';
+import { IsBoolean, IsDateString, IsISO8601, IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 
 /**
  * NOTHING HERE TAKES A `staffId`.
@@ -39,13 +40,10 @@ export class RequestAttendanceCorrectionDto {
 
 export class RequestLeaveDto {
   /**
-   * The closed set the whole product shares — ANNUAL, MEDICAL, EMERGENCY,
-   * UNPAID, OTHER. UNPAID is on the list because it is the one an employee
-   * genuinely needs to be able to ask for, and it is also the one that reaches
-   * payroll as a deduction; hiding it would mean unpaid leave could only ever
-   * be entered on somebody's behalf.
+   * One of the clinic's leave types, by code (Section D). The service checks
+   * it is an active type; an unpaid type reaches payroll as a deduction.
    */
-  @IsEnum(LeaveType) leaveType!: LeaveType;
+  @Matches(LEAVE_CODE, { message: "Choose one of the clinic's leave types." }) leaveType!: string;
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Start date must be YYYY-MM-DD.' }) startDate!: string;
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'End date must be YYYY-MM-DD.' }) endDate!: string;
   @IsOptional() @Length(3, 500) reason?: string;
@@ -56,7 +54,8 @@ export class RequestLeaveDto {
 }
 
 export class SubmitClaimDto {
-  @IsEnum(StaffClaimCategory) category!: StaffClaimCategory;
+  /** One of the clinic's claim types, by code (Section E). */
+  @Matches(CLAIM_CODE, { message: "Choose one of the clinic's claim types." }) category!: string;
   /** Decimal string, matching every other money field in this API. */
   @Matches(/^\d+(\.\d{1,2})?$/, { message: 'Amount must be a number like 45.50.' }) amountClaimed!: string;
   @IsDateString() claimDate!: string;

@@ -210,6 +210,8 @@ const emptyDraft = (group: ShiftGroup): Draft => ({
   endTime: null,
   breakMinutes: 0,
   night: false,
+  nightPayMode: null,
+  nightRate: null,
   colour: SWATCHES[0],
   clinicId: null,
 });
@@ -347,6 +349,8 @@ function TemplatesPanel({ group }: { group: ShiftGroup }) {
                         endTime: row.endTime,
                         breakMinutes: row.breakMinutes,
                         night: row.night,
+                        nightPayMode: row.nightPayMode ?? null,
+                        nightRate: row.nightRate ?? null,
                         colour: row.colour,
                         clinicId: row.clinicId,
                       });
@@ -450,6 +454,38 @@ function TemplatesPanel({ group }: { group: ShiftGroup }) {
                     </div>
                   </div>
                 </div>
+                {draft.night && draft.group === 'DOCTOR' ? (
+                  <div className="hr-form__row">
+                    <div>
+                      <label htmlFor="shift-night-mode">Doctor night pay</label>
+                      <Select
+                        id="shift-night-mode"
+                        value={draft.nightPayMode ?? 'PER_SHIFT'}
+                        onChange={(value) => setDraft({ ...draft, nightPayMode: value })}
+                        style={{ width: '100%' }}
+                        options={[
+                          { value: 'PER_SHIFT', label: 'Fixed per night' },
+                          { value: 'PER_HOUR', label: 'Per night hour worked' },
+                        ]}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="shift-night-rate">RM</label>
+                      <Input
+                        id="shift-night-rate"
+                        inputMode="decimal"
+                        value={draft.nightRate ?? ''}
+                        onChange={(event) => {
+                          const value = event.target.value.replace(/[^0-9.]/g, '');
+                          setDraft({ ...draft, nightRate: value || null, nightPayMode: draft.nightPayMode ?? 'PER_SHIFT' });
+                        }}
+                      />
+                    </div>
+                    <div className="hr-form__help" style={{ gridColumn: '1 / -1' }}>
+                      Paid apart from the weekly hours. A doctor’s own night rate, on their employee record, comes first.
+                    </div>
+                  </div>
+                ) : null}
               </>
             ) : null}
             <div>

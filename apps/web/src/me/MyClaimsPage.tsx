@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CLAIM_TYPES, DEFAULT_MILEAGE_RATE_RM, mileageAmount } from './claim-form';
+import { DEFAULT_MILEAGE_RATE_RM, claimKindsOf, mileageAmount, paidKm } from './claim-form';
 import { App } from 'antd';
 import dayjs from 'dayjs';
 import { ApiError } from '../core/api-client';
@@ -17,7 +17,6 @@ import { IconCheckCircle, PortalEmpty, monthShort, rm } from './portal';
  */
 // The types, the rate and the arithmetic are shared with HR's record-a-claim
 // drawer (claim-form.ts): the same claim, whoever keys it.
-const TYPES = CLAIM_TYPES;
 export { DEFAULT_MILEAGE_RATE_RM, mileageAmount };
 
 /** A stored file's id from the path the API keeps on the attachment (`/me/files/<id>`). */
@@ -58,7 +57,9 @@ export function MyClaimsPage() {
   const submit = useSubmitClaim();
   const [sending, setSending] = useState(false);
 
-  const [type, setType] = useState<(typeof TYPES)[number]['value']>('MILEAGE');
+  const [type, setType] = useState('MILEAGE');
+  const kinds = claimKindsOf(policy);
+  const kind = kinds.find((row) => row.code === type);
   const [claimDate, setClaimDate] = useState(dayjs().format('YYYY-MM-DD'));
   const [fromPlace, setFromPlace] = useState('');
   const [toPlace, setToPlace] = useState('');
@@ -68,11 +69,13 @@ export function MyClaimsPage() {
   const [receipt, setReceipt] = useState<File | null>(null);
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
 
-  const mileage = type === 'MILEAGE';
+  // The clinic's type decides (Section E): priced by the km, its rate and daily cap, and whether a receipt is needed.
+  const mileage = kind?.unit === 'KM';
   const km = Number(distance);
-  const ratePerKm = policy ? Number(policy.mileageRatePerKm) : DEFAULT_MILEAGE_RATE_RM;
-  const receiptRequired = policy?.receiptRequired ?? true;
-  const computed = mileage && Number.isFinite(km) && km > 0 ? mileageAmount(km, ratePerKm) : null;
+  const ratePerKm = kind?.ratePerUnit ?? (policy ? Number(policy.mileageRatePerKm) : DEFAULT_MILEAGE_RATE_RM);
+  const receiptRequired = kind?.receiptRequired ?? policy?.receiptRequired ?? true;
+  const computed = mileage && Number.isFinite(km) && km > 0 ? mileageAmount(paidKm(km, kind), ratePerKm) : null;
+  const overCap = mileage && kind?.dailyUnitCap != null && km > kind.dailyUnitCap ? km - kind.dailyUnitCap : 0;
 
   useEffect(() => {
     if (!receipt || !receipt.type.startsWith('image/')) {
@@ -105,7 +108,7 @@ export function MyClaimsPage() {
 
   const send = async () => {
     if (!canSubmit) return;
-    const category = TYPES.find((row) => row.value === type)?.category ?? 'OTHER';
+    const category = type;
     const description = mileage
       ? `Mileage ${km} km, ${fromPlace.trim()} to ${toPlace.trim()}: ${purpose.trim()}`
       : purpose.trim();
@@ -160,11 +163,11 @@ export function MyClaimsPage() {
                   id="claim-type"
                   className="hr-f"
                   value={type}
-                  onChange={(event) => setType(event.target.value as (typeof TYPES)[number]['value'])}
+                  onChange={(event) => setType(event.target.value)}
                 >
-                  {TYPES.map((row) => (
-                    <option key={row.value} value={row.value}>
-                      {row.label}
+                  {kinds.map((row) => (
+                    <option key={row.code} value={row.code}>
+                      {row.name}
                     </option>
                   ))}
                 </select>
@@ -206,7 +209,13 @@ export function MyClaimsPage() {
                     <div id="claim-amount" className="hr-f hr-f--auto" aria-live="polite">
                       {computed !== null ? (
                         <>
-                          {rm(computed)} <small>· {km} × RM {ratePerKm.toFixed(2)}</small>
+                          {rm(computed)} <small>· {paidKm(km, kind)} × RM {ratePerKm.toFixed(2)}</small>
+                          {overCap > 0 ? (
+                            <small className="hr-kv__v--gold">
+                              {' '}
+                              · {overCap} km over the {kind?.dailyUnitCap} km daily cap is not paid
+                            </small>
+                          ) : null}
                         </>
                       ) : (
                         <small>Worked out from the distance</small>
@@ -298,10 +307,11 @@ export function MyClaimsPage() {
                   return (
                     <tr key={claim.id}>
                       <td>
-                        <b>{CATEGORY_WORD[claim.category] ?? claim.category}</b> · {rest.length ? rest.join(', ') : head}
+                        <b>{kinds.find((row) => row.code === claim.category)?.name ?? CATEGORY_WORD[claim.category] ?? claim.category}</b> · {rest.length ? rest.join(', ') : head}
                         <div className="hr-tdSub hr-dots">
                           Submitted {dayjs(claim.submittedAt ?? claim.createdAt).format('D MMM')}
                           {claim.distanceKm && claim.mileageRate ? ` · ${Number(claim.distanceKm)} km × RM ${Number(claim.mileageRate).toFixed(2)}` : ''}
+                          {claim.unpaidNote ? ` · ${claim.unpaidNote}` : ''}
                           {claim.attachments.map((file) =>
                             file.mimeType.startsWith('image/') ? (
                               <AuthImage key={file.id} path={myFilePath(fileIdOf(file.filePath) ?? file.id)} alt={file.fileName} className="hr-proof" />
