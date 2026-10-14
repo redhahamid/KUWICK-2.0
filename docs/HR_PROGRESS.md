@@ -10,7 +10,7 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi:**
 `20261014090000_payroll_payslip_checks` (jadual baharu sahaja), dijalankan di
-staging dengan *Migrate only* sebelum master — run #MIGRATE_RUN.
+staging dengan *Migrate only* sebelum master — run #23.
 
 - `[D]` Butang **Preview payslips** pada langkah Review (draf, setiap halaman
   bertanda air "DRAFT") dan pada Pay → Payslips (yang diluluskan, revisi
@@ -32,6 +32,9 @@ staging dengan *Migrate only* sebelum master — run #MIGRATE_RUN.
   `payslips-2026-08-DRAFT.pdf` untuk draf. Dilog sekali.
 - `[D]` Tiada angka diubah: pratonton draf menggunakan muatan yang sama yang
   akan dibekukan semasa kelulusan, tanpa menyimpannya.
+- `[D]` Dibaiki sekali: PDF payslip mencetak `"` di tempat tanda tolak pada
+  baris unpaid leave (fon Helvetica terbina tiada aksara "−"); kini tanda
+  sempang biasa. Angka tidak berubah.
 - `[D]` Skrip lap data (`wipe-*`) dan `seed-admin-uat` turut mengosongkan
   jadual baharu.
 - `[D]` **Ujian**: API baharu `payroll-payslip-preview` (6); PDF unit +2; web

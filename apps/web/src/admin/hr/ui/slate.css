@@ -3663,7 +3663,7 @@ textarea.hr-f {
 .hr-payslipPreview__mark {
   flex: none;
   width: 16px;
-  color: var(--hr-green, #1f7a4d);
+  color: var(--hr-green);
   font-weight: 700;
   text-align: center;
 }
@@ -3688,7 +3688,7 @@ textarea.hr-f {
   margin-left: auto;
 }
 .hr-payslipPreview__checkedBy {
-  color: var(--hr-green, #1f7a4d);
+  color: var(--hr-green);
   font-size: 13px;
 }
 .hr-payslipPreview__changed {
