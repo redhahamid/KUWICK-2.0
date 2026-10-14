@@ -60,7 +60,7 @@ const HR_RECORD = new Set([
   'user_clinic_access',
   'payroll_input_entries', 'payroll_lines', 'payroll_exceptions', 'payroll_snapshots', 'payroll_run_approvals',
   'payroll_adjustments', 'payroll_payment_batches', 'payroll_payment_lines', 'payroll_statutory_submissions',
-  'payroll_warning_acknowledgements',
+  'payroll_warning_acknowledgements', 'payroll_payslip_checks',
 ]);
 // The account, not the employment: kept with a person who keeps their account.
 const ACCOUNT = new Set(['staff_role_assignments', 'staff_permission_grants', 'staff_notifications', 'user_clinic_access', 'staff_professional_audits']);
@@ -80,7 +80,7 @@ const OWNED_BY = {
 // account still loses.
 const PERSONAL = Object.entries(OWNED_BY).filter(([table]) => !ACCOUNT.has(table));
 const ORDER = [
-  'payroll_snapshots', 'payroll_exceptions',
+  'payroll_payslip_checks', 'payroll_snapshots', 'payroll_exceptions',
   'payroll_payment_lines', 'payroll_payment_batches', 'payroll_statutory_submissions',
   'payroll_warning_acknowledgements',
   'staff_claim_events', 'staff_claim_attachments', 'staff_claims', 'locum_sessions',

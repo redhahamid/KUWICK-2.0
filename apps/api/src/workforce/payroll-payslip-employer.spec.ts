@@ -23,7 +23,7 @@ const atApproval = { ...today, name: 'Demo Klinik Sdn Bhd', registrationNo: '202
 
 const serviceWith = (auditBefores: unknown[]) => {
   const findMany = jest.fn(async () => auditBefores.map((before) => ({ before })));
-  const service = new PayrollPayslipService({ auditLog: { findMany } } as never, {} as never);
+  const service = new PayrollPayslipService({ auditLog: { findMany } } as never, {} as never, {} as never);
   const asApproved = (payload: Partial<SnapshotPayload>) =>
     (service as unknown as { employerAsApproved: (p: unknown, c: unknown, at: Date) => Promise<SnapshotEmployer | null> }).employerAsApproved(
       payload,
@@ -61,7 +61,7 @@ describe('the employer on a payslip', () => {
 describe('a Prepared or Approved name on an older payslip', () => {
   const serviceWithRename = (before: unknown) => {
     const findFirst = jest.fn(async () => (before === undefined ? null : { before }));
-    const service = new PayrollPayslipService({ auditLog: { findFirst } } as never, {} as never);
+    const service = new PayrollPayslipService({ auditLog: { findFirst } } as never, {} as never, {} as never);
     return (service as unknown as { nameAsApproved: (id: string, current: string, at: Date) => Promise<string> }).nameAsApproved(
       's-1',
       'Dr Demo Renamed',

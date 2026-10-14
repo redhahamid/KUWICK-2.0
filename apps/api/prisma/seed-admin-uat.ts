@@ -767,6 +767,8 @@ async function reset() {
     // Stage 1 + 2. Children of the run first, then the run; the employer is
     // deleted after `employee_profiles`, which points at it.
     'payroll_snapshots', 'payroll_exceptions',
+    // Payslip checks point at the run and at staff (14 October 2026).
+    'payroll_payslip_checks',
     // P1. Payment lines point at their batch, the batch and the submissions at
     // the run — all three before `payroll_runs`.
     'payroll_payment_lines', 'payroll_payment_batches', 'payroll_statutory_submissions',

@@ -4,7 +4,10 @@ import { chosenPayDate, payDateChoicesOf, paymentsOnChosenDates } from './pay-da
 import { compareByEmployeeName } from './employee-order';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
-import { requirePermission, withAdminTx } from '../finance/admin-actor';
+import { currentTenantId } from '../core/tenant-context';
+import { actorCan, requirePermission, withAdminTx } from '../finance/admin-actor';
+import { PayrollService } from './payroll.service';
+import { snapshotHash } from './payroll-snapshot';
 import { requireActor, withTenantTx } from '../clinical/clinical-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { ringgitInWords } from '../finance/money-words';
@@ -44,7 +47,148 @@ export class PayrollPayslipService {
   constructor(
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
     private readonly rawPrisma: PrismaService,
+    private readonly payroll: PayrollService,
   ) {}
+
+  /*
+   * THE PAYSLIP PREVIEW (UAT, 14 October 2026): every payslip of a month on
+   * screen, as the PDF prints it. An approved month shows its approved
+   * record; a month not yet approved shows what approving now would freeze,
+   * watermarked DRAFT. Nothing here changes a figure.
+   */
+
+  /** The month as a draft: the payload approval would freeze, unsaved. */
+  private async loadDraft(runId: string) {
+    const run = await this.prisma.payrollRun.findUnique({
+      where: { id: runId },
+      include: {
+        clinic: { select: { name: true } },
+        legalEmployer: true,
+        approvals: { orderBy: { sequence: 'asc' }, include: { staff: { select: { fullName: true } } } },
+        createdBy: { select: { id: true, fullName: true, employeeProfile: { select: { position: true } } } },
+        approvedBy: { select: { id: true, fullName: true, employeeProfile: { select: { position: true } } } },
+        _count: { select: { snapshots: true } },
+      },
+    });
+    if (!run) throw new NotFoundException('Payroll run not found');
+    const payload = await this.payroll.draftPayload(runId);
+    const snapshot = { version: 0, hash: snapshotHash(payload), createdAt: new Date(), payload };
+    return { run: { ...run, snapshotCount: run._count.snapshots }, snapshot, payload };
+  }
+
+  private async isDraft(runId: string) {
+    const run = await this.prisma.payrollRun.findUnique({ where: { id: runId }, select: { status: true } });
+    if (!run) throw new NotFoundException('Payroll run not found');
+    return run.status !== 'APPROVED' && run.status !== 'PAID';
+  }
+
+  /** Who is in the preview, in payslip order, with whether each was checked at today's figures. */
+  async previewList(runId: string) {
+    await requirePermission(this.rawPrisma, 'hr.payroll.view');
+    const draft = await this.isDraft(runId);
+    const { snapshot, payload } = draft ? await this.loadDraft(runId) : await this.loadApproved(runId, undefined);
+    const checks = await this.prisma.payrollPayslipCheck.findMany({
+      where: { payrollRunId: runId },
+      include: { checkedBy: { select: { fullName: true } } },
+    });
+    const checkOf = new Map(checks.map((row) => [row.staffId, row]));
+    const numbers = new Map(
+      (
+        await this.prisma.employeeProfile.findMany({
+          where: { staffId: { in: payload.employees.map((line) => line.staffId) } },
+          select: { staffId: true, employeeNo: true },
+        })
+      ).map((row) => [row.staffId, row.employeeNo]),
+    );
+    const payslips = payload.employees
+      .map((line) => {
+        const check = checkOf.get(line.staffId);
+        const same = check ? check.grossCents === line.bases.grossCents && check.netCents === line.netCents : false;
+        return {
+          staffId: line.staffId,
+          name: line.name,
+          employeeNo: numbers.get(line.staffId) ?? null,
+          netCents: line.netCents,
+          checked: check && same ? { by: check.checkedBy.fullName, at: check.checkedAt.toISOString() } : null,
+          // Checked, then the figures moved: looked at, but not at these figures.
+          changedSinceCheck: Boolean(check && !same),
+        };
+      })
+      .sort(compareByEmployeeName);
+    return {
+      runId,
+      period: payload.period.slice(0, 7),
+      draft,
+      revision: draft ? null : snapshot.version,
+      payslips,
+      checked: payslips.filter((row) => row.checked).length,
+      total: payslips.length,
+    };
+  }
+
+  /** One payslip for the preview: the approved one, or the draft. Audited as viewed. */
+  async previewOne(runId: string, staffId: string) {
+    return withAdminTx(this.rawPrisma, 'hr.payroll.view', async (tx, actor) => {
+      const draft = await this.isDraft(runId);
+      const composed = await this.compose(runId, staffId, undefined, draft);
+      await recordAudit(tx, actor, {
+        action: 'payrollPayslip.viewed',
+        entityType: 'PayrollRun',
+        entityId: runId,
+        after: { staffId, snapshotVersion: composed.revision.version, draft, preview: true },
+        source: 'hr.payroll',
+      });
+      return composed;
+    });
+  }
+
+  /** Every payslip of the month, for one combined PDF. Audited once. */
+  async previewAll(runId: string) {
+    return withAdminTx(this.rawPrisma, 'hr.payroll.view', async (tx, actor) => {
+      const draft = await this.isDraft(runId);
+      const list = await this.previewList(runId);
+      const slips = [];
+      for (const row of list.payslips) slips.push(await this.compose(runId, row.staffId, undefined, draft));
+      await recordAudit(tx, actor, {
+        action: 'payrollPayslip.downloaded',
+        entityType: 'PayrollRun',
+        entityId: runId,
+        after: { all: true, count: slips.length, draft, snapshotVersion: list.revision },
+        source: 'hr.payroll',
+      });
+      return { period: list.period, draft, slips };
+    });
+  }
+
+  /** "Mark as checked", at the figures the payslip shows now; false clears it. */
+  async markChecked(runId: string, staffId: string, checked: boolean) {
+    return withAdminTx(this.rawPrisma, 'hr.payroll.view', async (tx, actor) => {
+      if (!actorCan(actor, 'hr.payroll.run') && !actorCan(actor, 'hr.payroll.approve')) {
+        throw new ForbiddenException('Only somebody who runs or approves payroll can mark a payslip as checked.');
+      }
+      if (!checked) {
+        await tx.payrollPayslipCheck.deleteMany({ where: { payrollRunId: runId, staffId } });
+        return { staffId, checked: null };
+      }
+      const draft = await this.isDraft(runId);
+      const { payload } = draft ? await this.loadDraft(runId) : await this.loadApproved(runId, undefined);
+      const line = payload.employees.find((employee) => employee.staffId === staffId);
+      if (!line) throw new NotFoundException('That person has no payslip this month.');
+      const saved = await tx.payrollPayslipCheck.upsert({
+        where: { payrollRunId_staffId: { payrollRunId: runId, staffId } },
+        create: {
+          tenantId: currentTenantId(),
+          payrollRunId: runId,
+          staffId,
+          grossCents: line.bases.grossCents,
+          netCents: line.netCents,
+          checkedByStaffId: actor.id,
+        },
+        update: { grossCents: line.bases.grossCents, netCents: line.netCents, checkedByStaffId: actor.id, checkedAt: new Date() },
+      });
+      return { staffId, checked: { by: actor.fullName, at: saved.checkedAt.toISOString() } };
+    });
+  }
 
   /**
    * THE EMPLOYER AS IT STOOD AT APPROVAL. A record approved since 12 October
@@ -245,8 +389,8 @@ export class PayrollPayslipService {
     return { run: { ...run, snapshotCount: run._count.snapshots }, snapshot, payload };
   }
 
-  private async compose(runId: string, staffId: string, version?: number) {
-    const { run, snapshot, payload } = await this.loadApproved(runId, version);
+  private async compose(runId: string, staffId: string, version?: number, draft = false) {
+    const { run, snapshot, payload } = draft ? await this.loadDraft(runId) : await this.loadApproved(runId, version);
 
     const verification = verifySnapshot(payload, snapshot.hash);
     if (verification.verdict !== 'VERIFIED') {
@@ -342,6 +486,8 @@ export class PayrollPayslipService {
       runId,
       period: payload.period.slice(0, 7),
       periodLabel: periodDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }),
+      /** Not approved: what approving now would freeze, printed with a DRAFT watermark. */
+      draft,
       runType: payload.runType,
       sequence: payload.sequence,
       paymentDate: payload.paymentDate,
@@ -354,9 +500,9 @@ export class PayrollPayslipService {
         approvedAt: snapshot.createdAt.toISOString(),
         approvedBy: payload.approvals?.map((approval) => approval.name) ?? [],
         /** An older version than the latest is a superseded payslip. */
-        superseded: snapshot.version < run.snapshotCount,
-        /** Approved, then reopened: a corrected version may follow. */
-        reopenedSinceApproval: run.status !== 'APPROVED' && run.status !== 'PAID',
+        superseded: !draft && snapshot.version < run.snapshotCount,
+        /** Approved, then reopened: a corrected version may follow. A draft preview is the correction itself. */
+        reopenedSinceApproval: !draft && run.status !== 'APPROVED' && run.status !== 'PAID',
       },
       verification: {
         verdict: verification.verdict,

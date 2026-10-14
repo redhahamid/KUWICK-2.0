@@ -1,4 +1,4 @@
-import { renderPayslipPdf } from './payroll-payslip-pdf';
+import { renderPayslipPdf, renderPayslipsPdf } from './payroll-payslip-pdf';
 import { addressAsRecorded, type PayslipData } from './payroll-payslip.service';
 
 /*
@@ -105,6 +105,22 @@ describe('the payslip PDF', () => {
 
   it('falls back to the initial when the logo cannot be read', async () => {
     await expect(renderPayslipPdf(slip(), Buffer.from('not an image'))).resolves.toBeInstanceOf(Buffer);
+  });
+});
+
+describe('the payslip preview PDFs (UAT, 14 October 2026)', () => {
+  const pages = (pdf: Buffer) => (pdf.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length;
+
+  it('"Download all" is one PDF with one page per payslip', async () => {
+    const pdf = await renderPayslipsPdf([slip(), slip({ employee: { ...slip().employee, staffId: 's-2', name: 'DEMO PERSON TWO' } })]);
+    if (process.env.PAYSLIPS_PDF_OUT) require('fs').writeFileSync(process.env.PAYSLIPS_PDF_OUT, pdf);
+    expect(pages(pdf)).toBe(2);
+  });
+
+  it('a draft payslip still fits one page with its DRAFT watermark', async () => {
+    const pdf = await renderPayslipPdf(slip({ draft: true, runStatus: 'CALCULATED' } as Partial<PayslipData>));
+    if (process.env.DRAFT_PDF_OUT) require('fs').writeFileSync(process.env.DRAFT_PDF_OUT, pdf);
+    expect(pages(pdf)).toBe(1);
   });
 });
 

@@ -6,6 +6,39 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 50 — 14 Oktober 2026 — Pratonton payslip ("Preview payslips")
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi:**
+`20261014090000_payroll_payslip_checks` (jadual baharu sahaja), dijalankan di
+staging dengan *Migrate only* sebelum master — run #MIGRATE_RUN.
+
+- `[D]` Butang **Preview payslips** pada langkah Review (draf, setiap halaman
+  bertanda air "DRAFT") dan pada Pay → Payslips (yang diluluskan, revisi
+  terkini).
+- `[D]` Setiap payslip dilukis daripada PDF pelayan itu sendiri (pdf.js), jadi
+  rupanya sama dengan PDF. *‹ Previous* / *Next ›*, "3 of 20", kekunci anak
+  panah, senarai nama di sisi untuk lompat; di telefon senarai menjadi pemilih
+  dan leret ke kiri/kanan menukar payslip.
+- `[D]` **Mark as checked** setiap payslip, dengan kiraan "12 of 20 checked",
+  siapa dan bila. Selepas tanda, terus ke payslip seterusnya. Hanya pemegang
+  kebenaran jalankan atau lulus payroll.
+- `[D]` "Mark as checked" sedia ada (halaman pekerja dalam run) hanya
+  mengakui amaran orang itu, bukan status payslip, jadi tidak digunakan
+  semula. Rekod baharu `payroll_payslip_checks`, satu bagi setiap orang
+  setiap bulan, menyimpan gross dan net semasa ditanda: kalau angka berubah
+  selepas itu, payslip dikira belum disemak dan berkata "Checked earlier, but
+  the figures have changed since".
+- `[D]` **Download all**: satu PDF, satu halaman setiap payslip, nama
+  `payslips-2026-08-DRAFT.pdf` untuk draf. Dilog sekali.
+- `[D]` Tiada angka diubah: pratonton draf menggunakan muatan yang sama yang
+  akan dibekukan semasa kelulusan, tanpa menyimpannya.
+- `[D]` Skrip lap data (`wipe-*`) dan `seed-admin-uat` turut mengosongkan
+  jadual baharu.
+- `[D]` **Ujian**: API baharu `payroll-payslip-preview` (6); PDF unit +2; web
+  baharu `payslipPreview` (5).
+
+---
+
 ## Batch 49 — 14 Oktober 2026 — "Reopen this month" pada bulan yang diluluskan
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada

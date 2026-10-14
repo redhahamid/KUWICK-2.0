@@ -3595,3 +3595,134 @@ textarea.hr-f {
     border-bottom: 1px solid var(--hr-line);
   }
 }
+
+/* PREVIEW PAYSLIPS (UAT, 14 October 2026): the names down the side, one
+   payslip drawn from its PDF beside them; on a phone the list becomes a
+   picker above the paper and a sideways swipe turns the page. */
+.hr-payslipPreview__bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 14px 0 10px;
+}
+.hr-payslipPreview__bar .hr-btn {
+  margin-left: auto;
+}
+.hr-payslipPreview__draft {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--hr-red-soft);
+  color: var(--hr-red);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.hr-payslipPreview__body {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.hr-payslipPreview__side {
+  position: sticky;
+  top: 0;
+  max-height: calc(90vh - 150px);
+  overflow: auto;
+  border: 1px solid var(--hr-line);
+  border-radius: 10px;
+}
+.hr-payslipPreview__names {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+}
+.hr-payslipPreview__names button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.hr-payslipPreview__names button:hover {
+  background: var(--hr-action-soft);
+}
+.hr-payslipPreview__names button.is-current {
+  background: var(--hr-action-soft);
+  font-weight: 700;
+}
+.hr-payslipPreview__mark {
+  flex: none;
+  width: 16px;
+  color: var(--hr-green, #1f7a4d);
+  font-weight: 700;
+  text-align: center;
+}
+.hr-payslipPreview__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hr-payslipPreview__nav,
+.hr-payslipPreview__check {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+}
+.hr-payslipPreview__nav {
+  justify-content: space-between;
+}
+.hr-payslipPreview__check > .hr-btn {
+  margin-left: auto;
+}
+.hr-payslipPreview__checkedBy {
+  color: var(--hr-green, #1f7a4d);
+  font-size: 13px;
+}
+.hr-payslipPreview__changed {
+  color: var(--hr-gold);
+  font-size: 13px;
+}
+.hr-payslipPreview__swipe {
+  touch-action: pan-y;
+}
+.hr-payslipPreview__paper {
+  position: relative;
+  min-height: 320px;
+  border: 1px solid var(--hr-line);
+  border-radius: 6px;
+  background: #fff;
+}
+.hr-payslipPreview__page {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.hr-payslipPreview__page + .hr-payslipPreview__page {
+  border-top: 1px dashed var(--hr-line);
+}
+.hr-payslipPreview__loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.6);
+}
+@media (max-width: 767px) {
+  .hr-payslipPreview__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -5,6 +5,7 @@ import { DataTable, money } from '../components/DataTable';
 import { apiClient, downloadFile } from '../../core/api-client';
 import { payslipPdfPath, usePayslips } from '../hooks/useAdmin';
 import { printApprovedPayslip } from './payslip';
+import { PayslipPreviewButton } from './PayslipPreview';
 import type { PayslipDoc, PayslipListEntry } from '../types';
 import { useAuthStore } from '../../core/auth-store';
 
@@ -72,25 +73,28 @@ export function PayslipsPanel({ runId }: { runId: string }) {
       title="Payslips"
       description="Issued from the approved record — the frozen, hashed snapshot — never from figures that can still move. Downloads are on the audit trail."
       actions={
-        <span className="kw-muted" style={{ fontSize: 12.5, display: 'inline-flex', gap: 8, alignItems: 'center' }}>
-          {data.versions > 1 ? (
-            <Select
-              size="small"
-              aria-label="Revision"
-              value={revision ?? data.snapshotVersion}
-              onChange={(value: number) => setRevision(value === data.snapshotVersion ? null : value)}
-              options={Array.from({ length: data.versions }, (_, index) => index + 1)
-                .reverse()
-                .map((version) => ({
-                  value: version,
-                  label: `Revision ${version} of ${data.versions}${version < data.versions ? ' (superseded)' : ''}`,
-                }))}
-              style={{ minWidth: 210 }}
-            />
-          ) : (
-            <>Revision {data.snapshotVersion} of {data.versions}</>
-          )}
-          · verification {data.verdict}
+        <span style={{ display: 'inline-flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <PayslipPreviewButton runId={runId} />
+          <span className="kw-muted" style={{ fontSize: 12.5, display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+            {data.versions > 1 ? (
+              <Select
+                size="small"
+                aria-label="Revision"
+                value={revision ?? data.snapshotVersion}
+                onChange={(value: number) => setRevision(value === data.snapshotVersion ? null : value)}
+                options={Array.from({ length: data.versions }, (_, index) => index + 1)
+                  .reverse()
+                  .map((version) => ({
+                    value: version,
+                    label: `Revision ${version} of ${data.versions}${version < data.versions ? ' (superseded)' : ''}`,
+                  }))}
+                style={{ minWidth: 210 }}
+              />
+            ) : (
+              <>Revision {data.snapshotVersion} of {data.versions}</>
+            )}
+            · verification {data.verdict}
+          </span>
         </span>
       }
     >

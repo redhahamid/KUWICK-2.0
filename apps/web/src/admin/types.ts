@@ -957,6 +957,27 @@ export interface PayslipList {
   payslips: PayslipListEntry[];
 }
 
+/** One person in the payslip preview: checked only at the figures shown now. */
+export interface PayslipPreviewEntry {
+  staffId: string;
+  name: string;
+  employeeNo: string | null;
+  netCents: number;
+  checked: { by: string; at: string } | null;
+  /** Marked as checked earlier, but the figures have moved since. */
+  changedSinceCheck: boolean;
+}
+
+export interface PayslipPreview {
+  runId: string;
+  period: string;
+  draft: boolean;
+  revision: number | null;
+  payslips: PayslipPreviewEntry[];
+  checked: number;
+  total: number;
+}
+
 export interface PayslipStatutoryRow {
   key: string;
   label: string;

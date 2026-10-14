@@ -61,7 +61,7 @@ import { PayrollPaymentService } from './payroll-payment.service';
 import { PayrollStatutoryOutputService } from './payroll-statutory-output.service';
 import { PayrollFilingService } from './payroll-filing.service';
 import { PayrollTaxService } from './payroll-tax.service';
-import { renderPayslipPdf } from './payroll-payslip-pdf';
+import { renderPayslipPdf, renderPayslipsPdf } from './payroll-payslip-pdf';
 import { PayrollReportService } from './payroll-report.service';
 import { PayrollFinanceService } from './payroll-finance.service';
 import { CreateStaffClaimDto, DecideStaffClaimDto, SettleStaffClaimDto } from './dto/staff-claim.dto';
@@ -1144,6 +1144,40 @@ export class WorkforceController {
     @Query('version') version?: string,
   ) {
     return this.payslipService.payslip(id, staffId, version ? Number(version) : undefined);
+  }
+
+  /*
+   * THE PAYSLIP PREVIEW (UAT, 14 October 2026): every payslip of the month on
+   * screen, as the PDF prints it — the approved record, or the draft
+   * watermarked DRAFT — with "Mark as checked" and one combined download.
+   */
+  @Get('payroll/runs/:id/payslip-preview')
+  payslipPreviewList(@Param('id') id: string) {
+    return this.payslipService.previewList(id);
+  }
+
+  @Get('payroll/runs/:id/payslip-preview/all.pdf')
+  async payslipPreviewAll(@Param('id') id: string, @Res() res: Response) {
+    const all = await this.payslipService.previewAll(id);
+    const logo = await this.payslipService.logoBytes(all.slips[0]?.employer.logoMediaId ?? null);
+    const pdf = await renderPayslipsPdf(all.slips, logo);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="payslips-${all.period}${all.draft ? '-DRAFT' : ''}.pdf"`);
+    res.send(pdf);
+  }
+
+  @Get('payroll/runs/:id/payslip-preview/:staffId/pdf')
+  async payslipPreviewOne(@Param('id') id: string, @Param('staffId') staffId: string, @Res() res: Response) {
+    const slip = await this.payslipService.previewOne(id, staffId);
+    const pdf = await renderPayslipPdf(slip, await this.payslipService.logoBytes(slip.employer.logoMediaId));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline');
+    res.send(pdf);
+  }
+
+  @Put('payroll/runs/:id/payslip-preview/:staffId/check')
+  markPayslipChecked(@Param('id') id: string, @Param('staffId') staffId: string, @Body() body: { checked?: boolean }) {
+    return this.payslipService.markChecked(id, staffId, body?.checked !== false);
   }
 
   /** The PDF. Audited: a payslip leaving the system has a who and a when. */

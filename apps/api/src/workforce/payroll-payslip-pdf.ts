@@ -37,8 +37,9 @@ import type { PayslipData } from './payroll-payslip.service';
  *    can be traced to it.
  */
 
+// A plain hyphen for minus: the built-in Helvetica has no U+2212 and printed it as '"'.
 const RM = (cents: number) =>
-  `${cents < 0 ? '−' : ''}${(Math.abs(cents) / 100).toLocaleString('en-MY', {
+  `${cents < 0 ? '-' : ''}${(Math.abs(cents) / 100).toLocaleString('en-MY', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -82,13 +83,37 @@ export function employerInitials(name: string | null): string {
 type EarningRow = { label: string; amountCents: number; note?: string | null; negative?: boolean; words?: string | null; tone?: string };
 
 export function renderPayslipPdf(slip: PayslipData, logo: Buffer | null = null): Promise<Buffer> {
-  const doc = new PDFDocument({ size: 'A4', margin: 36, bufferPages: true, info: { Title: `Payslip ${slip.periodLabel} — ${slip.employee.name}` } });
+  return renderPayslipsPdf([slip], logo, `Payslip ${slip.periodLabel} — ${slip.employee.name}`);
+}
+
+/**
+ * SEVERAL PAYSLIPS IN ONE PDF, one page each (UAT, 14 October 2026: "Download
+ * all as one combined PDF"). Each page is drawn exactly as the single payslip.
+ */
+export function renderPayslipsPdf(slips: PayslipData[], logo: Buffer | null = null, title?: string): Promise<Buffer> {
+  const doc = new PDFDocument({
+    size: 'A4',
+    margin: 36,
+    bufferPages: true,
+    autoFirstPage: false,
+    info: { Title: title ?? `Payslips ${slips[0]?.periodLabel ?? ''}` },
+  });
   const chunks: Buffer[] = [];
   doc.on('data', (chunk: Buffer) => chunks.push(chunk));
   const done = new Promise<Buffer>((resolve, reject) => {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
   });
+  if (slips.length === 0) doc.addPage();
+  for (const slip of slips) {
+    doc.addPage();
+    drawPayslip(doc, slip, logo);
+  }
+  doc.end();
+  return done;
+}
+
+function drawPayslip(doc: PDFKit.PDFDocument, slip: PayslipData, logo: Buffer | null) {
 
   const left = doc.page.margins.left;
   const right = doc.page.width - doc.page.margins.right;
@@ -137,12 +162,12 @@ export function renderPayslipPdf(slip: PayslipData, logo: Buffer | null = null):
   const titleX = right - titleW;
   doc.font('Helvetica-Bold').fontSize(17).fillColor(SLATE).text(`Payslip — ${slip.periodLabel}`, titleX, y, { width: titleW, align: 'right' });
   doc.font('Helvetica').fontSize(8.5).fillColor(INK2).text(range, titleX, doc.y + 1, { width: titleW, align: 'right' });
-  const tag = slip.paidAt ? `Paid ${dateOf(slip.paidAt)}` : `Approved ${dateOf(slip.revision.approvedAt)}`;
+  const tag = slip.draft ? 'DRAFT · not approved' : slip.paidAt ? `Paid ${dateOf(slip.paidAt)}` : `Approved ${dateOf(slip.revision.approvedAt)}`;
   doc.font('Helvetica-Bold').fontSize(8);
   const tagWidth = doc.widthOfString(tag) + 14;
   const tagY = doc.y + 5;
-  doc.save().roundedRect(right - tagWidth, tagY, tagWidth, 15, 4).fill(TEAL_SOFT).restore();
-  doc.fillColor(TEAL).text(tag, right - tagWidth, tagY + 3.5, { width: tagWidth, align: 'center' });
+  doc.save().roundedRect(right - tagWidth, tagY, tagWidth, 15, 4).fill(slip.draft ? '#fbe9e7' : TEAL_SOFT).restore();
+  doc.fillColor(slip.draft ? RED : TEAL).text(tag, right - tagWidth, tagY + 3.5, { width: tagWidth, align: 'center' });
   y = Math.max(coBottom, tagY + 15) + 13;
   doc.moveTo(left, y).lineTo(right, y).lineWidth(1.5).strokeColor(SLATE).stroke();
   y += 12;
@@ -288,7 +313,7 @@ export function renderPayslipPdf(slip: PayslipData, logo: Buffer | null = null):
         if (item.words) {
           doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(item.tone ?? AMBER).text(item.words, x + colW - 108, top + 6, { width: 100, align: 'right' });
         } else {
-          doc.font('Helvetica').fontSize(9.5).fillColor(item.negative ? RED : INK).text(`${item.negative ? '−' : ''}${RM(item.amountCents)}`, x + colW - 108, top + 5.5, { width: 100, align: 'right' });
+          doc.font('Helvetica').fontSize(9.5).fillColor(item.negative ? RED : INK).text(`${item.negative ? '-' : ''}${RM(item.amountCents)}`, x + colW - 108, top + 5.5, { width: 100, align: 'right' });
         }
       }
       top += rowH;
@@ -379,6 +404,16 @@ export function renderPayslipPdf(slip: PayslipData, logo: Buffer | null = null):
   signature(left, 'Prepared by', slip.preparedBy);
   signature(left + sigW + 30, 'Approved by', slip.approvedBy);
 
+  // --- DRAFT watermark: a month not yet approved -------------------------------------
+  if (slip.draft) {
+    doc.save();
+    doc.rotate(-35, { origin: [doc.page.width / 2, doc.page.height / 2] });
+    doc.font('Helvetica-Bold').fontSize(120).fillColor(RED).fillOpacity(0.09);
+    doc.text('DRAFT', 0, doc.page.height / 2 - 60, { width: doc.page.width, align: 'center', lineBreak: false });
+    doc.restore();
+    doc.fillOpacity(1);
+  }
+
   // --- Footer -------------------------------------------------------------------------
   const footY = bottom - 26;
   doc.moveTo(left, footY).lineTo(right, footY).lineWidth(0.6).strokeColor(LINE).stroke();
@@ -390,14 +425,14 @@ export function renderPayslipPdf(slip: PayslipData, logo: Buffer | null = null):
     lineBreak: false,
   });
   doc.fontSize(6.5).text(
-    `Revision ${slip.revision.version} of ${slip.revision.of} · approved record ${slip.verification.hash.slice(0, 16)}… · verification ${slip.verification.verdict} · employer details as at approval · membership numbers as on file at issue`,
+    slip.draft
+      ? 'DRAFT · not approved · the figures may still change · employer details as on file today · membership numbers as on file at issue'
+      : `Revision ${slip.revision.version} of ${slip.revision.of} · approved record ${slip.verification.hash.slice(0, 16)}… · verification ${slip.verification.verdict} · employer details as at approval · membership numbers as on file at issue`,
     left,
     footY + 16,
     { width, lineBreak: false },
   );
 
-  doc.end();
-  return done;
 }
 
 function money(cents: number | null | undefined): string {

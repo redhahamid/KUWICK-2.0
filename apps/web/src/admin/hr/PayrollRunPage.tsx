@@ -20,6 +20,7 @@ import { PayrollGrid, type GridEdit, type LeftOutRow, type SaveOutcome } from '.
 import { PayrollExceptionCentre } from './PayrollExceptionCentre';
 import { PayrollInputsDrawer } from './PayrollInputsDrawer';
 import { PayslipsPanel } from './PayslipsPanel';
+import { PayslipPreviewButton } from './PayslipPreview';
 import { PaymentPanel } from './PaymentPanel';
 import { StatutoryOutputsPanel } from './StatutoryOutputsPanel';
 import { useCan } from '../../core/hooks/useCan';
@@ -594,6 +595,7 @@ function ReviewStep({
       <PanelHead
         rule
         title="What this month comes to"
+        actions={<PayslipPreviewButton runId={runId} />}
         sub={
           data.review.previousRun
             ? `Compared with ${dayjs(data.review.previousRun.period).format('MMMM')} in Reports.`

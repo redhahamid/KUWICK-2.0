@@ -3701,6 +3701,14 @@ export class PayrollService {
    * inputs, the classifications, the component treatments, the statutory rule
    * versions and their content hashes, the calculations, and the approvals.
    */
+  /**
+   * WHAT APPROVING NOW WOULD FREEZE, without freezing it: the payslip preview
+   * of a draft month (UAT, 14 October 2026). Nothing is written.
+   */
+  draftPayload(runId: string): Promise<SnapshotPayload> {
+    return this.buildSnapshotPayload(this.prisma as unknown as AdminTx, runId);
+  }
+
   private async buildSnapshotPayload(tx: AdminTx, runId: string): Promise<SnapshotPayload> {
     const run = await tx.payrollRun.findUniqueOrThrow({
       where: { id: runId },

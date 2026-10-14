@@ -90,6 +90,7 @@ import type {
   PaymentStatus,
   PayslipDoc,
   PayslipList,
+  PayslipPreview,
   PayrollRegisterReport,
   PayrollReportCatalogue,
   PayrollStatutoryReport,
@@ -1984,6 +1985,39 @@ export function usePayslip(
       ),
     enabled: Boolean(runId && staffId),
     retry: false,
+  });
+}
+
+/**
+ * THE PAYSLIP PREVIEW (UAT, 14 October 2026): every payslip of the month, the
+ * draft on Review and the approved one on Pay, each with its "checked" mark.
+ */
+export function usePayslipPreview(runId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["admin-hr", "payslip-preview", runId],
+    queryFn: () =>
+      apiClient.get<PayslipPreview>(`/workforce/payroll/runs/${runId}/payslip-preview`),
+    enabled: Boolean(runId) && enabled,
+    retry: false,
+  });
+}
+
+export function payslipPreviewPdfPath(runId: string, staffId: string): string {
+  return `/workforce/payroll/runs/${runId}/payslip-preview/${staffId}/pdf`;
+}
+
+export function payslipPreviewAllPath(runId: string): string {
+  return `/workforce/payroll/runs/${runId}/payslip-preview/all.pdf`;
+}
+
+export function useMarkPayslipChecked() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ runId, staffId, checked }: { runId: string; staffId: string; checked: boolean }) =>
+      apiClient.put(`/workforce/payroll/runs/${runId}/payslip-preview/${staffId}/check`, { checked }),
+    onSuccess: (_result, { runId }) => {
+      void queryClient.invalidateQueries({ queryKey: ["admin-hr", "payslip-preview", runId] });
+    },
   });
 }
 

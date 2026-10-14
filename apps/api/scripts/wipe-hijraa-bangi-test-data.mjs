@@ -70,7 +70,7 @@ const HR_RECORD = new Set([
   'user_clinic_access',
   'payroll_input_entries', 'payroll_lines', 'payroll_exceptions', 'payroll_snapshots', 'payroll_run_approvals',
   'payroll_adjustments', 'payroll_payment_batches', 'payroll_payment_lines', 'payroll_statutory_submissions',
-  'payroll_warning_acknowledgements',
+  'payroll_warning_acknowledgements', 'payroll_payslip_checks',
 ]);
 // The column that says WHOSE a row is. Any other column pointing at a person
 // (approved by, edited by, recorded by, manager) is a pointer, not ownership.
@@ -90,7 +90,7 @@ const OWNED_BY = {
 // Children first: the admin UAT seed's reset order (seed-admin-uat.ts), which
 // every CI run proves, cut down to what this script can remove.
 const ORDER = [
-  'payroll_snapshots', 'payroll_exceptions',
+  'payroll_payslip_checks', 'payroll_snapshots', 'payroll_exceptions',
   'payroll_payment_lines', 'payroll_payment_batches', 'payroll_statutory_submissions',
   'payroll_warning_acknowledgements',
   'staff_claim_events', 'staff_claim_attachments', 'staff_claims', 'locum_sessions',

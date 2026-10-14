@@ -347,6 +347,7 @@ model Tenant {
   employeeProfiles           EmployeeProfile[]
   jobTitles                  JobTitle[]
   payrollWarningAcknowledgements PayrollWarningAcknowledgement[]
+  payrollPayslipChecks       PayrollPayslipCheck[]
   attendanceRecords          AttendanceRecord[]
   attendancePunches          AttendancePunch[]
   attendancePolicies         AttendancePolicy[]
@@ -1165,6 +1166,8 @@ model Staff {
   salaryHistory                    EmployeeSalary[]                  @relation("EmployeeSalaryStaff")
   salaryHistoryAuthored            EmployeeSalary[]                  @relation("EmployeeSalaryAuthor")
   payrollWarningsAcknowledged      PayrollWarningAcknowledgement[]   @relation("PayrollWarningAcknowledgedBy")
+  payslipChecksMade                PayrollPayslipCheck[]             @relation("PayslipCheckedBy")
+  payslipChecks                    PayrollPayslipCheck[]             @relation("PayslipCheckOf")
   contributionBases                EmployeeContributionBasis[]       @relation("ContributionBasisStaff")
   contributionBasesAuthored        EmployeeContributionBasis[]       @relation("ContributionBasisAuthor")
   statutoryClassifications         EmployeeStatutoryClassification[] @relation("EmployeeStatutoryStaff")
@@ -7499,6 +7502,7 @@ model PayrollRun {
   adjustments          PayrollAdjustment[]
   legalEmployer        LegalEmployer?               @relation(fields: [legalEmployerId], references: [id])
   snapshots            PayrollSnapshot[]
+  payslipChecks        PayrollPayslipCheck[]
   exceptionRows        PayrollException[]
   approvals            PayrollRunApproval[]
   paymentBatches       PayrollPaymentBatch[]
@@ -9384,4 +9388,28 @@ model PayrollRunApproval {
   @@unique([payrollRunId, staffId])
   @@index([tenantId, payrollRunId])
   @@map("payroll_run_approvals")
+}
+
+/// A PAYSLIP LOOKED AT (UAT, 14 October 2026): "Mark as checked" in the
+/// payslip preview, per person per run. Holds the gross and net it was
+/// checked at, so a payslip whose figures change after the check reads as
+/// not checked again. One row per person per run; reopening keeps it.
+model PayrollPayslipCheck {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  payrollRunId     String   @map("payroll_run_id")
+  staffId          String   @map("staff_id")
+  grossCents       Int      @map("gross_cents")
+  netCents         Int      @map("net_cents")
+  checkedByStaffId String   @map("checked_by_staff_id")
+  checkedAt        DateTime @default(now()) @map("checked_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  staff      Staff      @relation("PayslipCheckOf", fields: [staffId], references: [id])
+  checkedBy  Staff      @relation("PayslipCheckedBy", fields: [checkedByStaffId], references: [id])
+
+  @@unique([payrollRunId, staffId])
+  @@index([tenantId])
+  @@map("payroll_payslip_checks")
 }
