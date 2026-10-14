@@ -27,6 +27,17 @@ export interface AttendancePolicy {
   geofenceLat: number | null;
   geofenceLng: number | null;
   geofenceRadiusMetres: number;
+  /** The day a roster week starts, 0 Sunday … 6 Saturday (UAT, 14 October 2026). */
+  weekStartDay: number;
+  /** The branch's opening hours; null when nobody has said. */
+  openingHours: OpeningHours | null;
+}
+
+/** Open all day, or from one wall-clock time to another (a close at or before the open is past midnight). */
+export interface OpeningHours {
+  open24Hours: boolean;
+  openTime: string | null;
+  closeTime: string | null;
 }
 
 /**
@@ -52,6 +63,9 @@ export const DEFAULT_ATTENDANCE_POLICY: AttendancePolicy = {
   geofenceLat: null,
   geofenceLng: null,
   geofenceRadiusMetres: 150,
+  // Monday, as the brief's default. A setting, not a fact about Malaysia.
+  weekStartDay: 1,
+  openingHours: null,
 };
 
 /** A stored row, with every field optional so a partial row still resolves. */
@@ -59,8 +73,12 @@ export const DEFAULT_ATTENDANCE_POLICY: AttendancePolicy = {
  * A stored row, as Prisma hands it back: the point arrives as Decimal, so it
  * is typed loosely here and read through Number() in one place.
  */
-export type AttendancePolicyRow = Partial<Omit<AttendancePolicy, 'geofenceLat' | 'geofenceLng'>> & {
+export type AttendancePolicyRow = Partial<Omit<AttendancePolicy, 'geofenceLat' | 'geofenceLng' | 'weekStartDay' | 'openingHours'>> & {
   clinicId?: string | null;
+  weekStartDay?: number | null;
+  open24Hours?: boolean | null;
+  openTime?: string | null;
+  closeTime?: string | null;
   geofenceLat?: number | string | { toString(): string } | null;
   geofenceLng?: number | string | { toString(): string } | null;
 };
@@ -78,7 +96,8 @@ export function resolveAttendancePolicy(
 ): AttendancePolicy {
   const forClinic = clinicId ? rows.find((row) => row.clinicId === clinicId) : undefined;
   const tenantDefault = rows.find((row) => !row.clinicId);
-  const pick = <K extends keyof AttendancePolicy>(key: K): AttendancePolicy[K] => {
+  type Scalar = Exclude<keyof AttendancePolicy, 'geofenceLat' | 'geofenceLng' | 'weekStartDay' | 'openingHours'>;
+  const pick = <K extends Scalar>(key: K): AttendancePolicy[K] => {
     const fromClinic = forClinic?.[key];
     if (fromClinic !== undefined && fromClinic !== null) return fromClinic as AttendancePolicy[K];
     const fromTenant = tenantDefault?.[key];
@@ -96,7 +115,23 @@ export function resolveAttendancePolicy(
     // no longitude has recorded nothing. Read from the same row, or not at all.
     ...pickPoint(forClinic, tenantDefault),
     geofenceRadiusMetres: pick('geofenceRadiusMetres'),
+    weekStartDay: forClinic?.weekStartDay ?? tenantDefault?.weekStartDay ?? DEFAULT_ATTENDANCE_POLICY.weekStartDay,
+    openingHours: pickOpeningHours(forClinic, tenantDefault),
   };
+}
+
+/** Opening hours are one fact, read from one row, like the geofence point. */
+function pickOpeningHours(
+  forClinic: AttendancePolicyRow | undefined,
+  tenantDefault: AttendancePolicyRow | undefined,
+): OpeningHours | null {
+  for (const row of [forClinic, tenantDefault]) {
+    if (row?.open24Hours === true) return { open24Hours: true, openTime: null, closeTime: null };
+    if (row?.open24Hours === false && row.openTime && row.closeTime) {
+      return { open24Hours: false, openTime: row.openTime, closeTime: row.closeTime };
+    }
+  }
+  return null;
 }
 
 function pickPoint(

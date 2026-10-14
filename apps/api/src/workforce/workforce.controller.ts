@@ -11,6 +11,8 @@ import { JobTitleService } from './job-title.service';
 import { CreateJobTitleDto, UpdateJobTitleDto } from './dto/job-title.dto';
 import { AttendanceRecordService } from './attendance-record.service';
 import { AttendancePolicyService } from './attendance-policy.service';
+import { ShiftTemplateService } from './shift-template.service';
+import { SaveShiftTemplateDto } from './dto/shift-template.dto';
 import { LeaveService } from './leave.service';
 import { IncentiveService } from './incentive.service';
 import { PayrollService } from './payroll.service';
@@ -87,6 +89,7 @@ export class WorkforceController {
     private readonly jobTitles: JobTitleService,
     private readonly attendance: AttendanceRecordService,
     private readonly attendancePolicies: AttendancePolicyService,
+    private readonly shiftTemplates: ShiftTemplateService,
     private readonly leave: LeaveService,
     private readonly incentives: IncentiveService,
     private readonly payroll: PayrollService,
@@ -742,6 +745,35 @@ export class WorkforceController {
   @Put('claim-policy')
   saveClaimPolicy(@Body() dto: SaveClaimPolicyDto) {
     return this.claimPolicies.save(dto);
+  }
+
+  // --- Shift templates (UAT, 14 October 2026) ---------------------------------
+  @Get('shift-templates')
+  listShiftTemplates(
+    @Query('group') group?: 'DOCTOR' | 'STAFF',
+    @Query('clinicId') clinicId?: string,
+    @Query('includeRetired') includeRetired?: string,
+  ) {
+    return this.shiftTemplates.list({
+      group: group === 'DOCTOR' || group === 'STAFF' ? group : undefined,
+      clinicId: clinicId || undefined,
+      includeRetired: includeRetired === 'true',
+    });
+  }
+
+  @Post('shift-templates')
+  createShiftTemplate(@Body() dto: SaveShiftTemplateDto) {
+    return this.shiftTemplates.create(dto);
+  }
+
+  @Put('shift-templates/:id')
+  updateShiftTemplate(@Param('id') id: string, @Body() dto: SaveShiftTemplateDto) {
+    return this.shiftTemplates.update(id, dto);
+  }
+
+  @Delete('shift-templates/:id')
+  removeShiftTemplate(@Param('id') id: string) {
+    return this.shiftTemplates.remove(id);
   }
 
   @Get('attendance/policy')

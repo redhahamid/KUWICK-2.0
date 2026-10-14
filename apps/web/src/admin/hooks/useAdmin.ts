@@ -2444,7 +2444,14 @@ export function useSaveAttendancePolicy() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (
-      body: Partial<AttendancePolicy> & { clinicId?: string; reason?: string },
+      body: Partial<Omit<AttendancePolicy, 'weekStartDay' | 'openingHours'>> & {
+        clinicId?: string;
+        reason?: string;
+        weekStartDay?: number | null;
+        open24Hours?: boolean | null;
+        openTime?: string | null;
+        closeTime?: string | null;
+      },
     ) =>
       apiClient.post<EffectiveAttendancePolicy>(
         "/workforce/attendance/policy",

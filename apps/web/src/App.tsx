@@ -28,6 +28,7 @@ import { ManageBookingPage } from './appointment/public/ManageBookingPage';
 import { ClinicsPage } from './core/ClinicsPage';
 import { PatientsPage } from './core/PatientsPage';
 import { PublicHolidaysPage } from './admin/hr/PublicHolidaysPage';
+import { ShiftSettingsPage } from './admin/hr/ShiftSettingsPage';
 import { ServicesPage } from './clinical/ServicesPage';
 import { ConsultationTariffsPage } from './clinical/ConsultationTariffsPage';
 import { PanelClinicsPage } from './clinical/PanelClinicsPage';
@@ -380,6 +381,7 @@ export function App() {
             <Route path="/admin/hr/settings/payroll" element={<PayrollSettingsPage />} />
             <Route path="/admin/hr/settings/attendance-leave" element={<AttendanceSettingsPage />} />
             <Route path="/admin/hr/settings/public-holidays" element={<PublicHolidaysPage />} />
+            <Route path="/admin/hr/settings/shifts" element={<ShiftSettingsPage />} />
             <Route path="/admin/hr/settings/opening-balances" element={<YtdOpeningImportPage />} />
             {/* Where each of those used to live. */}
             <Route path="/admin/hr/employers" element={<Navigate to="/admin/hr/settings/company" replace />} />

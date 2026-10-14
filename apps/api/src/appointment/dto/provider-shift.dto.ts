@@ -8,6 +8,7 @@ import {
   IsUUID,
   Matches,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
 import { ProviderScheduleMode, ProviderShiftType } from '@prisma/client';
 
@@ -59,6 +60,15 @@ export class CreateProviderShiftDto {
   note?: string;
 
   /**
+   * The shift template this is rostered from (UAT, 14 October 2026). Its
+   * times win over startTime/endTime, and its break and night flag are copied
+   * onto the shift; an OFF template makes the day OFF.
+   */
+  @IsOptional()
+  @IsUUID()
+  templateId?: string;
+
+  /**
    * Replace whatever is already on those dates for this provider rather than
    * adding beside it. The roster screen's "OFF" button means this; "add a
    * second shift" does not.
@@ -68,6 +78,12 @@ export class CreateProviderShiftDto {
 }
 
 export class UpdateProviderShiftDto {
+  /** Re-roster from a template; null keeps the times and drops the template. */
+  @IsOptional()
+  @ValidateIf((o) => o.templateId !== null)
+  @IsUUID()
+  templateId?: string | null;
+
   @IsOptional()
   @Matches(TIME)
   startTime?: string;

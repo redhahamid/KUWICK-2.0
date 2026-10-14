@@ -6,6 +6,36 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 52 (Roster A1) — 15 Oktober 2026 — Templat syif, hari mula minggu, waktu buka cawangan
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi:**
+`20261015090000_shift_templates` (jadual baharu `shift_templates`; lajur baharu
+pada `provider_shifts` dan `attendance_policies`), dijalankan di staging dengan
+*Migrate only* sebelum master — run #MIGRATE_RUN. Audit jurang:
+`docs/HR_GAP_AUDIT.md`.
+
+- `[D]` **Settings → Attendance & leave → Shifts** (`/admin/hr/settings/shifts`):
+  syif klinik sendiri untuk **Doktor** dan **Staf**: nama, mula, tamat, rehat
+  (minit, tidak dibayar), malam atau siang, warna, semua cawangan atau satu
+  cawangan; atau "hari cuti" bernama (Off, Post-night). Melintasi tengah
+  malam dikira daripada masa (tamat ≤ mula), bukan suis. Kuwick tidak membawa
+  apa-apa syif terbina: senarai bermula kosong.
+- `[D]` **Hari mula minggu roster** (lalai Isnin) dan **waktu buka cawangan**
+  (tidak ditetapkan / 24 jam / buka–tutup, termasuk tutup selepas tengah
+  malam): lalai kumpulan atau setiap cawangan.
+- `[D]` Roster → *Add shift*: pilihan **Shift** menyenaraikan syif kumpulan orang
+  itu; masa diambil daripada templat, rehat dan bendera malam disalin ke syif.
+  Sel roster menunjukkan nama syif dengan warnanya. *Custom times* kekal.
+  *Copy last month* membawa templat bersama.
+- `[D]` Menukar templat kemudian **tidak** menulis semula syif yang sudah
+  diroster; templat yang telah digunakan di-*retire*, bukan dipadam.
+- `[D]` Kebenaran: tulis templat = `appointment.manage_roster` (pecahan staf vs
+  doktor dalam A3).
+- `[D]` **Ujian**: API baharu `shift-templates` (3); web baharu
+  `shiftTemplates` (3); semakan pelayar: tambah syif malam, roster dari templat.
+
+---
+
 ## Batch 51 — 14 Oktober 2026 — "Correct" dan "Delete" pada baris gaji
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada

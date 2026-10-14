@@ -22,8 +22,19 @@ import {
   workforceCategoryOf,
 } from '../workforce/workforce-category';
 import { clinicDateKey, parseDateOnly, parseTimeToDate, zonedWallClockToInstant } from './time.util';
+import { OpeningHours, resolveAttendancePolicy } from '../workforce/attendance-policy';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The template a shift is rostered from: this tenant's, active, and for every
+ * branch or this one (UAT, 14 October 2026).
+ */
+async function templateFor(tx: Parameters<Parameters<typeof withTenantTx>[1]>[0], id: string, clinicId: string) {
+  const template = await tx.shiftTemplate.findFirst({ where: { id, active: true, OR: [{ clinicId: null }, { clinicId }] } });
+  if (!template) throw new BadRequestException('That shift template is retired or belongs to another branch. Choose another.');
+  return template;
+}
 
 export interface RosterCell {
   date: string;
@@ -36,6 +47,10 @@ export interface RosterCell {
     bookableStartTime: string | null;
     bookableEndTime: string | null;
     note: string | null;
+    /** The template it was rostered from, with the copy of its break and night flag. */
+    template: { id: string; name: string; colour: string } | null;
+    breakMinutes: number;
+    night: boolean;
   }[];
   /** Approved HR leave covering this date. NOT copied into a shift row. */
   leave: { leaveType: string } | null;
@@ -78,6 +93,9 @@ export interface RosterMatrix {
   closedDates: Record<string, string | null>;
   /** How many of each category exist, BEFORE the filter — the chips' numbers. */
   categoryCounts: Record<WorkforceCategory, number>;
+  /** The branch's week start (0 Sunday … 6 Saturday) and opening hours, from its attendance settings. */
+  weekStartDay: number;
+  openingHours: OpeningHours | null;
   providers: RosterRow[];
 }
 
@@ -145,7 +163,7 @@ export class ProviderShiftService {
     const first = parseDateOnly(dates[0]);
     const last = parseDateOnly(dates[dates.length - 1]);
 
-    const [providers, shifts, leave, closed] = await Promise.all([
+    const [providers, shifts, leave, closed, policies] = await Promise.all([
       // THE WHOLE WORKFORCE, not only the doctors.
       //
       // This read was `role: { in: [DOCTOR_RESIDENT, DOCTOR_LOCUM] }`, and the
@@ -179,6 +197,7 @@ export class ProviderShiftService {
       this.prisma.providerShift.findMany({
         where: { clinicId: branch, shiftDate: { gte: first, lte: last } },
         orderBy: { startsAt: 'asc' },
+        include: { template: { select: { id: true, name: true, colour: true } } },
       }),
       this.prisma.leaveRequest.findMany({
         where: {
@@ -192,7 +211,9 @@ export class ProviderShiftService {
         where: { clinicId: branch, date: { gte: first, lte: last } },
         select: { date: true, reason: true },
       }),
+      this.prisma.attendancePolicy.findMany({ where: { OR: [{ clinicId: branch }, { clinicId: null }] } }),
     ]);
+    const policy = resolveAttendancePolicy(policies, branch);
 
     // The board asks THE resolver, exactly as the availability engine does —
     // a mode is a fact about a date. Twice, for two different questions: the
@@ -258,6 +279,9 @@ export class ProviderShiftService {
         bookableStartTime: shift.bookableStartsAt ? wallClock(shift.bookableStartsAt, timeZone) : null,
         bookableEndTime: shift.bookableEndsAt ? wallClock(shift.bookableEndsAt, timeZone) : null,
         note: shift.note,
+        template: shift.template,
+        breakMinutes: shift.breakMinutes,
+        night: shift.night,
       });
     }
 
@@ -288,6 +312,8 @@ export class ProviderShiftService {
       // a chip reading "Doctors 3" that disappears the moment you click it is
       // a filter that has forgotten what it is filtering.
       categoryCounts: countBy([...byStaff.values()]),
+      weekStartDay: policy.weekStartDay,
+      openingHours: policy.openingHours,
       providers: [...byStaff.values()].filter((row) => !category || row.category === category),
     };
   }
@@ -324,9 +350,13 @@ export class ProviderShiftService {
 
       const timeZone = await this.timeZoneOf(dto.clinicId);
       assertBookableBandIsWhole(dto.bookableStartTime, dto.bookableEndTime);
+      const template = dto.templateId ? await templateFor(tx, dto.templateId, dto.clinicId) : null;
+      const startTime = template?.kind === 'WORKING' ? template.startTime! : dto.startTime;
+      const endTime = template?.kind === 'WORKING' ? template.endTime! : dto.endTime;
+      const shiftType = template ? (template.kind === 'OFF' ? ProviderShiftType.OFF : dto.shiftType === ProviderShiftType.LOCUM ? ProviderShiftType.LOCUM : ProviderShiftType.WORKING) : (dto.shiftType ?? ProviderShiftType.WORKING);
 
       const rows = dto.dates.map((date) => {
-        const span = wallClockSpan(date, dto.startTime, dto.endTime, timeZone);
+        const span = wallClockSpan(date, startTime, endTime, timeZone);
         const bookable =
           dto.bookableStartTime && dto.bookableEndTime
             ? wallClockSpan(date, dto.bookableStartTime, dto.bookableEndTime, timeZone)
@@ -343,11 +373,14 @@ export class ProviderShiftService {
           shiftDate: parseDateOnly(date),
           startsAt: span.start,
           endsAt: span.end,
-          shiftType: dto.shiftType ?? ProviderShiftType.WORKING,
+          shiftType,
           bookableStartsAt: bookable?.start ?? null,
           bookableEndsAt: bookable?.end ?? null,
           note: dto.note?.trim() || null,
           createdByStaffId: currentStaffId() ?? null,
+          templateId: template?.id ?? null,
+          breakMinutes: template?.breakMinutes ?? 0,
+          night: template?.night ?? false,
         };
       });
 
@@ -376,8 +409,10 @@ export class ProviderShiftService {
 
       const timeZone = await this.timeZoneOf(shift.clinicId);
       const date = shift.shiftDate.toISOString().slice(0, 10);
-      const startTime = dto.startTime ?? wallClock(shift.startsAt, timeZone);
-      const endTime = dto.endTime ?? wallClock(shift.endsAt, timeZone);
+      const template = dto.templateId ? await templateFor(tx, dto.templateId, shift.clinicId) : null;
+      const fromTemplate = template?.kind === 'WORKING';
+      const startTime = fromTemplate ? template.startTime! : (dto.startTime ?? wallClock(shift.startsAt, timeZone));
+      const endTime = fromTemplate ? template.endTime! : (dto.endTime ?? wallClock(shift.endsAt, timeZone));
       const span = wallClockSpan(date, startTime, endTime, timeZone);
 
       assertBookableBandIsWhole(dto.bookableStartTime, dto.bookableEndTime);
@@ -391,10 +426,14 @@ export class ProviderShiftService {
         data: {
           startsAt: span.start,
           endsAt: span.end,
-          shiftType: dto.shiftType ?? shift.shiftType,
+          shiftType: template?.kind === 'OFF' ? ProviderShiftType.OFF : template && shift.shiftType === ProviderShiftType.OFF ? ProviderShiftType.WORKING : (dto.shiftType ?? shift.shiftType),
           bookableStartsAt: bookable?.start ?? null,
           bookableEndsAt: bookable?.end ?? null,
           note: dto.note === undefined ? shift.note : dto.note.trim() || null,
+          // A template given: its id, break and night flag. Null: none of them.
+          ...(dto.templateId !== undefined
+            ? { templateId: template?.id ?? null, breakMinutes: template?.breakMinutes ?? 0, night: template?.night ?? false }
+            : {}),
         },
       });
     });
@@ -520,6 +559,9 @@ export class ProviderShiftService {
           note: shift.note,
           sourceScheduleId: shift.id,
           createdByStaffId: currentStaffId() ?? null,
+          templateId: shift.templateId,
+          breakMinutes: shift.breakMinutes,
+          night: shift.night,
         });
       }
 

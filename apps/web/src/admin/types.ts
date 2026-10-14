@@ -3469,6 +3469,10 @@ export interface AttendancePolicy {
   geofenceLat: number | null;
   geofenceLng: number | null;
   geofenceRadiusMetres: number;
+  /** The day a roster week starts, 0 Sunday … 6 Saturday (UAT, 14 October 2026). */
+  weekStartDay?: number;
+  /** The branch's opening hours; null when nobody has said. */
+  openingHours?: { open24Hours: boolean; openTime: string | null; closeTime: string | null } | null;
 }
 
 /** How the clinic prices and polices claims (Settings › Claims). */

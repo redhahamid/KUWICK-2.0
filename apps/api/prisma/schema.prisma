@@ -263,6 +263,7 @@ model Tenant {
   doctorServiceQualifications DoctorServiceQualification[]
   appointments                Appointment[]
   providerShifts              ProviderShift[]
+  shiftTemplates              ShiftTemplate[]
   providerScheduleModePeriods ProviderScheduleModePeriod[]
   staffNotifications          StaffNotification[]
   mediaAssets                 MediaAsset[]
@@ -451,6 +452,7 @@ model Clinic {
   closedDates                 ClinicClosedDate[]
   appointments                Appointment[]
   providerShifts              ProviderShift[]
+  shiftTemplates              ShiftTemplate[]
   providerScheduleModePeriods ProviderScheduleModePeriod[]
   staffNotifications          StaffNotification[]
   appointmentChangeRequests   AppointmentChangeRequest[]
@@ -1019,6 +1021,7 @@ model Staff {
   clinic                              Clinic?                       @relation(fields: [clinicId], references: [id])
   providerShifts                      ProviderShift[]               @relation("ProviderShiftProvider")
   providerShiftsCreated               ProviderShift[]               @relation("ProviderShiftAuthor")
+  shiftTemplatesCreated               ShiftTemplate[]               @relation("ShiftTemplateAuthor")
   scheduleModePeriods                 ProviderScheduleModePeriod[]  @relation("ScheduleModePeriodProvider")
   staffNotifications                  StaffNotification[]
   changeRequestsDecided               AppointmentChangeRequest[]
@@ -5290,15 +5293,72 @@ model ProviderShift {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  tenant         Tenant @relation(fields: [tenantId], references: [id])
-  clinic         Clinic @relation(fields: [clinicId], references: [id])
-  staff          Staff  @relation("ProviderShiftProvider", fields: [staffId], references: [id])
-  createdByStaff Staff? @relation("ProviderShiftAuthor", fields: [createdByStaffId], references: [id])
+  /// The shift template this was rostered from (UAT, 14 October 2026). Its
+  /// break and night flag are COPIED here, so changing a template later does
+  /// not rewrite the hours of shifts already rostered.
+  templateId   String?  @map("template_id")
+  breakMinutes Int      @default(0) @map("break_minutes")
+  night        Boolean  @default(false)
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id])
+  clinic         Clinic         @relation(fields: [clinicId], references: [id])
+  staff          Staff          @relation("ProviderShiftProvider", fields: [staffId], references: [id])
+  createdByStaff Staff?         @relation("ProviderShiftAuthor", fields: [createdByStaffId], references: [id])
+  template       ShiftTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, clinicId, shiftDate])
   @@index([tenantId, staffId, shiftDate])
   @@index([tenantId, clinicId, startsAt])
   @@map("provider_shifts")
+}
+
+/// Which shift templates a person is rostered from (UAT, 14 October 2026).
+enum ShiftGroup {
+  DOCTOR
+  STAFF
+}
+
+/// A working shift, or a named day off ("Off", "Post-night").
+enum ShiftTemplateKind {
+  WORKING
+  OFF
+}
+
+/// A CLINIC-DEFINED SHIFT (UAT, 14 October 2026): "Shift templates per staff
+/// group, set by the clinic: name, start, end, rest break, crosses midnight,
+/// night or day, colour." Nothing about any one clinic's shifts is built in.
+/// `clinicId` NULL is every branch. Crossing midnight is not stored: an end
+/// at or before the start is overnight, as everywhere on the roster.
+model ShiftTemplate {
+  id           String            @id @default(uuid())
+  tenantId     String            @map("tenant_id")
+  clinicId     String?           @map("clinic_id")
+  group        ShiftGroup
+  name         String
+  kind         ShiftTemplateKind @default(WORKING)
+  /// Wall clock HH:MM in the branch's zone; NULL on an OFF template.
+  startTime    String?           @map("start_time")
+  endTime      String?           @map("end_time")
+  /// Unpaid rest inside the shift, in minutes.
+  breakMinutes Int               @default(0) @map("break_minutes")
+  night        Boolean           @default(false)
+  /// A #rrggbb colour for the roster cell.
+  colour       String
+  sortOrder    Int               @default(0) @map("sort_order")
+  /// Retired, not deleted, once used: shifts already rostered keep pointing at it.
+  active       Boolean           @default(true)
+
+  createdByStaffId String?  @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id])
+  clinic    Clinic?         @relation(fields: [clinicId], references: [id])
+  createdBy Staff?          @relation("ShiftTemplateAuthor", fields: [createdByStaffId], references: [id])
+  shifts    ProviderShift[]
+
+  @@index([tenantId, group])
+  @@map("shift_templates")
 }
 
 /// §18b — WHICH SCHEDULING MODEL governs a provider, effective-dated.
@@ -6852,6 +6912,16 @@ model AttendancePolicy {
   geofenceLat          Decimal? @map("geofence_lat") @db.Decimal(9, 6)
   geofenceLng          Decimal? @map("geofence_lng") @db.Decimal(9, 6)
   geofenceRadiusMetres Int      @default(150) @map("geofence_radius_metres")
+
+  /// The day a roster week starts, 0 Sunday … 6 Saturday (UAT, 14 October
+  /// 2026). NULL inherits; Kuwick's built-in is Monday.
+  weekStartDay Int?    @map("week_start_day")
+  /// The branch's opening hours, one fact read from one row: open all day,
+  /// or from `openTime` to `closeTime` (HH:MM; a close at or before the open
+  /// is past midnight). NULL on all three inherits.
+  open24Hours  Boolean? @map("open_24_hours")
+  openTime     String?  @map("open_time")
+  closeTime    String?  @map("close_time")
 
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")

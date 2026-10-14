@@ -78,6 +78,7 @@ export function RosterPage({ clinicId }: RosterPageProps) {
     staffName: string;
     dates: string[];
     shift?: RosterShift;
+    group?: 'DOCTOR' | 'STAFF';
   } | null>(null);
   const [selection, setSelection] = useState<{ staffId: string; dates: string[] } | null>(null);
 
@@ -348,6 +349,7 @@ export function RosterPage({ clinicId }: RosterPageProps) {
                   staffId: selection.staffId,
                   staffName: provider?.fullName ?? '',
                   dates: selection.dates,
+                  group: provider?.category === 'DOCTOR' ? 'DOCTOR' : 'STAFF',
                 });
               }}
             >
@@ -480,6 +482,7 @@ export function RosterPage({ clinicId }: RosterPageProps) {
                               staffName: provider.fullName,
                               dates: [date],
                               shift,
+                              group: provider.category === 'DOCTOR' ? 'DOCTOR' : 'STAFF',
                             })
                           }
                           onRemove={onRemove}
@@ -530,6 +533,7 @@ export function RosterPage({ clinicId }: RosterPageProps) {
         staffName={editing?.staffName ?? ''}
         dates={editing?.dates ?? []}
         shift={editing?.shift}
+        group={editing?.group}
         onClose={() => {
           setEditing(null);
           setSelection(null);
@@ -787,18 +791,21 @@ function RosterCellContent({
         const tone = SHIFT_TONE[shift.shiftType] ?? SHIFT_TONE.WORKING;
         // §14 — an overnight shift says so in words a roster reader uses:
         // "23:00→09:00 +1", not a superscript nobody notices.
-        const label =
-          tone.label ??
-          (shift.crossesMidnight
-            ? `${shift.startTime}→${shift.endTime} +1`
-            : `${shift.startTime}–${shift.endTime}`);
+        const times = shift.crossesMidnight
+          ? `${shift.startTime}→${shift.endTime} +1`
+          : `${shift.startTime}–${shift.endTime}`;
+        // A shift from a template is called by its name, in its colour.
+        const label = shift.template ? shift.template.name : (tone.label ?? times);
         return (
           <Tooltip
             key={shift.id}
             title={
               <>
+                {shift.template ? `${shift.template.name} · ` : ''}
                 {shift.startTime}–{shift.endTime}
                 {shift.crossesMidnight ? ' (next day)' : ''}
+                {shift.breakMinutes ? ` · ${shift.breakMinutes} min rest` : ''}
+                {shift.night ? ' · night' : ''}
                 {shift.bookableStartTime
                   ? ` · bookable ${shift.bookableStartTime}–${shift.bookableEndTime}`
                   : ''}
@@ -808,7 +815,11 @@ function RosterCellContent({
           >
             <span
               className="kw-roster-chip"
-              style={{ background: tone.bg, color: tone.fg, borderLeftColor: tone.edge }}
+              style={
+                shift.template && shift.shiftType !== 'OFF'
+                  ? { background: `${shift.template.colour}1f`, color: '#1d2939', borderLeftColor: shift.template.colour }
+                  : { background: tone.bg, color: tone.fg, borderLeftColor: shift.template?.colour ?? tone.edge }
+              }
               onClick={(event) => {
                 event.stopPropagation();
                 onEdit(shift);

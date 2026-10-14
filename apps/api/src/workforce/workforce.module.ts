@@ -6,6 +6,7 @@ import { JobTitleService } from './job-title.service';
 import { EmployeeIntakeService } from './employee-intake.service';
 import { AttendanceRecordService } from './attendance-record.service';
 import { AttendancePolicyService } from './attendance-policy.service';
+import { ShiftTemplateService } from './shift-template.service';
 import { LeaveService } from './leave.service';
 import { IncentiveService } from './incentive.service';
 import { PayrollService } from './payroll.service';
@@ -55,6 +56,7 @@ import { PayrollFinanceService } from './payroll-finance.service';
     EmployeeIntakeService,
     AttendanceRecordService,
     AttendancePolicyService,
+    ShiftTemplateService,
     LeaveService,
     IncentiveService,
     PayrollService,
@@ -87,6 +89,7 @@ import { PayrollFinanceService } from './payroll-finance.service';
     EmployeeService,
     AttendanceRecordService,
     AttendancePolicyService,
+    ShiftTemplateService,
     LeaveService,
     IncentiveService,
     PayrollService,

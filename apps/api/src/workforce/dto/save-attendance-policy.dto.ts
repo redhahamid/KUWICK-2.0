@@ -1,4 +1,6 @@
-import { IsBoolean, IsInt, IsNumber, IsOptional, IsUUID, Length, Max, Min, ValidateIf } from 'class-validator';
+import { IsBoolean, IsInt, IsNumber, IsOptional, IsUUID, Length, Matches, Max, Min, ValidateIf } from 'class-validator';
+
+const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 /**
  * Every field optional: a clinic may adjust one rule without restating the
@@ -27,6 +29,13 @@ export class SaveAttendancePolicyDto {
   @ValidateIf((o) => o.geofenceLat !== null) @IsOptional() @IsNumber() @Min(-90) @Max(90) geofenceLat?: number | null;
   @ValidateIf((o) => o.geofenceLng !== null) @IsOptional() @IsNumber() @Min(-180) @Max(180) geofenceLng?: number | null;
   @IsOptional() @IsInt() @Min(20) @Max(5000) geofenceRadiusMetres?: number;
+
+  /** 0 Sunday … 6 Saturday; null inherits (UAT, 14 October 2026). */
+  @ValidateIf((o) => o.weekStartDay !== null) @IsOptional() @IsInt() @Min(0) @Max(6) weekStartDay?: number | null;
+  /** Opening hours, one fact: all three together; null on all three inherits. */
+  @ValidateIf((o) => o.open24Hours !== null) @IsOptional() @IsBoolean() open24Hours?: boolean | null;
+  @ValidateIf((o) => o.openTime !== null) @IsOptional() @Matches(TIME, { message: 'Times are HH:MM, e.g. 08:00.' }) openTime?: string | null;
+  @ValidateIf((o) => o.closeTime !== null) @IsOptional() @Matches(TIME, { message: 'Times are HH:MM, e.g. 22:00.' }) closeTime?: string | null;
 
   @IsOptional() @Length(3, 500) reason?: string;
 }

@@ -13,6 +13,10 @@ export interface RosterShift {
   bookableStartTime: string | null;
   bookableEndTime: string | null;
   note: string | null;
+  /** The template it was rostered from (UAT, 14 October 2026), with its copied break and night flag. */
+  template?: { id: string; name: string; colour: string } | null;
+  breakMinutes?: number;
+  night?: boolean;
 }
 
 export interface RosterCell {
@@ -73,6 +77,74 @@ export interface RosterMatrix {
   /** Counts of the WHOLE workforce, before any filter — the chips' numbers. */
   categoryCounts: Record<WorkforceCategory, number>;
   providers: RosterRow[];
+  /** The branch's week start, 0 Sunday … 6 Saturday, and opening hours. */
+  weekStartDay?: number;
+  openingHours?: OpeningHours | null;
+}
+
+export interface OpeningHours {
+  open24Hours: boolean;
+  openTime: string | null;
+  closeTime: string | null;
+}
+
+export type ShiftGroup = 'DOCTOR' | 'STAFF';
+
+/** A clinic-defined shift (UAT, 14 October 2026). */
+export interface ShiftTemplate {
+  id: string;
+  clinicId: string | null;
+  group: ShiftGroup;
+  name: string;
+  kind: 'WORKING' | 'OFF';
+  startTime: string | null;
+  endTime: string | null;
+  breakMinutes: number;
+  night: boolean;
+  colour: string;
+  sortOrder: number;
+  active: boolean;
+  crossesMidnight: boolean;
+  workedMinutes: number;
+}
+
+export type ShiftTemplateInput = Pick<ShiftTemplate, 'group' | 'name' | 'kind' | 'startTime' | 'endTime' | 'breakMinutes' | 'night' | 'colour' | 'clinicId'> & {
+  sortOrder?: number;
+};
+
+/** The roster sees a group's shifts for every branch and this one; settings sees them all. */
+export function useShiftTemplates(params: { group?: ShiftGroup; clinicId?: string; includeRetired?: boolean } = {}) {
+  const query = new URLSearchParams();
+  if (params.group) query.set('group', params.group);
+  if (params.clinicId) query.set('clinicId', params.clinicId);
+  if (params.includeRetired) query.set('includeRetired', 'true');
+  return useQuery({
+    queryKey: ['shift-templates', params.group ?? 'ALL', params.clinicId ?? 'ALL', Boolean(params.includeRetired)],
+    queryFn: () => apiClient.get<ShiftTemplate[]>(`/workforce/shift-templates${query.size ? `?${query}` : ''}`),
+  });
+}
+
+export function useSaveShiftTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: ShiftTemplateInput & { id?: string }) =>
+      id
+        ? apiClient.put<ShiftTemplate>(`/workforce/shift-templates/${id}`, body)
+        : apiClient.post<ShiftTemplate>('/workforce/shift-templates', body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['shift-templates'] }),
+  });
+}
+
+export function useRemoveShiftTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiClient.delete<{ id: string; retired: boolean; rosteredShifts: number }>(`/workforce/shift-templates/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['shift-templates'] });
+      invalidateRoster(queryClient);
+    },
+  });
 }
 
 export interface RangeShift {
@@ -135,6 +207,7 @@ export interface CreateShiftInput {
   bookableEndTime?: string;
   note?: string;
   replaceExisting?: boolean;
+  templateId?: string;
 }
 
 export function useCreateShift() {

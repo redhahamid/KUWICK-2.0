@@ -5,7 +5,9 @@ import { ApiError } from '../../core/api-client';
 import {
   ProviderShiftType,
   RosterShift,
+  ShiftGroup,
   useCreateShift,
+  useShiftTemplates,
   useUpdateShift,
 } from '../hooks/useRoster';
 
@@ -26,8 +28,13 @@ interface ShiftEditorModalProps {
   staffName: string;
   dates: string[];
   shift?: RosterShift;
+  /** Whose shift templates to offer: a doctor's or staff (UAT, 14 October 2026). */
+  group?: ShiftGroup;
   onClose: () => void;
 }
+
+/** "Custom times" in the template picker: the form as it always was. */
+const CUSTOM = '';
 
 /**
  * ADD OR EDIT A SHIFT.
@@ -48,9 +55,13 @@ export function ShiftEditorModal({
   staffName,
   dates,
   shift,
+  group = 'STAFF',
   onClose,
 }: ShiftEditorModalProps) {
   const [form] = Form.useForm();
+  const templates = useShiftTemplates({ group, clinicId });
+  const templateId = (Form.useWatch('templateId', form) as string | undefined) ?? CUSTOM;
+  const template = (templates.data ?? []).find((row) => row.id === templateId);
   const create = useCreateShift();
   const update = useUpdateShift();
   const shiftType = Form.useWatch('shiftType', form) as ProviderShiftType | undefined;
@@ -61,6 +72,7 @@ export function ShiftEditorModal({
   useEffect(() => {
     if (!open) return;
     form.setFieldsValue({
+      templateId: shift?.template?.id ?? CUSTOM,
       shiftType: shift?.shiftType ?? 'WORKING',
       startTime: dayjs(shift?.startTime ?? '09:00', 'HH:mm'),
       endTime: dayjs(shift?.endTime ?? '17:00', 'HH:mm'),
@@ -76,7 +88,22 @@ export function ShiftEditorModal({
 
   const crossesMidnight =
     start && end ? dayjs(end).format('HH:mm') <= dayjs(start).format('HH:mm') : false;
-  const isAbsence = shiftType === 'OFF' || shiftType === 'LEAVE';
+  const isAbsence = shiftType === 'OFF' || shiftType === 'LEAVE' || template?.kind === 'OFF';
+
+  // A template's times are the shift's times: shown, not typed.
+  const chooseTemplate = (id: string) => {
+    const chosen = (templates.data ?? []).find((row) => row.id === id);
+    if (!chosen) return;
+    if (chosen.kind === 'OFF') {
+      form.setFieldsValue({ shiftType: 'OFF', narrowed: false });
+    } else {
+      form.setFieldsValue({
+        startTime: dayjs(chosen.startTime, 'HH:mm'),
+        endTime: dayjs(chosen.endTime, 'HH:mm'),
+        shiftType: shiftType === 'LOCUM' ? 'LOCUM' : 'WORKING',
+      });
+    }
+  };
 
   const submit = async () => {
     const values = await form.validateFields();
@@ -91,6 +118,9 @@ export function ShiftEditorModal({
           }
         : {}),
       note: values.note?.trim() || undefined,
+      // A template sent: the server takes its times, break and night flag.
+      // "Custom times" on an edited shift drops the template it had.
+      ...(values.templateId ? { templateId: values.templateId } : shift?.template ? { templateId: null } : {}),
     };
     try {
       if (shift) {
@@ -130,16 +160,52 @@ export function ShiftEditorModal({
       destroyOnHidden
     >
       <Form form={form} layout="vertical" data-testid="shift-editor">
-        <Form.Item name="shiftType" label="What is this?">
-          <Select options={SHIFT_TYPES} />
+        <Form.Item
+          name="templateId"
+          label="Shift"
+          extra={
+            template
+              ? template.kind === 'OFF'
+                ? 'A named day off.'
+                : `${template.startTime}–${template.endTime}${template.crossesMidnight ? ' (next day)' : ''}` +
+                  `${template.breakMinutes ? `, ${template.breakMinutes} min rest` : ''}${template.night ? ', night shift' : ''}.`
+              : (templates.data ?? []).length === 0
+                ? 'No shifts are set up for this group yet: HR Settings → Attendance & leave → Shifts.'
+                : undefined
+          }
+        >
+          <Select
+            aria-label="Shift"
+            onChange={(id: string) => chooseTemplate(id)}
+            options={[
+              { value: CUSTOM, label: 'Custom times' },
+              ...(templates.data ?? []).map((row) => ({
+                value: row.id,
+                label: (
+                  <span>
+                    <span
+                      aria-hidden="true"
+                      style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: row.colour, marginRight: 8 }}
+                    />
+                    {row.name}
+                    {row.kind === 'WORKING' ? ` · ${row.startTime}–${row.endTime}` : ''}
+                  </span>
+                ),
+              })),
+            ]}
+          />
+        </Form.Item>
+
+        <Form.Item name="shiftType" label="What is this?" hidden={template?.kind === 'OFF'}>
+          <Select options={template ? SHIFT_TYPES.filter((type) => type.value === 'WORKING' || type.value === 'LOCUM') : SHIFT_TYPES} />
         </Form.Item>
 
         <Space.Compact style={{ display: 'flex', gap: 12 }}>
           <Form.Item name="startTime" label="Starts" rules={[{ required: true }]} style={{ flex: 1 }}>
-            <TimePicker format="HH:mm" minuteStep={5} style={{ width: '100%' }} needConfirm={false} />
+            <TimePicker format="HH:mm" minuteStep={5} style={{ width: '100%' }} needConfirm={false} disabled={Boolean(template)} />
           </Form.Item>
           <Form.Item name="endTime" label="Ends" rules={[{ required: true }]} style={{ flex: 1 }}>
-            <TimePicker format="HH:mm" minuteStep={5} style={{ width: '100%' }} needConfirm={false} />
+            <TimePicker format="HH:mm" minuteStep={5} style={{ width: '100%' }} needConfirm={false} disabled={Boolean(template)} />
           </Form.Item>
         </Space.Compact>
 

@@ -2,6 +2,9 @@ import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { HrPage, Panel, PanelHead } from './ui';
 import { usePublicHolidays } from '../../hr/hooks/usePublicHolidays';
+import { useShiftTemplates } from '../../appointment/hooks/useRoster';
+import { useAttendancePolicy } from '../hooks/useAdmin';
+import { WEEK_DAYS } from './ShiftSettingsPage';
 import { AttendanceRulesPanel } from './AttendanceRulesPanel';
 import { ClaimPolicyPanel } from './ClaimPolicyPanel';
 import { LeavePolicyPanel } from './LeavePolicyPanel';
@@ -23,6 +26,11 @@ export function AttendanceSettingsPage() {
   const holidays = usePublicHolidays();
   const thisYear = dayjs().year();
   const holidaysThisYear = (holidays.data ?? []).filter((row) => dayjs(row.date).year() === thisYear).length;
+  const templates = useShiftTemplates();
+  const groupPolicy = useAttendancePolicy();
+  const doctorShifts = (templates.data ?? []).filter((row) => row.group === 'DOCTOR').length;
+  const staffShifts = (templates.data ?? []).filter((row) => row.group === 'STAFF').length;
+  const opening = groupPolicy.data?.policy.openingHours;
   return (
     <HrPage
       title="Attendance & leave"
@@ -33,7 +41,25 @@ export function AttendanceSettingsPage() {
         </>
       }
     >
-      <AttendanceRulesPanel />
+      {/* Shifts first: the roster is what attendance is measured against. */}
+      <Panel>
+        <PanelHead
+          title="Shifts"
+          sub={
+            `${doctorShifts} doctor shift${doctorShifts === 1 ? '' : 's'}, ${staffShifts} staff shift${staffShifts === 1 ? '' : 's'}. ` +
+            `The week starts on ${WEEK_DAYS[groupPolicy.data?.policy.weekStartDay ?? 1]}. ` +
+            `Opening hours: ${!opening ? 'not set' : opening.open24Hours ? 'open 24 hours' : `${opening.openTime}–${opening.closeTime}`}.`
+          }
+          actions={
+            <Link className="hr-btn" to="/admin/hr/settings/shifts">
+              Open shifts
+            </Link>
+          }
+        />
+      </Panel>
+      <div className="hr-mt">
+        <AttendanceRulesPanel />
+      </div>
       {/* Leave sits between attendance and claims because that is the order an
           employee meets them, and because the payout question below belongs to
           whoever is already reading what counts as a full day. */}

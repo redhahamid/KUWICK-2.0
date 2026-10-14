@@ -101,6 +101,26 @@ export class AttendancePolicyService {
         data.geofenceLng = lng;
       }
 
+      if (dto.weekStartDay !== undefined) data.weekStartDay = dto.weekStartDay;
+      // Opening hours are one fact: all day, or an open and a close; or cleared.
+      if (dto.open24Hours !== undefined || dto.openTime !== undefined || dto.closeTime !== undefined) {
+        const allDay = dto.open24Hours ?? null;
+        const open = dto.openTime ?? null;
+        const close = dto.closeTime ?? null;
+        if (allDay === false && (!open || !close)) {
+          throw new BadRequestException('Opening hours need an opening and a closing time, or "Open 24 hours".');
+        }
+        if (allDay === null && (open || close)) {
+          throw new BadRequestException('Say whether the branch is open 24 hours, or give its opening and closing times.');
+        }
+        if (open && close && open === close) {
+          throw new BadRequestException('Opening and closing at the same time is 24 hours: choose "Open 24 hours".');
+        }
+        data.open24Hours = allDay;
+        data.openTime = allDay ? null : open;
+        data.closeTime = allDay ? null : close;
+      }
+
       const saved = before
         ? await tx.attendancePolicy.update({
             where: { id: before.id },
