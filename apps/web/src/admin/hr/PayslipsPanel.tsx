@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { App, Button, Tag, Tooltip } from 'antd';
+import { App, Button, Select, Tag, Tooltip } from 'antd';
 import { AdminNotice, AdminSection } from '../components/AdminShell';
 import { DataTable, money } from '../components/DataTable';
 import { apiClient, downloadFile } from '../../core/api-client';
@@ -24,6 +24,8 @@ export function PayslipsPanel({ runId }: { runId: string }) {
   const query = usePayslips(runId);
   const printedBy = useAuthStore((state) => state.staff?.fullName ?? null);
   const [busy, setBusy] = useState<string | null>(null);
+  // AN EARLIER REVISION STAYS VIEWABLE (UAT, 14 October 2026): null is the latest.
+  const [revision, setRevision] = useState<number | null>(null);
 
   if (query.isError) {
     const detail =
@@ -42,7 +44,7 @@ export function PayslipsPanel({ runId }: { runId: string }) {
   const print = async (staffId: string) => {
     setBusy(`print-${staffId}`);
     try {
-      const slip = await apiClient.get<PayslipDoc>(`/workforce/payroll/runs/${runId}/payslips/${staffId}`);
+      const slip = await apiClient.get<PayslipDoc>(`/workforce/payroll/runs/${runId}/payslips/${staffId}${revision ? `?version=${revision}` : ''}`);
       printApprovedPayslip(slip, printedBy);
     } catch (e) {
       message.error(e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : 'Failed');
@@ -55,8 +57,8 @@ export function PayslipsPanel({ runId }: { runId: string }) {
     setBusy(`pdf-${rowData.staffId}`);
     try {
       await downloadFile(
-        payslipPdfPath(runId, rowData.staffId),
-        `payslip-${data.period}-${rowData.name.replace(/[^A-Za-z0-9-]+/g, '-')}.pdf`,
+        payslipPdfPath(runId, rowData.staffId, revision ?? undefined),
+        `payslip-${data.period}-${rowData.name.replace(/[^A-Za-z0-9-]+/g, '-')}${revision ? `-r${revision}` : ''}.pdf`,
       );
     } catch (e) {
       message.error(e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : 'Failed');
@@ -70,8 +72,25 @@ export function PayslipsPanel({ runId }: { runId: string }) {
       title="Payslips"
       description="Issued from the approved record — the frozen, hashed snapshot — never from figures that can still move. Downloads are on the audit trail."
       actions={
-        <span className="kw-muted" style={{ fontSize: 12.5 }}>
-          Revision {data.snapshotVersion} of {data.versions} · verification {data.verdict}
+        <span className="kw-muted" style={{ fontSize: 12.5, display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+          {data.versions > 1 ? (
+            <Select
+              size="small"
+              aria-label="Revision"
+              value={revision ?? data.snapshotVersion}
+              onChange={(value: number) => setRevision(value === data.snapshotVersion ? null : value)}
+              options={Array.from({ length: data.versions }, (_, index) => index + 1)
+                .reverse()
+                .map((version) => ({
+                  value: version,
+                  label: `Revision ${version} of ${data.versions}${version < data.versions ? ' (superseded)' : ''}`,
+                }))}
+              style={{ minWidth: 210 }}
+            />
+          ) : (
+            <>Revision {data.snapshotVersion} of {data.versions}</>
+          )}
+          · verification {data.verdict}
         </span>
       }
     >

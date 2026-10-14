@@ -6,6 +6,29 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 49 — 14 Oktober 2026 — "Reopen this month" pada bulan yang diluluskan
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada
+migrasi.** Pelayan sudah ada `reopen`; tiada butang di mana-mana skrin.
+
+- `[D]` Butang **Reopen this month** pada langkah Approve dan Pay bagi bulan
+  APPROVED, untuk pemilik atau pemegang kebenaran lulus payroll. Sebab wajib;
+  dilog (`payroll.reopened`, siapa/bila/sebab). Bulan kembali ke draf
+  (CALCULATED); kelulusan dan senarai bayaran dikosongkan.
+- `[D]` Ditolak, menamakan semua sebab sekali gus: bulan kemudian yang sudah
+  diluluskan ("July 2026 is already approved… reopen the later month first"),
+  pemfailan statutori yang direkod (skim, tarikh, rujukan), atau pindahan wang
+  yang direkod.
+- `[D]` Selepas diluluskan semula: payslip "Revision 2 of 2"; Payslips kini ada
+  pemilih **Revision** untuk melihat, mencetak dan memuat turun revisi lama
+  (ditanda "superseded").
+- `[D]` Had: tiada cara dalam Kuwick untuk membatalkan rekod pindahan atau
+  pemfailan yang sudah direkod; mesej menyuruh guna pelarasan (adjustment).
+- `[D]` **Ujian**: API baharu `payroll-reopen` (4); web baharu `reopenMonth` (2);
+  tujuh suite sedia ada yang memanggil reopen lulus.
+
+---
+
 ## Batch 48 — 12 Oktober 2026 — Bayaran akhir selepas berhenti (tunggakan bulan berikutnya)
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada

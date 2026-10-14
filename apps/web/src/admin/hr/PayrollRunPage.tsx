@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { RecordsChangedBanner } from './RecordsChangedBanner';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { App, Grid, Modal } from 'antd';
+import { App, Grid, Input, Modal } from 'antd';
 import dayjs from 'dayjs';
 import { ringgit } from '../components/DataTable';
 import { humanise } from '../components/Chip';
@@ -11,6 +11,7 @@ import {
   useDeletePayrollInput,
   useDiscardPayrollRun,
   usePayrollJourney,
+  useReopenPayroll,
   useUpsertPayrollInput,
 } from '../hooks/useAdmin';
 import { ProvisionalBanner } from './ProvisionalBanner';
@@ -846,10 +847,13 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
               and clear blockers here; approve from a desktop.
             </div>
           ) : alreadyApproved ? (
-            <p style={{ margin: 0 }}>
-              This run was approved{data.run.status === 'PAID' ? ' and paid' : ''}.{' '}
-              {provisional ? <StatusChip tone="attn">Provisional</StatusChip> : <StatusChip tone="done">Approved</StatusChip>}
-            </p>
+            <>
+              <p style={{ margin: 0 }}>
+                This run was approved{data.run.status === 'PAID' ? ' and paid' : ''}.{' '}
+                {provisional ? <StatusChip tone="attn">Provisional</StatusChip> : <StatusChip tone="done">Approved</StatusChip>}
+              </p>
+              <ReopenMonth data={data} runId={runId} />
+            </>
           ) : (
             <>
               {/*
@@ -937,6 +941,78 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
  * rendering three empty panels — an empty payslip list reads as "no payslips
  * were produced", which is a different and alarming claim.
  */
+/**
+ * REOPEN THIS MONTH (UAT, 14 October 2026): an approved month back to draft,
+ * for the owner or a payroll approver, with a reason that is logged. The
+ * server refuses, saying why, while a later month is approved or a transfer
+ * or statutory filing is recorded. Approved again, its payslips are the next
+ * revision; the earlier ones stay viewable under Payslips.
+ */
+export function ReopenMonth({ data, runId }: { data: PayrollJourney; runId: string }) {
+  const { message } = App.useApp();
+  const mayReopen = useCan('hr.payroll.reopen');
+  const mayApprove = useCan('hr.payroll.approve');
+  const reopen = useReopenPayroll();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+  if (data.run.status !== 'APPROVED' || !(mayReopen || mayApprove)) return null;
+  const month = data.run.periodLabel;
+  const submit = () => {
+    if (reason.trim().length < 5) {
+      setProblem('Say why this month is being reopened. It is kept in the payroll record.');
+      return;
+    }
+    reopen.mutate(
+      { id: runId, reason: reason.trim() },
+      {
+        onSuccess: () => {
+          setOpen(false);
+          message.success(`${month} is open again. Correct it, work it out again and approve: its payslips become the next revision.`);
+        },
+        onError: (error: Error) => setProblem(error.message),
+      },
+    );
+  };
+  return (
+    <div style={{ margin: '12px 0' }}>
+      <button
+        type="button"
+        className="hr-btn hr-btn--sm"
+        onClick={() => {
+          setReason('');
+          setProblem(null);
+          setOpen(true);
+        }}
+      >
+        Reopen this month
+      </button>
+      <Modal
+        open={open}
+        title={`Reopen ${month}?`}
+        okText="Reopen"
+        okButtonProps={{ danger: true, loading: reopen.isPending }}
+        onOk={submit}
+        onCancel={() => setOpen(false)}
+      >
+        {problem ? (
+          <div className="hr-notice hr-notice--attn" role="alert" style={{ marginBottom: 12 }}>
+            {problem}
+          </div>
+        ) : null}
+        <p>
+          {month} goes back to draft so its records can be corrected. Its approvals and payment listings are cleared. The payslips
+          already issued stay as they are and remain viewable; when the month is approved again its payslips become the next revision.
+        </p>
+        <label>
+          <div className="hr-small hr-muted" style={{ marginBottom: 4 }}>Why</div>
+          <Input.TextArea aria-label="Why" rows={3} value={reason} onChange={(event) => setReason(event.target.value)} />
+        </label>
+      </Modal>
+    </div>
+  );
+}
+
 function PayStep({ data, runId }: { data: PayrollJourney; runId: string }) {
   const navigate = useNavigate();
   const approved = data.run.status === 'APPROVED' || data.run.status === 'PAID';
@@ -960,6 +1036,7 @@ function PayStep({ data, runId }: { data: PayrollJourney; runId: string }) {
 
   return (
     <div className="hr-pad">
+      <ReopenMonth data={data} runId={runId} />
       <PayslipsPanel runId={runId} />
       <PaymentPanel runId={runId} />
       <StatutoryOutputsPanel runId={runId} />

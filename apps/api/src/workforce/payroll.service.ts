@@ -4112,8 +4112,12 @@ export class PayrollService {
    * mutable present.
    */
   async reopen(runId: string, reason: string) {
-    return withAdminTx(this.rawPrisma, 'hr.payroll.reopen', async (tx, actor) => {
-      const run = await tx.payrollRun.findUnique({ where: { id: runId } });
+    return withAdminTx(this.rawPrisma, 'hr.payroll.view', async (tx, actor) => {
+      // The owner, or whoever may approve a month (UAT, 14 October 2026).
+      if (!actorCan(actor, 'hr.payroll.reopen') && !actorCan(actor, 'hr.payroll.approve')) {
+        throw new ForbiddenException('Only the owner, or somebody who may approve payroll, can reopen an approved month.');
+      }
+      const run = await tx.payrollRun.findUnique({ where: { id: runId }, include: { clinic: { select: { name: true } } } });
       if (!run) throw new NotFoundException('Payroll run not found');
       if (run.status !== PayrollRunStatus.APPROVED) {
         throw new ConflictException(
@@ -4125,18 +4129,51 @@ export class PayrollService {
       if (!reason || reason.trim().length < 5) {
         throw new BadRequestException('Say why this run is being reopened. It becomes part of the payroll record.');
       }
-      // A MONTH PAID IN PARTS IS PAID once any part has gone. The run still
-      // reads APPROVED until its last transfer is recorded, so the status
-      // check above lets it through; the money that left does not.
-      const transferred = await tx.payrollPaymentBatch.findFirst({
+      /*
+       * WHAT STOPS A MONTH BEING REOPENED (UAT, 14 October 2026), all named
+       * at once: a later month approved on top of it (its year-to-date and
+       * monthly tax were worked out from this one), and a statutory filing
+       * recorded from it. A recorded transfer is checked below.
+       */
+      const blockers: string[] = [];
+      const monthName = (date: Date) => date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+      const later = await tx.payrollRun.findMany({
+        where: {
+          period: { gt: run.period },
+          status: { in: [PayrollRunStatus.APPROVED, PayrollRunStatus.PAID] },
+          ...(run.clinicId ? { OR: [{ clinicId: run.clinicId }, { clinicId: null }] } : {}),
+        },
+        orderBy: { period: 'desc' },
+        select: { period: true },
+      });
+      if (later.length > 0) {
+        blockers.push(
+          `${[...new Set(later.map((row) => monthName(row.period)))].join(', ')} ${later.length === 1 ? 'is' : 'are'} already approved, ` +
+            'and worked out its year to date and monthly tax from this month. Reopen the later month first, latest first.',
+        );
+      }
+      const filed = await tx.payrollStatutorySubmission.findMany({ where: { payrollRunId: runId }, orderBy: { submittedDate: 'asc' } });
+      if (filed.length > 0) {
+        blockers.push(
+          `A statutory filing is recorded for this month (${filed
+            .map((row) => `${row.scheme} submitted ${row.submittedDate.toISOString().slice(0, 10)}, ref ${row.reference}`)
+            .join('; ')}). A recorded filing cannot be undone in Kuwick yet; correct the month with an adjustment instead.`,
+        );
+      }
+      // A MONTH PAID IN PARTS IS PAID once any part has gone: the run still
+      // reads APPROVED until its last transfer is recorded.
+      const paidOut = await tx.payrollPaymentBatch.findFirst({
         where: { payrollRunId: runId, status: 'RECORDED_PAID' },
         orderBy: { paymentDate: 'asc' },
       });
-      if (transferred) {
-        throw new ConflictException(
-          `A transfer for this month was recorded on ${transferred.paymentDate?.toISOString().slice(0, 10) ?? 'an earlier date'}. ` +
-            'Money has left the clinic; correct it with an adjustment rather than reopening it.',
+      if (paidOut) {
+        blockers.push(
+          `A transfer for this month was recorded on ${paidOut.paymentDate?.toISOString().slice(0, 10) ?? 'an earlier date'}: ` +
+            'money has left the clinic. A recorded transfer cannot be undone in Kuwick yet; correct the month with an adjustment instead.',
         );
+      }
+      if (blockers.length > 0) {
+        throw new ConflictException(`${monthName(run.period)} cannot be reopened. ${blockers.join(' ')}`);
       }
       // The listings go with the figures they were composed from: none was
       // paid (above), and one left standing would pay last approval's amounts,
