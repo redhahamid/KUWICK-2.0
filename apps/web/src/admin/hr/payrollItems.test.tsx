@@ -462,6 +462,18 @@ describe('a version that has not started', () => {
  * switches save in place, with no date and no reason, and are offered only
  * on an item a person keys.
  */
+describe('the EA form box (overnight brief, 15 October 2026)', () => {
+  it('shows Kuwick’s suggestion and saves the clinic’s own box in place', async () => {
+    upsertMutate.mockReset();
+    mount({ ...list, components: [component({ eaBoxDefault: 'B1c' })] });
+    openItem('Allowance');
+    expect(screen.getByText(/Kuwick’s suggestion: B1\(c\)/)).toBeTruthy();
+    fireEvent.mouseDown(screen.getByLabelText('EA form box for Allowance'));
+    fireEvent.click(await screen.findByTitle('B1(a) Salary, wages, leave pay, overtime'));
+    expect(upsertMutate.mock.calls[0][0]).toMatchObject({ code: 'ALLOWANCE', eaField: 'B1a' });
+  });
+});
+
 describe('how an item sits on the payroll grid', () => {
   it('switches own column and carry forward in place, with no date and no reason', () => {
     upsertMutate.mockReset();

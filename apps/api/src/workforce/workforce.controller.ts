@@ -71,6 +71,8 @@ import { PayrollFilingService } from './payroll-filing.service';
 import { PayrollTaxService } from './payroll-tax.service';
 import { renderPayslipPdf, renderPayslipsPdf } from './payroll-payslip-pdf';
 import { PayrollReportService } from './payroll-report.service';
+import { EaFormService } from './ea-form.service';
+import { renderEaFormsPdf } from './ea-form-pdf';
 import { PayrollFinanceService } from './payroll-finance.service';
 import { CreateStaffClaimDto, DecideStaffClaimDto, SettleStaffClaimDto } from './dto/staff-claim.dto';
 import {
@@ -122,6 +124,7 @@ export class WorkforceController {
     private readonly filing: PayrollFilingService,
     private readonly tax: PayrollTaxService,
     private readonly reports: PayrollReportService,
+    private readonly eaForms: EaFormService,
     private readonly financeContract: PayrollFinanceService,
     private readonly staffFiles: StaffFileService,
     private readonly claimPolicies: ClaimPolicyService,
@@ -388,6 +391,57 @@ export class WorkforceController {
     const parsedYear = Number(year);
     if (!Number.isInteger(parsedYear)) throw new BadRequestException('year must be a whole year, e.g. 2026.');
     return this.reports.ytd(parsedYear, legalEmployerId || undefined, clinicId || undefined);
+  }
+
+  // --- Year-end forms: Borang EA per employee, Borang E summary ------------
+
+  @Get('ea-forms')
+  eaFormList(@Query('year') year?: string, @Query('legalEmployerId') legalEmployerId?: string, @Query('clinicId') clinicId?: string) {
+    return this.eaForms.forms(wholeYear(year), legalEmployerId || undefined, clinicId || undefined);
+  }
+
+  @Get('ea-forms/all.pdf')
+  async eaFormsAll(
+    @Query('year') year: string | undefined,
+    @Query('legalEmployerId') legalEmployerId: string | undefined,
+    @Query('clinicId') clinicId: string | undefined,
+    @Res() res: Response,
+  ) {
+    const { forms } = await this.eaForms.forms(wholeYear(year), legalEmployerId || undefined, clinicId || undefined);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="borang-ea-${wholeYear(year)}.pdf"`);
+    res.send(await renderEaFormsPdf(forms, `Borang EA ${wholeYear(year)}`));
+  }
+
+  @Get('ea-forms/:staffId/pdf')
+  async eaFormOne(
+    @Param('staffId') staffId: string,
+    @Query('year') year: string | undefined,
+    @Query('legalEmployerId') legalEmployerId: string | undefined,
+    @Res() res: Response,
+  ) {
+    const form = await this.eaForms.form(staffId, wholeYear(year), legalEmployerId || undefined);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline');
+    res.send(await renderEaFormsPdf([form], `Borang EA ${form.year} — ${form.employee.name}`));
+  }
+
+  @Get('borang-e')
+  borangE(@Query('year') year?: string, @Query('legalEmployerId') legalEmployerId?: string, @Query('clinicId') clinicId?: string) {
+    return this.eaForms.borangE(wholeYear(year), legalEmployerId || undefined, clinicId || undefined);
+  }
+
+  @Get('borang-e/cp8d.csv')
+  async borangECsv(
+    @Query('year') year: string | undefined,
+    @Query('legalEmployerId') legalEmployerId: string | undefined,
+    @Query('clinicId') clinicId: string | undefined,
+    @Res() res: Response,
+  ) {
+    const file = await this.eaForms.cp8dCsv(wholeYear(year), legalEmployerId || undefined, clinicId || undefined);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
+    res.send(file.content);
   }
 
   @Get('payroll/runs/:id/reports/pcb')
@@ -1368,4 +1422,11 @@ export class WorkforceController {
   addBenefitUsage(@Param('accountId') accountId: string, @Body() dto: BenefitUsageDto) {
     return this.benefits_.addUsage(accountId, dto);
   }
+}
+
+/** A tax year from the query string, e.g. 2026. */
+function wholeYear(year: string | undefined): number {
+  const parsed = Number(year);
+  if (!Number.isInteger(parsed) || parsed < 2000 || parsed > 2100) throw new BadRequestException('year must be a whole year, e.g. 2026.');
+  return parsed;
 }

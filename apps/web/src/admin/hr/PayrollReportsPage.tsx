@@ -576,18 +576,22 @@ export function PayrollReportsPage() {
         <ReportRow
           title="EA forms"
           detail="Each employee’s yearly pay statement for their tax return, due by end of February."
-          state={{ tone: 'muted', label: `From January ${dayjs().year() + 1}` }}
+          state={null}
           action={
-            <button type="button" className="hr-btn hr-btn--sm" onClick={() => openReport('YTD')}>
-              Year to date
-            </button>
+            <Link className="hr-btn hr-btn--sm" to="/admin/hr/reports/year-end">
+              Open
+            </Link>
           }
         />
         <ReportRow
           title="Borang E"
           detail="The clinic’s yearly return to LHDN, due by 31 March."
-          state={{ tone: 'muted', label: `March ${dayjs().year() + 1}` }}
-          action={null}
+          state={null}
+          action={
+            <Link className="hr-btn hr-btn--sm" to="/admin/hr/reports/year-end">
+              Open
+            </Link>
+          }
         />
       </Panel>
 

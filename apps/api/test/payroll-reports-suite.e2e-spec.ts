@@ -431,6 +431,35 @@ describe('Payroll reports and finance contract (e2e)', () => {
     expect(report.body.rows.some((row: { staffId: string }) => row.staffId === joinerId)).toBe(false);
   });
 
+  it('builds Borang EA from approved months, lists what is missing, and sums Borang E', async () => {
+    const ea = await request(server()).get('/workforce/ea-forms?year=2026').set('Authorization', bearer).expect(200);
+    type Form = { staffId: string; status: string; boxes: Record<string, number>; pcbCents: number; problems: { level: string; text: string }[] };
+    const forms = ea.body.forms as Form[];
+    const amira = forms.find((form) => form.staffId === amiraId)!;
+    // July's item lines split into boxes that add up to the month's gross pay.
+    expect(amira.boxes.B1a).toBeGreaterThan(0);
+    expect(amira.problems.some((problem) => /differ/.test(problem.text))).toBe(false);
+    // The employer has no LHDN number yet, so nothing is ready to file.
+    expect(amira.status).toBe('INCOMPLETE');
+    expect(amira.problems.map((problem) => problem.text)).toContain('Reports Employer Sdn Bhd has no LHDN employer number (E).');
+    // Hana's imported January and February kept only totals: said, and put in B1(a).
+    const hana = forms.find((form) => form.staffId === hanaId)!;
+    expect(hana.problems.some((problem) => /^Jan, Feb: only the total was kept/.test(problem.text))).toBe(true);
+    expect(hana.boxes.B1a).toBeGreaterThanOrEqual(900000);
+
+    const pdf = await request(server()).get(`/workforce/ea-forms/${amiraId}/pdf?year=2026`).set('Authorization', bearer).buffer(true).expect(200);
+    expect(pdf.headers['content-type']).toContain('application/pdf');
+
+    const borangE = await request(server()).get('/workforce/borang-e?year=2026').set('Authorization', bearer).expect(200);
+    expect(borangE.body.dueDate).toBe('2027-03-31');
+    expect(borangE.body.employers[0]).toMatchObject({ name: 'Reports Employer Sdn Bhd', employees: forms.length });
+    const csv = await request(server()).get('/workforce/borang-e/cp8d.csv?year=2026').set('Authorization', bearer).expect(200);
+    expect(csv.text).toContain('Income tax number');
+
+    // The HR clerk without the reports permission cannot read anybody's EA form.
+    await request(server()).get('/workforce/ea-forms?year=2026').set('Authorization', hrClerkBearer).expect(403);
+  });
+
   it('history names a correction and keeps every version', async () => {
     const first = await request(server())
       .get(`/workforce/payroll/reports/history?staffId=${amiraId}`)

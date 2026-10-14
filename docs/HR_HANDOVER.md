@@ -204,7 +204,32 @@ exists for it).
 
 ---
 
-## 7. Payroll (for orientation)
+## 7. Year-end forms (Borang EA and Borang E)
+
+**What it does.** Reports → *EA forms* opens *Year-end forms*: a check list of
+anything missing (tax number, IC or passport, the employer's LHDN E number,
+months kept only as totals), one Borang EA page per employee with *Download
+all*, and the Borang E totals per employer with the employee list (C.P.8D) as
+CSV. Only approved months count; months not yet approved are named.
+
+**Code.** `api/workforce/ea-form.ts` (boxes, default box per item, the
+year's split — read this first), `api/workforce/ea-form.service.ts` (reads the
+year-to-date record and each approved month's frozen item lines),
+`api/workforce/ea-form-pdf.ts` (the page). Web: `web/admin/hr/EaFormsPage.tsx`;
+the box per item on `web/admin/hr/PayrollItemsPage.tsx`.
+
+**Tables.** `employee_ytd` (tax, zakat, EPF, SOCSO and EIS totals),
+`payroll_snapshots` (item lines per approved month), `pay_components.ea_field`
+(the box; empty = Kuwick's suggestion), `employee_profiles` (tax, IC, EPF,
+SOCSO numbers, children), `legal_employers.lhdn_employer_no`.
+
+**Change a rule.** Which box an item goes in: Payroll items → the item → *EA
+form box* (no code change). The suggestion for an item with no box:
+`defaultEaBox` in `ea-form.ts`.
+
+---
+
+## 8. Payroll (for orientation)
 
 The run lives in `api/workforce/payroll.service.ts` (`calculate`). Upstream
 facts become reviewable rows in `payroll_input_entries` through

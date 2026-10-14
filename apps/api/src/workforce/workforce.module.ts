@@ -34,6 +34,7 @@ import { PayrollStatutoryOutputService } from './payroll-statutory-output.servic
 import { PayrollFilingService } from './payroll-filing.service';
 import { PayrollTaxService } from './payroll-tax.service';
 import { PayrollReportService } from './payroll-report.service';
+import { EaFormService } from './ea-form.service';
 import { PayrollFinanceService } from './payroll-finance.service';
 
 /**
@@ -85,6 +86,7 @@ import { PayrollFinanceService } from './payroll-finance.service';
     PayrollFilingService,
     PayrollTaxService,
     PayrollReportService,
+    EaFormService,
     PayrollFinanceService,
   ],
   exports: [

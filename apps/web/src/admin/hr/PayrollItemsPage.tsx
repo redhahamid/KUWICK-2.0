@@ -195,6 +195,23 @@ export const itemSummary = (row: PayComponentRow): string => {
   return `${head} · ${paid}`;
 };
 
+/** The EA form boxes an item can go in, as the form words them (overnight brief, 15 October 2026). */
+const EA_BOX_LABEL: Record<string, string> = {
+  B1a: 'B1(a) Salary, wages, leave pay, overtime',
+  B1b: 'B1(b) Fees, commission or bonus',
+  B1c: 'B1(c) Tips, perquisites, other allowances',
+  B1d: 'B1(d) Tax paid by the employer',
+  B1e: 'B1(e) Share option benefit',
+  B1f: 'B1(f) Gratuity',
+  B2: 'B2 Arrears for earlier years',
+  B3: 'B3 Benefits in kind',
+  B4: 'B4 Living accommodation',
+  B5: 'B5 Refund from unapproved fund',
+  B6: 'B6 Compensation for loss of job',
+  F: 'F Tax-exempt',
+  NONE: 'Not on the EA form',
+};
+
 /** The three groups a clinic reads its items in (testing, 15 October 2026). */
 type Group = 'EARNINGS' | 'CLAIMS' | 'DEDUCTIONS';
 const GROUPS: { key: Group; title: string; sub: string }[] = [
@@ -349,6 +366,16 @@ export function PayrollItemsPage() {
           const layout = LAYOUT.find((candidate) => candidate.key === key);
           message.success(next ? layout?.on(row.name) : layout?.off(row.name));
         },
+        onError: (error: Error) => message.error(error.message),
+      },
+    );
+
+  /** The EA box is a year-end label, not treatment: saved in place, no date. Null goes back to Kuwick's suggestion. */
+  const saveEaBox = (row: PayComponentRow, eaField: string | null) =>
+    upsert.mutate(
+      { ...whole(row), eaField },
+      {
+        onSuccess: () => message.success(`${row.name} goes in ${EA_BOX_LABEL[eaField ?? row.eaBoxDefault ?? ''] ?? 'the suggested box'} on the EA form.`),
         onError: (error: Error) => message.error(error.message),
       },
     );
@@ -525,6 +552,7 @@ export function PayrollItemsPage() {
             onLayout={(key, next) => toggleLayout(openRow, key, next)}
             onActive={(next) => toggleActive(openRow, next)}
             onAudience={() => setAudienceOf(openRow)}
+            onEaBox={(value) => saveEaBox(openRow, value)}
             onHistory={() => setHistoryOf(openRow.code)}
           />
         </Drawer>
@@ -659,7 +687,7 @@ export function PayrollItemsPage() {
                 { value: 'TAX_DEDUCTION', label: 'Tax deduction' },
               ]}
             />
-            <span className="hr-faint hr-small">Kept for the year-end forms — not used yet; the EA form is a later piece. It cannot be changed later.</span>
+            <span className="hr-faint hr-small">Used to suggest its EA form box. It cannot be changed later.</span>
           </div>
 
           <div className="hr-fld">
@@ -738,6 +766,7 @@ function ItemPanel({
   onLayout,
   onActive,
   onAudience,
+  onEaBox,
   onHistory,
 }: {
   row: PayComponentRow;
@@ -757,6 +786,7 @@ function ItemPanel({
   onLayout: (key: Layout, next: boolean) => void;
   onActive: (next: boolean) => void;
   onAudience: () => void;
+  onEaBox: (value: string | null) => void;
   onHistory: () => void;
 }) {
   const ask = (label: string, hint: ReactNode, withCommon: boolean) => (
@@ -935,6 +965,24 @@ function ItemPanel({
         )}
       </section>
 
+      {row.type !== 'DEDUCTION' || row.includeIn !== 'NET_ONLY' ? (
+        <section className="hr-itemSection">
+          <h3 className="hr-itemPanel__head">EA form box</h3>
+          <Select
+            aria-label={`EA form box for ${row.name}`}
+            style={{ width: '100%' }}
+            disabled={!mayManage || saving}
+            value={row.eaField ?? 'SUGGESTED'}
+            onChange={(value: string) => onEaBox(value === 'SUGGESTED' ? null : value)}
+            options={[
+              { value: 'SUGGESTED', label: `Kuwick’s suggestion: ${EA_BOX_LABEL[row.eaBoxDefault ?? ''] ?? '—'}` },
+              ...Object.entries(EA_BOX_LABEL).map(([value, label]) => ({ value, label })),
+            ]}
+          />
+          <span className="hr-faint hr-small">Where this item’s yearly total goes on each employee’s Borang EA. Check with your tax adviser.</span>
+        </section>
+      ) : null}
+
       <section className="hr-itemSection">
         <div className="hr-itemFlag__row">
           <h3 className="hr-itemPanel__head">In use</h3>
@@ -947,7 +995,7 @@ function ItemPanel({
       </button>
       <details className="hr-details">
         <summary>Details</summary>
-        <div className="hr-small hr-faint">Code: {row.code}{row.eaField ? ` · EA form box: ${row.eaField}` : ''}</div>
+        <div className="hr-small hr-faint">Code: {row.code}</div>
       </details>
     </div>
   );

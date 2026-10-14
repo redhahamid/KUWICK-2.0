@@ -95,6 +95,7 @@ import { LeavePage } from './admin/hr/LeavePage';
 import { ClaimsPage } from './admin/hr/ClaimsPage';
 import { LocumPage } from './admin/hr/LocumPage';
 import { PayrollReportsPage } from './admin/hr/PayrollReportsPage';
+import { EaFormsPage } from './admin/hr/EaFormsPage';
 import { PayrollSettingsPage } from './admin/hr/PayrollSettingsPage';
 import { PayrollItemsPage } from './admin/hr/PayrollItemsPage';
 import { StatutoryRatesPage } from './admin/hr/StatutoryRatesPage';
@@ -370,6 +371,7 @@ export function App() {
             <Route path="/admin/hr/benefits" element={<Navigate to="/admin/hr/employees?view=benefits" replace />} />
             <Route path="/admin/hr/locum" element={<LocumPage />} />
             <Route path="/admin/hr/reports" element={<PayrollReportsPage />} />
+            <Route path="/admin/hr/reports/year-end" element={<EaFormsPage />} />
             {/*
               * SETTINGS IS ONE PLACE, UNDER HR. It used to be two: six cards
               * here, and a near-empty "HR & Attendance" category in Clinic

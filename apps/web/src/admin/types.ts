@@ -2094,6 +2094,8 @@ export interface PayComponentRow {
   additionalRemuneration: boolean;
   pcbExemptionLimitCents: number | null;
   eaField: string | null;
+  /** The box the EA form uses when the item names none. */
+  eaBoxDefault?: string;
   prorated: boolean;
   employerSide: boolean;
   /** Layout, not treatment: the item has its own editable column on the payroll grid. */
@@ -4097,4 +4099,61 @@ export interface PayrollWeek {
     notes: string[];
     pay: { overtimeCents: number; locumCents: number; holidayCents: number; nightCents: number };
   };
+}
+
+/** BORANG EA (overnight brief, 15 October 2026). Amounts in cents. */
+export interface EaForm {
+  staffId: string;
+  legalEmployerId: string;
+  year: number;
+  employer: { name: string; lhdnEmployerNo: string | null; address: string | null };
+  employee: {
+    name: string;
+    employeeNo: string | null;
+    position: string | null;
+    idType: string | null;
+    idNumber: string | null;
+    taxNumber: string | null;
+    epfNumber: string | null;
+    socsoNumber: string | null;
+    startDate: string | null;
+    endDate: string | null;
+  };
+  boxes: Record<string, number>;
+  pcbCents: number;
+  cp38Cents: number;
+  zakatCents: number;
+  tp1ReliefCents: number;
+  qualifyingChildren: number;
+  epfCents: number;
+  socsoCents: number;
+  status: 'READY' | 'CHECK' | 'INCOMPLETE';
+  problems: { level: 'BLOCK' | 'CHECK'; text: string }[];
+}
+
+export interface EaFormList {
+  year: number;
+  forms: EaForm[];
+  /** Months of the year still not approved, e.g. ["Nov", "Dec"]. */
+  notApproved: string[];
+}
+
+export interface BorangESummary {
+  year: number;
+  dueDate: string;
+  notApproved: string[];
+  employers: {
+    legalEmployerId: string;
+    name: string;
+    lhdnEmployerNo: string | null;
+    employees: number;
+    withTax: number;
+    incomplete: number;
+    remuneration: string;
+    pcb: string;
+    cp38: string;
+    zakat: string;
+    epf: string;
+    socso: string;
+  }[];
 }

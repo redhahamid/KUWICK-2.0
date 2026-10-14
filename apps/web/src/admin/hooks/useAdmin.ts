@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient, uploadFile } from "../../core/api-client";
 import type {
+  BorangESummary,
+  EaFormList,
   EmployeeIntakeResult,
   EmployeeIntakeRowDto,
   EpfBasisForBranchResult,
@@ -2361,6 +2363,22 @@ export function usePayrollPcbSummaryReport(runId: string | undefined) {
         `/workforce/payroll/runs/${runId}/reports/pcb`,
       ),
     enabled: Boolean(runId),
+  });
+}
+
+/** Borang EA for the year: every form with what is missing (overnight brief, 15 October 2026). */
+export function useEaForms(params: { year: number; legalEmployerId?: string; clinicId?: string }) {
+  return useQuery({
+    queryKey: ["admin-hr", "ea-forms", params],
+    queryFn: () => apiClient.get<EaFormList>(`/workforce/ea-forms${qs(params)}`),
+  });
+}
+
+/** Borang E: the employer's yearly totals. */
+export function useBorangE(params: { year: number; legalEmployerId?: string; clinicId?: string }) {
+  return useQuery({
+    queryKey: ["admin-hr", "borang-e", params],
+    queryFn: () => apiClient.get<BorangESummary>(`/workforce/borang-e${qs(params)}`),
   });
 }
 

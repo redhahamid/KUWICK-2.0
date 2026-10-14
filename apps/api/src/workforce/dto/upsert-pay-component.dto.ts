@@ -1,3 +1,4 @@
+import { EA_BOXES } from '../ea-form';
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsISO8601, IsInt, IsOptional, IsString, IsUUID, Length, Max, Min } from 'class-validator';
 
 export class UpsertPayComponentDto {
@@ -21,8 +22,8 @@ export class UpsertPayComponentDto {
   @IsOptional() @IsBoolean() includeInUnpaidLeaveBase?: boolean;
   @IsOptional() @IsBoolean() additionalRemuneration?: boolean;
   @IsOptional() @IsInt() @Min(0) pcbExemptionLimitCents?: number;
-  /** EA form box, e.g. "B.1(a)". Stored only — not used yet; the EA form is a later piece. UNVERIFIED. */
-  @IsOptional() @IsString() @Length(1, 20) eaField?: string;
+  /** The EA form box this item goes in (B1a…F, or NONE); null uses Kuwick's suggestion. */
+  @IsOptional() @IsIn(EA_BOXES) eaField?: string | null;
   @IsOptional() @IsBoolean() prorated?: boolean;
   @IsOptional() @IsBoolean() employerSide?: boolean;
   /** Layout, not treatment: the item gets its own editable column on the payroll grid. */

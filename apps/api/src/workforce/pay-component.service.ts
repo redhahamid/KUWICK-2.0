@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { defaultEaBox } from './ea-form';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
@@ -243,6 +244,8 @@ export class PayComponentService {
         additionalRemuneration: row.additionalRemuneration,
         pcbExemptionLimitCents: row.pcbExemptionLimitCents,
         eaField: row.eaField,
+        /** The box the EA form uses when the item names none. */
+        eaBoxDefault: defaultEaBox(row),
         prorated: row.prorated,
         employerSide: row.employerSide,
         gridColumn: row.gridColumn,
@@ -506,7 +509,7 @@ export class PayComponentService {
         if (identityMoved) {
           throw new ConflictException(
             `"${preset.code}" is a system component: what it IS cannot be redefined, because the calculation reads ` +
-              'its type, and its category is kept for the year-end forms (not used yet — the EA form is a later piece). ' +
+              'its type, and its category is kept for the year-end forms. ' +
               'Its statutory treatment — EPF, SOCSO, EIS, PCB and the bases — is yours to set.',
           );
         }
