@@ -28,6 +28,12 @@ const balanceCalls: unknown[] = [];
 const idle = { data: undefined, isLoading: false, isPending: false, mutate: vi.fn(), mutateAsync: vi.fn() };
 
 vi.mock('../hooks/useAdmin', () => ({
+  useLeaveTypes: () => ({ data: [] }),
+  useImportOpeningBalances: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useBenefitPolicy: () => ({ data: undefined }),
+  useSaveBenefitPolicy: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useSetUpBenefitYear: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useAddBenefitUsage: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useEmployees: (params: unknown) => {
     employeeCalls.push(params);
     return { data: [], isLoading: false };

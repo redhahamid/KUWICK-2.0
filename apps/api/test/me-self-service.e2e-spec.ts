@@ -568,7 +568,8 @@ describe('My Kuwick: employee self-service (e2e)', () => {
       });
 
       const mine = await request(server()).get('/me/benefits').set('Authorization', nurseBearer).expect(200);
-      expect(mine.body).toEqual({ year, medical: { allowance: '1000.00', used: '380.00', remaining: '620.00' } });
+      // alert: the clinic's low-balance level (Section F); 620 of 1000 left is not low.
+      expect(mine.body).toEqual({ year, medical: { allowance: '1000.00', used: '380.00', remaining: '620.00', alert: null } });
 
       const theirs = await request(server()).get('/me/benefits').set('Authorization', colleagueBearer).expect(200);
       expect(theirs.body.medical).toBeNull();

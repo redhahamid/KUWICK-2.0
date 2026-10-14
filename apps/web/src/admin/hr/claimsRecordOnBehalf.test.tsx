@@ -88,6 +88,6 @@ describe('recording a claim for somebody', () => {
     expect(screen.getByText(/RM 6\.00/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Record it' }));
     await waitFor(() => expect(createMutate).toHaveBeenCalled());
-    expect(createMutate.mock.calls[0][0]).toMatchObject({ category: 'TRAVEL', amountClaimed: '6.00', distanceKm: 10, description: 'Mileage 10 km, Bangi to Kajang: Stock run' });
+    expect(createMutate.mock.calls[0][0]).toMatchObject({ category: 'MILEAGE', amountClaimed: '6.00', distanceKm: 10, description: 'Mileage 10 km, Bangi to Kajang: Stock run' });
   });
 });

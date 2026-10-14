@@ -49,6 +49,7 @@ const EMPLOYERS = [
 const createTitleMutate = vi.fn().mockResolvedValue({ id: 'jt-new', name: 'Pharmacist', active: true, employeeCount: 0 });
 
 vi.mock('../hooks/useAdmin', () => ({
+  useSetDoctorRates: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useJobTitles: () => ({ data: [{ id: 'jt-1', name: 'Clinic assistant', active: true, employeeCount: 1 }], isLoading: false }),
   useCreateJobTitle: () => ({ mutateAsync: createTitleMutate, isPending: false }),
   useUpdateJobTitle: () => ({ mutateAsync: vi.fn(), isPending: false }),
