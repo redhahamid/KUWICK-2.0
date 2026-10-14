@@ -32,7 +32,7 @@ export const STEPS: { key: StepKey; label: string; heading: string; blurb: strin
     key: 'review',
     label: 'Review',
     heading: 'What needs looking at',
-    blurb: 'What blocks this run, what is worth a look, and what the month adds up to.',
+    blurb: 'What blocks this month, what is worth a look, and what the month adds up to.',
   },
   {
     key: 'approve',

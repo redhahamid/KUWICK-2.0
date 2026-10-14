@@ -59,13 +59,13 @@ export function EmployeeSalaryPanel({ staffId, canSeePay }: { staffId: string; c
   const rows = showHistory ? all : all.filter((row) => inForce(row) || upcoming(row));
   const usedLine = current
     ? `Every change is dated. ${dayjs().format('MMMM')} payroll uses the row in force on 1 ${dayjs().format('MMM')}.`
-    : 'Every change is dated. No salary is on record, so a payroll run cannot pay this employee yet.';
+    : 'Every change is dated. No salary is on record, so payroll cannot pay this employee yet.';
 
   return (
     <>
       <PanelHead
         title="Salary"
-        sub={canSeePay ? usedLine : 'Salary needs the salary permission. The server does not send it to this account.'}
+        sub={canSeePay ? usedLine : 'Salary needs the salary permission, which this account does not have.'}
         actions={
           canSeePay ? (
             <>
@@ -202,7 +202,7 @@ export function EmployeeSalaryPanel({ staffId, canSeePay }: { staffId: string; c
             setOpen(false);
           } catch (e) {
             // The server's own sentence — "what they were paid is settled" — beats a generic one.
-            setError(e instanceof Error ? e.message : 'The server refused the change and did not say why.');
+            setError(e instanceof Error ? e.message : 'The change was not saved. Try again.');
           }
         }}
       >
@@ -300,7 +300,7 @@ function FixSalaryRow({
           await onSubmit({ amount: cleaned, basis, reason: reason.trim() });
         } catch (e) {
           // The server names the approved month that stands in the way.
-          setError(e instanceof Error ? e.message : 'The server refused the change and did not say why.');
+          setError(e instanceof Error ? e.message : 'The change was not saved. Try again.');
         }
       }}
     >

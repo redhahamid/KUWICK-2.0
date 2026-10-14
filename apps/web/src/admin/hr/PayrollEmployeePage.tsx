@@ -190,7 +190,7 @@ export function PayrollEmployeePage() {
       message.success(`Checked. ${uncheckedWarnings.length} ${uncheckedWarnings.length === 1 ? 'warning' : 'warnings'} recorded as looked at.`);
       setChecking(false);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'The server refused the override.');
+      message.error(error instanceof Error ? error.message : 'The override was not saved. Try again.');
     }
   };
 
@@ -217,7 +217,7 @@ export function PayrollEmployeePage() {
       message.success('PCB recorded. Save the draft on the payroll grid to work the month out again.');
       setPcbOpen(false);
     } catch (error) {
-      setPcbProblem(error instanceof Error ? error.message : 'The server refused the figure.');
+      setPcbProblem(error instanceof Error ? error.message : 'The figure was not saved. Try again.');
     }
   };
 
@@ -309,7 +309,7 @@ export function PayrollEmployeePage() {
               <PanelHead
                 title={periodLabel}
                 sub={`${monthStart?.format('D')} – ${monthEnd?.format('D MMM')} · ${breakdown.ordinaryRateOfPay?.overtimeDays ?? 26}-day divisor · ${breakdown.ordinaryRateOfPay?.hoursPerDay ?? 7.5}-hour day${
-                  breakdown.overtimePolicy?.ruleSet ? ` · ${breakdown.overtimePolicy.ruleSet} rule set` : ''
+                  breakdown.overtimePolicy?.ruleSet ? ` · ${breakdown.overtimePolicy.ruleSet} pay rules` : ''
                 }`}
                 actions={
                   row.blockers > 0 ? (
@@ -496,7 +496,7 @@ export function PayrollEmployeePage() {
                     <Link className="hr-link" to={`/admin/hr/attendance?staffId=${staffId}`}>
                       Attendance
                     </Link>{' '}
-                    before this run is locked, or it rolls into {monthStart?.add(1, 'month').format('MMMM')}.
+                    before this month is locked, or it rolls into {monthStart?.add(1, 'month').format('MMMM')}.
                   </span>
                 </div>
               ) : null}
@@ -553,14 +553,14 @@ export function PayrollEmployeePage() {
               </div>
               <div className="hr-panelNote">
                 Changes here apply to {periodLabel} only and are logged with your name. A payslip note is not on the record yet;
-                the run's own note is on the History page.
+                the month’s own note is on the History page.
               </div>
             </Panel>
           </div>
         </div>
       ) : data && !row ? (
         <Panel>
-          <PanelHead title="Not on this run" sub="This person has no payroll line for the month. The grid says why, beside their name." />
+          <PanelHead title="Not in this month" sub="This person has no payroll line for the month. The grid says why, beside their name." />
         </Panel>
       ) : null}
 
@@ -621,7 +621,7 @@ export function PayrollEmployeePage() {
           <div>
             <label htmlFor="pcb-reason">Reason</label>
             <Input.TextArea id="pcb-reason" rows={2} value={pcbReason} onChange={(e) => setPcbReason(e.target.value)} placeholder="CP38 instruction, TP1 relief not yet recorded…" />
-            <div className="hr-form__help">Required. Logged with your name against this run.</div>
+            <div className="hr-form__help">Required. Logged with your name against this month.</div>
           </div>
         </div>
       </Modal>

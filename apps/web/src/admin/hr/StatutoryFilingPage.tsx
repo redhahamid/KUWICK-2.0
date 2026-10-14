@@ -65,7 +65,7 @@ export function StatutoryFilingPage() {
       }
       sub={
         data
-          ? `${data.periodLabel} · ${data.employerName ?? "Employer"} · approved record v${data.snapshotVersion}`
+          ? `${data.periodLabel} · ${data.employerName ?? "Employer"} · approved figures, version ${data.snapshotVersion}`
           : "The approved month, arranged for each authority’s portal."
       }
     >

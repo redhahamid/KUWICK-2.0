@@ -274,7 +274,7 @@ function CompanyStep({
       message.success('Saved.');
       if (advance) onSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'The server refused the change and did not say why.');
+      setError(e instanceof Error ? e.message : 'The change was not saved. Try again.');
     }
   };
 
@@ -438,7 +438,7 @@ function FactStep({
       message.success(`Checked on ${dayjs().format('D MMM YYYY')}.`);
       onNext();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'The server refused the change and did not say why.');
+      setError(e instanceof Error ? e.message : 'The change was not saved. Try again.');
     }
   };
 

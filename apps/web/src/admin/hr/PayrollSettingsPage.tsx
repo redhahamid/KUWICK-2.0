@@ -63,7 +63,7 @@ const CHOICES = [
   {
     value: 'DUAL_APPROVAL',
     title: 'Two people, neither of them the one who ran it',
-    detail: 'The run stays open until two different people approve it. Right for a group that treats payroll as a board-level payment.',
+    detail: 'The month stays open until two different people approve it. Right for a group that treats payroll as a board-level payment.',
   },
 ] as const;
 
@@ -329,7 +329,7 @@ export function PayrollSettingsPage() {
       clinicSessionRate: clean(session),
     };
     if (name.trim().length < 2) {
-      refuse('ruleset-name', 'Give the rule set a name.');
+      refuse('ruleset-name', 'Give the pay rules a name.');
       return;
     }
     if (mode === 'CLINIC_RATE') {
@@ -340,7 +340,7 @@ export function PayrollSettingsPage() {
         }
       }
       if (Object.values(amounts).every((value) => value === '')) {
-        refuse(undefined, 'A clinic-rate rule set needs at least one amount.');
+        refuse(undefined, 'Pay rules with clinic rates need at least one amount.');
         return;
       }
     }
@@ -415,7 +415,7 @@ export function PayrollSettingsPage() {
         return;
       }
       if (belowActWhy.trim().length < 4) {
-        refuse('below-act-why', 'Say why this rule set pays below the Act. A shortfall nobody can explain is one nobody can defend.');
+        refuse('below-act-why', 'Say why these pay rules pay below the Act. A shortfall nobody can explain is one nobody can defend.');
         return;
       }
     }
@@ -466,7 +466,7 @@ export function PayrollSettingsPage() {
       },
       {
         onSuccess: () => {
-          message.success(existing ? 'Rule set updated' : 'Rule set added');
+          message.success(existing ? 'Pay rules updated' : 'Pay rules added');
           close();
         },
         onError: (mutationError: Error) => refuse(undefined, mutationError.message),
@@ -503,14 +503,14 @@ export function PayrollSettingsPage() {
         </>
       }
       title="Pay rules"
-      sub="Who may approve a run, and how a day and an hour of pay are worked out."
+      sub="Who may approve a payroll month, and how a day and an hour of pay are worked out."
       error={error instanceof Error ? error.message : null}
     >
 
       <Panel>
         <PanelHead
           title="Who can approve payroll"
-          sub="Approving a run locks it and is the moment money is committed. This is who may do it."
+          sub="Approving a month locks it and is the moment money is committed. This is who may do it."
           actions={
             approval.data?.updatedAt ? (
               <span className="hr-eff">Changed {dayjs(approval.data.updatedAt).format('D MMM YYYY')}</span>
@@ -542,12 +542,12 @@ export function PayrollSettingsPage() {
 
             {approval.data.mode === 'STANDARD' ? null : (
               <div className="hr-fld">
-                <span className="hr-fld__k">Account holders may approve their own runs</span>
+                <span className="hr-fld__k">Account holders may approve their own payroll</span>
                 <span style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                   <Switch
                     checked={approval.data.allowOwnerSelfApproval}
                     loading={setApproval.isPending}
-                    aria-label="Account holders may approve their own runs"
+                    aria-label="Account holders may approve their own payroll"
                     onChange={(checked) => choose({ allowOwnerSelfApproval: checked })}
                   />
                   <span className="hr-small hr-muted">
@@ -594,7 +594,7 @@ export function PayrollSettingsPage() {
       <Panel className="hr-mt">
         <PanelHead
           title="How pay is worked out"
-          sub="Which rule set prices overtime, rest days and public holidays for each group, and what a day and an hour are. Frozen into each run, so a later change cannot reprice a past month."
+          sub="Which pay rules price overtime, rest days and public holidays for each group, and what a day and an hour are. Each month keeps the pay rules it was worked out with, so a later change cannot reprice a past month."
           actions={
             <>
               {policies.data?.policies.length ? (
@@ -605,7 +605,7 @@ export function PayrollSettingsPage() {
               {mayManage ? (
                 <button type="button" className="hr-btn hr-btn--sm hr-btn--primary" onClick={openNew}>
                   <IconPlus />
-                  Add rule set
+                  Add pay rules
                 </button>
               ) : null}
             </>
@@ -615,11 +615,11 @@ export function PayrollSettingsPage() {
           rowKey="id"
           loading={policies.isLoading}
           rows={policies.data?.policies}
-          emptyText="No rule sets are recorded."
-          emptyHint="Everybody is priced by the Employment Act until a rule set is added."
+          emptyText="No pay rules are recorded."
+          emptyHint="Everybody is priced by the Employment Act until pay rules are added."
           columns={[
             {
-              title: 'Rule set',
+              title: 'Pay rules',
               dataIndex: 'name',
               render: (value: string, row) => (
                 <span className="hr-strong">
@@ -735,7 +735,7 @@ export function PayrollSettingsPage() {
                 </li>
               ))}
             </ul>
-            <div>Payroll will block these employees until the rate is raised or they are moved to a rule set on the Act.</div>
+            <div>Payroll will block these employees until the rate is raised or they are moved to pay rules on the Act.</div>
           </div>
         ))}
         {policies.data?.notice ? <div className="hr-panelNote">{policies.data.notice}</div> : null}
@@ -743,7 +743,7 @@ export function PayrollSettingsPage() {
 
       <Drawer
         open={editing !== null}
-        title={editing === 'new' ? 'Add rule set' : 'Edit rule set'}
+        title={editing === 'new' ? 'Add pay rules' : 'Edit pay rules'}
         sub="How a group's extra hours are priced. Applies from the next calculation; approved months keep the figures they were approved with."
         onClose={close}
         footer={
@@ -752,7 +752,7 @@ export function PayrollSettingsPage() {
               Cancel
             </button>
             <button type="button" className="hr-btn hr-btn--primary" disabled={upsert.isPending} onClick={save}>
-              {editing === 'new' ? 'Add rule set' : 'Save changes'}
+              {editing === 'new' ? 'Add pay rules' : 'Save changes'}
             </button>
           </>
         }
@@ -772,13 +772,13 @@ export function PayrollSettingsPage() {
               onChange={setAppliesTo}
               style={{ width: '100%' }}
               options={[
-                { value: '__default', label: 'Everyone no other rule set covers (the default)' },
+                { value: '__default', label: 'Everyone no other pay rules cover (the default)' },
                 ...(policies.data?.categories ?? []).map((category) => ({ value: category.key, label: category.label })),
                 { value: '__hand', label: 'Only employees assigned to it by hand' },
               ]}
             />
             <div className="hr-form__help">
-              An employee assigned a rule set on their record is on that one. Otherwise the rule set for their group applies, then the default.
+              An employee assigned pay rules on their record is on those. Otherwise the pay rules for their group apply, then the default.
             </div>
           </div>
           {/*
@@ -828,7 +828,7 @@ export function PayrollSettingsPage() {
             <div className="hr-form__help">
               The ordinary rate is the monthly salary over the overtime divisor, and an hour is that over the normal
               hours. Overtime, rest days and public holidays are all priced from it. Section 60I(1A) sets 26; above it
-              every hour of overtime is worth less, and the run refuses to calculate. A day of unpaid leave is not set
+              every hour of overtime is worth less, and payroll will not work it out. A day of unpaid leave is not set
               here: section 18A prices it on the actual days in the month, so the divisor is 28, 29, 30 or 31
               depending on the month.
             </div>
@@ -1007,8 +1007,8 @@ export function PayrollSettingsPage() {
             ) : null}
             <div className="hr-form__help">
               {lateJoinerCutoff === ''
-                ? 'Somebody who joins during a month is paid their days in that month’s run.'
-                : `Somebody who joins after the ${lateJoinerCutoff || '…'} is left out of that month’s run; the next month’s run adds those days to their basic pay.`}
+                ? 'Somebody who joins during a month is paid their days in that month’s payroll.'
+                : `Somebody who joins after the ${lateJoinerCutoff || '…'} is left out of that month’s payroll; the next month’s payroll adds those days to their basic pay.`}
             </div>
           </div>
           <div>
@@ -1075,7 +1075,7 @@ export function PayrollSettingsPage() {
               */}
             {belowAct.length > 0 ? (
               <div className="hr-notice hr-notice--attn" id="below-act-confirm">
-                <div className="hr-strong">This rule set pays below the Employment Act</div>
+                <div className="hr-strong">These pay rules pay below the Employment Act</div>
                 <ul className="hr-notice__list">
                   {belowAct.map((row) => (
                     <li key={row.field}>{belowActSentence(row, row.chosen)}</li>
@@ -1085,10 +1085,10 @@ export function PayrollSettingsPage() {
                   {protectedHere === null
                     ? 'The Act’s minimums reach employees on RM4,000 a month or less.'
                     : protectedHere === 0
-                      ? 'Nobody on this rule set is on RM4,000 a month or less today, so no minimum binds it right now. The day somebody who is joins it, they are paid under the Act.'
-                      : `${protectedHere} ${protectedHere === 1 ? 'employee' : 'employees'} on this rule set ${protectedHere === 1 ? 'is' : 'are'} on RM4,000 a month or less, so the Act’s minimums reach ${protectedHere === 1 ? 'them' : 'them'}. They will be paid less than the Act requires.`}{' '}
-                  The rule set will be marked below the Act on this screen, every payslip will print both rates, and each
-                  payroll run will name whoever was short that month.
+                      ? 'Nobody on these pay rules is on RM4,000 a month or less today, so no minimum binds them right now. The day somebody who is joins them, they are paid under the Act.'
+                      : `${protectedHere} ${protectedHere === 1 ? 'employee' : 'employees'} on these pay rules ${protectedHere === 1 ? 'is' : 'are'} on RM4,000 a month or less, so the Act’s minimums reach ${protectedHere === 1 ? 'them' : 'them'}. They will be paid less than the Act requires.`}{' '}
+                  These pay rules will be marked below the Act on this screen, every payslip will print both rates, and each
+                  payroll month will name whoever was short that month.
                 </div>
                 <label className="hr-check">
                   <input type="checkbox" checked={belowActOk} onChange={(e) => setBelowActOk(e.target.checked)} />
@@ -1208,8 +1208,8 @@ export function PayrollSettingsPage() {
         }}
       >
         <p>
-          Nobody is priced by it and nobody is assigned to it. A month that was ever priced by it keeps its name, and the
-          server refuses to delete one of those.
+          Nobody is priced by these pay rules and nobody is assigned to them. Pay rules that any past month was
+          priced by cannot be deleted.
         </p>
         <label htmlFor="ruleset-delete-why" className="hr-small hr-muted">
           Why (optional)

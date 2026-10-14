@@ -175,7 +175,7 @@ export function HrSetupJourney({
     {
       key: "payroll",
       title: "Statutory rates and approval",
-      why: "EPF, SOCSO, EIS and PCB are computed from the tables in force.",
+      why: "EPF, SOCSO, EIS and PCB are worked out from the tables in force.",
       state: statutory.data.some((set) => set.verified)
         ? "READY"
         : statutory.data.length > 0

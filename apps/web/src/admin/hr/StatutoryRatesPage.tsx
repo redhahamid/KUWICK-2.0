@@ -398,12 +398,12 @@ export function StatutoryRatesPage() {
       <Panel>
         <PanelHead
           title="Editions on file"
-          sub="Built-in editions are verified in code. A later edition is added by Kuwick, never typed by a clinic; a month is priced on the edition in force on its last day."
+          sub="Built-in editions come with Kuwick and are already checked. A later edition is added by Kuwick, never typed by a clinic; a month is priced on the edition in force on its last day."
         />
         {(data?.versions ?? []).length === 0 ? (
           <div className="hr-panelNote">
-            No later edition has been added by Kuwick yet: every scheme runs on
-            the built-in, verified tables.
+            No later edition has been added by Kuwick yet: every scheme uses
+            the built-in, checked tables.
           </div>
         ) : (
           <Table

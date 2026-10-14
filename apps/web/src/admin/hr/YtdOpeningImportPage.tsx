@@ -169,7 +169,7 @@ export function YtdOpeningImportPage() {
         months: staged.map(({ key: _key, name: _name, ...row }) => row),
       });
       setDone(
-        `Imported ${result.months} month${result.months === 1 ? '' : 's'} for ${result.employees} employee${result.employees === 1 ? '' : 's'}. Monthly tax now computes on top of them.`,
+        `Imported ${result.months} month${result.months === 1 ? '' : 's'} for ${result.employees} employee${result.employees === 1 ? '' : 's'}. Monthly tax is now worked out on top of them.`,
       );
       setStaged([]);
       message.success('Opening balances imported.');
@@ -177,7 +177,7 @@ export function YtdOpeningImportPage() {
       // The server's refusals are the guards, verbatim: a month before the
       // employment started ("that money belongs on Form TP3"), a month an
       // approved run already wrote.
-      setError(e instanceof Error ? e.message : 'The server refused the import and did not say why.');
+      setError(e instanceof Error ? e.message : 'The import was not saved. Try again.');
     }
   };
 
@@ -212,14 +212,14 @@ export function YtdOpeningImportPage() {
 
       {!mayImport ? (
         <div className="hr-notice hr-notice--info" style={{ margin: '0 0 14px' }}>
-          Importing opening balances changes what monthly tax computes for the rest of the year, so it needs the
+          Importing opening balances changes how monthly tax is worked out for the rest of the year, so it needs the
           payroll approval permission. You can read this screen but not import.
         </div>
       ) : null}
       <div className="hr-notice hr-notice--info" style={{ margin: '0 0 14px' }}>
         <strong>This employer&apos;s months only, as months.</strong> Pay from a previous employer is declared on Form
-        TP3 on the employee&apos;s record — the server refuses months from before the employment here began. A month an
-        approved Kuwick run already wrote is refused too: the run is the record.
+        TP3 on the employee&apos;s record — months from before the employment here began are not accepted. Nor is a
+        month Kuwick has already approved: that approval is the record.
       </div>
 
       <Panel>

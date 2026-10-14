@@ -48,7 +48,7 @@ describe('a refused save says why, where the mistake is', () => {
   });
 
   it('keeps the banner for a problem that belongs to no single field', () => {
-    render(<Form problem={{ message: 'A clinic-rate rule set needs at least one amount.' }} />);
+    render(<Form problem={{ message: 'Pay rules with clinic rates need at least one amount.' }} />);
     const reason = screen.getByRole('alert');
     expect(reason.id).toBe('hr-form-problem');
     // No field is named, so no field speaks.

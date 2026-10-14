@@ -109,7 +109,7 @@ export function HrSettingsPage() {
       // Kuwick's rules apply until the clinic sets its own, so there is always an answer.
       done: true,
       summary: `${partMonth === 'Calendar days' ? 'Calendar-day' : 'Working-day'} proration · OT on ${overtimeOn}`,
-      intro: 'How a part month, overtime and holiday pay are worked out, and who approves a run.',
+      intro: 'How a part month, overtime and holiday pay are worked out, and who approves a payroll month.',
     },
     {
       key: 'items',
@@ -137,7 +137,7 @@ export function HrSettingsPage() {
         : clinicCheck
           ? 'Tables changed since your check'
           : 'Not checked yet',
-      intro: 'A look at the EPF, SOCSO and EIS tables Kuwick uses. Until somebody here checks them, no run may be paid or filed.',
+      intro: 'A look at the EPF, SOCSO and EIS tables Kuwick uses. Until somebody here checks them, no payroll month may be paid or filed.',
     },
   ];
 
@@ -357,7 +357,7 @@ export function HrSettingsPage() {
               <b>Opening balances</b>
               <span className="hr-sub">
                 Year-to-date pay for a clinic joining part-way through the year.
-                {firstRunPeriod ? ` First run here: ${dayjs(firstRunPeriod).format('MMM YYYY')}.` : ''}
+                {firstRunPeriod ? ` First payroll month here: ${dayjs(firstRunPeriod).format('MMM YYYY')}.` : ''}
               </span>
             </Link>
             <div className="hr-advanced__row">

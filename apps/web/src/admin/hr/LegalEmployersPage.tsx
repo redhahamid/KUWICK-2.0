@@ -146,7 +146,7 @@ export function LegalEmployersPage() {
       message.success('Saved.');
       setOpen(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'The server refused the change and did not say why.');
+      setError(e instanceof Error ? e.message : 'The change was not saved. Try again.');
     }
   }
 
@@ -167,10 +167,10 @@ export function LegalEmployersPage() {
         hrdRegistration: hrdClass,
         reason: hrdReason.trim(),
       });
-      message.success('Recorded. The levy computes from the date it takes effect.');
+      message.success('Recorded. The levy is worked out from the date it takes effect.');
       setHrdFor(null);
     } catch (e) {
-      setHrdError(e instanceof Error ? e.message : 'The server refused the change and did not say why.');
+      setHrdError(e instanceof Error ? e.message : 'The change was not saved. Try again.');
     }
   }
 

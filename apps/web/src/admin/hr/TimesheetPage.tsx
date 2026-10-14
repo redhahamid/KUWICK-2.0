@@ -992,6 +992,15 @@ type PunchDraft = { id?: string; at: string; kind: 'IN' | 'OUT'; wrong?: boolean
  * but a smaller figure on its own reads as an answer rather than a warning. So
  * an unpaired day says `incomplete` and names the punch left hanging.
  */
+/** How a punch reached Kuwick, in words an HR officer uses. */
+const PUNCH_SOURCE: Record<AttendancePunchRow['source'], string> = {
+  PORTAL: 'staff app',
+  QR: 'QR scan',
+  DEVICE: 'time clock',
+  MANUAL: 'entered by HR',
+  PIN: 'PIN at kiosk',
+};
+
 function PunchEditor({
   punches,
   draft,
@@ -1068,7 +1077,7 @@ function PunchEditor({
                   ? 'marked wrong'
                   : stored?.recordedBy
                     ? `entered by ${stored.recordedBy}`
-                    : (stored?.source ?? 'new').toLowerCase()}
+                    : (stored ? PUNCH_SOURCE[stored.source] ?? stored.source.toLowerCase() : 'new')}
               </span>
               <button
                 type="button"

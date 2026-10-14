@@ -76,7 +76,7 @@ export function PublicHolidaysPage() {
     if ((row.multiplier === null || row.multiplier === undefined ? null : Number(row.multiplier)) === value) return;
     try {
       await updateHoliday.mutateAsync({ id: row.id, multiplier: value });
-      message.success(value === null ? `${row.name} uses the rule set's rate.` : `${row.name} pays ${value}× for hours worked.`);
+      message.success(value === null ? `${row.name} uses the pay rules’ rate.` : `${row.name} pays ${value}× for hours worked.`);
     } catch (error) {
       message.error(error instanceof ApiError ? error.message : 'Failed to change the holiday');
     }
@@ -90,7 +90,7 @@ export function PublicHolidaysPage() {
         </>
       }
       title="Public holidays"
-      sub="The days the clinic is closed, which attendance, leave and payroll all read. A festive holiday is one the payroll rule set may price apart from an ordinary one. “Hours paid at” sets this day’s own multiplier; staff the Act covers never get less than the Act."
+      sub="The days the clinic is closed, which attendance, leave and payroll all read. A festive holiday is one the pay rules may price apart from an ordinary one. “Hours paid at” sets this day’s own multiplier; staff the Act covers never get less than the Act."
       actions={
         mayWrite ? (
           <button type="button" className="hr-btn hr-btn--primary" onClick={() => setOpen(true)}>
@@ -157,7 +157,7 @@ export function PublicHolidaysPage() {
                     min={1}
                     max={10}
                     step={0.5}
-                    placeholder="Rule set"
+                    placeholder="Pay rules"
                     defaultValue={value === null || value === undefined ? undefined : Number(value)}
                     onBlur={(event) => {
                       const typed = event.target.value.trim();
@@ -169,7 +169,7 @@ export function PublicHolidaysPage() {
                 ) : value ? (
                   `${Number(value)}×`
                 ) : (
-                  <span className="hr-faint">Rule set</span>
+                  <span className="hr-faint">Pay rules</span>
                 ),
             },
             {
@@ -215,7 +215,7 @@ export function PublicHolidaysPage() {
           <Form.Item
             name="kind"
             label="Type"
-            extra="A festive holiday (Hari Raya, say) can carry its own figures on the payroll rule set, above an ordinary public holiday’s. Left as ordinary, nothing changes."
+            extra="A festive holiday (Hari Raya, say) can carry its own figures in the pay rules, above an ordinary public holiday’s. Left as ordinary, nothing changes."
           >
             <Radio.Group
               options={[

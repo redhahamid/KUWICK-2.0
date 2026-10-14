@@ -94,7 +94,7 @@ export function PayrollMonthPage() {
   return (
     <HrPage
       title="Payroll"
-      sub="One run per month. Grey cells come from records or are worked out for you; a white cell opens that person’s items for the month, and an item with a column of its own is typed straight in."
+      sub="One payroll a month. Grey cells come from records or are worked out for you; a white cell opens that person’s items for the month, and an item with a column of its own is typed straight in."
       error={errorText(home)}
       actions={
         <>
@@ -255,7 +255,7 @@ function BranchMonthPanel({
   ];
   return (
     <Panel>
-      <PanelHead title={`${label} by branch`} sub="Each branch runs its own month. Open a branch’s run, or pick a branch to start its month." />
+      <PanelHead title={`${label} by branch`} sub="Each branch has its own payroll month. Open a branch’s month, or pick a branch to start it." />
       <Table<BranchRow>
         rowKey="key"
         rows={rows}

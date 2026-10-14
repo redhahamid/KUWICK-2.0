@@ -310,7 +310,7 @@ export function EmployeesPage() {
               icon={<IconPayroll />}
               label="Monthly payroll"
               value={latestRun ? `RM${Math.round(latestRun.grossTotal).toLocaleString('en-MY')}` : '—'}
-              sub={latestRun ? `Gross${runSettled ? '' : ', not yet approved'}, ${dayjs(latestRun.period).format('MMMM YYYY')}` : 'No payroll run yet'}
+              sub={latestRun ? `Gross${runSettled ? '' : ', not yet approved'}, ${dayjs(latestRun.period).format('MMMM YYYY')}` : 'No payroll yet'}
             />
           </StatRow>
 

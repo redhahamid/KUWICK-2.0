@@ -99,7 +99,7 @@ export function LocumPage() {
 
       <AdminSection
         title="Sessions"
-        description="Mark a session completed once the work is done, then approve the fee. Approving names the amount rather than confirming a computed one."
+        description="Mark a session completed once the work is done, then approve the fee. Approving names the amount rather than confirming a worked-out one."
       >
         <DataTable<LocumSessionRow>
           rowKey="id"
@@ -121,7 +121,7 @@ export function LocumPage() {
                     : '—',
             },
             {
-              title: 'Computed',
+              title: 'Worked out',
               width: 110,
               align: 'right' as const,
               render: (_: unknown, row: LocumSessionRow) => (row.computedFee ? ringgit(row.computedFee) : '—'),
@@ -286,7 +286,7 @@ export function LocumPage() {
         }}
       >
         <p>
-          The session on {approving?.sessionDate} computes to{' '}
+          The session on {approving?.sessionDate} works out to{' '}
           <strong>{ringgit(approving?.computedFee)}</strong>. Approving names the amount the clinic will actually pay,
           which may differ.
         </p>

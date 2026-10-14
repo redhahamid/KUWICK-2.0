@@ -315,11 +315,11 @@ test.describe("HR", () => {
     ).toBeVisible();
     await expect(
       page.getByText(
-        /versioned so a paid incentive is never recalculated with today's rules/i,
+        /a paid incentive is never worked out again with today's rules/i,
       ),
     ).toBeVisible();
     await expect(
-      page.getByRole("row", { name: /APPROVED/ }).first(),
+      page.getByRole("row", { name: /Approved/ }).first(),
     ).toBeVisible();
 
     expect(errors).toEqual([]);
@@ -363,11 +363,11 @@ test.describe("a refused rule set says why, beside the box that is wrong", () =>
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
     await gotoAdmin(page, "/admin/hr/settings/payroll");
 
-    await page.getByRole("button", { name: "Add rule set" }).click();
+    await page.getByRole("button", { name: "Add pay rules" }).click();
     await page.getByLabel("Name").fill(`${PREFIX} phone width ${Date.now()}`);
     const divisor = page.locator("#orp-ot-days");
     await divisor.fill("30");
-    await page.getByRole("button", { name: "Add rule set" }).last().click();
+    await page.getByRole("button", { name: "Add pay rules" }).last().click();
 
     // Section 60I(1A) sets 26. Above it every hour of overtime is worth less.
     const reason = page.getByText(
@@ -407,7 +407,7 @@ test.describe("a refused rule set says why, beside the box that is wrong", () =>
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
     await gotoAdmin(page, "/admin/hr/settings/payroll");
 
-    await page.getByRole("button", { name: "Add rule set" }).click();
+    await page.getByRole("button", { name: "Add pay rules" }).click();
     await page.getByLabel("Name").fill(`${PREFIX} below the Act ${Date.now()}`);
     await page.locator("#ruleset-ot-multiplier").fill("1.25");
 
@@ -419,16 +419,16 @@ test.describe("a refused rule set says why, beside the box that is wrong", () =>
     await expect(notice).toContainText("Section 60A(3)(a)");
 
     // Pressing Save on its own is not the confirmation.
-    await page.getByRole("button", { name: "Add rule set" }).last().click();
+    await page.getByRole("button", { name: "Add pay rules" }).last().click();
     await expect(
       page.getByText(/Confirm that it is deliberate/i),
     ).toBeVisible();
 
     // Ticking without a reason is not either.
     await notice.getByRole("checkbox").check();
-    await page.getByRole("button", { name: "Add rule set" }).last().click();
+    await page.getByRole("button", { name: "Add pay rules" }).last().click();
     await expect(
-      page.getByText(/Say why this rule set pays below the Act/i),
+      page.getByText(/Say why these pay rules pay below the Act/i),
     ).toBeVisible();
   });
 
@@ -440,14 +440,14 @@ test.describe("a refused rule set says why, beside the box that is wrong", () =>
     await gotoAdmin(page, "/admin/hr/settings/payroll");
 
     const name = `${PREFIX} paid below ${Date.now()}`;
-    await page.getByRole("button", { name: "Add rule set" }).click();
+    await page.getByRole("button", { name: "Add pay rules" }).click();
     await page.getByLabel("Name").fill(name);
     await page.locator("#ruleset-ot-multiplier").fill("1.25");
     await page.locator("#below-act-confirm").getByRole("checkbox").check();
     await page
       .locator("#below-act-why")
       .fill("Agreed in the employment contracts");
-    await page.getByRole("button", { name: "Add rule set" }).last().click();
+    await page.getByRole("button", { name: "Add pay rules" }).last().click();
 
     // The permanent mark: the chip is on the row, not only in the drawer that
     // has since closed, so whoever opens this screen next sees the choice.
@@ -462,11 +462,11 @@ test.describe("a refused rule set says why, beside the box that is wrong", () =>
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
     await gotoAdmin(page, "/admin/hr/settings/payroll");
 
-    await page.getByRole("button", { name: "Add rule set" }).click();
+    await page.getByRole("button", { name: "Add pay rules" }).click();
     const name = `${PREFIX} overtime at two ${Date.now()}`;
     await page.getByLabel("Name").fill(name);
     await page.locator("#ruleset-ot-multiplier").fill("2");
-    await page.getByRole("button", { name: "Add rule set" }).last().click();
+    await page.getByRole("button", { name: "Add pay rules" }).last().click();
 
     // The rule set list says whose multipliers are in force, so nobody reads
     // the Act's figure over a clinic's own. Scoped to this test's own row:

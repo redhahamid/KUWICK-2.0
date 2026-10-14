@@ -261,8 +261,8 @@ export function BulkEmployeesPage() {
         const blocked = result.results.filter((row) => row.readiness.blocking.length > 0).length;
         setNotice(
           blocked === 0
-            ? `All ${sent.length} ${sent.length === 1 ? 'row is' : 'rows are'} clean and payroll-ready.`
-            : `All ${sent.length} ${sent.length === 1 ? 'row is' : 'rows are'} clean. ${blocked} ${blocked === 1 ? 'is' : 'are'} missing something payroll refuses the month on; they can still be added and finished on their records.`,
+            ? `All ${sent.length} ${sent.length === 1 ? 'row is' : 'rows are'} correct and ready for payroll.`
+            : `All ${sent.length} ${sent.length === 1 ? 'row is' : 'rows are'} correct. ${blocked} ${blocked === 1 ? 'is' : 'are'} missing something payroll needs; they can still be added and finished on their records.`,
         );
         return;
       }
@@ -277,7 +277,7 @@ export function BulkEmployeesPage() {
       }
       navigate('/admin/hr/employees');
     } catch (error) {
-      message.error(error instanceof ApiError ? error.message : 'Could not reach the server.');
+      message.error(error instanceof ApiError ? error.message : 'Could not reach Kuwick. Check the connection and try again.');
     } finally {
       setBusy(null);
     }

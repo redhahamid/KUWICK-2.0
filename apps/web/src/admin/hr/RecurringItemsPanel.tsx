@@ -198,7 +198,7 @@ export function RecurringItemsPanel({ staffId, canSeePay }: { staffId: string; c
         open={editing !== null}
         onClose={close}
         title={editing === 'new' ? 'Add recurring item' : 'Edit recurring item'}
-        sub={editing === 'new' ? 'From a month; until a month, or until it is ended.' : 'An amount already paid by an approved run is settled: end the item and add a new one instead.'}
+        sub={editing === 'new' ? 'From a month; until a month, or until it is ended.' : 'An amount already paid in an approved month is settled: end the item and add a new one instead.'}
         footer={
           <>
             <button type="button" className="hr-btn" onClick={close}>

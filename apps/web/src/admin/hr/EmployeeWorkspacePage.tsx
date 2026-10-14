@@ -441,7 +441,7 @@ function EmploymentTab({ data, onEdit, onResign }: { data: EmployeeRecord; onEdi
           ['Leave policy', data.leavePolicy?.name],
         ]}
       />
-      <div className="hr-panelNote">Approved unpaid leave reduces pay automatically and shows on the payroll run with a link back to the request.</div>
+      <div className="hr-panelNote">Approved unpaid leave reduces pay automatically and shows on that month’s payroll with a link back to the request.</div>
     </>
   );
 }
@@ -489,9 +489,9 @@ function BankTab({ data, onEdit }: { data: EmployeeRecord; onEdit?: () => void }
           ]}
         />
       ) : (
-        <div className="hr-empty">Bank details need the salary permission. The server does not send them to this account.</div>
+        <div className="hr-empty">Bank details need the salary permission, which this account does not have.</div>
       )}
-      <div className="hr-panelNote">Payroll pays into this account. A missing account holds up the run for this person alone, never the whole month.</div>
+      <div className="hr-panelNote">Payroll pays into this account. A missing account holds up pay for this person alone, never the whole month.</div>
     </>
   );
 }
@@ -500,11 +500,11 @@ function BankTab({ data, onEdit }: { data: EmployeeRecord; onEdit?: () => void }
 function PayslipsDrawer({ data, open, onClose }: { data: EmployeeRecord; open: boolean; onClose: () => void }) {
   const rows = data.payrollHistory;
   return (
-    <Drawer open={open} onClose={onClose} title="Payslips" sub="One row per payroll run this employee was on. The payslip PDF arrives with the run's Pay step.">
+    <Drawer open={open} onClose={onClose} title="Payslips" sub="One row for each payroll month this employee was in. The payslip PDF is ready once the month reaches its Pay step.">
       <Table<EmployeeRecord['payrollHistory'][number]>
         rowKey="id"
         rows={rows}
-        emptyText="This employee has not been on a payroll run."
+        emptyText="This employee has not been through payroll yet."
         columns={[
           { title: 'Month', dataIndex: 'period', width: 130, render: (value: string) => dayjs(value).format('MMM YYYY') },
           {
@@ -526,7 +526,7 @@ function PayslipsDrawer({ data, open, onClose }: { data: EmployeeRecord; open: b
             width: 90,
             render: (_: unknown, row) => (
               <Link className="hr-link" to={`/admin/hr/payroll/${row.runId}?step=review`}>
-                Open run
+                Open the month
               </Link>
             ),
           },

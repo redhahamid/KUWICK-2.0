@@ -91,7 +91,7 @@ export function PayrollStartGate({
         <Panel className="hr-mt">
           <div data-testid="months-without-pay">
             <PanelHead
-              title={`${gaps.text} ${gaps.months.length === 1 ? 'has' : 'have'} no payroll run — PCB may be understated`}
+              title={`${gaps.text} ${gaps.months.length === 1 ? 'has' : 'have'} no payroll — PCB may be understated`}
               sub={`For ${gaps.people} ${gaps.people === 1 ? 'person' : 'people'} employed then. The month can still be worked out.`}
             />
             <details className="hr-details">

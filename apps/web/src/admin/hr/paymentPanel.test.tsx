@@ -132,7 +132,7 @@ describe('choosing the pay dates for one run', () => {
       ]),
     );
     const block = screen.getByTestId('run-pay-dates');
-    expect(within(block).getByRole('heading')).toHaveTextContent('Pay dates for this run');
+    expect(within(block).getByRole('heading')).toHaveTextContent('Pay dates for this month');
     expect(block).toHaveTextContent("Director's fee (September 2026)");
     expect(block).toHaveTextContent('Overtime (September 2026) · Claim reimbursement');
 
@@ -144,7 +144,7 @@ describe('choosing the pay dates for one run', () => {
     expect(chooseMutate.mock.calls[0][0]).toEqual({ runId: 'run-1', defaultDate: '2026-10-01', payDate: '2026-10-03' });
 
     const fifteenth = screen.getByTestId('run-pay-date-2026-10-15');
-    expect(fifteenth).toHaveTextContent('Changed for this run.');
+    expect(fifteenth).toHaveTextContent('Changed for this month.');
     fireEvent.click(within(fifteenth).getByRole('button', { name: 'Back to 15 Oct 2026' }));
     expect(chooseMutate.mock.calls[1][0]).toEqual({ runId: 'run-1', defaultDate: '2026-10-15', payDate: '2026-10-15' });
   });

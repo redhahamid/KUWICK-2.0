@@ -137,7 +137,7 @@ export function EmployeeTaxPanel({ staffId }: { staffId: string }) {
         receivedDate: tp1Received?.format('YYYY-MM-DD'),
       })
       .then(() => {
-        message.success('TP1 recorded. Recalculate any open run for the month to apply it.');
+        message.success('TP1 recorded. If that month’s payroll is not approved yet, work it out again to apply it.');
         setTp1Open(false);
         refresh();
       })
@@ -195,8 +195,8 @@ export function EmployeeTaxPanel({ staffId }: { staffId: string }) {
       title: `Delete this ${kind.toUpperCase()} record?`,
       content:
         kind === 'tp1'
-          ? 'A month an approved run already applied it to will refuse. The deletion is audited.'
-          : 'Months already approved keep the figures they were approved with; future months recalculate without it. The deletion is audited.',
+          ? 'It cannot be deleted from a month that is already approved. The deletion is audited.'
+          : 'Months already approved keep the figures they were approved with; future months are worked out without it. The deletion is audited.',
       okText: 'Delete',
       okButtonProps: { danger: true },
       onOk: () =>
@@ -225,7 +225,7 @@ export function EmployeeTaxPanel({ staffId }: { staffId: string }) {
       <PanelHead
         rule
         title={`TP1 — monthly deduction claims, ${year}`}
-        sub="The employer's approved figure off the employee's Form TP1. It enters that month's tax as LP1; the relief catalogue's annual caps are not verified against LHDN, so approving the form remains the employer's own act."
+        sub="The employer's approved figure off the employee's Form TP1. It enters that month's tax as LP1; the yearly limit on each relief is not checked against LHDN, so approving the form remains the employer's own act."
         actions={
           <>
             <Select
@@ -296,7 +296,7 @@ export function EmployeeTaxPanel({ staffId }: { staffId: string }) {
       <PanelHead
         rule
         title={`TP3 — previous employment, ${year}`}
-        sub="A mid-year joiner's pay, EPF, tax and deductions at their previous employer this year, so cumulative monthly tax carries on from where it stood. This employer's own pre-Kuwick months go through Opening balances instead — the server refuses the overlap either way."
+        sub="A mid-year joiner's pay, EPF, tax and deductions at their previous employer this year, so cumulative monthly tax carries on from where it stood. This employer's own pre-Kuwick months go through Opening balances instead — the same month cannot be entered both ways."
         actions={
           mayRun ? (
             <button type="button" className="hr-btn hr-btn--sm" onClick={() => { setError(null); setTp3Open(true); }}>

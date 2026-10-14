@@ -74,7 +74,7 @@ export function LeavePolicyPanel() {
         notPayingReason: why.trim(),
       });
       close();
-      message.success('Recorded. Every payroll run will name the leaver and the amount that was not paid.');
+      message.success('Recorded. Every payroll month will name the leaver and the amount that was not paid.');
     } catch (error) {
       message.error(error instanceof Error ? error.message : 'Could not save the leave policy.');
     }
@@ -133,7 +133,7 @@ export function LeavePolicyPanel() {
                     </li>
                   </ul>
                   <div>
-                    The policy will be marked on this screen for as long as the decision stands, and every payroll run will
+                    The policy will be marked on this screen for as long as the decision stands, and every payroll month will
                     name each leaver and the amount that was not paid them.
                   </div>
                   <label className="hr-check">

@@ -570,10 +570,10 @@ function ReviewStep({
     <>
       <div className="hr-pad">
         <StatRow>
-          <StatCard label="In this run" value={data.pay.rows.length} />
+          <StatCard label="In this month" value={data.pay.rows.length} />
           <StatCard label="Ready" value={ready} tone={ready === data.pay.rows.length ? 'teal' : 'plain'} />
           <StatCard label="Blocked" value={blocked} tone={blocked > 0 ? 'red' : 'plain'} />
-          <StatCard label="Not in this run" value={leftOut} tone={leftOut > 0 ? 'gold' : 'plain'} sub={leftOut > 0 ? 'No salary on record' : undefined} />
+          <StatCard label="Not in this month" value={leftOut} tone={leftOut > 0 ? 'gold' : 'plain'} sub={leftOut > 0 ? 'No salary on record' : undefined} />
         </StatRow>
       </div>
 
@@ -629,7 +629,7 @@ function ReviewStep({
             ? 'Nothing is blocking this month.'
             : gate.recordsChanged
               ? gate.reason
-              : `${gate.blocking} thing${gate.blocking === 1 ? '' : 's'} must be sorted before this run can be approved.`}
+              : `${gate.blocking} thing${gate.blocking === 1 ? '' : 's'} must be sorted before this month can be approved.`}
         </span>
         <span className="hr-spacer" />
         <button type="button" className="hr-btn" onClick={() => onGoTo('prepare')}>
@@ -771,7 +771,7 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
                 </div>
                 <div className="kw-approveCheck__detail">
                   {check.detail}
-                  {!check.ok && check.warnOnly ? ' This does not block the run.' : ''}
+                  {!check.ok && check.warnOnly ? ' This does not block approval.' : ''}
                 </div>
               </div>
             </div>
@@ -803,7 +803,7 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
           {provisional ? (
             <div className="hr-notice hr-notice--attn" style={{ margin: '0 0 14px' }}>
               <strong>This clinic is not live yet.</strong> Kuwick's statutory rates have not yet been checked against
-              KWSP, PERKESO and LHDN's own published tables. Until they are, an approved run is a working figure — not
+              KWSP, PERKESO and LHDN's own published tables. Until they are, an approved month is a working figure — not
               something to pay staff with, and not something to file.{' '}
               <Link className="hr-link" to="/admin/hr/settings">
                 What is still outstanding
@@ -831,8 +831,8 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
                         <div className="kw-signoffList__title">{person ? person.name : 'Waiting for a second person'}</div>
                         <div className="kw-signoffList__detail">
                           {person
-                            ? `${dayjs(person.at).format('D MMM YYYY, HH:mm')}${person.wasOwnSelfApproval ? ' · approved their own run' : ''}`
-                            : 'The run stays open until they approve it.'}
+                            ? `${dayjs(person.at).format('D MMM YYYY, HH:mm')}${person.wasOwnSelfApproval ? ' · approved their own payroll' : ''}`
+                            : 'The month stays open until they approve it.'}
                         </div>
                       </div>
                     </div>
@@ -845,7 +845,7 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
           <h3 className="hr-h3">Approve</h3>
           {!canFinaliseHere && !alreadyApproved ? (
             <div className="hr-notice hr-notice--info" style={{ margin: 0 }}>
-              <strong>Approving is done on a computer.</strong> Locking a month&apos;s pay needs the whole run in front of you. Review
+              <strong>Approving is done on a computer.</strong> Locking a month&apos;s pay needs the whole month in front of you. Review
               and clear blockers here; approve from a desktop.
             </div>
           ) : alreadyApproved ? (
@@ -869,10 +869,10 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
                   : gate.canApprove
                     ? approval.completesTheRun
                       ? gate.reason
-                      : 'Your approval will be recorded. The run stays open until a second person approves it.'
+                      : 'Your approval will be recorded. The month stays open until a second person approves it.'
                     : gate.recordsChanged
                       ? gate.reason
-                      : `${gate.blocking} thing${gate.blocking === 1 ? '' : 's'} must be sorted first. Kuwick will not approve a run it cannot compute.`}
+                      : `${gate.blocking} thing${gate.blocking === 1 ? '' : 's'} must be sorted first. Kuwick will not approve a month it cannot work out.`}
               </p>
               <button
                 type="button"
@@ -887,7 +887,7 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
                     content: !approval.completesTheRun
                       ? `This clinic requires ${approval.required} approvals. Nothing locks until a second person approves it.`
                       : provisional
-                        ? 'The statutory rates behind these figures have not been verified. This run will be locked and marked PROVISIONAL — it must not be used to pay staff or file a return.'
+                        ? 'The statutory rates behind these figures have not been verified. This month will be locked and marked PROVISIONAL — it must not be used to pay staff or file a return.'
                         : 'The figures will be locked. A correction afterwards is a recorded adjustment.',
                     okText: 'Approve',
                     onOk: () =>
@@ -926,7 +926,7 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
 
         {alreadyApproved ? (
           <div className="hr-notice hr-notice--info" style={{ gridColumn: '1 / -1', margin: 0 }}>
-            This run is approved. Payslips, the payment listing and the statutory figures are on the <strong>Pay</strong> stage.
+            This month is approved. Payslips, the payment listing and the statutory figures are on the <strong>Pay</strong> stage.
           </div>
         ) : null}
       </div>
@@ -1042,7 +1042,7 @@ function PayStep({ data, runId }: { data: PayrollJourney; runId: string }) {
       <PayslipsPanel runId={runId} />
       <PaymentPanel runId={runId} />
       <StatutoryOutputsPanel runId={runId} />
-      <PanelHead rule title="The rest of this month" sub="The filing helper and the two documents the month produces, already set to this run." />
+      <PanelHead rule title="The rest of this month" sub="The filing helper and the two documents the month produces, already set to this month." />
       <div className="kw-outputLinks" style={{ padding: '12px 0 0' }}>
         <Link to={`/admin/hr/payroll/${runId}/filing`} className="kw-outputLink">
           <strong>Statutory filing helper</strong>
@@ -1085,7 +1085,7 @@ function DiscardRunButton({ runId, period }: { runId: string; period: string }) 
       </button>
       <Modal
         open={open}
-        title={`Discard the ${month} run?`}
+        title={`Discard the ${month} draft?`}
         okText="Discard"
         okButtonProps={{ danger: true }}
         confirmLoading={discard.isPending}
@@ -1106,7 +1106,7 @@ function DiscardRunButton({ runId, period }: { runId: string; period: string }) 
       >
         {problem ? <div className="hr-notice hr-notice--attn" role="alert">{problem}</div> : null}
         <p>
-          Nothing has been paid or filed from this run, so it goes: its figures, its exceptions and any
+          Nothing has been paid or filed from this month, so it goes: its figures, its exceptions and any
           edits made in the grid. Hand-keyed inputs for the month are kept. You can start {month} again
           afterwards.
         </p>

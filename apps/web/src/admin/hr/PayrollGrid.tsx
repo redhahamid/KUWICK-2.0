@@ -335,7 +335,7 @@ export type SaveOutcome = { failed: { key: string; message: string }[] } | void;
 const said = (error: unknown) =>
   error && typeof error === 'object' && 'message' in error
     ? String((error as { message?: unknown }).message)
-    : 'The server refused the change and did not say why.';
+    : 'The change was not saved. Try again.';
 
 const hours = (value: number) => value.toFixed(1);
 const days = (value: number) => (Number.isInteger(value) ? String(value) : value.toFixed(1));

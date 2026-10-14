@@ -355,7 +355,7 @@ export function PayrollExceptionCentre({
             setError(
               e && typeof e === 'object' && 'message' in e
                 ? String((e as { message?: unknown }).message)
-                : 'The server refused the change and did not say why.',
+                : 'The change was not saved. Try again.',
             );
           }
         }}

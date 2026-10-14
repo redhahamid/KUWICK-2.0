@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, money } from '../components/DataTable';
+import { humanise } from '../components/Chip';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useCalculateIncentives, useIncentiveRules, useIncentiveRun, useIncentiveRuns } from '../hooks/useAdmin';
 
@@ -29,7 +30,7 @@ export function IncentivesPage() {
     <AdminShell
       error={firstError(runs, rules, detail)}
       title="Doctor Incentives"
-      subtitle="Threshold commissions and per-procedure rates, versioned so a paid incentive is never recalculated with today's rules."
+      subtitle="Threshold commissions and per-procedure rates, each rule kept as it was, so a paid incentive is never worked out again with today's rules."
       actions={
         <>
           <DatePicker
@@ -63,16 +64,16 @@ export function IncentivesPage() {
     >
       {(rules.data?.length ?? 0) === 0 ? (
         <AdminNotice tone="warn">
-          No incentive rules are configured, so a calculation produces nothing. A rule is a threshold, a flat amount and a percentage of the excess — or a rate per qualifying procedure.
+          No incentive rules are set up, so a calculation produces nothing. A rule is a threshold, a flat amount and a percentage of the excess — or a rate per qualifying procedure.
         </AdminNotice>
       ) : null}
 
-      <AdminSection title="Incentive runs" padded={false}>
+      <AdminSection title="Incentive calculations" padded={false}>
         <DataTable
           rows={runs.data}
           loading={runs.isLoading}
           rowKey="id"
-          emptyText="No incentive runs"
+          emptyText="No incentives calculated yet"
           onRow={(row) => ({ onClick: () => setSelectedId(row.id) })}
           columns={[
             { title: 'Period', dataIndex: 'period', key: 'period', defaultSortOrder: 'descend', sorter: (a, b) => a.period.localeCompare(b.period) },
@@ -83,7 +84,7 @@ export function IncentivesPage() {
               key: 'status',
               render: (value: string) => (
                 <Tag color={value === 'APPROVED' || value === 'PAID' ? 'green' : value === 'CALCULATED' ? 'blue' : 'default'}>
-                  {value}
+                  {humanise(value)}
                 </Tag>
               ),
             },
@@ -124,7 +125,7 @@ export function IncentivesPage() {
                 className: 'kw-num',
                 render: (value: number) => <Tag>v{value}</Tag>,
               },
-              { title: 'Type', dataIndex: 'ruleType', key: 'ruleType', optional: true },
+              { title: 'Type', dataIndex: 'ruleType', key: 'ruleType', optional: true, render: (value: string) => humanise(value) },
               {
                 title: 'Basis',
                 dataIndex: 'basisAmount',

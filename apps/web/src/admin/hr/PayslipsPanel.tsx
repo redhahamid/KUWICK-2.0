@@ -32,7 +32,7 @@ export function PayslipsPanel({ runId }: { runId: string }) {
     const detail =
       query.error && typeof query.error === 'object' && 'message' in query.error
         ? String((query.error as { message?: unknown }).message)
-        : 'The server refused the payslip list.';
+        : 'The payslip list could not be loaded.';
     return (
       <AdminSection title="Payslips">
         <AdminNotice tone="info">{detail}</AdminNotice>
@@ -71,7 +71,7 @@ export function PayslipsPanel({ runId }: { runId: string }) {
   return (
     <AdminSection
       title="Payslips"
-      description="Issued from the approved record — the frozen, hashed snapshot — never from figures that can still move. Downloads are on the audit trail."
+      description="Issued from the approved figures, never from figures that can still change. Downloads are on the audit trail."
       actions={
         <span style={{ display: 'inline-flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <PayslipPreviewButton runId={runId} />
@@ -100,7 +100,7 @@ export function PayslipsPanel({ runId }: { runId: string }) {
     >
       {data.reopenedSinceApproval ? (
         <AdminNotice tone="warn">
-          This run has been <strong>reopened</strong> since approval. These payslips remain the record of what was
+          This month has been <strong>reopened</strong> since approval. These payslips remain the record of what was
           approved; a corrected revision may follow.
         </AdminNotice>
       ) : null}

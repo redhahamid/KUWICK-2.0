@@ -596,8 +596,8 @@ export function LeavePage() {
               <div className="hr-tl__row">
                 <b>Feeds payroll</b> ·{' '}
                 {reviewing.leaveType === 'UNPAID'
-                  ? `${dayjs(reviewing.startDate).format('MMM')} run, deducted as unpaid leave`
-                  : `${dayjs(reviewing.startDate).format('MMM')} run, no deduction (paid leave)`}
+                  ? `${dayjs(reviewing.startDate).format('MMM')} payroll, deducted as unpaid leave`
+                  : `${dayjs(reviewing.startDate).format('MMM')} payroll, no deduction (paid leave)`}
               </div>
             </div>
 

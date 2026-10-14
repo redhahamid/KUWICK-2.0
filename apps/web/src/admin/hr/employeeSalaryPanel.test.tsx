@@ -96,6 +96,6 @@ describe('recording a salary change', () => {
     render(<EmployeeSalaryPanel staffId="staff-1" canSeePay={false} />);
     // "There is nothing on file" and "you may not see this" are different
     // sentences, and this screen must never render them the same way.
-    expect(screen.getByText(/the server does not send it to this account/i)).toBeTruthy();
+    expect(screen.getByText(/which this account does not have/i)).toBeTruthy();
   });
 });

@@ -67,7 +67,7 @@ export function PaymentPanel({ runId }: { runId: string }) {
           message.success(
             payDate === row.defaultDate
               ? `Back to ${day(payDate)}, the date in Payroll items.`
-              : `For this run, what is due on ${day(row.defaultDate)} goes out on ${day(payDate)}.`,
+              : `For this month, what is due on ${day(row.defaultDate)} goes out on ${day(payDate)}.`,
           ),
         onError: (e: Error) => message.error(e.message),
         onSettled: () => {
@@ -125,7 +125,7 @@ export function PaymentPanel({ runId }: { runId: string }) {
                 : 'Prepared — a document exists, nothing has moved'}
           </Tag>
           <span className="kw-muted" style={{ fontSize: 12.5 }}>
-            Batch {batch.version} · from approved record v{batch.snapshotVersion} · prepared by {batch.createdBy}
+            Batch {batch.version} · from the approved figures (version {batch.snapshotVersion}) · prepared by {batch.createdBy}
           </span>
         </div>
 
@@ -217,7 +217,7 @@ export function PaymentPanel({ runId }: { runId: string }) {
 
       {choosing ? (
         <div className="kw-payDate kw-runPayDates" data-testid="run-pay-dates">
-          <h4 className="kw-payDate__title">Pay dates for this run</h4>
+          <h4 className="kw-payDate__title">Pay dates for this month</h4>
           <p className="kw-muted" style={{ marginTop: 0 }}>
             Each date starts from the item&apos;s &ldquo;Paid on&rdquo; in Payroll items. Change it here for this run, before its
             listing is prepared. The amounts and the statutory figures stay as approved.
@@ -251,7 +251,7 @@ export function PaymentPanel({ runId }: { runId: string }) {
                     />
                     {row.payDate !== row.defaultDate ? (
                       <span className="kw-muted" style={{ fontSize: 12.5 }}>
-                        Changed for this run.{' '}
+                        Changed for this month.{' '}
                         <Button
                           type="link"
                           size="small"
@@ -286,7 +286,7 @@ export function PaymentPanel({ runId }: { runId: string }) {
           />
           <p className="kw-muted" style={{ marginTop: 0 }}>
             No payment listing has been prepared. Preparing composes {manyDates ? 'a listing for each date' : 'the listing'} from the
-            approved record — the frozen figures — with each person's bank details as on file today.
+            approved figures, with each person's bank details as on file today.
           </p>
           {data.mayPrepare ? (
             <Button type="primary" loading={prepare.isPending} onClick={prepareAll}>
@@ -336,7 +336,7 @@ export function PaymentPanel({ runId }: { runId: string }) {
               onSuccess: () => {
                 message.success(
                   others === 0
-                    ? 'Recorded. The run now reads as paid.'
+                    ? 'Recorded. The month now shows as paid.'
                     : `Recorded. ${others} more date${others === 1 ? '' : 's'} to pay this month.`,
                 );
                 setRecording(null);

@@ -331,7 +331,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
         try {
           await saveRestDay();
         } catch (error) {
-          const why = error instanceof Error ? error.message : 'the server did not say why.';
+          const why = error instanceof Error ? error.message : 'no reason was given.';
           setProblem(`The employment record is saved, but the rest day was refused: ${why}`);
           return;
         }
@@ -339,7 +339,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
       message.success('Saved.');
       onClose();
     } catch (error) {
-      setProblem(error instanceof Error ? error.message : 'The server refused the change and did not say why.');
+      setProblem(error instanceof Error ? error.message : 'The change was not saved. Try again.');
     }
   };
 
@@ -562,7 +562,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
                   <Input
                     id="ed-locum-rate"
                     inputMode="decimal"
-                    placeholder="The rule set’s"
+                    placeholder="From the pay rules"
                     value={locumRate}
                     onChange={(event) => setLocumRate(event.target.value.replace(/[^0-9.]/g, ''))}
                   />
@@ -665,9 +665,9 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
                 options={REST_DAY_CHOICES}
               />
               <div className="hr-form__help">
-                {restDayNote} Section 60(1) gives one whole day a week and the employer appoints it. Payroll refuses to
-                work out a month without it, and that refusal cannot be passed. Where it varies week to week or rotates
-                with the roster, say so: the month runs, and the run says rest-day pay for them is keyed by hand.
+                {restDayNote} Section 60(1) gives one whole day a week and the employer appoints it. Payroll cannot
+                work out a month without it, and this cannot be skipped. Where it varies week to week or rotates
+                with the roster, say so: payroll still goes ahead, and the month notes that their rest-day pay is entered by hand.
                 {restDay === 'VARIES' || restDay === 'ROSTER' ? ` ${NO_FIXED_DAY_HELP}` : ''}
               </div>
             </div>
@@ -723,7 +723,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
             <div>
               <label htmlFor="ed-acct">Account number</label>
               <Input id="ed-acct" value={bankAccountNo} onChange={(e) => setBankAccountNo(e.target.value)} inputMode="numeric" placeholder={data.pay?.bankAccountOnFile ? 'On file — type to replace' : 'Not on file'} />
-              <div className="hr-form__help">Changing where somebody's pay goes needs payroll access as well as record access; the server refuses it otherwise.</div>
+              <div className="hr-form__help">Changing where somebody's pay goes needs payroll access as well as record access; without both it is not saved.</div>
             </div>
           </>
         ) : null}

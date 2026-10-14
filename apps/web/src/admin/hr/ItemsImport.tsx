@@ -263,7 +263,7 @@ export function ItemsImport({ runId, period, canImport }: { runId: string; perio
               {(codes.data?.codes ?? []).map((code) => (
                 <li key={code.code}>
                   <code>{code.code}</code> {code.name} · {code.addsOrDeducts === 'DEDUCTS' ? 'deducts' : 'adds'}
-                  {code.unit === 'days' ? ' · number of days, priced by the run' : ` · PCB ${code.pcbType}`}
+                  {code.unit === 'days' ? ' · number of days, priced by payroll' : code.pcbType === 'additional' ? ' · additional pay for PCB' : ' · normal pay for PCB'}
                 </li>
               ))}
             </ul>

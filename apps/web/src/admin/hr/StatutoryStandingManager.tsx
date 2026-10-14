@@ -572,7 +572,7 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
             const result = (await record.mutateAsync(body)) as { appliedToLater?: unknown[] } | undefined;
             carried = result?.appliedToLater?.length ?? 0;
           } catch (e) {
-            setError({ message: e instanceof Error ? e.message : 'The server refused the change and did not say why.' });
+            setError({ message: e instanceof Error ? e.message : 'The change was not saved. Try again.' });
             return;
           }
           /*

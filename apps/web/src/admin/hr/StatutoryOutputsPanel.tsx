@@ -202,7 +202,7 @@ export function StatutoryOutputsPanel({ runId }: { runId: string }) {
             {block.notComputed > 0 ? (
               <AdminNotice tone="warn">
                 {block.notComputed} employee{block.notComputed === 1 ? "'s" : "s'"} figure could not be worked out —
-                see the run's exceptions. This listing is not a complete filing.
+                see this month’s exceptions. This listing is not a complete filing.
               </AdminNotice>
             ) : null}
             <DataTable<OutputRow>

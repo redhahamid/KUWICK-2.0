@@ -4,6 +4,7 @@ import { App, Select, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, firstError } from '../components/AdminShell';
 import { DataTable, DataTableTotalRow, ringgit } from '../components/DataTable';
+import { humanise } from '../components/Chip';
 import { downloadFile } from '../../core/api-client';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { HrPage, Panel, PanelHead, SegControl, StatusChip, type ChipTone } from './ui';
@@ -245,15 +246,15 @@ export function PayrollReportsPage() {
           <div className="hr-toolbar">
             {scope === 'RUN' ? (
               <label className="hr-fld__inline">
-                <span>Payroll run</span>
+                <span>Payroll month</span>
                 <Select
                   size="small"
-                  aria-label="Payroll run"
+                  aria-label="Payroll month"
                   style={{ minWidth: 280 }}
                   value={selectedRun}
                   onChange={setRunId}
                   options={runOptions}
-                  placeholder="No calculated runs yet"
+                  placeholder="No month worked out yet"
                 />
               </label>
             ) : null}
@@ -317,7 +318,7 @@ export function PayrollReportsPage() {
 
         {scope === 'RUN' && !selectedRun ? (
           <div className="hr-notice hr-notice--info">
-            <strong>No payroll has been calculated yet.</strong> A report is a view of a run, so there is nothing to
+            <strong>No payroll has been calculated yet.</strong> A report is a view of a payroll month, so there is nothing to
             report on until one exists. <Link to="/admin/hr/payroll">Start this month&rsquo;s payroll</Link>.
           </div>
         ) : null}
@@ -414,7 +415,7 @@ export function PayrollReportsPage() {
           action={
             selectedRun ? (
               <Link className="hr-btn hr-btn--sm" to={`/admin/hr/payroll/${selectedRun}`}>
-                Open the run
+                Open the month
               </Link>
             ) : null
           }
@@ -673,6 +674,14 @@ const SCHEME_DETAIL: Record<string, string> = {
   HRD: 'The levy on eligible wages, where the clinic is registered.',
 };
 
+/** The kind of payroll, in plain words. */
+const RUN_TYPE_LABEL: Record<string, string> = {
+  REGULAR: 'Monthly',
+  OFF_CYCLE_BONUS: 'Bonus',
+  CORRECTION: 'Correction',
+  FINAL_PAY: 'Final pay',
+};
+
 /** A run's status as a chip tone — paid is done with, approved is done. */
 function statusTone(status: string): ChipTone {
   if (status === 'PAID') return 'muted';
@@ -692,7 +701,7 @@ function ReportHeader({ header }: { header: { periodLabel: string; clinicName: s
         </div>
         <div>
           {header.provisional ? <Tag color="warning">Provisional</Tag> : null}
-          <Tag>{header.status}</Tag>
+          <Tag>{humanise(header.status)}</Tag>
         </div>
       </div>
       {header.provisional && header.provisionalNote ? (
@@ -709,13 +718,13 @@ function RegisterReport({ runId }: { runId: string }) {
   type Row = PayrollRegisterReport['rows'][number];
 
   return (
-    <AdminSection title="Payroll register" description="Every employee on this run. Open a row to see what made it up.">
+    <AdminSection title="Payroll register" description="Every employee in this month. Open a row to see what made it up.">
       <ReportHeader header={data} />
       <DataTable<Row>
         rowKey="staffId"
         loading={query.isLoading}
         rows={data.rows}
-        emptyText="Nobody was paid on this run."
+        emptyText="Nobody was paid this month."
         expandable={{
           rowExpandable: (row: Row) => row.components.length > 0,
           expandedRowRender: (row: Row) => (
@@ -843,7 +852,7 @@ function EmployerCostReport({ runId }: { runId: string }) {
           rowKey="key"
           loading={query.isLoading}
           rows={data.byBranch}
-          emptyText="No cost recorded on this run."
+          emptyText="No cost recorded this month."
           columns={columns}
         />
         {data.byBranch.some((bucket) => bucket.note) ? (
@@ -864,7 +873,7 @@ function EmployerCostReport({ runId }: { runId: string }) {
         <DataTable<PayrollCostBucket>
           rowKey="key"
           rows={data.byLegalEmployer}
-          emptyText="No employer recorded on this run."
+          emptyText="No employer recorded this month."
           columns={columns}
         />
       </AdminSection>
@@ -887,7 +896,7 @@ function StatutoryReport({ runId }: { runId: string }) {
         <AdminSection
           key={employer.employerId}
           title={employer.employerName}
-          description={`${employer.employees} employee${employer.employees === 1 ? '' : 's'} on this run.`}
+          description={`${employer.employees} employee${employer.employees === 1 ? '' : 's'} in this month.`}
         >
           <ReportHeader header={data} />
           <DataTable<Scheme>
@@ -1125,13 +1134,13 @@ function HistoryReport({ staffId, year }: { staffId: string; year: number }) {
   return (
     <AdminSection
       title={`${data.name} — payroll history`}
-      description="Every run that has ever paid them, corrections included. A corrected month keeps every approved version."
+      description="Every payroll that has ever paid them, corrections included. A corrected month keeps every approved version."
     >
       <DataTable<Row>
         rowKey="runId"
         loading={query.isLoading}
         rows={data.rows}
-        emptyText={`No payroll runs for ${data.year ?? 'this year'}.`}
+        emptyText={`No payroll for ${data.year ?? 'this year'}.`}
         columns={[
           {
             title: 'Month',
@@ -1140,16 +1149,16 @@ function HistoryReport({ staffId, year }: { staffId: string; year: number }) {
           },
           { title: 'Branch', dataIndex: 'clinicName' },
           {
-            title: 'Run',
+            title: 'Type',
             width: 140,
-            render: (_: unknown, row: Row) => `${row.runType}${row.sequence > 1 ? ` #${row.sequence}` : ''}`,
+            render: (_: unknown, row: Row) => `${RUN_TYPE_LABEL[row.runType] ?? humanise(row.runType)}${row.sequence > 1 ? ` #${row.sequence}` : ''}`,
           },
           {
             title: 'Status',
             dataIndex: 'status',
             width: 120,
             render: (value: string) => (
-              <Tag color={value === 'PAID' ? 'success' : value === 'APPROVED' ? 'processing' : undefined}>{value}</Tag>
+              <Tag color={value === 'PAID' ? 'success' : value === 'APPROVED' ? 'processing' : undefined}>{humanise(value)}</Tag>
             ),
           },
           { title: 'Gross', dataIndex: 'gross', align: 'right' as const, width: 110, render: ringgit },
@@ -1177,7 +1186,7 @@ function HistoryReport({ staffId, year }: { staffId: string; year: number }) {
           <DataTableTotalRow
             cells={[
               {
-                value: `${data.totals.approvedRuns} of ${data.totals.runs} runs approved`,
+                value: `${data.totals.approvedRuns} of ${data.totals.runs} payrolls approved`,
                 colSpan: 5,
                 align: 'left',
               },
@@ -1214,7 +1223,7 @@ function PcbSummaryReport({ runId }: { runId: string }) {
         rowKey="staffId"
         loading={query.isLoading}
         rows={data.rows}
-        emptyText="Nobody was paid on this run."
+        emptyText="Nobody was paid this month."
         expandable={{
           rowExpandable: (row: Row) => row.note !== null || row.tp1 !== null,
           expandedRowRender: (row: Row) => (
@@ -1296,14 +1305,14 @@ function YtdReport({ year, legalEmployerId, clinicId }: { year: number; legalEmp
     <>
       <AdminSection
         title={`Year to date — ${data.taxYear}`}
-        description="The cumulative ledger approved runs write and next month's tax reads."
+        description="Year-to-date totals. Each approved month adds to them, and next month's tax is worked out from them."
       >
         <AdminNotice tone="info">{data.note}</AdminNotice>
         <DataTable<Row>
           rowKey={(row: Row) => `${row.legalEmployerId}:${row.staffId}`}
           loading={query.isLoading}
           rows={data.rows}
-          emptyText={`Nothing recorded for ${data.taxYear} yet — the ledger fills as runs are approved.`}
+          emptyText={`Nothing recorded for ${data.taxYear} yet — the totals fill as months are approved.`}
           expandable={{
             rowExpandable: (row: Row) => row.note !== null,
             expandedRowRender: (row: Row) => <span className="kw-muted">{row.note}</span>,
@@ -1474,7 +1483,7 @@ function UnpaidLeaveReport({ runId }: { runId: string }) {
         rowKey="staffId"
         loading={query.isLoading}
         rows={data.rows}
-        emptyText="No unpaid leave on this run."
+        emptyText="No unpaid leave this month."
         columns={[
           { title: 'Employee', dataIndex: 'name', render: (value: string, row: Row) => <Link to={row.drill}>{value}</Link> },
           { title: 'Days', dataIndex: 'days', align: 'right' as const, width: 90 },
@@ -1532,7 +1541,7 @@ function IncentivesReport({ runId }: { runId: string }) {
         rowKey={(row: Row) => `${row.staffId}:${row.component}:${row.label}`}
         loading={query.isLoading}
         rows={data.rows}
-        emptyText="No incentives or bonuses on this run."
+        emptyText="No incentives or bonuses this month."
         columns={[
           { title: 'Employee', dataIndex: 'name', render: (value: string, row: Row) => <Link to={row.drill}>{value}</Link> },
           {
@@ -1554,7 +1563,7 @@ function IncentivesReport({ runId }: { runId: string }) {
             title: 'Where it came from',
             render: (_: unknown, row: Row) => (
               <span>
-                {row.source}
+                {humanise(row.source)}
                 {row.reason ? <span className="kw-muted"> · {row.reason}</span> : null}
               </span>
             ),
@@ -1596,7 +1605,7 @@ function ExceptionsReport({ runId }: { runId: string }) {
   return (
     <AdminSection
       title="Exceptions and overrides"
-      description="What the run raised, and what somebody waved through — the record an approval was given over."
+      description="What payroll flagged this month, and what somebody waved through — the record an approval was given over."
     >
       <ReportHeader header={data} />
       <AdminNotice tone={data.totals.blockingOpen > 0 ? 'warn' : 'info'}>{data.note}</AdminNotice>
@@ -1604,7 +1613,7 @@ function ExceptionsReport({ runId }: { runId: string }) {
         rowKey="id"
         loading={query.isLoading}
         rows={data.rows}
-        emptyText="The run raised no exceptions."
+        emptyText="Payroll flagged nothing this month."
         expandable={{
           rowExpandable: () => true,
           expandedRowRender: (row: Row) => (

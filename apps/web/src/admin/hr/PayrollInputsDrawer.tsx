@@ -65,7 +65,7 @@ const GROUPS: { bucket: Bucket; title: string; hint: string; subtotal: boolean }
   {
     bucket: 'UNKNOWN',
     title: 'Not a payroll item Kuwick knows',
-    hint: 'These rows name an item that is not in Payroll items. The run will not pay them until the item exists.',
+    hint: 'These rows name an item that is not in Payroll items. Payroll will not pay them until the item exists.',
     subtotal: false,
   },
 ];
@@ -88,7 +88,7 @@ const BLANK: Form = { componentCode: undefined, amount: undefined, kind: 'ADDITI
 const said = (error: unknown) =>
   error && typeof error === 'object' && 'message' in error
     ? String((error as { message?: unknown }).message)
-    : 'The server refused the change and did not say why.';
+    : 'The change was not saved. Try again.';
 
 export function PayrollInputsDrawer({
   open,
@@ -359,7 +359,7 @@ export function PayrollInputsDrawer({
       {!canEdit ? (
         <AdminNotice tone="warn">
           Read-only: this month is approved or paid, or your account may not run payroll. An approved month is corrected with an
-          adjustment against the run.
+          adjustment to that month.
         </AdminNotice>
       ) : null}
 

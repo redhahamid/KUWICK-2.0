@@ -582,7 +582,7 @@ export function PayrollItemsPage() {
                           {version.changeReason ? ` — ${version.changeReason}` : ''}
                         </>
                       ) : (
-                        (version.sourceRef ?? 'Seeded by Kuwick. Not checked against any authority.')
+                        (version.sourceRef ?? 'Set by Kuwick. Not checked against any authority.')
                       )}
                     </div>
                   </li>
@@ -1061,7 +1061,7 @@ function AudienceDrawer({
         </div>
       ) : (
         <div className="hr-faint" style={{ marginTop: 12 }}>
-          Every employee on the run can have a {row.name} line, and the column, if it has one, is on every row.
+          Every employee on the payroll can have a {row.name} line, and the column, if it has one, is on every row.
         </div>
       )}
       {problem ? (

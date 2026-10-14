@@ -218,7 +218,7 @@ export function EpfBasisPanel({ staffId, canSeePay }: { staffId: string; canSeeP
                       {component.epfLiable ? (
                         <StatusChip tone="info">EPF wages</StatusChip>
                       ) : (
-                        <Tooltip title="Outside EPF wages by the pay-component catalogue's statutory treatment. Ticking it adds nothing to the basis.">
+                        <Tooltip title="Not EPF wages, as set in Payroll items. Ticking it adds nothing to the basis.">
                           <span>
                             <StatusChip tone="muted">outside EPF wages</StatusChip>
                           </span>

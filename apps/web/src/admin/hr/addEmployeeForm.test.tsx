@@ -207,7 +207,7 @@ describe('what payroll blocks on', () => {
     await waitFor(() => expect(current()).toContain('Pay & Statutory'));
     fireEvent.click(continueButton());
     await waitFor(() => expect(current()).toContain('Review'));
-    expect(screen.getByText(/No rest day — payroll refuses the month/)).toBeVisible();
+    expect(screen.getByText(/No rest day — payroll cannot be worked out/)).toBeVisible();
     expect(screen.getByText(/No EPF membership/)).toBeVisible();
   });
 });

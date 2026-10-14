@@ -316,12 +316,12 @@ export function AddEmployeePage() {
    */
   const outstanding = [
     // The run's own blockers, in the order it raises them.
-    !values.legalEmployerId ? 'No employing company — payroll refuses the month for them, and that refusal cannot be passed.' : null,
+    !values.legalEmployerId ? 'No employing company — payroll cannot be worked out for them, and this cannot be skipped.' : null,
     !values.salaryAmount ? 'No salary in force — payroll leaves them out.' : null,
     values.salaryAmount && values.salaryBasis && values.salaryBasis !== 'MONTHLY'
       ? 'Paid daily or hourly — payroll leaves them out until a monthly salary is recorded.'
       : null,
-    values.restDayOfWeek === undefined || values.restDayOfWeek === null ? 'No rest day — payroll refuses the month for them.' : null,
+    values.restDayOfWeek === undefined || values.restDayOfWeek === null ? 'No rest day — payroll cannot be worked out for them.' : null,
     !values.dateOfBirth ? 'No date of birth — SOCSO and EIS need an age.' : null,
     !values.epfMembership ? 'No EPF membership — EPF, SOCSO and EIS cannot be worked out.' : null,
     !values.taxResidence || !values.pcbCategory ? 'No tax residence or MTD category — monthly tax has to be entered by hand each month.' : null,
@@ -487,7 +487,7 @@ export function AddEmployeePage() {
                 </Form.Item>
               </div>
               <div className="kw-formRow">
-                <Form.Item name="workDaysPerWeek" label="Days a week" extra="Recorded on the record and shown there. The overtime divisor stays the rule set’s.">
+                <Form.Item name="workDaysPerWeek" label="Days a week" extra="Shown on their record. The days used to work out overtime still come from the pay rules.">
                   <Select
                     allowClear
                     placeholder="Choose"
@@ -605,7 +605,7 @@ export function AddEmployeePage() {
                 <Form.Item
                   name="restDayOfWeek"
                   label="Rest day"
-                  extra="Section 60(1) gives one whole day a week and the employer appoints it. Payroll refuses to work out a month without it. Where it varies week to week or rotates with the roster, say so: the month runs, and rest-day pay is keyed by hand."
+                  extra="Section 60(1) gives one whole day a week and the employer appoints it. Payroll refuses to work out a month without it. Where it varies week to week or rotates with the roster, say so: payroll still goes ahead, and rest-day pay is entered by hand."
                 >
                   <Select allowClear placeholder="Choose" options={REST_DAY_CHOICES} />
                 </Form.Item>
@@ -745,7 +745,7 @@ export function AddEmployeePage() {
               tone={outstanding.length > 0 ? 'attention' : 'ok'}
               hint={
                 outstanding.length === 0
-                  ? 'Everything payroll needs is here. They can be included in the next run.'
+                  ? 'Everything payroll needs is here. They can be included in next month’s payroll.'
                   : undefined
               }
             >

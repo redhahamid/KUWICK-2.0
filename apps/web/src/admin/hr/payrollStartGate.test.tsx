@@ -51,7 +51,7 @@ describe('earlier months of the year with no payroll', () => {
     );
     mount();
     const notice = screen.getByTestId('months-without-pay');
-    expect(notice).toHaveTextContent('Jun–Sep have no payroll run — PCB may be understated');
+    expect(notice).toHaveTextContent('Jun–Sep have no payroll — PCB may be understated');
     expect(notice).toHaveTextContent('For 2 people employed then. The month can still be worked out.');
     expect(within(notice).getByRole('link', { name: 'Demo Nurse' })).toHaveAttribute('href', '/admin/hr/employees/s1?tab=statutory&focus=tax');
     expect(notice).toHaveTextContent('Demo Clerk: Aug–Sep 2026');
