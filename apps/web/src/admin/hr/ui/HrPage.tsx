@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { Alert } from 'antd';
 
@@ -37,7 +38,13 @@ export function HrPage({
           <h1 className="kw-admin__title">{title}</h1>
           {sub ? <div className="hr-sub">{sub}</div> : null}
         </div>
-        {actions ? <div className="hr-pageHead__actions">{actions}</div> : null}
+        <div className="hr-pageHead__actions">
+          {actions}
+          {/* Help on every HR page: the owner/HR guide (testing, 15 October 2026). */}
+          <Link to="/admin/hr/help" className="hr-btn hr-btn--ghost hr-helpLink">
+            Help
+          </Link>
+        </div>
       </div>
       {error ? <Alert type="error" showIcon message={error} style={{ marginBottom: 18 }} /> : null}
       {children}

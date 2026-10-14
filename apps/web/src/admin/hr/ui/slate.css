@@ -3779,3 +3779,46 @@ textarea.hr-f {
     flex-wrap: wrap;
   }
 }
+
+/* Help (testing, 15 October 2026): the guides, readable on a phone. */
+.hr-top__help {
+  font-size: 13px;
+  color: var(--hr-ink2);
+  text-decoration: none;
+}
+.hr-btn.is-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.kw-helpPage {
+  max-width: 760px;
+}
+.kw-helpPage__bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.kw-help h1 {
+  font-size: 26px;
+  margin: 0 0 10px;
+}
+.kw-help h2 {
+  font-size: 19px;
+  margin: 26px 0 8px;
+}
+.kw-help ol,
+.kw-help ul {
+  padding-left: 22px;
+  margin: 0 0 8px;
+}
+.kw-help li {
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+.kw-help__after {
+  color: var(--hr-ink2);
+  font-size: 14px;
+}

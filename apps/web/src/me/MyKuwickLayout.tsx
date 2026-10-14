@@ -89,6 +89,9 @@ export function MyKuwickLayout() {
             {tenantName ? (
               <span className="hr-top__clinic">{tenantName}</span>
             ) : null}
+            <Link to="/my/help" className="hr-top__help">
+              Help
+            </Link>
             <span className="hr-top__name">{name || "—"}</span>
             <Link
               to="/my/profile"

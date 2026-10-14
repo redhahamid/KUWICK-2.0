@@ -3,6 +3,7 @@ import { App } from 'antd';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
+import { useCan } from '../../core/hooks/useCan';
 import { useRosterRange } from '../../appointment/hooks/useRoster';
 import { useLeaveRequests } from '../../hr/hooks/useLeaveRequests';
 import {
@@ -93,6 +94,7 @@ export function TimesheetPage() {
   const { message } = App.useApp();
   const navigate = useNavigate();
   const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
+  const mayManageAttendance = useCan('hr.attendance.manage');
 
   /*
    * THE MONTHLY SUMMARY'S FIGURES ARE LINKS, AND A LINK HAS TO ARRIVE
@@ -376,6 +378,19 @@ export function TimesheetPage() {
             <IconDownload />
             Export
           </button>
+          {/* The QR screen staff scan, for the clinic tablet (testing, 15 October 2026). */}
+          {mayManageAttendance ? (
+            <a
+              className={clinicId ? 'hr-btn' : 'hr-btn is-disabled'}
+              aria-disabled={!clinicId}
+              title={clinicId ? 'Open on the clinic tablet and leave it open' : 'Choose a branch first'}
+              href={clinicId ? `/kiosk/attendance?clinicId=${clinicId}` : undefined}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open kiosk screen
+            </a>
+          ) : null}
         </>
       }
     >

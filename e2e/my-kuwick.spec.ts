@@ -22,6 +22,7 @@ const ROUTES = [
   { path: '/my/claims', marker: 'Submit a claim' },
   { path: '/my/payslips', marker: 'Every paid month' },
   { path: '/my/profile', marker: 'Bank account' },
+  { path: '/my/help', marker: 'panduan untuk staf' },
 ] as const;
 
 const VIEWPORTS = [
