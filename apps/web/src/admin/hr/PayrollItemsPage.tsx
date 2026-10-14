@@ -4,7 +4,7 @@ import { App, DatePicker, Input, Radio, Select, Switch, Tooltip } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useCan } from '../../core/hooks/useCan';
 import { useEmployees, usePayComponentHistory, usePayComponents, useSeedPayComponents, useUpsertPayComponent } from '../hooks/useAdmin';
-import { Drawer, HrPage, Panel, StatusChip } from './ui';
+import { Drawer, HrPage, Panel, PanelHead, StatusChip } from './ui';
 import { Table } from './ui/Table';
 import { PayDateCell, ordinal } from './PayDateCell';
 import { IconLock } from './ui/icons';
@@ -54,9 +54,15 @@ const FLAGS: { key: Flag; title: string; width: number; hint?: string }[] = [
     // The employer's levy base decides whether an allowance's switch counts (UAT, 10 October 2026).
     hint: 'Counts toward the HRD levy, unless the employer’s levy base is “Basic salary only” (Settings → Company & statutory): then no allowance counts.',
   },
-  { key: 'prorated', title: 'Prorate', width: 84 },
-  { key: 'includeInOrpBase', title: 'OT base', width: 84 },
-  { key: 'includeInUnpaidLeaveBase', title: 'Unpaid-leave base', width: 130 },
+  // Plain words for the three calculation switches (testing, 15 October 2026); the fields are unchanged.
+  { key: 'prorated', title: 'Reduced for part months', width: 84, hint: 'Paid in part when somebody joins, leaves or is unpaid for part of the month.' },
+  { key: 'includeInOrpBase', title: 'Counts in the overtime rate', width: 84, hint: 'Added to basic pay when the hourly rate for overtime and rest-day work is worked out.' },
+  {
+    key: 'includeInUnpaidLeaveBase',
+    title: 'Counts in the unpaid-leave deduction',
+    width: 130,
+    hint: 'Added to basic pay when a day of unpaid leave is worked out and taken off.',
+  },
 ];
 
 /** Everything the server needs to save the row whole; a partial body resets the flags it does not name. */
@@ -105,7 +111,7 @@ const LAYOUT: { key: Layout; title: string; width: number; on: (name: string) =>
   },
   {
     key: 'carryForward',
-    title: 'Carry forward',
+    title: 'Repeat next month automatically',
     width: 110,
     on: (name) => `${name} will start each month with last month’s amount for each person.`,
     off: (name) => `${name} will start each month empty.`,
@@ -188,6 +194,16 @@ export const itemSummary = (row: PayComponentRow): string => {
   const head = row.includeIn === 'NET_ONLY' ? 'Reimbursement' : schemes.length > 0 ? schemes.join(' · ') : 'No EPF, SOCSO, EIS or PCB';
   return `${head} · ${paid}`;
 };
+
+/** The three groups a clinic reads its items in (testing, 15 October 2026). */
+type Group = 'EARNINGS' | 'CLAIMS' | 'DEDUCTIONS';
+const GROUPS: { key: Group; title: string; sub: string }[] = [
+  { key: 'EARNINGS', title: 'Earnings', sub: 'Pay, allowances, overtime and bonuses.' },
+  { key: 'CLAIMS', title: 'Claims', sub: 'Money paid back to staff, outside wages.' },
+  { key: 'DEDUCTIONS', title: 'Deductions', sub: 'Taken off pay: tax, unpaid leave and the like.' },
+];
+export const groupOf = (row: PayComponentRow): Group =>
+  row.type === 'DEDUCTION' ? 'DEDUCTIONS' : row.includeIn === 'NET_ONLY' ? 'CLAIMS' : 'EARNINGS';
 
 export function PayrollItemsPage() {
   const { message } = App.useApp();
@@ -386,7 +402,7 @@ export function PayrollItemsPage() {
                   onSuccess: () =>
                     message.success(
                       rows.length === 0
-                        ? 'Catalogue seeded — every flag unchecked'
+                        ? 'Standard items added. Check what each one counts towards before using it.'
                         : `Added ${missing.length === 1 ? missing[0].name : `${missing.length} standard items`}. Check the flags before using it.`,
                     ),
                   onError: (e: Error) => message.error(e.message),
@@ -394,7 +410,7 @@ export function PayrollItemsPage() {
               }
             >
               {rows.length === 0
-                ? 'Seed the catalogue'
+                ? 'Add the standard items'
                 : missing.length === 1
                   ? `Add ${missing[0].name}`
                   : `Add ${missing.length} standard items`}
@@ -403,67 +419,73 @@ export function PayrollItemsPage() {
         </>
       }
     >
+      {rows.length === 0 ? (
+        <Panel>
+          <div className="hr-faint">{components.isLoading ? 'Loading…' : 'No pay items are set up yet. Add the standard items, then say what each one counts towards.'}</div>
+        </Panel>
+      ) : null}
+      {GROUPS.map((group) => {
+        const groupRows = rows.filter((row) => groupOf(row) === group.key);
+        if (groupRows.length === 0) return null;
+        return (
+          <Panel key={group.key}>
+            <PanelHead title={group.title} sub={group.sub} />
+            <Table<PayComponentRow>
+              rows={groupRows}
+              rowKey="id"
+              emptyText="None."
+              onRow={(row) => ({ onClick: () => openItem(row) })}
+              columns={[
+                {
+                  title: 'Item',
+                  dataIndex: 'name',
+                  render: (value: string, row) => (
+                    <div>
+                      <button type="button" className="hr-linkButton hr-strong" onClick={(event) => { event.stopPropagation(); openItem(row); }}>
+                        {value}
+                      </button>
+                      {row.systemControlled ? (
+                        <span className="hr-lock" role="img" aria-label="System item: its kind is fixed, its treatment is not">
+                          <IconLock />
+                        </span>
+                      ) : null}
+                      {row.clinicOverride ? <div className="hr-faint hr-small">Your clinic’s setting</div> : null}
+                    </div>
+                  ),
+                },
+                {
+                  title: 'Adds or deducts',
+                  dataIndex: 'type',
+                  width: 140,
+                  render: (value: string) => (
+                    <StatusChip tone={value === 'DEDUCTION' ? 'attn' : 'info'}>
+                      {value === 'DEDUCTION' ? 'Deducts' : value === 'OVERTIME' ? 'Overtime' : 'Adds'}
+                    </StatusChip>
+                  ),
+                },
+                {
+                  title: 'What it counts towards',
+                  key: 'summary',
+                  render: (_: unknown, row: PayComponentRow) => <span className="hr-itemSummary">{itemSummary(row)}</span>,
+                },
+                {
+                  title: 'In use',
+                  dataIndex: 'active',
+                  width: 110,
+                  render: (active: boolean) => <StatusChip tone={active ? 'done' : 'muted'}>{active ? 'In use' : 'Off'}</StatusChip>,
+                },
+              ]}
+            />
+          </Panel>
+        );
+      })}
       <Panel>
-        <Table<PayComponentRow>
-          rows={rows}
-          loading={components.isLoading}
-          rowKey="id"
-          searchFields={['code', 'name']}
-          searchPlaceholder="Search pay items…"
-          searchLabel="Search pay items"
-          emptyText="No pay items are set up yet."
-          emptyHint="Seed the standard Malaysian set, then adjust what each item counts towards."
-          onRow={(row) => ({ onClick: () => openItem(row) })}
-          columns={[
-            {
-              title: 'Item',
-              dataIndex: 'name',
-              render: (value: string, row) => (
-                <div>
-                  <button type="button" className="hr-linkButton hr-strong" onClick={(event) => { event.stopPropagation(); openItem(row); }}>
-                    {value}
-                  </button>
-                  {row.systemControlled ? (
-                    <span className="hr-lock" role="img" aria-label="System item: its kind is fixed, its treatment is not">
-                      <IconLock />
-                    </span>
-                  ) : null}
-                  <div className="hr-faint hr-small">
-                    {row.code}
-                    {row.clinicOverride ? ' · your clinic’s setting' : ''}
-                  </div>
-                </div>
-              ),
-            },
-            {
-              title: 'Adds or deducts',
-              dataIndex: 'type',
-              width: 140,
-              render: (value: string) => (
-                <StatusChip tone={value === 'DEDUCTION' ? 'attn' : 'info'}>
-                  {value === 'DEDUCTION' ? 'Deducts' : value === 'OVERTIME' ? 'Overtime' : 'Adds'}
-                </StatusChip>
-              ),
-            },
-            {
-              title: 'What it counts towards',
-              key: 'summary',
-              render: (_: unknown, row: PayComponentRow) => <span className="hr-itemSummary">{itemSummary(row)}</span>,
-            },
-            {
-              title: 'In use',
-              dataIndex: 'active',
-              width: 110,
-              render: (active: boolean) => <StatusChip tone={active ? 'done' : 'muted'}>{active ? 'In use' : 'Off'}</StatusChip>,
-            },
-          ]}
-        />
         <div className="hr-panelNote">
           Click an item to change what it counts towards, when it is paid, who it is for, or switch it off.
           <details className="hr-details">
             <summary>Details</summary>
           <strong>Own column</strong> gives the item a column of its own on the payroll grid, between Basic and Other income, typed
-          straight in. <strong>Carry forward</strong> starts each new month with last month’s amount for each person, marked as
+          straight in. <strong>Repeat next month automatically</strong> starts each new month with last month’s amount for each person, marked as
           carried until it is edited or cleared; a line earned in the month before is carried with its earned-in month moved on
           by one, and a one-off late payment is not carried. <strong>Applies to</strong> says who the item is for: everyone, or
           the employees you name, who alone get its column, its line in the items drawer and its carried amount. All three are
@@ -474,7 +496,7 @@ export function PayrollItemsPage() {
       </Panel>
 
       {openRow ? (
-        <Drawer open title={openRow.name} sub={`${openRow.code} · ${itemSummary(openRow)}`} onClose={closeItem}>
+        <Drawer open title={openRow.name} sub={itemSummary(openRow)} onClose={closeItem}>
           <ItemPanel
             row={openRow}
             mayManage={mayManage}
@@ -923,6 +945,10 @@ function ItemPanel({
       <button type="button" className="hr-historyLink" onClick={onHistory}>
         History
       </button>
+      <details className="hr-details">
+        <summary>Details</summary>
+        <div className="hr-small hr-faint">Code: {row.code}{row.eaField ? ` · EA form box: ${row.eaField}` : ''}</div>
+      </details>
     </div>
   );
 }

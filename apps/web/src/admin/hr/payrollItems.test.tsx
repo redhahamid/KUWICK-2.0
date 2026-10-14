@@ -204,6 +204,16 @@ describe('the table, one line per item (UAT, 10 October 2026)', () => {
     expect(screen.queryByRole('switch')).toBeNull();
   });
 
+  it('groups items into Earnings and Deductions, by name, with the code kept under Details', () => {
+    mount({ ...list, components: [component(), component({ id: 'c-pcb', code: 'PCB', name: 'PCB (monthly tax deduction)', type: 'DEDUCTION', category: 'TAX_DEDUCTION' })] });
+    expect(screen.getByRole('heading', { name: 'Earnings' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Deductions' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Claims' })).toBeNull();
+    expect(screen.queryByText('ALLOWANCE')).toBeNull();
+    openItem('Allowance');
+    expect(screen.getByText(/Code: ALLOWANCE/)).toBeTruthy();
+  });
+
   it('opens the item’s panel when the row is clicked', () => {
     mount();
     openItem('Allowance');
@@ -239,7 +249,7 @@ describe('the statutory treatment of a payroll item', () => {
     mount();
     // Not in an audit log: on the screen, next to the figure it explains.
     // Two rows carry it now — the one in force and the one still a plan.
-    expect(screen.getAllByText(/your clinic’s setting/)).toHaveLength(2);
+    expect(screen.getAllByText(/your clinic’s setting/i)).toHaveLength(2);
     openItem('Mileage / travelling allowance');
     expect(screen.getByText('Your clinic')).toBeTruthy();
     expect(screen.getByText('Reimbursement of travel actually incurred.')).toBeTruthy();
@@ -371,7 +381,7 @@ describe('a component the clinic makes itself', () => {
     it('offers nothing when the catalogue is already complete', () => {
       mount(list);
       expect(screen.queryByRole('button', { name: /^Add .*standard item/ })).toBeNull();
-      expect(screen.queryByRole('button', { name: 'Seed the catalogue' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Add the standard items' })).toBeNull();
     });
 
     it('names the one item it would add, rather than counting it', () => {
@@ -392,7 +402,7 @@ describe('a component the clinic makes itself', () => {
 
     it('still offers the first seed on an empty catalogue', () => {
       mount({ ...list, components: [] });
-      expect(screen.getByRole('button', { name: 'Seed the catalogue' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Add the standard items' })).toBeTruthy();
     });
   });
 });
@@ -465,7 +475,7 @@ describe('how an item sits on the payroll grid', () => {
     expect(body.reason).toBeUndefined();
     expect(screen.queryByRole('dialog', { name: /take effect/i })).toBeNull();
 
-    fireEvent.click(screen.getByLabelText('Carry forward for Allowance'));
+    fireEvent.click(screen.getByLabelText('Repeat next month automatically for Allowance'));
     expect(upsertMutate.mock.calls[1][0]).toMatchObject({ code: 'ALLOWANCE', carryForward: true });
   });
 
@@ -476,7 +486,7 @@ describe('how an item sits on the payroll grid', () => {
     });
     openItem('Overtime');
     expect(screen.queryByLabelText('Own column for Overtime')).toBeNull();
-    expect(screen.queryByLabelText('Carry forward for Overtime')).toBeNull();
+    expect(screen.queryByLabelText('Repeat next month automatically for Overtime')).toBeNull();
     openItem('Allowance');
     expect(screen.getByLabelText('Own column for Allowance')).toBeTruthy();
   });

@@ -82,8 +82,6 @@ type ReportKey =
   | 'EXCEPTIONS'
   | 'PAYMENT_STATUS';
 
-type ReportCategory = 'Payroll' | 'Statutory' | 'Time & leave' | 'Claims & incentives' | 'People';
-
 /**
  * WHAT LIVES ON ANOTHER SCREEN.
  *
@@ -93,32 +91,30 @@ type ReportCategory = 'Payroll' | 'Statutory' | 'Time & leave' | 'Claims & incen
  * lists them as reports would be lying about what they are. They are listed,
  * marked, and they navigate.
  */
-const ELSEWHERE: { title: string; description: string; to: string; category: ReportCategory }[] = [
-  {
-    title: 'Payslips',
-    description: 'One per employee, from an approved run’s frozen snapshot.',
-    to: '/admin/hr/payroll',
-    category: 'People',
-  },
-  {
-    title: 'Attendance sheet',
-    description: 'Days, hours, lateness and overtime for any period. Exports to CSV.',
-    to: '/admin/hr/attendance',
-    category: 'Time & leave',
-  },
-  {
-    title: 'Leave balances',
-    description: 'Entitlement, taken and remaining, per person per leave type.',
-    to: '/admin/hr/leave',
-    category: 'Time & leave',
-  },
-  {
-    title: 'Medical benefits register',
-    description: 'What each employee has used against their entitlement this year.',
-    to: '/admin/hr/employees?view=benefits',
-    category: 'Claims & incentives',
-  },
+const ELSEWHERE: { title: string; description: string; to: string }[] = [
+  { title: 'Attendance sheet', description: 'Who came in, when, and for how many hours?', to: '/admin/hr/attendance' },
+  { title: 'Leave balances', description: 'How much leave does each person have left?', to: '/admin/hr/leave' },
+  { title: 'Medical benefits', description: 'How much medical benefit has each person used this year?', to: '/admin/hr/employees?view=benefits' },
 ];
+
+/**
+ * THE QUESTION EACH REPORT ANSWERS, in one short line, and the shelf it sits
+ * on (testing, 15 October 2026). The figures are the server's, unchanged.
+ */
+const HR_REPORTS = new Set(['CLAIMS', 'OVERTIME', 'UNPAID_LEAVE', 'INCENTIVES']);
+const QUESTION: Record<string, string> = {
+  CLAIMS: 'Which claims were made, approved and paid in a period?',
+  OVERTIME: 'Who worked overtime this month, and what did it cost?',
+  UNPAID_LEAVE: 'Who had pay taken off for unpaid leave?',
+  INCENTIVES: 'Which incentives and bonuses were paid?',
+  EMPLOYER_COST: 'What did each branch and company cost, with employer contributions?',
+  STATUTORY_TOTALS: 'How much is owed to EPF, SOCSO, EIS, PCB and HRD in total?',
+  PAYROLL_HISTORY: 'What was one person paid, month by month, this year?',
+  PCB_SUMMARY: 'How was each person’s monthly tax worked out?',
+  YTD: 'What has each person been paid so far this tax year?',
+  EXCEPTIONS: 'What did the payroll check flag, and what was done about it?',
+  PAYMENT_STATUS: 'Who has been paid, and who is still waiting?',
+};
 
 /**
  * REPORTS — a library of cards, not a dropdown.
@@ -233,7 +229,7 @@ export function PayrollReportsPage() {
       <HrPage
         error={errorText(firstError(catalogue, runs))}
         title={entry.title}
-        sub={entry.description}
+        sub={QUESTION[entry.key] ?? entry.description}
         crumb={
           <button type="button" className="hr-linkButton" onClick={() => setReport(null)}>
             Reports
@@ -346,8 +342,23 @@ export function PayrollReportsPage() {
     );
   }
 
-  const named = new Set(['PAYROLL_REGISTER', 'VARIANCE', 'PAYMENT_STATUS']);
-  const rest = (catalogue.data?.available ?? []).filter((row) => !named.has(row.key));
+  const named = new Set(['PAYROLL_REGISTER', 'VARIANCE']);
+  const available = (catalogue.data?.available ?? []).filter((row) => !named.has(row.key));
+  const hrReports = available.filter((row) => HR_REPORTS.has(row.key));
+  const advanced = available.filter((row) => !HR_REPORTS.has(row.key));
+  const openRow = (row: { key: string; title: string; description: string }) => (
+    <ReportRow
+      key={row.key}
+      title={row.title}
+      detail={QUESTION[row.key] ?? row.description}
+      state={null}
+      action={
+        <button type="button" className="hr-btn hr-btn--sm" onClick={() => openReport(row.key)}>
+          Open
+        </button>
+      }
+    />
+  );
   const openReport = (key: string) => setReport(key as ReportKey);
   const monthLabel = run ? dayjs(run.period).format('MMMM YYYY') : 'this month';
 
@@ -355,7 +366,7 @@ export function PayrollReportsPage() {
     <HrPage
       error={errorText(firstError(catalogue, runs))}
       title="Reports"
-      sub="Everything you hand to the accountant, the bank or the authorities."
+      sub="This month’s pay, what to send to the authorities, and HR records."
       actions={
         months.length > 0 ? (
           <SegControl<string>
@@ -369,28 +380,28 @@ export function PayrollReportsPage() {
     >
       {months.length === 0 ? (
         <div className="hr-notice hr-notice--info">
-          <strong>No payroll has been run yet.</strong> Every report on this page is a view of a month, so the shelf
-          fills up the first time a month is calculated. <Link to="/admin/hr/payroll">Start this month</Link>.
+          <strong>No payroll yet.</strong> Pay reports appear once you work out your first month.{' '}
+          <Link to="/admin/hr/payroll">Start this month</Link>.
         </div>
       ) : null}
 
       <Panel>
-        <PanelHead title="Payroll reports" sub={`What the clinic paid in ${monthLabel}, and what the bank needs.`} />
+        <PanelHead title="This month" sub={`What the clinic paid in ${monthLabel}.`} />
         <ReportRow
           title="Payroll summary"
-          detail="Gross, deductions, employer cost and net by employee."
+          detail="What did each person earn, have taken off, and take home?"
           state={run ? { tone: statusTone(run.status), label: `${dayjs(run.period).format('MMM')} ${run.status.toLowerCase()}` } : null}
           action={selectedRun ? <button type="button" className="hr-btn hr-btn--sm" onClick={() => openReport('PAYROLL_REGISTER')}>Open</button> : null}
         />
         <ReportRow
           title="Month comparison"
-          detail="This month against last, line by line. Flags anybody whose pay moved."
+          detail="Whose pay changed from last month, and why?"
           state={run ? { tone: 'info', label: 'Against the month before' } : null}
           action={selectedRun ? <button type="button" className="hr-btn hr-btn--sm" onClick={() => openReport('VARIANCE')}>Open</button> : null}
         />
         <ReportRow
           title="Bank payment listing"
-          detail="Net pay per employee with account numbers, for keying at the bank's own portal. Prepared in the run's Pay step so the listing and the payment are one act."
+          detail="How much goes into each bank account? Prepared at the Pay step of the month."
           state={
             run
               ? run.status === 'PAID'
@@ -412,85 +423,11 @@ export function PayrollReportsPage() {
 
       <Panel className="hr-mt">
         <PanelHead
-          title="Government reports"
-          sub="Prepared from the approved month and reconciled here. Kuwick never files anything: you upload at the authority's own portal and record what it issued."
-          actions={
-            approved && selectedRun ? (
-              <Link to={`/admin/hr/payroll/${selectedRun}/filing`} className="hr-btn hr-btn--sm">
-                Filing helper, per agency
-              </Link>
-            ) : null
-          }
-        />
-        {!approved ? (
-          <div className="hr-notice hr-notice--attn">
-            A statutory listing is made from an <strong>approved</strong> month, so these appear once
-            {run ? ` ${dayjs(run.period).format('MMMM')}` : ' the month'} is approved.
-          </div>
-        ) : statutory.isError ? (
-          <div className="hr-notice hr-notice--info">
-            {statutory.error instanceof Error ? statutory.error.message : 'Statutory outputs are unavailable.'}
-          </div>
-        ) : null}
-        {(statutory.data?.schemes ?? []).map((block) => (
-          <ReportRow
-            key={block.scheme}
-            title={SCHEME_TITLE[block.scheme] ?? block.scheme}
-            detail={SCHEME_DETAIL[block.scheme] ?? 'Employee and employer contributions for the month.'}
-            state={
-              block.submission
-                ? { tone: 'muted', label: `Filed ${dayjs(block.submission.submittedDate).format('D MMM')} · ${block.submission.reference}` }
-                : block.notComputed > 0
-                  ? { tone: 'attn', label: `${block.notComputed} employee${block.notComputed === 1 ? '' : 's'} unanswered` }
-                  : { tone: 'done', label: 'Ready' }
-            }
-            action={
-              <span className="hr-dots">
-                <button
-                  type="button"
-                  className="hr-btn hr-btn--sm"
-                  onClick={() =>
-                    downloadFile(
-                      `/workforce/payroll/runs/${selectedRun}/statutory-outputs/${block.scheme.toLowerCase()}/listing`,
-                      `${block.scheme.toLowerCase()}-listing-${statutory.data?.period ?? ''}.csv`,
-                    ).catch((error) => message.error(error instanceof Error ? error.message : 'Could not download that.'))
-                  }
-                >
-                  <IconDownload />
-                  CSV
-                </button>
-                <Link className="hr-btn hr-btn--sm" to={`/admin/hr/payroll/${selectedRun}`}>
-                  Record filing
-                </Link>
-              </span>
-            }
-          />
-        ))}
-        <ReportRow
-          title="EA forms"
-          detail="Year-end statement of remuneration, one per employee. Not built yet — the EA form is a later piece; the box mapping on each payroll item is stored for it and read by nothing."
-          state={{ tone: 'muted', label: `From January ${dayjs().year() + 1}` }}
-          action={
-            <button type="button" className="hr-btn hr-btn--sm" onClick={() => openReport('YTD')}>
-              Year to date
-            </button>
-          }
-        />
-        <ReportRow
-          title="Borang E"
-          detail="The employer's annual return to LHDN, due in March."
-          state={{ tone: 'muted', label: `March ${dayjs().year() + 1}` }}
-          action={null}
-        />
-      </Panel>
-
-      <Panel className="hr-mt">
-        <PanelHead
           title="Payslips"
           sub={
             approved
-              ? `${payslips.data?.payslips.length ?? 0} for ${monthLabel}, from the approved month's frozen snapshot.`
-              : 'A payslip comes from an approved month, so this fills once the month is approved.'
+              ? `${payslips.data?.payslips.length ?? 0} for ${monthLabel}.`
+              : 'Payslips are ready once the month is approved.'
           }
           actions={
             approved && payslipRows.length > 0 ? (
@@ -575,46 +512,93 @@ export function PayrollReportsPage() {
         ) : null}
         <div className="hr-tableFoot">
           <span>
-            An employee also has every payslip in their own portal, the day the month is paid. Kuwick does not email
-            them: there is no mail sender in the product, and a payslip is not something to guess at.
+            Staff also see every payslip in My Kuwick once the month is paid. Kuwick does not email payslips.
           </span>
         </div>
       </Panel>
 
       <Panel className="hr-mt">
         <PanelHead
-          title="Everything else"
-          sub="The rest of what the server serves, from the same run and the same figures."
+          title="To send"
+          sub="Files for EPF, SOCSO, LHDN and HRD Corp. You upload them on each authority’s own website, then record the reference here."
+          actions={
+            approved && selectedRun ? (
+              <Link to={`/admin/hr/payroll/${selectedRun}/filing`} className="hr-btn hr-btn--sm">
+                Step-by-step filing
+              </Link>
+            ) : null
+          }
         />
-        {rest.map((row) => (
+        {!approved ? (
+          <div className="hr-notice hr-notice--attn">
+            These files are ready once {run ? dayjs(run.period).format('MMMM') : 'the month'} is <strong>approved</strong>.
+          </div>
+        ) : statutory.isError ? (
+          <div className="hr-notice hr-notice--info">
+            {statutory.error instanceof Error ? statutory.error.message : 'Statutory outputs are unavailable.'}
+          </div>
+        ) : null}
+        {(statutory.data?.schemes ?? []).map((block) => (
           <ReportRow
-            key={row.key}
-            title={row.title}
-            detail={row.description}
-            state={{
-              tone: 'muted',
-              label:
-                row.scope === 'RUN'
-                  ? 'One payroll run'
-                  : row.scope === 'DATE_RANGE'
-                    ? 'A date range'
-                    : row.scope === 'EMPLOYEE'
-                      ? 'One employee, one year'
-                      : 'A tax year',
-            }}
+            key={block.scheme}
+            title={SCHEME_TITLE[block.scheme] ?? block.scheme}
+            detail={SCHEME_DETAIL[block.scheme] ?? 'Employee and employer contributions for the month.'}
+            state={
+              block.submission
+                ? { tone: 'muted', label: `Filed ${dayjs(block.submission.submittedDate).format('D MMM')} · ${block.submission.reference}` }
+                : block.notComputed > 0
+                  ? { tone: 'attn', label: `${block.notComputed} employee${block.notComputed === 1 ? '' : 's'} missing details` }
+                  : { tone: 'done', label: 'Ready' }
+            }
             action={
-              <button type="button" className="hr-btn hr-btn--sm" onClick={() => openReport(row.key)}>
-                Open
-              </button>
+              <span className="hr-dots">
+                <button
+                  type="button"
+                  className="hr-btn hr-btn--sm"
+                  onClick={() =>
+                    downloadFile(
+                      `/workforce/payroll/runs/${selectedRun}/statutory-outputs/${block.scheme.toLowerCase()}/listing`,
+                      `${block.scheme.toLowerCase()}-listing-${statutory.data?.period ?? ''}.csv`,
+                    ).catch((error) => message.error(error instanceof Error ? error.message : 'Could not download that.'))
+                  }
+                >
+                  <IconDownload />
+                  CSV
+                </button>
+                <Link className="hr-btn hr-btn--sm" to={`/admin/hr/payroll/${selectedRun}`}>
+                  Record filing
+                </Link>
+              </span>
             }
           />
         ))}
+        <ReportRow
+          title="EA forms"
+          detail="Each employee’s yearly pay statement for their tax return, due by end of February."
+          state={{ tone: 'muted', label: `From January ${dayjs().year() + 1}` }}
+          action={
+            <button type="button" className="hr-btn hr-btn--sm" onClick={() => openReport('YTD')}>
+              Year to date
+            </button>
+          }
+        />
+        <ReportRow
+          title="Borang E"
+          detail="The clinic’s yearly return to LHDN, due by 31 March."
+          state={{ tone: 'muted', label: `March ${dayjs().year() + 1}` }}
+          action={null}
+        />
+      </Panel>
+
+
+      <Panel className="hr-mt">
+        <PanelHead title="HR" sub="Attendance, leave, claims and extra pay." />
         {ELSEWHERE.map((row) => (
           <ReportRow
             key={row.title}
             title={row.title}
             detail={row.description}
-            state={{ tone: 'info', label: 'A screen, not a report' }}
+            state={null}
             action={
               <Link className="hr-btn hr-btn--sm" to={row.to}>
                 Open
@@ -622,22 +606,15 @@ export function PayrollReportsPage() {
             }
           />
         ))}
+        {hrReports.map(openRow)}
       </Panel>
 
-      {/*
-        * WHAT DOES NOT EXIST, listed rather than left to be discovered on the
-        * day a clinic needs it. Each carries the reason it cannot be built
-        * yet, not a promise about when it will be.
-        */}
-      {catalogue.data && catalogue.data.notAvailableYet.length > 0 ? (
+      {advanced.length > 0 ? (
         <Panel className="hr-mt">
-          <PanelHead
-            title="Not available yet"
-            sub="Reports the payroll specification names that this build does not serve, and why."
-          />
-          {catalogue.data.notAvailableYet.map((row) => (
-            <ReportRow key={row.key} title={row.title} detail={row.why} state={{ tone: 'muted', label: 'Not built' }} action={null} />
-          ))}
+          <details className="hr-details" data-testid="reports-advanced">
+            <summary>Advanced</summary>
+            {advanced.map(openRow)}
+          </details>
         </Panel>
       ) : null}
     </HrPage>

@@ -236,6 +236,12 @@ describe('the variance shown is a subtraction the API already did', () => {
     // And Review no longer repeats the register at all.
     expect(code(runSource)).not.toMatch(/vs last period/);
   });
+
+  it('shelves reports as This month, To send, HR and a folded Advanced, with no dead entries (testing, 15 October 2026)', () => {
+    for (const shelf of ['"This month"', '"To send"', '"HR"', '<summary>Advanced</summary>']) expect(reportsSource).toContain(shelf);
+    expect(reportsSource).not.toContain('Not available yet');
+    expect(reportsSource).not.toContain("title: 'Payslips'");
+  });
 });
 
 /*
