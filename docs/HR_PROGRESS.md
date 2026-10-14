@@ -11,7 +11,7 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi:**
 `20261015090000_shift_templates` (jadual baharu `shift_templates`; lajur baharu
 pada `provider_shifts` dan `attendance_policies`), dijalankan di staging dengan
-*Migrate only* sebelum master — run #MIGRATE_RUN. Audit jurang:
+*Migrate only* sebelum master — run #24. Audit jurang:
 `docs/HR_GAP_AUDIT.md`.
 
 - `[D]` **Settings → Attendance & leave → Shifts** (`/admin/hr/settings/shifts`):
