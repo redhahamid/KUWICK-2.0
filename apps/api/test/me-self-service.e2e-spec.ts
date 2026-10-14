@@ -609,6 +609,34 @@ describe('My Kuwick: employee self-service (e2e)', () => {
     new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kuala_Lumpur', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const shiftDay = (key: string, days: number) => new Date(new Date(`${key}T00:00:00.000Z`).getTime() + days * 86400000).toISOString().slice(0, 10);
 
+  describe('my details (testing, 15 October 2026)', () => {
+    it('keeps my own phone up to date, and changes my bank account only once HR approves it', async () => {
+      await request(server()).patch('/me/contact').set('Authorization', nurseBearer).send({ phone: '012-000 1111', city: 'Kajang' }).expect(200);
+      const me = await request(server()).get('/me').set('Authorization', nurseBearer).expect(200);
+      expect(me.body.employment).toMatchObject({ phone: '012-000 1111', city: 'Kajang' });
+
+      const proof = await request(server())
+        .post('/me/files?kind=BANK_PROOF')
+        .set('Authorization', nurseBearer)
+        .attach('file', PNG, { filename: 'statement.png', contentType: 'image/png' })
+        .expect(201);
+      await request(server())
+        .post('/me/bank-change')
+        .set('Authorization', nurseBearer)
+        .send({ bankName: 'Demo Bank', bankAccountNo: '1234 5678 90', bankAccountName: 'Nurul Ujian', proofFileId: proof.body.id })
+        .expect(201);
+      expect((await request(server()).get('/me/bank-change').set('Authorization', nurseBearer).expect(200)).body.request).toMatchObject({ status: 'PENDING', lastFour: '7890' });
+
+      const waiting = (await request(server()).get('/workforce/bank-changes').set('Authorization', ownerBearer).expect(200)).body as { id: string; staffId: string }[];
+      const mine = waiting.find((row) => row.staffId === nurse)!;
+      await request(server()).post(`/workforce/bank-changes/${mine.id}/decide`).set('Authorization', nurseBearer).send({ approve: true }).expect(403);
+      await request(server()).post(`/workforce/bank-changes/${mine.id}/decide`).set('Authorization', ownerBearer).send({ approve: true }).expect(201);
+      const after = await request(server()).get('/me/bank-change').set('Authorization', nurseBearer).expect(200);
+      expect(after.body.current).toMatchObject({ bankName: 'Demo Bank', lastFour: '7890' });
+      expect(after.body.request.status).toBe('APPROVED');
+    });
+  });
+
   describe('files, consent and a clock-in with proof (Piece 3g)', () => {
     it('keeps a file for its owner, serves it to them and to HR, and to nobody else', async () => {
       const uploaded = await request(server())
