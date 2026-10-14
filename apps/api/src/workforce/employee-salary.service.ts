@@ -14,13 +14,49 @@ import { recordAudit } from '../finance/admin-audit';
 import { toCents, fromCents, formatCents } from '../finance/money';
 import { resolveSalaryForPeriod, SalaryRow } from './salary-resolution';
 import { ParityInput, ParityReport, salaryParity } from './salary-parity';
-import { RecordSalaryDto } from './dto/record-salary.dto';
+import { CorrectSalaryDto, DeleteSalaryDto, RecordSalaryDto } from './dto/record-salary.dto';
+import type { AdminTx } from '../finance/admin-actor';
+import type { ActingStaff } from '../clinical/clinical-actor';
 
 /** Inclusive first and last day of the month a date falls in, in UTC. */
 function monthBounds(period: Date): { start: Date; end: Date } {
   const start = new Date(Date.UTC(period.getUTCFullYear(), period.getUTCMonth(), 1));
   const end = new Date(Date.UTC(period.getUTCFullYear(), period.getUTCMonth() + 1, 0));
   return { start, end };
+}
+
+const isoDay = (date: Date) => date.toISOString().slice(0, 10);
+const monthName = (date: Date) => date.toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+
+/**
+ * A ROW MAY BE CORRECTED OR DELETED ONLY WHILE NO APPROVED MONTH IT PAYS
+ * (UAT, 14 October 2026; the same rule as payroll items and HRD): a month
+ * this employee was paid in, approved, from the row's first month to its
+ * last. Refused, naming every such month; nothing is changed.
+ */
+async function refuseOverApproved(tx: AdminTx, staffId: string, from: Date, to: Date | null) {
+  const runs = await tx.payrollRun.findMany({
+    where: {
+      status: { in: ['APPROVED', 'PAID'] },
+      period: { gte: new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1)), ...(to ? { lte: to } : {}) },
+      lines: { some: { staffId } },
+    },
+    select: { period: true },
+    orderBy: { period: 'asc' },
+  });
+  if (runs.length === 0) return;
+  const named = [...new Set(runs.map((run) => monthName(run.period)))];
+  const one = named.length === 1;
+  throw new ConflictException(
+    `${named.join(', ')} ${one ? 'is' : 'are'} approved for this employee and paid from this salary row. Nothing was changed. ` +
+      `Reopen ${one ? 'that month' : 'those months, latest first,'} and then correct the row.`,
+  );
+}
+
+function requireReason(reason: string | undefined): string {
+  const said = (reason ?? '').trim();
+  if (!said) throw new BadRequestException('Say why: the reason is kept with the change.');
+  return said;
 }
 
 /**
@@ -148,6 +184,83 @@ export class EmployeeSalaryService {
     };
   }
 
+  /** The row, of this employee, or 404; and the payroll access recording a salary needs. */
+  private async rowFor(tx: AdminTx, actor: ActingStaff, staffId: string, id: string) {
+    if (!actorCan(actor, 'hr.payroll.view')) {
+      throw new ForbiddenException('Changing a salary needs payroll access, not employee-record access alone.');
+    }
+    const row = await tx.employeeSalary.findFirst({ where: { id, staffId } });
+    if (!row) throw new NotFoundException('That salary row is not on record for this employee.');
+    return row;
+  }
+
+  /**
+   * "CORRECT" (UAT, 14 October 2026): a keying error in a row's amount or
+   * basis. Its dates stay; every month it covers is paid the corrected figure.
+   */
+  async correct(staffId: string, id: string, dto: CorrectSalaryDto) {
+    return withAdminTx(this.rawPrisma, 'hr.employee.manage', async (tx, actor) => {
+      const reason = requireReason(dto.reason);
+      const row = await this.rowFor(tx, actor, staffId, id);
+      const basis = dto.basis ?? row.basis;
+      const before = { amount: formatCents(toCents(row.amount)), basis: row.basis };
+      const after = { amount: formatCents(toCents(dto.amount)), basis };
+      if (before.amount === after.amount && before.basis === after.basis) {
+        throw new BadRequestException('That is the figure already on record. Nothing to correct.');
+      }
+      await refuseOverApproved(tx, staffId, row.effectiveFrom, row.effectiveTo);
+      const saved = await tx.employeeSalary.update({ where: { id }, data: { amount: dto.amount, basis } });
+      await recordAudit(tx, actor, {
+        action: 'employeeSalary.corrected',
+        entityType: 'EmployeeSalary',
+        entityId: id,
+        reason: `Corrected the salary from ${isoDay(row.effectiveFrom)}: ${reason}`,
+        before: { ...before, effectiveFrom: isoDay(row.effectiveFrom) },
+        after: { ...after, effectiveFrom: isoDay(row.effectiveFrom) },
+      });
+      return saved;
+    });
+  }
+
+  /**
+   * "DELETE" (UAT, 14 October 2026): a row added by mistake. The row before
+   * it runs on over the deleted row's dates, so it closes where the deleted
+   * row closed, or stays open.
+   */
+  async remove(staffId: string, id: string, dto: DeleteSalaryDto) {
+    return withAdminTx(this.rawPrisma, 'hr.employee.manage', async (tx, actor) => {
+      const reason = requireReason(dto.reason);
+      const row = await this.rowFor(tx, actor, staffId, id);
+      await refuseOverApproved(tx, staffId, row.effectiveFrom, row.effectiveTo);
+      const previous = await tx.employeeSalary.findFirst({
+        where: { staffId, effectiveFrom: { lt: row.effectiveFrom } },
+        orderBy: { effectiveFrom: 'desc' },
+      });
+      await tx.employeeSalary.delete({ where: { id } });
+      if (previous) await tx.employeeSalary.update({ where: { id: previous.id }, data: { effectiveTo: row.effectiveTo } });
+      await recordAudit(tx, actor, {
+        action: 'employeeSalary.deleted',
+        entityType: 'EmployeeSalary',
+        entityId: id,
+        reason: `Deleted the salary from ${isoDay(row.effectiveFrom)}: ${reason}`,
+        before: {
+          amount: formatCents(toCents(row.amount)),
+          basis: row.basis,
+          effectiveFrom: isoDay(row.effectiveFrom),
+          effectiveTo: row.effectiveTo ? isoDay(row.effectiveTo) : null,
+          reason: row.reason,
+        },
+        after: previous
+          ? {
+              runsOn: { amount: formatCents(toCents(previous.amount)), basis: previous.basis, effectiveFrom: isoDay(previous.effectiveFrom) },
+              effectiveTo: row.effectiveTo ? isoDay(row.effectiveTo) : null,
+            }
+          : null,
+      });
+      return { deleted: id, runsOn: previous?.id ?? null };
+    });
+  }
+
   /**
    * Record a salary from a date.
    *
@@ -179,7 +292,7 @@ export class EmployeeSalaryService {
       const clash = await tx.employeeSalary.findFirst({ where: { staffId, effectiveFrom: from } });
       if (clash) {
         throw new ConflictException(
-          `A salary already starts on ${dto.effectiveFrom} for this employee. Correct that row rather than adding a second one for the same day.`,
+          `A salary already starts on ${dto.effectiveFrom} for this employee. Use Correct on that row rather than adding a second one for the same day.`,
         );
       }
 

@@ -33,6 +33,8 @@ const mutateAsync = vi.fn().mockResolvedValue({});
 vi.mock('../hooks/useAdmin', () => ({
   useSalaryHistory: () => ({ data: HISTORY, isLoading: false }),
   useRecordSalary: () => ({ mutateAsync, isPending: false }),
+  useCorrectSalary: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteSalary: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('../../core/hooks/useCan', () => ({ useCan: () => true }));
 

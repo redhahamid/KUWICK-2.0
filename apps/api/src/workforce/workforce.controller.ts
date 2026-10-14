@@ -44,7 +44,7 @@ import { PayrollInputService } from './payroll-input.service';
 import { PayrollItemsImportService } from './payroll-items-import.service';
 import { ItemsImportDto } from './dto/items-import.dto';
 import { UpsertLegalEmployerDto } from './dto/upsert-legal-employer.dto';
-import { RecordSalaryDto } from './dto/record-salary.dto';
+import { CorrectSalaryDto, DeleteSalaryDto, RecordSalaryDto } from './dto/record-salary.dto';
 import { CreateRecurringItemDto, UpdateRecurringItemDto } from './dto/recurring-item.dto';
 import { EmployeeRecurringItemService } from './employee-recurring-item.service';
 import { RecordContributionBasisDto } from './dto/record-contribution-basis.dto';
@@ -457,6 +457,16 @@ export class WorkforceController {
   @Post('employees/:staffId/salary')
   recordSalary(@Param('staffId') staffId: string, @Body() dto: RecordSalaryDto) {
     return this.salaries.record(staffId, dto);
+  }
+
+  @Patch('employees/:staffId/salary/:id')
+  correctSalary(@Param('staffId') staffId: string, @Param('id') id: string, @Body() dto: CorrectSalaryDto) {
+    return this.salaries.correct(staffId, id, dto);
+  }
+
+  @Delete('employees/:staffId/salary/:id')
+  deleteSalary(@Param('staffId') staffId: string, @Param('id') id: string, @Body() dto: DeleteSalaryDto) {
+    return this.salaries.remove(staffId, id, dto);
   }
 
   // --- Recurring items: what a component carries for one employee monthly ----

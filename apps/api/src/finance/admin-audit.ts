@@ -109,6 +109,8 @@ export type AuditAction =
   | 'legalEmployer.updated'
   | 'employee.employerAssigned'
   | 'employeeSalary.recorded'
+  | 'employeeSalary.corrected'
+  | 'employeeSalary.deleted'
   /** A monthly allowance or deduction on one employee, dated. */
   | 'employeeRecurringItem.created'
   | 'employeeRecurringItem.updated'

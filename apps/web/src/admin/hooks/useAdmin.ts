@@ -1571,6 +1571,24 @@ export function useRecordSalary() {
   );
 }
 
+/** "Correct" a salary row's amount and basis (UAT, 14 October 2026). */
+export function useCorrectSalary() {
+  return useAdminMutation(
+    ({ staffId, id, ...body }: { staffId: string; id: string; amount: string; basis: string; reason: string }) =>
+      apiClient.patch(`/workforce/employees/${staffId}/salary/${id}`, body),
+    ["admin-hr"],
+  );
+}
+
+/** "Delete" a salary row added by mistake; the row before it runs on. */
+export function useDeleteSalary() {
+  return useAdminMutation(
+    ({ staffId, id, reason }: { staffId: string; id: string; reason: string }) =>
+      apiClient.delete(`/workforce/employees/${staffId}/salary/${id}`, { reason }),
+    ["admin-hr"],
+  );
+}
+
 export function usePayComponents() {
   return useQuery({
     queryKey: ["admin-hr", "pay-components"],

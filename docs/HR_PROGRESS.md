@@ -6,6 +6,31 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 51 — 14 Oktober 2026 — "Correct" dan "Delete" pada baris gaji
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Tiada
+migrasi.**
+
+- `[D]` Setiap baris gaji kini ada **Correct** (tukar amaun dan basis; tarikh
+  kekal) dan **Delete** (buang baris yang tersalah tambah; baris sebelumnya
+  terus berjalan atas tarikh baris itu). Sebab wajib.
+- `[D]` Ditolak jika ada bulan DILULUSKAN (APPROVED/PAID) untuk pekerja itu
+  dalam tempoh baris tersebut, menamakan bulan itu: "Jun 2026 is approved for
+  this employee and paid from this salary row. Nothing was changed. Reopen
+  that month and then correct the row." Peraturan sama seperti item payroll
+  dan HRD, tetapi dikira bagi pekerja itu sahaja.
+- `[D]` Dilog: `employeeSalary.corrected` dan `employeeSalary.deleted`, dengan
+  nilai lama, nilai baharu, siapa, bila dan sebab.
+- `[D]` Bulan draf yang memakai baris itu akan meminta dikira semula (cap
+  jari rekod gaji berubah).
+- `[D]` Paparan asal kini menunjukkan baris yang berkuat kuasa hari ini
+  sebagai *Current*, walaupun baris kemudian sudah direkod (sebelum ini baris
+  Jun tersembunyi di bawah *History* dalam kes no. 42).
+- `[D]` **Ujian**: API baharu `employee-salary-correct` (4); web baharu
+  `salaryRowFix` (4).
+
+---
+
 ## Batch 50 — 14 Oktober 2026 — Pratonton payslip ("Preview payslips")
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi:**
