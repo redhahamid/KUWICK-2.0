@@ -6,6 +6,46 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 61 (Malam 2 dan 3) — 15 Oktober 2026 — Bahasa mudah di skrin HR; Borang EA dan Borang E; klinik demo kosong
+
+**Tiada migrasi.** Kotak EA sudah ada pada setiap item gaji (`ea_field`).
+
+**Bahasa mudah**
+- `[D]` Payroll items: nama sahaja (kod di bawah *Details*), dalam tiga kumpulan
+  *Earnings*, *Claims*, *Deductions*; "Carry forward" → *Repeat next month
+  automatically*, "Prorate" → *Reduced for part months*, "OT base" → *Counts in
+  the overtime rate*, "Unpaid-leave base" → *Counts in the unpaid-leave deduction*.
+- `[D]` Reports: *This month*, *To send*, *HR*, dan *Advanced* (dilipat); satu
+  baris soalan bagi setiap laporan; bahagian "Not available yet" dan entri
+  Payslips berganda dibuang.
+- `[D]` ~163 ayat di 38 skrin HR ditukar ("run" → bulan, "rule set" → pay rules,
+  "frozen snapshot" → the approved figures, ralat "server" → ayat biasa, kod
+  status → perkataan). Tiada kiraan diubah.
+
+**Borang EA dan Borang E** (Reports → *EA forms* → *Year-end forms*)
+- `[D]` Satu muka surat EA bagi setiap pekerja, susunan C.P.8A (Melayu dahulu,
+  Inggeris di bawah), *Download all* = satu PDF semua orang.
+- `[D]` *Check before you print*: tiada no. cukai, tiada IC/pasport, majikan
+  tiada no. E, bulan yang hanya ada jumlah (diletak di B1(a)), bulan belum diluluskan.
+- `[D]` Borang E: jumlah setiap majikan + senarai pekerja C.P.8D (CSV); tarikh akhir 31 Mac.
+- `[D]` **Bercanggah dengan arahan:** "box mapping already stored on each payroll
+  item" — medan itu wujud tetapi **kosong pada setiap item** (DB tempatan; staging
+  dijangka sama `[A]`). Cadangan yang dibina: Kuwick mencadangkan kotak dari jenis
+  item (gaji → B1(a), bonus/komisen/insentif → B1(b), elaun → B1(c), tidak
+  bercukai → F); klinik boleh tukar di Payroll items → *EA form box*.
+- `[A]` SOCSO dan EIS bahagian pekerja dijumlahkan di E2; LINDUNG tidak. Semak
+  dengan penasihat cukai dan borang C.P.8A terkini sebelum diedar.
+
+**Klinik demo** — `[D]` "Klinik Demo Baru" dicipta di staging (1 cawangan,
+1 log masuk pemilik, 0 pekerja, 0 gaji), cara yang sama seperti konsol platform.
+Klinik Contoh (UAT) tidak disentuh. Workflow: *Create demo clinic*.
+
+**Ujian:** gate 0–3 lulus; Playwright 102/103 — golden path gagal sekali
+(preskripsi belum kelihatan sejurus disimpan) dan lulus bila diulang `[D]`;
+tiada kod klinikal diubah dalam batch ini.
+
+---
+
 ## Batch 60 (Malam 1) — 15 Oktober 2026 — Akses klinikal doktor, sebab pembetulan gaji
 
 **Migrasi:** `20261016090000_clinical_access` (satu lajur `staff.clinical_access`,
