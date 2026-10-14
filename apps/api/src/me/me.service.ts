@@ -368,10 +368,11 @@ export class MeService {
     const actor = await this.me();
     const start = this.dateOnly(from);
     const end = this.dateOnly(to);
-    const [shifts, leave, closures] = await Promise.all([
+    const [rostered, leave, closures, publications] = await Promise.all([
       this.prisma.providerShift.findMany({
         where: { staffId: actor.id, shiftDate: { gte: start, lte: end } },
         orderBy: [{ shiftDate: 'asc' }, { startsAt: 'asc' }],
+        include: { template: { select: { name: true, colour: true } } },
       }),
       this.prisma.leaveRequest.findMany({
         where: { staffId: actor.id, status: LeaveStatus.APPROVED, startDate: { lte: end }, endDate: { gte: start } },
@@ -382,7 +383,12 @@ export class MeService {
             select: { date: true, reason: true },
           })
         : Promise.resolve([]),
+      this.prisma.rosterPublication.findMany({ select: { clinicId: true, month: true } }),
     ]);
+    // PUBLISHED ONLY (UAT, 14 October 2026): a month the branch has not
+    // published is a draft its staff do not see yet.
+    const published = new Set(publications.map((row) => `${row.clinicId}:${row.month}`));
+    const shifts = rostered.filter((shift) => published.has(`${shift.clinicId}:${shift.shiftDate.toISOString().slice(0, 7)}`));
 
     return {
       from,
@@ -394,6 +400,7 @@ export class MeService {
         endsAt: shift.endsAt,
         shiftType: shift.shiftType,
         note: shift.note,
+        template: shift.template,
       })),
       leave: leave.map((row) => ({
         leaveType: row.leaveType,

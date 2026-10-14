@@ -226,7 +226,9 @@ function TemplatesPanel({ group }: { group: ShiftGroup }) {
   const templates = useShiftTemplates({ group });
   const save = useSaveShiftTemplate();
   const remove = useRemoveShiftTemplate();
-  const canManage = useCan('appointment.manage_roster');
+  const canWholeRoster = useCan('appointment.manage_roster');
+  const canGroupRoster = useCan(group === 'DOCTOR' ? 'roster.manage_doctors' : 'roster.manage_staff');
+  const canManage = canWholeRoster || canGroupRoster;
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const branchName = (id: string | null) => (id ? (clinics ?? []).find((clinic) => clinic.id === id)?.name ?? 'One branch' : 'Every branch');
@@ -269,7 +271,7 @@ function TemplatesPanel({ group }: { group: ShiftGroup }) {
               setDraft(emptyDraft(group));
             }}
             disabled={!canManage}
-            title={canManage ? undefined : permissionHint('appointment.manage_roster')}
+            title={canManage ? undefined : permissionHint(group === 'DOCTOR' ? 'roster.manage_doctors' : 'roster.manage_staff')}
           >
             Add shift
           </button>

@@ -35,8 +35,16 @@ const matrix = (dates: string[]): RosterMatrix => ({
   providers: [row('d1', 'Dr Demo Bulan', 'DOCTOR', dates), row('s1', 'Demo Staf Minggu', 'CLINICAL', dates)],
   weekStartDay: 0,
   openingHours: { open24Hours: true, openTime: null, closeTime: null },
+  publication: { month: '2026-11', publishedAt: null, publishedBy: null, changedSince: 0 },
+  externalLocums: {
+    '2026-11-03': [{ id: 'l1', locumName: 'Dr Demo Luar', startTime: '23:00', endTime: '09:00', crossesMidnight: true, template: null, night: true, note: null }],
+  },
 });
-const { calls } = vi.hoisted(() => ({ calls: { month: [] as unknown[][], week: [] as unknown[][] } }));
+const { calls, publish, perms } = vi.hoisted(() => ({
+  calls: { month: [] as unknown[][], week: [] as unknown[][] },
+  publish: vi.fn(),
+  perms: { all: true, staff: true, doctors: true },
+}));
 
 vi.mock('../hooks/useRoster', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../hooks/useRoster')>()),
@@ -49,6 +57,8 @@ vi.mock('../hooks/useRoster', async (importOriginal) => ({
     return { data: args[2] ? matrix(WEEK) : undefined, isFetching: false };
   },
   useShiftTemplates: () => ({ data: [] }),
+  usePublishRoster: () => ({ mutateAsync: publish, isPending: false }),
+  useRemoveLocumSlot: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 vi.mock('../../admin/hooks/useAdmin', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../admin/hooks/useAdmin')>()),
@@ -65,7 +75,8 @@ vi.mock('../../admin/hooks/useAdmin', async (importOriginal) => ({
 }));
 vi.mock('../../core/hooks/useCan', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../core/hooks/useCan')>()),
-  useCan: () => true,
+  useCan: (permission: string) =>
+    permission === 'appointment.manage_roster' ? perms.all : permission === 'roster.manage_staff' ? perms.staff : permission === 'roster.manage_doctors' ? perms.doctors : true,
 }));
 
 const { RosterPage } = await import('./RosterPage');
@@ -110,5 +121,35 @@ describe('roster views', () => {
     expect(within(doctors).getByText(/Night ·.*\(from yesterday\)/)).toBeTruthy();
     expect(within(doctors).getByText('In')).toBeTruthy();
     expect(within(screen.getByRole('region', { name: 'Staff' })).getByText(/^Due/)).toBeTruthy();
+  });
+
+  it('says a month is a draft until published, and publishes it', async () => {
+    perms.all = true;
+    mount();
+    expect(screen.getByText(/November 2026 is a draft: staff do not see it in My Kuwick/)).toBeTruthy();
+    publish.mockResolvedValueOnce({});
+    fireEvent.click(screen.getByRole('button', { name: 'Publish November' }));
+    expect(publish).toHaveBeenCalledWith({ clinicId: 'c1', month: '2026-11' });
+  });
+
+  it('shows external locums by name on their own row', () => {
+    mount();
+    const locums = screen.getByText('External locums').closest('tr') as HTMLElement;
+    expect(within(locums).getByText('Dr Demo Luar')).toBeTruthy();
+  });
+
+  it('with the staff roster only, a doctor’s day cannot be picked; a staff day can', () => {
+    perms.all = false;
+    perms.doctors = false;
+    perms.staff = true;
+    mount();
+    const doctorRow = screen.getByText('Dr Demo Bulan').closest('tr') as HTMLElement;
+    fireEvent.click(doctorRow.querySelectorAll('td')[2]);
+    expect((screen.getByRole('button', { name: /Add shift/ }) as HTMLButtonElement).disabled).toBe(true);
+    const staffRow = screen.getByText('Demo Staf Minggu').closest('tr') as HTMLElement;
+    fireEvent.click(staffRow.querySelectorAll('td')[2]);
+    expect((screen.getByRole('button', { name: /Add shift to 1 date/ }) as HTMLButtonElement).disabled).toBe(false);
+    perms.all = true;
+    perms.doctors = true;
   });
 });

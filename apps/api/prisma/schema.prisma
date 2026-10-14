@@ -264,6 +264,8 @@ model Tenant {
   appointments                Appointment[]
   providerShifts              ProviderShift[]
   shiftTemplates              ShiftTemplate[]
+  rosterPublications          RosterPublication[]
+  rosterLocumSlots            RosterLocumSlot[]
   providerScheduleModePeriods ProviderScheduleModePeriod[]
   staffNotifications          StaffNotification[]
   mediaAssets                 MediaAsset[]
@@ -453,6 +455,8 @@ model Clinic {
   appointments                Appointment[]
   providerShifts              ProviderShift[]
   shiftTemplates              ShiftTemplate[]
+  rosterPublications          RosterPublication[]
+  rosterLocumSlots            RosterLocumSlot[]
   providerScheduleModePeriods ProviderScheduleModePeriod[]
   staffNotifications          StaffNotification[]
   appointmentChangeRequests   AppointmentChangeRequest[]
@@ -1022,6 +1026,8 @@ model Staff {
   providerShifts                      ProviderShift[]               @relation("ProviderShiftProvider")
   providerShiftsCreated               ProviderShift[]               @relation("ProviderShiftAuthor")
   shiftTemplatesCreated               ShiftTemplate[]               @relation("ShiftTemplateAuthor")
+  rosterPublications                  RosterPublication[]           @relation("RosterPublisher")
+  rosterLocumSlotsCreated             RosterLocumSlot[]             @relation("RosterLocumSlotAuthor")
   scheduleModePeriods                 ProviderScheduleModePeriod[]  @relation("ScheduleModePeriodProvider")
   staffNotifications                  StaffNotification[]
   changeRequestsDecided               AppointmentChangeRequest[]
@@ -5356,9 +5362,62 @@ model ShiftTemplate {
   clinic    Clinic?         @relation(fields: [clinicId], references: [id])
   createdBy Staff?          @relation("ShiftTemplateAuthor", fields: [createdByStaffId], references: [id])
   shifts    ProviderShift[]
+  locumSlots RosterLocumSlot[]
 
   @@index([tenantId, group])
   @@map("shift_templates")
+}
+
+/// A BRANCH'S MONTH OF ROSTER, PUBLISHED (UAT, 14 October 2026): "Published
+/// roster visible to each person in My Kuwick." Until a month is published
+/// its shifts are a draft only the roster screen shows. Changes after
+/// publishing show at once and are counted, so the month can be published
+/// again to say so.
+model RosterPublication {
+  id                 String   @id @default(uuid())
+  tenantId           String   @map("tenant_id")
+  clinicId           String   @map("clinic_id")
+  /// YYYY-MM
+  month              String
+  publishedAt        DateTime @map("published_at")
+  publishedByStaffId String?  @map("published_by_staff_id")
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id])
+  clinic      Clinic @relation(fields: [clinicId], references: [id])
+  publishedBy Staff? @relation("RosterPublisher", fields: [publishedByStaffId], references: [id])
+
+  @@unique([clinicId, month])
+  @@index([tenantId])
+  @@map("roster_publications")
+}
+
+/// AN EXTERNAL LOCUM ON THE ROSTER (UAT, 14 October 2026): a slot with the
+/// locum's name, for a doctor who is not on the staff list. Not a Staff row,
+/// not bookable, and never paid through payroll (Finance pays external
+/// locums).
+model RosterLocumSlot {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  clinicId   String   @map("clinic_id")
+  shiftDate  DateTime @map("shift_date") @db.Date
+  startsAt   DateTime @map("starts_at")
+  endsAt     DateTime @map("ends_at")
+  locumName  String   @map("locum_name")
+  templateId String?  @map("template_id")
+  night      Boolean  @default(false)
+  note       String?
+
+  createdByStaffId String?  @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant         @relation(fields: [tenantId], references: [id])
+  clinic    Clinic         @relation(fields: [clinicId], references: [id])
+  template  ShiftTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  createdBy Staff?         @relation("RosterLocumSlotAuthor", fields: [createdByStaffId], references: [id])
+
+  @@index([tenantId, clinicId, shiftDate])
+  @@map("roster_locum_slots")
 }
 
 /// §18b — WHICH SCHEDULING MODEL governs a provider, effective-dated.

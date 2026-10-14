@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { LeaveStatus, ProviderScheduleMode, ProviderShiftType, Role } from '@prisma/client';
 import {
   TENANT_SCOPED_PRISMA,
@@ -8,10 +8,12 @@ import { currentStaffId, currentTenantId } from '../core/tenant-context';
 import { PrismaService } from '../core/prisma.service';
 import { requireActor, withTenantTx } from '../clinical/clinical-actor';
 import { requireScopeAny } from '../finance/admin-actor';
-import { assertCanPerformAppointmentAction } from './appointment-authorization';
+import { RosterGroup, assertMayRoster, mayRoster } from '../workforce/roster-permission';
 import {
   CopyRosterDto,
+  CreateLocumSlotDto,
   CreateProviderShiftDto,
+  PublishRosterDto,
   SetScheduleModeDto,
   UpdateProviderShiftDto,
 } from './dto/provider-shift.dto';
@@ -25,6 +27,12 @@ import { clinicDateKey, parseDateOnly, parseTimeToDate, zonedWallClockToInstant 
 import { OpeningHours, resolveAttendancePolicy } from '../workforce/attendance-policy';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+async function groupOf(tx: Parameters<Parameters<typeof withTenantTx>[1]>[0], staffId: string): Promise<RosterGroup> {
+  const staff = await tx.staff.findUnique({ where: { id: staffId }, select: { role: true, professionalType: true } });
+  if (!staff) throw new NotFoundException('That person is not on the staff list.');
+  return workforceCategoryOf(staff) === 'DOCTOR' ? 'DOCTOR' : 'STAFF';
+}
 
 /**
  * The template a shift is rostered from: this tenant's, active, and for every
@@ -54,6 +62,17 @@ export interface RosterCell {
   }[];
   /** Approved HR leave covering this date. NOT copied into a shift row. */
   leave: { leaveType: string } | null;
+}
+
+export interface LocumSlotView {
+  id: string;
+  locumName: string;
+  startTime: string;
+  endTime: string;
+  crossesMidnight: boolean;
+  template: { id: string; name: string; colour: string } | null;
+  night: boolean;
+  note: string | null;
 }
 
 export interface RosterRow {
@@ -96,6 +115,10 @@ export interface RosterMatrix {
   /** The branch's week start (0 Sunday … 6 Saturday) and opening hours, from its attendance settings. */
   weekStartDay: number;
   openingHours: OpeningHours | null;
+  /** The month of the first date: published to My Kuwick or not, and shifts changed since. */
+  publication: { month: string; publishedAt: string | null; publishedBy: string | null; changedSince: number };
+  /** External locums by date (UAT, 14 October 2026): a name, not a staff member. */
+  externalLocums: Record<string, LocumSlotView[]>;
   providers: RosterRow[];
 }
 
@@ -186,7 +209,8 @@ export class ProviderShiftService {
     const first = parseDateOnly(dates[0]);
     const last = parseDateOnly(dates[dates.length - 1]);
 
-    const [providers, shifts, leave, closed, policies] = await Promise.all([
+    const publishedMonth = dates[0].slice(0, 7);
+    const [providers, shifts, leave, closed, policies, publication, locums] = await Promise.all([
       // THE WHOLE WORKFORCE, not only the doctors.
       //
       // This read was `role: { in: [DOCTOR_RESIDENT, DOCTOR_LOCUM] }`, and the
@@ -235,6 +259,15 @@ export class ProviderShiftService {
         select: { date: true, reason: true },
       }),
       this.prisma.attendancePolicy.findMany({ where: { OR: [{ clinicId: branch }, { clinicId: null }] } }),
+      this.prisma.rosterPublication.findUnique({
+        where: { clinicId_month: { clinicId: branch, month: publishedMonth } },
+        include: { publishedBy: { select: { fullName: true } } },
+      }),
+      this.prisma.rosterLocumSlot.findMany({
+        where: { clinicId: branch, shiftDate: { gte: first, lte: last } },
+        orderBy: { startsAt: 'asc' },
+        include: { template: { select: { id: true, name: true, colour: true } } },
+      }),
     ]);
     const policy = resolveAttendancePolicy(policies, branch);
 
@@ -337,6 +370,29 @@ export class ProviderShiftService {
       categoryCounts: countBy([...byStaff.values()]),
       weekStartDay: policy.weekStartDay,
       openingHours: policy.openingHours,
+      publication: {
+        month: publishedMonth,
+        publishedAt: publication?.publishedAt.toISOString() ?? null,
+        publishedBy: publication?.publishedBy?.fullName ?? null,
+        // Changed since publishing: still shown to staff, counted so the month can be published again.
+        changedSince: publication
+          ? shifts.filter((shift) => shift.shiftDate.toISOString().startsWith(publishedMonth) && shift.updatedAt > publication.publishedAt).length
+          : 0,
+      },
+      externalLocums: locums.reduce<Record<string, LocumSlotView[]>>((byDate, slot) => {
+        const date = slot.shiftDate.toISOString().slice(0, 10);
+        (byDate[date] ??= []).push({
+          id: slot.id,
+          locumName: slot.locumName,
+          startTime: wallClock(slot.startsAt, timeZone),
+          endTime: wallClock(slot.endsAt, timeZone),
+          crossesMidnight: clinicDateKey(slot.startsAt, timeZone) !== clinicDateKey(slot.endsAt, timeZone),
+          template: slot.template,
+          night: slot.night,
+          note: slot.note,
+        });
+        return byDate;
+      }, {}),
       providers: [...byStaff.values()].filter((row) => !category || row.category === category),
     };
   }
@@ -369,7 +425,7 @@ export class ProviderShiftService {
   async create(dto: CreateProviderShiftDto) {
     return withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
-      assertCanPerformAppointmentAction(actor, 'MANAGE_ROSTER');
+      assertMayRoster(actor, await groupOf(tx, dto.staffId));
 
       const timeZone = await this.timeZoneOf(dto.clinicId);
       assertBookableBandIsWhole(dto.bookableStartTime, dto.bookableEndTime);
@@ -425,10 +481,10 @@ export class ProviderShiftService {
   async update(id: string, dto: UpdateProviderShiftDto) {
     return withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
-      assertCanPerformAppointmentAction(actor, 'MANAGE_ROSTER');
 
       const shift = await tx.providerShift.findUnique({ where: { id } });
       if (!shift) throw new NotFoundException('Shift not found');
+      assertMayRoster(actor, await groupOf(tx, shift.staffId));
 
       const timeZone = await this.timeZoneOf(shift.clinicId);
       const date = shift.shiftDate.toISOString().slice(0, 10);
@@ -463,6 +519,70 @@ export class ProviderShiftService {
   }
 
   /**
+   * PUBLISH A MONTH (UAT, 14 October 2026): "Published roster visible to each
+   * person in My Kuwick." Until then the month is a draft. Publishing again
+   * after changes records the new time; the changes were visible already.
+   */
+  async publish(dto: PublishRosterDto) {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      if (!mayRoster(actor, 'DOCTOR') && !mayRoster(actor, 'STAFF')) {
+        throw new ForbiddenException('Your account is not permitted to change the roster.');
+      }
+      const { scope } = await requireScopeAny(this.rawPrisma, ['appointment.view', 'hr.view']);
+      const branch = scope.require(dto.clinicId);
+      const saved = await tx.rosterPublication.upsert({
+        where: { clinicId_month: { clinicId: branch, month: dto.month } },
+        create: { tenantId: currentTenantId(), clinicId: branch, month: dto.month, publishedAt: new Date(), publishedByStaffId: actor.id },
+        update: { publishedAt: new Date(), publishedByStaffId: actor.id },
+      });
+      return { clinicId: branch, month: dto.month, publishedAt: saved.publishedAt.toISOString() };
+    });
+  }
+
+  /** An external locum, by name, on one or more dates. The doctor roster's to write. */
+  async createLocumSlots(dto: CreateLocumSlotDto) {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      assertMayRoster(actor, 'DOCTOR');
+      const locumName = dto.locumName.trim().replace(/\s+/g, ' ');
+      if (!locumName) throw new BadRequestException("Give the locum's name.");
+      const timeZone = await this.timeZoneOf(dto.clinicId);
+      const template = dto.templateId ? await templateFor(tx, dto.templateId, dto.clinicId) : null;
+      const startTime = template?.kind === 'WORKING' ? template.startTime! : dto.startTime;
+      const endTime = template?.kind === 'WORKING' ? template.endTime! : dto.endTime;
+      const rows = dto.dates.map((date) => {
+        const span = wallClockSpan(date, startTime, endTime, timeZone);
+        return {
+          tenantId: currentTenantId(),
+          clinicId: dto.clinicId,
+          shiftDate: parseDateOnly(date),
+          startsAt: span.start,
+          endsAt: span.end,
+          locumName,
+          templateId: template?.id ?? null,
+          night: template?.night ?? false,
+          note: dto.note?.trim() || null,
+          createdByStaffId: actor.id,
+        };
+      });
+      await tx.rosterLocumSlot.createMany({ data: rows });
+      return { created: rows.length };
+    });
+  }
+
+  async removeLocumSlot(id: string) {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      assertMayRoster(actor, 'DOCTOR');
+      const slot = await tx.rosterLocumSlot.findUnique({ where: { id } });
+      if (!slot) throw new NotFoundException('That locum slot is not on the roster.');
+      await tx.rosterLocumSlot.delete({ where: { id } });
+      return { removed: true };
+    });
+  }
+
+  /**
    * Removing a shift does NOT cancel the appointments booked into it.
    *
    * An appointment is an agreement with a patient; a roster row is a statement
@@ -473,10 +593,10 @@ export class ProviderShiftService {
   async remove(id: string) {
     return withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
-      assertCanPerformAppointmentAction(actor, 'MANAGE_ROSTER');
 
       const shift = await tx.providerShift.findUnique({ where: { id } });
       if (!shift) throw new NotFoundException('Shift not found');
+      assertMayRoster(actor, await groupOf(tx, shift.staffId));
 
       const orphaned = await tx.appointment.count({
         where: {
@@ -504,13 +624,16 @@ export class ProviderShiftService {
   async copyMonth(dto: CopyRosterDto) {
     return withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
-      assertCanPerformAppointmentAction(actor, 'MANAGE_ROSTER');
+      // Each copies the half of the roster it may write.
+      if (!mayRoster(actor, 'DOCTOR') && !mayRoster(actor, 'STAFF')) {
+        throw new ForbiddenException('Your account is not permitted to change the roster.');
+      }
 
       const timeZone = await this.timeZoneOf(dto.clinicId);
       const source = datesInMonth(dto.fromMonth);
       const target = datesInMonth(dto.toMonth);
 
-      const shifts = await tx.providerShift.findMany({
+      const sourceShifts = await tx.providerShift.findMany({
         where: {
           clinicId: dto.clinicId,
           shiftDate: {
@@ -520,6 +643,11 @@ export class ProviderShiftService {
           ...(dto.staffIds?.length ? { staffId: { in: dto.staffIds } } : {}),
         },
       });
+      const writable = new Map<string, boolean>();
+      for (const staffId of new Set(sourceShifts.map((shift) => shift.staffId))) {
+        writable.set(staffId, mayRoster(actor, await groupOf(tx, staffId)));
+      }
+      const shifts = sourceShifts.filter((shift) => writable.get(shift.staffId));
       if (shifts.length === 0) return { created: 0, skipped: 0 };
 
       // Weekday buckets for the target month, consumed in order.
@@ -633,7 +761,7 @@ export class ProviderShiftService {
   async setScheduleMode(dto: SetScheduleModeDto) {
     const written = await withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
-      assertCanPerformAppointmentAction(actor, 'MANAGE_ROSTER');
+      assertMayRoster(actor, await groupOf(tx, dto.staffId));
 
       const staff = await tx.staff.findUnique({
         where: { id: dto.staffId },

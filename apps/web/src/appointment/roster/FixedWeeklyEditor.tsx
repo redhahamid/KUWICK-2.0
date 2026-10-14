@@ -60,7 +60,10 @@ export function FixedWeeklyEditor({
 }: FixedWeeklyEditorProps) {
   // The same identity colour the diary uses — the provider's stored one.
   const providerColor = useProviderColors();
-  const canManageRoster = useCan('appointment.manage_roster');
+  // A weekly pattern is a doctor's availability: the doctor roster's to write.
+  const canWholeRoster = useCan('appointment.manage_roster');
+  const canDoctorRoster = useCan('roster.manage_doctors');
+  const canManageRoster = canWholeRoster || canDoctorRoster;
   const queryClient = useQueryClient();
   const [days, setDays] = useState<WeeklyDay[]>([]);
   const [saving, setSaving] = useState(false);

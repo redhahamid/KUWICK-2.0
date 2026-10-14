@@ -51,8 +51,9 @@ describe('the permission catalogue', () => {
   const sources = walk(SRC).map((file) => readFileSync(file, 'utf8')).join('\n');
   const checked = (key: string) => sources.includes(`'${key}'`) || sources.includes(`"${key}"`);
 
-  it('has the 82 keys the audit counted', () => {
-    expect(new Set(keys).size).toBe(82);
+  // 82 at the audit, + the staff and doctor halves of the roster (UAT, 14 October 2026).
+  it('has the 84 keys the audit counted, plus the two roster halves', () => {
+    expect(new Set(keys).size).toBe(84);
   });
 
   it('checks every key somewhere in the API, or lists it with a reason', () => {

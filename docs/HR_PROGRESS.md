@@ -6,6 +6,44 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 53–54 (Roster A2, A3) — 15 Oktober 2026 — Paparan roster, terbit, lokum luar, kebenaran berasingan
+
+**Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi
+(A3):** `20261015100000_roster_publish_locums` (jadual `roster_publications`,
+`roster_locum_slots`), dijalankan di staging dengan *Migrate only* sebelum
+master — run #MIGRATE_RUN.
+
+**A2 — paparan**
+- `[D]` Roster kini ada empat paparan: *Everyone · month*, *Doctors · month*,
+  *Staff · week* (7 hari dari hari mula minggu cawangan) dan *On duty today*.
+- `[D]` *On duty today*: doktor dan staf berasingan; hanya syif kerja dan lokum
+  (OFF/LEAVE/BLOCKED tidak lagi dikira "scheduled"); syif malam semalam yang
+  belum tamat dikira; cawangan, syif dan status (In / Not in yet / Due / On
+  leave) bagi setiap orang.
+- `[D]` Lorekan Sabtu/Ahad tetap dibuang; garis di hari mula minggu cawangan,
+  dan waktu buka cawangan di sebelah tajuk.
+
+**A3 — terbit, lokum luar, kebenaran**
+- `[D]` Sebulan roster cawangan ialah **draf** sehingga diterbitkan; My Kuwick
+  hanya menunjukkan bulan yang diterbitkan. Sepanduk: "is a draft … *Publish
+  November*" atau "is published (tarikh, siapa)"; perubahan selepas terbit
+  dikira dan butang *Publish again*. Bulan sedia ada dikira sudah diterbitkan
+  oleh migrasi, supaya tiada roster hilang dari My Kuwick.
+- `[D]` Baris **External locums**: slot dengan nama lokum (bukan staf), syif
+  doktor atau masa sendiri; tidak boleh ditempah, tidak dibayar oleh payroll.
+  Turut muncul dalam *On duty today*.
+- `[D]` Kebenaran baharu **Write the staff roster** (`roster.manage_staff`) dan
+  **Write the doctor roster** (`roster.manage_doctors`), boleh diberi kepada
+  seorang. *Write the whole roster* kekal untuk kedua-duanya. Templat syif,
+  pola mingguan doktor dan lokum luar ikut kumpulan masing-masing.
+- `[D]` Had: kumpulan doktor/staf ikut **peranan akaun**, jadi pemilik yang
+  juga doktor (cth. demo "Dr Aisyah Rahman", peranan Owner) berada di bawah
+  Staf. Belum diubah.
+- `[D]` **Ujian**: API baharu `roster-views` (2) dan `roster-publish-locums` (3);
+  web baharu `rosterViews` (6); ujian katalog kebenaran dikemas kini (84).
+
+---
+
 ## Batch 52 (Roster A1) — 15 Oktober 2026 — Templat syif, hari mula minggu, waktu buka cawangan
 
 **Cawangan:** `claude/malaysia-payroll-final-validation-h1h6xi`. **Migrasi:**

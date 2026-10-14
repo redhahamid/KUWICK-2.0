@@ -3,7 +3,9 @@ import { ProviderShiftService } from './provider-shift.service';
 import { WorkforceCategory } from '../workforce/workforce-category';
 import {
   CopyRosterDto,
+  CreateLocumSlotDto,
   CreateProviderShiftDto,
+  PublishRosterDto,
   SetScheduleModeDto,
   UpdateProviderShiftDto,
 } from './dto/provider-shift.dto';
@@ -14,6 +16,23 @@ export class ProviderShiftController {
 
   // Literal paths BEFORE `:id`, or Nest reads "month" as an id. The same trap
   // that made `/appointments/dashboard` silently return nothing.
+  /** Publish a branch's month to My Kuwick (UAT, 14 October 2026). */
+  @Post('publish')
+  publish(@Body() dto: PublishRosterDto) {
+    return this.shifts.publish(dto);
+  }
+
+  /** External locums, by name. */
+  @Post('locum-slots')
+  createLocumSlots(@Body() dto: CreateLocumSlotDto) {
+    return this.shifts.createLocumSlots(dto);
+  }
+
+  @Delete('locum-slots/:id')
+  removeLocumSlot(@Param('id') id: string) {
+    return this.shifts.removeLocumSlot(id);
+  }
+
   /** Seven days from the branch's week start (UAT, 14 October 2026). */
   @Get('week')
   week(

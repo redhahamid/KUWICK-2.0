@@ -30,7 +30,7 @@ export class DoctorScheduleService {
   ) {}
 
   async create(dto: CreateDoctorScheduleDto) {
-    const { scope } = await requireScope(this.rawPrisma, 'appointment.manage_roster');
+    const { scope } = await requireScopeAny(this.rawPrisma, ['appointment.manage_roster', 'roster.manage_doctors']);
     scope.require(dto.clinicId);
     return this.prisma.doctorSchedule.create({
       data: {
@@ -55,7 +55,7 @@ export class DoctorScheduleService {
   }
 
   async update(id: string, dto: UpdateDoctorScheduleDto) {
-    const { scope } = await requireScope(this.rawPrisma, 'appointment.manage_roster');
+    const { scope } = await requireScopeAny(this.rawPrisma, ['appointment.manage_roster', 'roster.manage_doctors']);
     const row = await this.assertExists(id);
     scope.assert(row.clinicId);
     return this.prisma.doctorSchedule.update({
@@ -65,7 +65,7 @@ export class DoctorScheduleService {
   }
 
   async remove(id: string) {
-    const { scope } = await requireScope(this.rawPrisma, 'appointment.manage_roster');
+    const { scope } = await requireScopeAny(this.rawPrisma, ['appointment.manage_roster', 'roster.manage_doctors']);
     const row = await this.assertExists(id);
     scope.assert(row.clinicId);
     await this.prisma.doctorSchedule.delete({ where: { id } });
@@ -144,7 +144,7 @@ export class DoctorScheduleService {
       seen.add(day.dayOfWeek);
     }
 
-    const { scope } = await requireScope(this.rawPrisma, 'appointment.manage_roster');
+    const { scope } = await requireScopeAny(this.rawPrisma, ['appointment.manage_roster', 'roster.manage_doctors']);
     scope.require(dto.clinicId);
 
     const tenantId = currentTenantId();

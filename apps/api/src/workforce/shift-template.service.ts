@@ -3,7 +3,9 @@ import { ShiftGroup, ShiftTemplate } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { AdminTx, branchScopeOf, requireScopeAny, withAdminTx } from '../finance/admin-actor';
+import { AdminTx, branchScopeOf, requireScopeAny } from '../finance/admin-actor';
+import { requireActor, withTenantTx } from '../clinical/clinical-actor';
+import { assertMayRoster } from './roster-permission';
 import { recordAudit } from '../finance/admin-audit';
 import { SaveShiftTemplateDto } from './dto/shift-template.dto';
 
@@ -71,7 +73,10 @@ export class ShiftTemplateService {
   }
 
   async create(dto: SaveShiftTemplateDto) {
-    return withAdminTx(this.rawPrisma, 'appointment.manage_roster', async (tx, actor) => {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      // A doctor shift is the doctor roster's to define, a staff shift the staff roster's.
+      assertMayRoster(actor, dto.group);
       const data = await this.validated(tx, dto, null);
       if (dto.clinicId) (await branchScopeOf(tx, actor)).require(dto.clinicId);
       const saved = await tx.shiftTemplate.create({
@@ -90,9 +95,12 @@ export class ShiftTemplateService {
   }
 
   async update(id: string, dto: SaveShiftTemplateDto) {
-    return withAdminTx(this.rawPrisma, 'appointment.manage_roster', async (tx, actor) => {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
       const before = await tx.shiftTemplate.findUnique({ where: { id } });
       if (!before) throw new NotFoundException('That shift template is not on record.');
+      assertMayRoster(actor, before.group);
+      assertMayRoster(actor, dto.group);
       const data = await this.validated(tx, dto, id);
       if (dto.clinicId) (await branchScopeOf(tx, actor)).require(dto.clinicId);
       const saved = await tx.shiftTemplate.update({ where: { id }, data });
@@ -110,9 +118,11 @@ export class ShiftTemplateService {
 
   /** Deleted while nothing was rostered from it; retired once something was. */
   async remove(id: string) {
-    return withAdminTx(this.rawPrisma, 'appointment.manage_roster', async (tx, actor) => {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
       const row = await tx.shiftTemplate.findUnique({ where: { id } });
       if (!row) throw new NotFoundException('That shift template is not on record.');
+      assertMayRoster(actor, row.group);
       const used = await tx.providerShift.count({ where: { templateId: id } });
       if (used > 0) {
         await tx.shiftTemplate.update({ where: { id }, data: { active: false } });

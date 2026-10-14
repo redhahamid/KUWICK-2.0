@@ -144,3 +144,43 @@ export class SetScheduleModeDto {
   @Matches(DATE, { message: 'Effective date must be written as YYYY-MM-DD.' })
   effectiveFrom!: string;
 }
+
+/** Publish a branch's month of roster to My Kuwick (UAT, 14 October 2026). */
+export class PublishRosterDto {
+  @IsUUID()
+  clinicId!: string;
+
+  @Matches(/^\d{4}-\d{2}$/, { message: 'The month is YYYY-MM.' })
+  month!: string;
+}
+
+/** An external locum on the roster, by name (UAT, 14 October 2026). */
+export class CreateLocumSlotDto {
+  @IsUUID()
+  clinicId!: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(62)
+  @Matches(DATE, { each: true, message: 'Dates must be written as YYYY-MM-DD.' })
+  dates!: string[];
+
+  @Matches(TIME, { message: 'Times must be written as HH:MM, e.g. 09:00.' })
+  startTime!: string;
+
+  @Matches(TIME, { message: 'Times must be written as HH:MM, e.g. 09:00.' })
+  endTime!: string;
+
+  @IsString()
+  @MaxLength(80)
+  locumName!: string;
+
+  @IsOptional()
+  @IsUUID()
+  templateId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  note?: string;
+}

@@ -116,6 +116,11 @@ export type Permission =
   | 'appointment.configure'
   // The provider roster: shifts, OFF, blocks, locums.
   | 'appointment.manage_roster'
+  // Half of it each (UAT, 14 October 2026): "Separate edit permissions for
+  // staff roster and doctor roster." The whole roster permission above still
+  // covers both.
+  | 'roster.manage_staff'
+  | 'roster.manage_doctors'
   // Ownership
   | 'clinical.void'
   | 'document.issueAdministrative'
@@ -395,6 +400,8 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     'appointment.override',
     'appointment.configure',
     'appointment.manage_roster',
+    'roster.manage_staff',
+    'roster.manage_doctors',
     // ADMIN PROGRAMME. The owner holds every administrative capability,
     // including the ones deliberately withheld from everybody else: reversing
     // a payment, approving a credit note, reopening a closed day, approving a
@@ -747,6 +754,9 @@ export const INDIVIDUALLY_GRANTABLE: Permission[] = [
   'appointment.override',
   // A clinic manager who writes the roster without owning the clinic.
   'appointment.manage_roster',
+  // A head nurse who writes the staff roster, a medical director the doctors'.
+  'roster.manage_staff',
+  'roster.manage_doctors',
   // ADMIN PROGRAMME — the capabilities an owner most often needs to delegate
   // to one named person without handing over the whole module. Every one of
   // them is recorded with an actor and a reason wherever it is used.
@@ -812,6 +822,8 @@ const REFUSAL: Partial<Record<Permission, string>> = {
     'Booking against the clinic’s scheduling rules needs the appointment-override permission.',
   'appointment.configure': 'Only an owner may change how appointments and services are configured.',
   'appointment.manage_roster': 'Your account is not permitted to change the provider roster.',
+  'roster.manage_staff': 'Your account is not permitted to change the staff roster.',
+  'roster.manage_doctors': 'Your account is not permitted to change the doctor roster.',
   'users.manage': 'Only an owner may manage users and roles.',
   // ADMIN PROGRAMME refusals. Same rule as the rest: say what was refused and
   // what to do instead, never which role holds it.
@@ -948,6 +960,8 @@ export const CUSTOM_ROLE_GRANTABLE: Permission[] = [
   'appointment.override',
   'appointment.configure',
   'appointment.manage_roster',
+  'roster.manage_staff',
+  'roster.manage_doctors',
   /*
    * HR, up to but NOT including anybody's pay.
    *

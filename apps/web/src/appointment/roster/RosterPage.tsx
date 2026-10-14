@@ -26,12 +26,18 @@ import {
   useRemoveShift,
   useRosterMonth,
   useRosterWeek,
+  usePublishRoster,
+  useRemoveLocumSlot,
   useSetScheduleMode,
   WORKFORCE_CATEGORY_LABELS,
   WorkforceCategory,
 } from '../hooks/useRoster';
 import { ShiftEditorModal } from './ShiftEditorModal';
 import { OnDutyToday } from './OnDutyToday';
+import { LocumSlotModal } from './LocumSlotModal';
+
+/** The external-locum row's key in a selection: not a staff id. */
+const LOCUMS = '__locums__';
 
 /**
  * WHICH ROSTER (UAT, 14 October 2026): "Monthly doctor roster view and weekly
@@ -102,6 +108,15 @@ export function RosterPage({ clinicId }: RosterPageProps) {
   // with diary access; what changes without the permission is that the
   // writing controls disable and say why, instead of failing after the click.
   const canManageRoster = useCan('appointment.manage_roster');
+  // Half each (UAT, 14 October 2026): the staff roster and the doctor roster.
+  const canDoctors = useCan('roster.manage_doctors');
+  const canStaff = useCan('roster.manage_staff');
+  const mayWrite = (category?: WorkforceCategory) =>
+    canManageRoster || (category === 'DOCTOR' ? canDoctors : canStaff);
+  const mayWriteAny = canManageRoster || canDoctors || canStaff;
+  const publish = usePublishRoster();
+  const removeLocum = useRemoveLocumSlot();
+  const [locumDates, setLocumDates] = useState<string[] | null>(null);
 
   // WHICH PART OF THE WORKFORCE IS ON THE BOARD.
   //
@@ -380,16 +395,16 @@ export function RosterPage({ clinicId }: RosterPageProps) {
           <Popconfirm
             title="Copy last month's roster?"
             description="Shifts are aligned by WEEKDAY, and this month's existing shifts for those providers are replaced."
-            disabled={!canManageRoster}
+            disabled={!mayWriteAny}
             onConfirm={onCopyPrevious}
           >
             <Tooltip
-              title={canManageRoster ? undefined : permissionHint('change the provider roster')}
+              title={mayWriteAny ? undefined : permissionHint('change the provider roster')}
             >
               <Button
                 icon={<CopyOutlined />}
                 loading={copyMonth.isPending}
-                disabled={!canManageRoster}
+                disabled={!mayWriteAny}
               >
                 Copy last month
               </Button>
@@ -398,7 +413,7 @@ export function RosterPage({ clinicId }: RosterPageProps) {
           ) : null}
           <Tooltip
             title={
-              !canManageRoster
+              !mayWriteAny
                 ? permissionHint('change the provider roster')
                 : selection
                   ? undefined
@@ -408,9 +423,18 @@ export function RosterPage({ clinicId }: RosterPageProps) {
             <Button
               type="primary"
               icon={<PlusOutlined />}
-              disabled={!selection || !canManageRoster}
+              disabled={
+                !selection ||
+                !(selection.staffId === LOCUMS
+                  ? mayWrite('DOCTOR')
+                  : mayWrite(rosterProviders.find((row) => row.staffId === selection.staffId)?.category))
+              }
               onClick={() => {
                 if (!selection) return;
+                if (selection.staffId === LOCUMS) {
+                  setLocumDates(selection.dates);
+                  return;
+                }
                 const provider = rosterProviders.find((row) => row.staffId === selection.staffId);
                 setEditing({
                   staffId: selection.staffId,
@@ -429,6 +453,43 @@ export function RosterPage({ clinicId }: RosterPageProps) {
       </div>
 
       {isFetching && !data ? <Spin /> : null}
+
+      {/* PUBLISHED OR DRAFT (UAT, 14 October 2026): staff see a month in My Kuwick once it is published. */}
+      {data?.publication ? (
+        <Alert
+          type={data.publication.publishedAt ? (data.publication.changedSince > 0 ? 'warning' : 'success') : 'info'}
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={
+            data.publication.publishedAt
+              ? `${dayjs(`${data.publication.month}-01`).format('MMMM YYYY')} is published to My Kuwick` +
+                ` (${dayjs(data.publication.publishedAt).format('D MMM, h:mm a')}${data.publication.publishedBy ? `, ${data.publication.publishedBy}` : ''}).` +
+                (data.publication.changedSince > 0
+                  ? ` ${data.publication.changedSince} shift${data.publication.changedSince === 1 ? '' : 's'} changed since: staff see the changes already.`
+                  : '')
+              : `${dayjs(`${data.publication.month}-01`).format('MMMM YYYY')} is a draft: staff do not see it in My Kuwick until it is published.`
+          }
+          action={
+            mayWriteAny && (!data.publication.publishedAt || data.publication.changedSince > 0) ? (
+              <Button
+                size="small"
+                type="primary"
+                loading={publish.isPending}
+                onClick={async () => {
+                  try {
+                    await publish.mutateAsync({ clinicId, month: data.publication!.month });
+                    message.success('Published to My Kuwick.');
+                  } catch (error) {
+                    message.error(error instanceof ApiError ? error.message : 'Could not publish.');
+                  }
+                }}
+              >
+                {data.publication.publishedAt ? 'Publish again' : `Publish ${dayjs(`${data.publication.month}-01`).format('MMMM')}`}
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : null}
 
       {rosterProviders.length === 0 && !isFetching ? (
         <Alert
@@ -491,7 +552,7 @@ export function RosterPage({ clinicId }: RosterPageProps) {
                         <span className="kw-roster-provider-name">{provider.fullName}</span>
                         <Tooltip
                           title={
-                            canManageRoster
+                            mayWrite(provider.category)
                               ? undefined
                               : permissionHint('change the provider roster')
                           }
@@ -499,7 +560,7 @@ export function RosterPage({ clinicId }: RosterPageProps) {
                           <Button
                             size="small"
                             type="link"
-                            disabled={!canManageRoster}
+                            disabled={!mayWrite(provider.category)}
                             style={{ padding: 0, height: 'auto', fontSize: 11, textAlign: 'left' }}
                             onClick={() => confirmModeSwitch(provider)}
                           >
@@ -534,7 +595,7 @@ export function RosterPage({ clinicId }: RosterPageProps) {
                         data-picked={picked || undefined}
                         data-closed={isClosed || undefined}
                         data-week-start={weekday === weekStartDay || undefined}
-                        onClick={() => canManageRoster && toggleDate(provider.staffId, date)}
+                        onClick={() => mayWrite(provider.category) && toggleDate(provider.staffId, date)}
                       >
                         {isClosed ? (
                           <Tooltip title={closedReason ?? 'The clinic is closed'}>
@@ -559,6 +620,51 @@ export function RosterPage({ clinicId }: RosterPageProps) {
                   })}
                 </tr>
               ))}
+              {view !== 'STAFF' ? (
+                // EXTERNAL LOCUMS, by name (UAT, 14 October 2026): not on the staff list.
+                <tr className="kw-roster-locums">
+                  <th className="kw-roster-provider">
+                    <div className="kw-roster-provider-cell">
+                      <div className="kw-roster-provider-text">
+                        <span className="kw-roster-provider-name">External locums</span>
+                        <span className="kw-roster-modechange">By name · paid by Finance</span>
+                      </div>
+                    </div>
+                  </th>
+                  {(data?.dates ?? []).map((date) => {
+                    const picked = selection?.staffId === LOCUMS && selection.dates.includes(date);
+                    return (
+                      <td
+                        key={date}
+                        className="kw-roster-cell"
+                        data-picked={picked || undefined}
+                        data-week-start={dayjs(date).day() === weekStartDay || undefined}
+                        onClick={() => mayWrite('DOCTOR') && toggleDate(LOCUMS, date)}
+                      >
+                        <div className="kw-roster-cell-body">
+                          {(data?.externalLocums?.[date] ?? []).map((slot) => (
+                            <Popconfirm
+                              key={slot.id}
+                              title={`Remove ${slot.locumName} from ${dayjs(date).format('D MMM')}?`}
+                              disabled={!mayWrite('DOCTOR')}
+                              onConfirm={() => removeLocum.mutate(slot.id)}
+                            >
+                              <span
+                                className="kw-roster-chip"
+                                title={`${slot.startTime}–${slot.endTime}${slot.crossesMidnight ? ' (next day)' : ''}`}
+                                style={{ background: '#eef2ff', color: '#3730a3', borderLeftColor: slot.template?.colour ?? '#4338ca' }}
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                {slot.locumName}
+                              </span>
+                            </Popconfirm>
+                          ))}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
@@ -595,6 +701,18 @@ export function RosterPage({ clinicId }: RosterPageProps) {
 
       </>
       )}
+
+      {clinicId ? (
+        <LocumSlotModal
+          open={Boolean(locumDates)}
+          clinicId={clinicId}
+          dates={locumDates ?? []}
+          onClose={() => {
+            setLocumDates(null);
+            setSelection(null);
+          }}
+        />
+      ) : null}
 
       <ShiftEditorModal
         open={Boolean(editing)}

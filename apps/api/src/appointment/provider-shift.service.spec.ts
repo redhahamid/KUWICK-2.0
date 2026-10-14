@@ -64,6 +64,8 @@ function build(world: World = {}) {
     leaveRequest: { findMany: jest.fn(async () => world.leave ?? []) },
     clinicClosedDate: { findMany: jest.fn(async () => world.closed ?? []) },
     attendancePolicy: { findMany: jest.fn(async () => []) },
+    rosterPublication: { findUnique: jest.fn(async () => null) },
+    rosterLocumSlot: { findMany: jest.fn(async () => []) },
     clinic: {
       findUnique: jest.fn(async () => ({ timezone: 'Asia/Kuala_Lumpur' })),
       count: jest.fn(async () => 1),

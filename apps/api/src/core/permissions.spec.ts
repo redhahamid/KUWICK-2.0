@@ -441,6 +441,10 @@ describe('individual permission grants', () => {
       // for everybody.
       'appointment.override',
       'appointment.manage_roster',
+      // Or only half of the roster: a head nurse the staff's, a medical
+      // director the doctors' (UAT, 14 October 2026).
+      'roster.manage_staff',
+      'roster.manage_doctors',
       // ADMIN PROGRAMME — the capabilities an owner most often delegates to
       // one named person without handing over a whole module.
       'payment.reverse',

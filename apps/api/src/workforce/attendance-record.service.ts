@@ -752,6 +752,16 @@ export class AttendanceRecordService {
       },
     });
 
+    // External locums on the roster, by name: on duty, never clocked in here.
+    const locums = await this.prisma.rosterLocumSlot.findMany({
+      where: {
+        OR: [{ shiftDate: day }, { shiftDate: yesterday, endsAt: { gt: now } }],
+        ...scope.where(clinicIdInput),
+      },
+      orderBy: { startsAt: 'asc' },
+      include: { clinic: { select: { id: true, name: true } }, template: { select: { name: true, colour: true } } },
+    });
+
     // ROSTERED, AND NOT HERE. The gap between the roster and the punches is the
     // question a manager actually walks in with, and it could not be asked
     // before: the board reported who HAD clocked in and never who had not.
@@ -807,7 +817,25 @@ export class AttendanceRecordService {
         fromYesterday: shift.shiftDate.getTime() !== day.getTime(),
         clockedIn: shift.shiftDate.getTime() === day.getTime() ? punchedIn.has(shift.staffId) : stillIn.has(shift.staffId),
         onLeave: away.has(shift.staffId),
-      })),
+        external: false,
+      })).concat(
+        locums.map((slot) => ({
+          staffId: `locum:${slot.id}`,
+          name: slot.locumName,
+          startAt: slot.startsAt,
+          endAt: slot.endsAt,
+          group: 'DOCTOR' as const,
+          clinicId: slot.clinic.id,
+          clinicName: slot.clinic.name,
+          shiftType: 'LOCUM' as const,
+          template: slot.template,
+          night: slot.night,
+          fromYesterday: slot.shiftDate.getTime() !== day.getTime(),
+          clockedIn: false,
+          onLeave: false,
+          external: true,
+        })),
+      ),
       notClockedIn,
       // WHO IS COVERING WHAT. Derived from the role rather than stored, the
       // same five-way split the roster is read along.

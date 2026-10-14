@@ -80,6 +80,47 @@ export interface RosterMatrix {
   /** The branch's week start, 0 Sunday … 6 Saturday, and opening hours. */
   weekStartDay?: number;
   openingHours?: OpeningHours | null;
+  /** The first date's month: published to My Kuwick or still a draft, and shifts changed since. */
+  publication?: { month: string; publishedAt: string | null; publishedBy: string | null; changedSince: number };
+  /** External locums by date: a name, not a staff member. */
+  externalLocums?: Record<string, LocumSlot[]>;
+}
+
+export interface LocumSlot {
+  id: string;
+  locumName: string;
+  startTime: string;
+  endTime: string;
+  crossesMidnight: boolean;
+  template: { id: string; name: string; colour: string } | null;
+  night: boolean;
+  note: string | null;
+}
+
+export function usePublishRoster() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { clinicId: string; month: string }) =>
+      apiClient.post<{ publishedAt: string }>('/provider-shifts/publish', body),
+    onSuccess: () => invalidateRoster(queryClient),
+  });
+}
+
+export function useCreateLocumSlots() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { clinicId: string; dates: string[]; startTime: string; endTime: string; locumName: string; templateId?: string; note?: string }) =>
+      apiClient.post<{ created: number }>('/provider-shifts/locum-slots', body),
+    onSuccess: () => invalidateRoster(queryClient),
+  });
+}
+
+export function useRemoveLocumSlot() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/provider-shifts/locum-slots/${id}`),
+    onSuccess: () => invalidateRoster(queryClient),
+  });
 }
 
 export interface OpeningHours {
