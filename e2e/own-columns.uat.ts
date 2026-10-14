@@ -46,7 +46,7 @@ test('an item with its own column is typed into the grid, saved once, and carrie
     await own.click();
     await expect(page.getByText("Director's fee now has its own column on the payroll grid.")).toBeVisible();
   }
-  const carry = page.getByRole('switch', { name: "Carry forward for Director's fee" });
+  const carry = page.getByRole('switch', { name: "Repeat next month automatically for Director's fee" });
   const carryWasOn = (await carry.getAttribute('aria-checked')) === 'true';
   if (!carryWasOn) {
     await carry.click();
@@ -148,7 +148,7 @@ test('an item with its own column is typed into the grid, saved once, and carrie
     await expect(page.getByText("Director's fee is back in Other income on the payroll grid.")).toBeVisible();
   }
   if (!carryWasOn) {
-    await page.getByRole('switch', { name: "Carry forward for Director's fee" }).click();
+    await page.getByRole('switch', { name: "Repeat next month automatically for Director's fee" }).click();
     await expect(page.getByText("Director's fee will start each month empty.")).toBeVisible();
   }
 });
