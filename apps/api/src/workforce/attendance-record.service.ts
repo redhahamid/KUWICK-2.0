@@ -732,10 +732,24 @@ export class AttendanceRecordService {
       ]);
 
     // Matched on the roster's own date, not on a UTC window over `startsAt`.
+    // ON DUTY TODAY (UAT, 14 October 2026): working and locum shifts only (an
+    // OFF, LEAVE or BLOCKED row is not somebody expected at work), and
+    // yesterday's overnight shifts that have not ended yet: the night doctor
+    // at 03:00 is on duty today, rostered on yesterday's date.
+    const now = new Date();
+    const yesterday = new Date(day.getTime() - 86_400_000);
     const shifts = await this.prisma.providerShift.findMany({
-      where: { shiftDate: day, ...scope.where(clinicIdInput) },
+      where: {
+        shiftType: { in: ['WORKING', 'LOCUM'] },
+        OR: [{ shiftDate: day }, { shiftDate: yesterday, endsAt: { gt: now } }],
+        ...scope.where(clinicIdInput),
+      },
       orderBy: { startsAt: 'asc' },
-      include: { staff: { select: { id: true, fullName: true, role: true, professionalType: true } } },
+      include: {
+        staff: { select: { id: true, fullName: true, role: true, professionalType: true } },
+        clinic: { select: { id: true, name: true } },
+        template: { select: { name: true, colour: true } },
+      },
     });
 
     // ROSTERED, AND NOT HERE. The gap between the roster and the punches is the
@@ -743,8 +757,22 @@ export class AttendanceRecordService {
     // before: the board reported who HAD clocked in and never who had not.
     // Somebody on approved leave is not missing — they are accounted for.
     const punchedIn = new Set(records.filter((row) => row.clockInAt !== null).map((row) => row.staffId));
+    // A night shift from yesterday is clocked in on yesterday's record.
+    const overnight = shifts.filter((shift) => shift.shiftDate.getTime() !== day.getTime());
+    const stillIn = overnight.length
+      ? new Set(
+          (
+            await this.prisma.attendanceRecord.findMany({
+              where: { workDate: yesterday, staffId: { in: overnight.map((shift) => shift.staffId) }, clockInAt: { not: null } },
+              select: { staffId: true },
+            })
+          ).map((row) => row.staffId),
+        )
+      : new Set<string>();
     const away = new Set(onLeave.map((row) => row.staffId));
     const notClockedIn = shifts
+      // Whether last night's shift began is yesterday's question.
+      .filter((shift) => shift.shiftDate.getTime() === day.getTime())
       .filter((shift) => !punchedIn.has(shift.staffId) && !away.has(shift.staffId))
       .map((shift) => ({
         staffId: shift.staffId,
@@ -769,6 +797,16 @@ export class AttendanceRecordService {
         name: shift.staff.fullName,
         startAt: shift.startsAt,
         endAt: shift.endsAt,
+        // Who, where and which shift, for the combined on-duty board.
+        group: workforceCategoryOf(shift.staff) === 'DOCTOR' ? 'DOCTOR' : 'STAFF',
+        clinicId: shift.clinic.id,
+        clinicName: shift.clinic.name,
+        shiftType: shift.shiftType,
+        template: shift.template,
+        night: shift.night,
+        fromYesterday: shift.shiftDate.getTime() !== day.getTime(),
+        clockedIn: shift.shiftDate.getTime() === day.getTime() ? punchedIn.has(shift.staffId) : stillIn.has(shift.staffId),
+        onLeave: away.has(shift.staffId),
       })),
       notClockedIn,
       // WHO IS COVERING WHAT. Derived from the role rather than stored, the

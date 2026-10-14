@@ -707,6 +707,17 @@ export interface WorkforceToday {
     name: string;
     startAt: string;
     endAt: string;
+    /** On duty today (UAT, 14 October 2026): who, where and which shift. */
+    group?: 'DOCTOR' | 'STAFF';
+    clinicId?: string;
+    clinicName?: string;
+    shiftType?: string;
+    template?: { name: string; colour: string } | null;
+    night?: boolean;
+    /** A night shift rostered on yesterday's date that has not ended yet. */
+    fromYesterday?: boolean;
+    clockedIn?: boolean;
+    onLeave?: boolean;
   }[];
   /** Rostered, not on leave, and no punch yet — the gap a manager walks in with. */
   notClockedIn: {

@@ -14,6 +14,16 @@ export class ProviderShiftController {
 
   // Literal paths BEFORE `:id`, or Nest reads "month" as an id. The same trap
   // that made `/appointments/dashboard` silently return nothing.
+  /** Seven days from the branch's week start (UAT, 14 October 2026). */
+  @Get('week')
+  week(
+    @Query('clinicId') clinicId: string,
+    @Query('start') start: string,
+    @Query('category') category?: WorkforceCategory,
+  ) {
+    return this.shifts.week(clinicId, start, category);
+  }
+
   @Get('month')
   month(
     @Query('clinicId') clinicId: string,

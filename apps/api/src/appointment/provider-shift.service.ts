@@ -151,6 +151,30 @@ export class ProviderShiftService {
     if (!/^\d{4}-\d{2}$/.test(month)) {
       throw new BadRequestException('Month must be written as YYYY-MM.');
     }
+    return this.matrix(clinicId, datesInMonth(month), month, category);
+  }
+
+  /**
+   * ONE WEEK OF THE ROSTER (UAT, 14 October 2026): "weekly staff roster
+   * view". Seven days from the branch's own week start: a date that is not
+   * one moves back to the start of its week, so the board and a bookmark
+   * agree whichever day was asked for.
+   */
+  async week(clinicId: string, start: string, category?: WorkforceCategory): Promise<RosterMatrix> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || Number.isNaN(parseDateOnly(start).getTime())) {
+      throw new BadRequestException('The week is given by a date, YYYY-MM-DD.');
+    }
+    const policies = await this.prisma.attendancePolicy.findMany({ where: { OR: [{ clinicId }, { clinicId: null }] } });
+    const { weekStartDay } = resolveAttendancePolicy(policies, clinicId);
+    const asked = parseDateOnly(start);
+    const back = (asked.getUTCDay() - weekStartDay + 7) % 7;
+    const first = new Date(asked.getTime() - back * DAY_MS);
+    const dates = Array.from({ length: 7 }, (_, index) => new Date(first.getTime() + index * DAY_MS).toISOString().slice(0, 10));
+    return this.matrix(clinicId, dates, dates[0].slice(0, 7), category);
+  }
+
+  /** The board for any run of dates: a month or a week. */
+  private async matrix(clinicId: string, dates: string[], month: string, category?: WorkforceCategory): Promise<RosterMatrix> {
     // WHO MAY READ THIS BOARD, AND FOR WHICH BRANCH. The board ran on the
     // JWT alone: any account in the tenant could name any branch and read its
     // whole workforce, shifts and leave. Now the branch is one the account
@@ -159,7 +183,6 @@ export class ProviderShiftService {
     const { scope } = await requireScopeAny(this.rawPrisma, ['appointment.view', 'hr.view']);
     const branch = scope.require(clinicId);
     const timeZone = await this.timeZoneOf(branch);
-    const dates = datesInMonth(month);
     const first = parseDateOnly(dates[0]);
     const last = parseDateOnly(dates[dates.length - 1]);
 

@@ -25,11 +25,26 @@ import {
   useCopyRosterMonth,
   useRemoveShift,
   useRosterMonth,
+  useRosterWeek,
   useSetScheduleMode,
   WORKFORCE_CATEGORY_LABELS,
   WorkforceCategory,
 } from '../hooks/useRoster';
 import { ShiftEditorModal } from './ShiftEditorModal';
+import { OnDutyToday } from './OnDutyToday';
+
+/**
+ * WHICH ROSTER (UAT, 14 October 2026): "Monthly doctor roster view and weekly
+ * staff roster view, plus a combined 'on duty today' view." One roster, four
+ * ways to read it.
+ */
+type RosterView = 'ALL' | 'DOCTORS' | 'STAFF' | 'TODAY';
+const VIEWS: { value: RosterView; label: string }[] = [
+  { value: 'ALL', label: 'Everyone · month' },
+  { value: 'DOCTORS', label: 'Doctors · month' },
+  { value: 'STAFF', label: 'Staff · week' },
+  { value: 'TODAY', label: 'On duty today' },
+];
 import { permissionHint, useCan } from '../../core/hooks/useCan';
 import { FixedWeeklyEditor } from './FixedWeeklyEditor';
 import { providerColorFor } from '../calendar/doctor-color';
@@ -96,8 +111,24 @@ export function RosterPage({ clinicId }: RosterPageProps) {
   // and the chips carry the counts of the whole workforce whichever one is on.
   const [category, setCategory] = useState<WorkforceCategory | undefined>(undefined);
 
+  const [view, setView] = useState<RosterView>('ALL');
+  // Any day of the week on screen; the server moves it to the branch's week start.
+  const [weekAnchor, setWeekAnchor] = useState<Dayjs>(() => dayjs());
   const monthKey = month.format('YYYY-MM');
-  const { data, isFetching } = useRosterMonth(clinicId, monthKey, category);
+  const monthQuery = useRosterMonth(clinicId, monthKey, view === 'DOCTORS' ? 'DOCTOR' : category, view === 'ALL' || view === 'DOCTORS');
+  const weekQuery = useRosterWeek(clinicId, weekAnchor.format('YYYY-MM-DD'), view === 'STAFF');
+  const source = view === 'STAFF' ? weekQuery : monthQuery;
+  const isFetching = source.isFetching;
+  // The staff week is everybody who is not a doctor.
+  const data = useMemo(
+    () =>
+      source.data && view === 'STAFF'
+        ? { ...source.data, providers: source.data.providers.filter((row) => row.category !== 'DOCTOR') }
+        : source.data,
+    [source.data, view],
+  );
+  const weekStartDay = data?.weekStartDay ?? 1;
+  const opening = data?.openingHours ?? null;
   const removeShift = useRemoveShift();
   const copyMonth = useCopyRosterMonth();
   const setMode = useSetScheduleMode();
@@ -258,10 +289,26 @@ export function RosterPage({ clinicId }: RosterPageProps) {
       <p className="kw-roster-explain">
         Everybody who works here is on this board. Approved leave and clinic closures appear automatically.
       </p>
+      <Radio.Group
+        className="kw-roster-views"
+        optionType="button"
+        buttonStyle="solid"
+        size="small"
+        value={view}
+        onChange={(event) => {
+          setView(event.target.value);
+          setSelection(null);
+        }}
+        options={VIEWS}
+        aria-label="Roster view"
+      />
+      {view === 'TODAY' ? <OnDutyToday clinicId={clinicId} /> : (
+      <>
       {/*
         * WHO IS ON THE BOARD. Counts come from the whole workforce whichever
         * chip is on, so choosing "Doctors" does not make the others look empty.
         */}
+      {view === 'ALL' ? (
       <div className="kw-roster-filters" role="group" aria-label="Workforce">
         <Button
           size="small"
@@ -287,7 +334,23 @@ export function RosterPage({ clinicId }: RosterPageProps) {
           );
         })}
       </div>
+      ) : null}
       <div className="kw-roster-toolbar">
+        {view === 'STAFF' ? (
+          <Space wrap>
+            <Button.Group>
+              <Button icon={<LeftOutlined />} aria-label="Previous week" onClick={() => setWeekAnchor((current) => current.subtract(7, 'day'))} />
+              <Button onClick={() => setWeekAnchor(dayjs())}>This week</Button>
+              <Button icon={<RightOutlined />} aria-label="Next week" onClick={() => setWeekAnchor((current) => current.add(7, 'day'))} />
+            </Button.Group>
+            <span className="kw-roster-heading">
+              {data?.dates.length
+                ? `${dayjs(data.dates[0]).format('D MMM')} – ${dayjs(data.dates[data.dates.length - 1]).format('D MMM YYYY')}`
+                : ''}
+            </span>
+            <OpeningHoursNote opening={opening} />
+          </Space>
+        ) : (
         <Space wrap>
           <Button.Group>
             <Button
@@ -309,8 +372,11 @@ export function RosterPage({ clinicId }: RosterPageProps) {
             allowClear={false}
           />
           <span className="kw-roster-heading">{month.format('MMMM YYYY')}</span>
+          <OpeningHoursNote opening={opening} />
         </Space>
+        )}
         <Space wrap>
+          {view !== 'STAFF' ? (
           <Popconfirm
             title="Copy last month's roster?"
             description="Shifts are aligned by WEEKDAY, and this month's existing shifts for those providers are replaced."
@@ -329,6 +395,7 @@ export function RosterPage({ clinicId }: RosterPageProps) {
               </Button>
             </Tooltip>
           </Popconfirm>
+          ) : null}
           <Tooltip
             title={
               !canManageRoster
@@ -387,7 +454,7 @@ export function RosterPage({ clinicId }: RosterPageProps) {
                     <th
                       key={date}
                       data-closed={closed || undefined}
-                      data-weekend={weekday === 0 || weekday === 6 || undefined}
+                      data-week-start={weekday === weekStartDay || undefined}
                       data-today={date === todayKey || undefined}
                       data-first-shift={date === firstShiftDate || undefined}
                     >
@@ -466,7 +533,7 @@ export function RosterPage({ clinicId }: RosterPageProps) {
                         className="kw-roster-cell"
                         data-picked={picked || undefined}
                         data-closed={isClosed || undefined}
-                        data-weekend={weekday === 0 || weekday === 6 || undefined}
+                        data-week-start={weekday === weekStartDay || undefined}
                         onClick={() => canManageRoster && toggleDate(provider.staffId, date)}
                       >
                         {isClosed ? (
@@ -525,6 +592,9 @@ export function RosterPage({ clinicId }: RosterPageProps) {
           ))}
         </div>
       ) : null}
+
+      </>
+      )}
 
       <ShiftEditorModal
         open={Boolean(editing)}
@@ -836,5 +906,15 @@ function RosterCellContent({
         );
       })}
     </div>
+  );
+}
+
+/** The branch's opening hours beside the heading, when the clinic has said. */
+function OpeningHoursNote({ opening }: { opening: { open24Hours: boolean; openTime: string | null; closeTime: string | null } | null }) {
+  if (!opening) return null;
+  return (
+    <Text type="secondary" className="kw-roster-hours">
+      {opening.open24Hours ? 'Open 24 hours' : `Open ${opening.openTime}–${opening.closeTime}`}
+    </Text>
   );
 }

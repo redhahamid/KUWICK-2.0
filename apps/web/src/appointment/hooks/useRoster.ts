@@ -162,6 +162,7 @@ export function useRosterMonth(
   clinicId: string | undefined,
   month: string,
   category?: WorkforceCategory,
+  enabled = true,
 ) {
   return useQuery({
     queryKey: ['roster-month', clinicId, month, category ?? 'ALL'],
@@ -169,7 +170,18 @@ export function useRosterMonth(
       apiClient.get<RosterMatrix>(
         `/provider-shifts/month?clinicId=${clinicId}&month=${month}${category ? `&category=${category}` : ''}`,
       ),
-    enabled: Boolean(clinicId),
+    enabled: Boolean(clinicId) && enabled,
+    placeholderData: (previous) => previous,
+  });
+}
+
+/** Seven days from the branch's week start, around `date` (UAT, 14 October 2026). */
+export function useRosterWeek(clinicId: string | undefined, date: string, enabled = true) {
+  return useQuery({
+    // Under 'roster-month' so every roster write refreshes it too.
+    queryKey: ['roster-month', 'week', clinicId, date],
+    queryFn: () => apiClient.get<RosterMatrix>(`/provider-shifts/week?clinicId=${clinicId}&start=${date}`),
+    enabled: Boolean(clinicId) && enabled,
     placeholderData: (previous) => previous,
   });
 }

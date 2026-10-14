@@ -2643,13 +2643,70 @@
   background: var(--apt-surface-2);
 }
 
-.kw-roster-grid th[data-weekend],
-.kw-roster-grid td[data-weekend] {
-  background: #f7f8fa;
+/* The branch's own week start, not a fixed weekend (UAT, 14 October 2026). */
+.kw-roster-grid th[data-week-start],
+.kw-roster-grid td[data-week-start] {
+  border-left: 2px solid #d0d5dd;
 }
 
-.kw-roster-grid thead th[data-weekend] {
-  background: #f1f3f6;
+.kw-roster-views {
+  margin: 0 0 12px;
+}
+
+.kw-roster-hours {
+  font-size: 12px;
+}
+
+.kw-onduty__group {
+  margin: 0 0 16px;
+}
+.kw-onduty__title {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.kw-onduty__count {
+  color: #667085;
+  font-weight: 600;
+}
+.kw-onduty__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #eaecf0;
+  border-radius: 10px;
+  background: #fff;
+}
+.kw-onduty__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-top: 1px solid #f2f4f7;
+}
+.kw-onduty__row:first-child {
+  border-top: 0;
+}
+.kw-onduty__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+.kw-onduty__name {
+  font-weight: 600;
+  min-width: 160px;
+}
+.kw-onduty__shift {
+  color: #344054;
+}
+.kw-onduty__branch {
+  color: #667085;
+  font-size: 12px;
+}
+.kw-onduty__state {
+  margin-left: auto;
 }
 
 .kw-roster-grid thead th[data-closed] {
