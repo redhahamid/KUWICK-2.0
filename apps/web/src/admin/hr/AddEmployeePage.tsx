@@ -16,7 +16,8 @@ import { REST_DAY_CHOICES, restDayBody } from './restDay';
 import { useJobTitles, useLegalEmployers } from '../hooks/useAdmin';
 import { JobTitlePicker } from './JobTitlePicker';
 import { MALAYSIAN_STATES, bankOptions } from './malaysianStates';
-import { stateOfPostcode, useNewStaffDefaults } from './newStaffDefaults';
+import { useNewStaffDefaults } from './newStaffDefaults';
+import { placeOfPostcode } from './postcode';
 import { useHrSetup } from './useHrSetup';
 import { LawRef } from './ui/LawRef';
 import { RELATIONSHIPS } from './ui/reasons';
@@ -241,10 +242,17 @@ export function AddEmployeePage() {
     if (typedProbation.current || !startDate || defaults.probationMonths <= 0) return;
     form.setFieldValue('confirmedDate', startDate.add(defaults.probationMonths, 'month'));
   }, [startDate, defaults.probationMonths, form]);
-  // The state a postcode is in; a state already chosen by hand stays.
+  // The town and state a postcode is in; a town or state already typed by hand stays.
   useEffect(() => {
-    const state = stateOfPostcode(postcode);
-    if (state && !form.getFieldValue('state')) form.setFieldValue('state', state);
+    let live = true;
+    void placeOfPostcode(postcode).then((place) => {
+      if (!live || !place) return;
+      if (!form.getFieldValue('city')) form.setFieldValue('city', place.town);
+      if (!form.getFieldValue('state')) form.setFieldValue('state', place.state);
+    });
+    return () => {
+      live = false;
+    };
   }, [postcode, form]);
   /*
    * THE IC SAYS WHEN THEY WERE BORN AND WHICH THEY ARE. A valid Malaysian IC

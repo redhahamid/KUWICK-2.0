@@ -20,6 +20,7 @@ import { NO_FIXED_DAY_HELP, REST_DAY_CHOICES, restDayBody, restDayChoiceOf, type
 import { JobTitlePicker } from './JobTitlePicker';
 import { MALAYSIAN_STATES, bankOptions } from './malaysianStates';
 import { useNewStaffDefaults } from './newStaffDefaults';
+import { placeOfPostcode } from './postcode';
 import { LawRef } from './ui/LawRef';
 import type { EmployeeRecord } from '../types';
 import { useCan } from '../../core/hooks/useCan';
@@ -468,7 +469,22 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
             <div className="hr-form__row">
               <div>
                 <label htmlFor="ed-postcode">Postcode</label>
-                <Input id="ed-postcode" inputMode="numeric" value={postcode} onChange={(e) => setPostcode(e.target.value)} placeholder="e.g. 43650" />
+                <Input
+                  id="ed-postcode"
+                  inputMode="numeric"
+                  value={postcode}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setPostcode(next);
+                    // Town and state from the postcode, where they are still blank.
+                    void placeOfPostcode(next).then((place) => {
+                      if (!place) return;
+                      setCity((current) => current || place.town);
+                      setState((current) => current || place.state);
+                    });
+                  }}
+                  placeholder="e.g. 43650"
+                />
               </div>
               <div>
                 <label htmlFor="ed-city">City or town</label>

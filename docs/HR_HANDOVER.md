@@ -284,3 +284,11 @@ facts become reviewable rows in `payroll_input_entries` through
 and incentives all arrive this way, each pointing at the record behind it.
 Statutory rates are in `api/statutory/`. Progress and decisions are logged in
 `docs/HR_PROGRESS.md` and `docs/HR_DECISIONS.md`.
+
+## 11. Outside data Kuwick uses
+
+| Data | Source | Where |
+|---|---|---|
+| Malaysian postcode → town and state (Add employee, Edit employee) | Open package `malaysia-postcodes` 3.0.0, ISC licence, built from github.com/AsyrafHussin/malaysia-postcodes (2,929 postcodes). Update by bumping the package version. | `apps/web/src/admin/hr/postcode.ts` |
+| Public holidays 2026, federal and by state | Published 2026 calendars, cross-checked; dates where sources differ are marked "check". To be replaced by a centrally maintained official list (see HR_BACKLOG). | `apps/api/src/hr/holiday-presets.ts` |
+
