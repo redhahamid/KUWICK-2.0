@@ -996,6 +996,32 @@
   padding-top: 20px;
 }
 
+/* The year's holidays to tick before they are added. */
+.hr-holidayList {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--hr-line);
+  border-radius: 12px;
+}
+.hr-holidayList li {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hr-line);
+}
+.hr-holidayList li:last-child {
+  border-bottom: 0;
+}
+.hr-holidayList .hr-num {
+  display: inline-block;
+  min-width: 92px;
+  font-weight: 600;
+}
+.hr-holidayList .hr-chip {
+  margin-left: 8px;
+}
+
 /* ── Settings home (docs/hr-mockup/SettingsHome.html) ─────────────────────── */
 .hr-setupDone {
   display: flex;

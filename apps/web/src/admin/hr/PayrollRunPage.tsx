@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { RecordsChangedBanner } from './RecordsChangedBanner';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { App, Grid, Input, Modal } from 'antd';
 import dayjs from 'dayjs';
 import { ringgit } from '../components/DataTable';
@@ -30,6 +30,7 @@ import { downloadCsv } from './ui/csv';
 import { payrollExportTable } from './payrollExport';
 import type { PayrollJourney } from '../types';
 import { ItemsImport } from './ItemsImport';
+import { ApiError } from '../../core/api-client';
 
 /** The query's own error, as a sentence, or nothing. */
 const errorText = (query: { error: unknown }) => (query.error instanceof Error ? query.error.message : null);
@@ -116,9 +117,11 @@ export function PayrollWorkspace({ runId, monthNav }: { runId: string; monthNav?
   const checkRows = rows.filter((row) => row.blockers === 0 && row.warnings > 0);
   // Somebody the run left out has no line, so no row in `pay.rows` — and a
   // grid that simply omits them is a month that is quietly one person short.
+  // A month never worked out has nobody in it yet: that is said once, above
+  // the grid, not as "Blocked" beside every name (new-clinic UAT, 15 October 2026).
   const leftOut: LeftOutRow[] = (data?.employees.rows ?? [])
-    .filter((row) => !row.includedInRun && row.state !== 'READY')
-    .map((row) => ({ staffId: row.staffId, name: row.name, position: row.position, reason: row.reason }));
+    .filter((row) => !row.includedInRun && row.state !== 'READY' && row.state !== 'NOT_WORKED_OUT')
+    .map((row) => ({ staffId: row.staffId, name: row.name, position: row.position, reason: row.reason, fixLink: row.fixLink ?? null }));
   const blockedCount = blockedRows.length + leftOut.length;
   const provisional = data ? data.run.statutoryStatus !== 'CONFIGURED' : false;
 
@@ -283,6 +286,13 @@ export function PayrollRunPage() {
 
 type Filter = 'all' | 'blocked' | 'check';
 
+/** A refusal to work the month out, and the page that fixes it when the server names one. */
+export type CalcRefusal = { message: string; fix: { to: string; label: string } | null };
+export function calcRefusalOf(error: unknown): CalcRefusal {
+  const body = error instanceof ApiError ? (error.body as { fix?: { to: string; label: string } } | null) : null;
+  return { message: error instanceof Error ? error.message : 'The month could not be worked out.', fix: body?.fix ?? null };
+}
+
 function PrepareStep({
   data,
   runId,
@@ -320,10 +330,20 @@ function PrepareStep({
   );
   const shownLeftOut = filter === 'check' ? [] : leftOut.filter((row) => byName(row.name));
 
+  // Why the month could not be worked out, with the page that fixes it: from
+  // the Start button's attempt (passed along on the way here) or from this one.
+  const location = useLocation();
+  const [refusal, setRefusal] = useState<CalcRefusal | null>((location.state as { refusal?: CalcRefusal } | null)?.refusal ?? null);
   const recalculate = (afterwards?: string) =>
     calculate.mutate(runId, {
-      onSuccess: () => message.success(afterwards ?? 'Worked out again'),
-      onError: (error: Error) => message.error(error.message),
+      onSuccess: () => {
+        setRefusal(null);
+        message.success(afterwards ?? 'Worked out again');
+      },
+      onError: (error: Error) => {
+        setRefusal(calcRefusalOf(error));
+        message.error(error.message);
+      },
     });
 
   /*
@@ -406,9 +426,25 @@ function PrepareStep({
       </Toolbar>
 
       {rows.length === 0 && leftOut.length === 0 ? (
-        <div className="hr-empty">
-          <div className="hr-strong">Nothing has been worked out yet.</div>
-          <div className="hr-muted">Work the month out again builds it from attendance, leave, claims and the employee records.</div>
+        <div className="hr-empty" data-testid="not-worked-out">
+          <div className="hr-strong">This month has not been worked out yet.</div>
+          {refusal ? (
+            <div className="hr-muted">
+              It could not be worked out: {refusal.message}{' '}
+              {refusal.fix ? (
+                <Link className="hr-link" to={refusal.fix.to}>
+                  {refusal.fix.label}
+                </Link>
+              ) : null}
+            </div>
+          ) : (
+            <div className="hr-muted">Working it out builds everybody’s pay from attendance, leave, claims and their records.</div>
+          )}
+          {canEdit ? (
+            <button type="button" className="hr-btn hr-btn--primary hr-mt" disabled={calculate.isPending} onClick={() => recalculate('Worked out')}>
+              Work the month out
+            </button>
+          ) : null}
         </div>
       ) : (
         <PayrollGrid

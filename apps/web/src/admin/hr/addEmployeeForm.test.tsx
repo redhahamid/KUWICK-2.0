@@ -27,6 +27,8 @@ configure({ asyncUtilTimeout: 4_000 });
  * Malaysian citizen should never be asked. None of it needed the server.
  */
 const post = vi.fn();
+/** The call that adds the person; the Review stage also asks the same endpoint, without saving, what payroll will refuse on. */
+const saved = () => post.mock.calls.find((call) => (call[1] as { commit?: boolean } | undefined)?.commit === true);
 const patch = vi.fn();
 vi.mock('../../core/api-client', () => ({
   apiClient: { post: (...args: unknown[]) => post(...args), patch: (...args: unknown[]) => patch(...args) },
@@ -160,9 +162,9 @@ describe('nationality', () => {
     fireEvent.click(continueButton());
     await waitFor(() => expect(current()).toContain('Review'));
     fireEvent.click(screen.getByRole('button', { name: 'Add employee' }));
-    await waitFor(() => expect(post).toHaveBeenCalled());
-    expect(post.mock.calls[0][0]).toBe('/workforce/employees/intake');
-    expect(post.mock.calls[0][1]).toMatchObject({ rows: [{ fullName: 'Demo Person', nationality: 'Malaysian' }], commit: true });
+    await waitFor(() => expect(saved()).toBeDefined());
+    expect(saved()![0]).toBe('/workforce/employees/intake');
+    expect(saved()![1]).toMatchObject({ rows: [{ fullName: 'Demo Person', nationality: 'Malaysian' }], commit: true });
   });
 });
 
@@ -188,10 +190,10 @@ describe('what payroll blocks on', () => {
     expect(screen.getByText(/No tax residence or MTD category/)).toBeVisible();
 
     fireEvent.click(screen.getByRole('button', { name: 'Add employee' }));
-    await waitFor(() => expect(post).toHaveBeenCalled());
+    await waitFor(() => expect(saved()).toBeDefined());
     // One row, one call: the company and the standing travel with the person, dated from the start date.
-    expect(post.mock.calls[0][0]).toBe('/workforce/employees/intake');
-    expect(post.mock.calls[0][1]).toMatchObject({
+    expect(saved()![0]).toBe('/workforce/employees/intake');
+    expect(saved()![1]).toMatchObject({
       rows: [{ legalEmployerId: 'emp-1', standing: { effectiveFrom: '2026-01-01', epfMembership: 'MALAYSIAN_CITIZEN', restDayOfWeek: 0, lindungParticipation: 'ENROLLED' } }],
       commit: true,
     });

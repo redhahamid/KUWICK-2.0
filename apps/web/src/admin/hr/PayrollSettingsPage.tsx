@@ -1159,10 +1159,10 @@ export function PayrollSettingsPage() {
             — what Kuwick deducts and what the clinic pays on top
           </span>
           <span className="hr-kv__v">
-            {check ? (
-              <StatusChip tone={check.current ? 'done' : 'attn'}>Checked {dayjs(check.checkedAt).format('D MMM YYYY')}</StatusChip>
+            {check?.current ? (
+              <StatusChip tone="done">Acknowledged {dayjs(check.checkedAt).format('D MMM YYYY')}</StatusChip>
             ) : (
-              <StatusChip tone="attn">Not checked</StatusChip>
+              <StatusChip tone="attn">{check ? 'New edition to acknowledge' : 'Not acknowledged yet'}</StatusChip>
             )}
           </span>
           <span className="hr-kv__k">

@@ -11,8 +11,20 @@ import type { LegalEmployerRow } from '../types';
  * cards and a collapsed Advanced once it is done. Demo employer and item
  * names only.
  */
-const employer = (over: Partial<LegalEmployerRow> = {}): LegalEmployerRow =>
-  ({
+/** What the server reports missing, worked out from the row as legal-employer.service does. */
+const readinessOf = (row: LegalEmployerRow) => {
+  const missing = [
+    !row.registrationNo && 'Company registration number',
+    !row.epfEmployerNo && 'EPF employer number',
+    !row.socsoEmployerNo && 'SOCSO employer code',
+    !row.lhdnEmployerNo && 'LHDN employer number (E)',
+    !row.bankAccountOnFile && 'Bank account for payment',
+    !row.hrdRegistration && 'HRD Corp registration class',
+  ].filter(Boolean) as string[];
+  return { complete: missing.length === 0, missing, note: '' };
+};
+const employer = (over: Partial<LegalEmployerRow> = {}): LegalEmployerRow => {
+  const row = {
     id: 'le-1',
     name: 'Demo Clinic Sdn Bhd',
     employeeCount: 3,
@@ -33,8 +45,11 @@ const employer = (over: Partial<LegalEmployerRow> = {}): LegalEmployerRow =>
     bankAccountOnFile: true,
     bankAccountLastFour: '1234',
     bankAccountName: 'Demo Clinic Sdn Bhd',
+    active: true,
     ...over,
-  }) as LegalEmployerRow;
+  } as LegalEmployerRow;
+  return { ...row, statutoryReadiness: readinessOf(row) };
+};
 
 let employers: LegalEmployerRow[] = [];
 let check: { checkedAt: string; checkedBy: string | null; current: boolean } | null = null;
@@ -57,11 +72,22 @@ vi.mock('../hooks/useAdmin', () => ({
   useStatutoryRates: () => ok({ check }),
   useAttendancePolicy: () => ok({ source: 'KUWICK_DEFAULT' }),
   useLeavePolicies: () => ok([{ active: true, carryForwardDays: 3, payUntakenLeaveOnExit: true }]),
-  useEmployees: () => ok([{ active: true }, { active: true }]),
+  useEmployees: () => ok([{ active: true, hasProfile: true }, { active: true, hasProfile: true }, { active: true, hasProfile: false }]),
   useUpsertLegalEmployer: () => ({ mutateAsync: upsert, isPending: false }),
+  useRecordEmployerHrd: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useMarkStatutoryChecked: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
-vi.mock('../../hr/hooks/usePublicHolidays', () => ({ usePublicHolidays: () => ok([]) }));
+let holidays: { date: string }[] = [];
+let opening: unknown = null;
+vi.mock('../../hr/hooks/usePublicHolidays', () => ({
+  usePublicHolidays: () => ok(holidays),
+  useHolidayPresets: () => ok({ year: 2026, state: 'Selangor', available: true, holidays: [] }),
+  useLoadHolidayPresets: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+vi.mock('../../core/hooks/useGlobalSetting', () => ({
+  useGlobalSetting: () => ok(opening),
+  useSetGlobalSetting: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
 vi.mock('../../core/hooks/useClinicFilter', () => ({ useClinicFilter: () => ({ clinicId: undefined }) }));
 vi.mock('../../core/hooks/useCan', () => ({ useCan: () => true }));
 
@@ -81,24 +107,39 @@ beforeEach(() => {
   upsert.mockClear();
   employers = [employer()];
   check = null;
+  holidays = [];
+  opening = null;
 });
 
 describe('Settings while setup is incomplete', () => {
-  it('is the five steps and nothing else, with the first one still to do open', () => {
+  it('is the setup steps and nothing else, with the first one still to do open', () => {
     mount();
     expect(screen.getByRole('heading', { name: 'Set up payroll' })).toBeInTheDocument();
     const steps = within(screen.getByRole('navigation', { name: 'Setup steps' }));
     expect(steps.getAllByRole('button').map((button) => button.querySelector('.hr-wizStep__title')?.textContent)).toEqual([
       'Company & statutory numbers',
+      'Company bank account',
       'Pay rules',
       'Payroll items',
+      'Public holidays',
+      'Opening balances',
       'Employees',
-      'Check statutory rates',
+      'Statutory rates',
     ]);
-    expect(steps.getByText('1 number missing')).toBeInTheDocument();
-    expect(screen.getByText('Step 1 of 5')).toBeInTheDocument();
+    expect(steps.getByText('1 missing')).toBeInTheDocument();
+    // A login with no HR record (the owner's own account) is not counted (new-clinic UAT, 15 October 2026).
+    expect(steps.getByText('2 employees')).toBeInTheDocument();
+    expect(screen.getByText('Step 1 of 8')).toBeInTheDocument();
     expect(screen.queryByText('Advanced')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save & next' })).toBeInTheDocument();
+  });
+
+  it('agrees with Company & statutory: a clinic with no staff yet is not "complete" while numbers are missing', () => {
+    employers = [employer({ employeeCount: 0, socsoEmployerNo: 'A0000000001X', hrdRegistration: null, bankAccountOnFile: false })];
+    mount();
+    const steps = within(screen.getByRole('navigation', { name: 'Setup steps' }));
+    expect(steps.getByText('1 missing')).toBeInTheDocument();
+    expect(steps.getByText('Not on file')).toBeInTheDocument();
   });
 
   it('saves the numbers with everything else on file, and never the bank number', async () => {
@@ -123,7 +164,7 @@ describe('Settings while setup is incomplete', () => {
   it('asks only employers with staff for their numbers, and every card stays reachable (UAT, 15 October 2026)', () => {
     employers = [employer({ socsoEmployerNo: 'A0000000001X' }), employer({ id: 'le-2', name: 'Contoh Wellness', employeeCount: 0, epfEmployerNo: null })];
     mount();
-    expect(within(screen.getByRole('navigation', { name: 'Setup steps' })).queryByText(/number.? missing/)).not.toBeInTheDocument();
+    expect(within(screen.getByRole('navigation', { name: 'Setup steps' })).queryByText(/\d missing/)).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Open all settings now' })).toHaveAttribute('href', '/admin/hr/settings?all=1');
   });
 
@@ -137,6 +178,8 @@ describe('Settings when setup is done', () => {
   beforeEach(() => {
     employers = [employer({ socsoEmployerNo: 'A0000000001X' })];
     check = { checkedAt: '2026-10-05T00:00:00.000Z', checkedBy: 'Demo Owner', current: true };
+    holidays = [{ date: `${new Date().getFullYear()}-05-01` }];
+    opening = { answer: 'NONE', year: new Date().getFullYear() };
   });
 
   it('is one line, four cards with three facts each, and Advanced folded away', () => {

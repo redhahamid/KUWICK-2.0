@@ -104,8 +104,9 @@ test.describe('every URL the six sections absorbed', () => {
     // in people's bookmarks. A dead one teaches somebody the product moved on
     // without them.
     for (const [old, destination, heading] of [
-      // HR opens on Payroll; the old landing keeps its own address.
-      ['/admin/hr', '/admin/hr/payroll', 'Payroll'],
+      // HR opens on "Set up payroll" while setup is unfinished, as it is in
+      // the seeded clinic (new-clinic UAT, 15 October 2026); Payroll after.
+      ['/admin/hr', '/admin/hr/settings', 'Set up payroll'],
       ['/admin/hr/people', '/admin/hr/employees', 'Employees'],
       ['/admin/hr/people/new', '/admin/hr/employees/new', 'Add employee'],
       ['/admin/hr/time', '/admin/hr/attendance', 'Attendance'],
@@ -169,26 +170,29 @@ test.describe('every URL the six sections absorbed', () => {
 });
 
 test.describe('Settings is the setup steps until setup is done', () => {
-  test('shows only the five steps, one open, each step opening the page it is settled on', async ({ page }) => {
+  test('shows only the setup steps, one open, each step opening the page it is settled on', async ({ page }) => {
     await loginAdmin(page);
     await gotoHr(page, '/admin/hr/settings');
 
-    // The seeded clinic has not checked the statutory tables, so setup is
+    // The seeded clinic has not acknowledged the statutory tables, so setup is
     // incomplete and Settings is the wizard and nothing else
     // (docs/hr-mockup/SetupWizard.html). No cards, no Employees editor.
     await expect(page.getByRole('heading', { name: 'Set up payroll', exact: true })).toBeVisible();
     const steps = page.locator('.hr-wizStep .hr-wizStep__title');
     expect((await steps.allInnerTexts()).map((label) => label.trim())).toEqual([
       'Company & statutory numbers',
+      'Company bank account',
       'Pay rules',
       'Payroll items',
+      'Public holidays',
+      'Opening balances',
       'Employees',
-      'Check statutory rates',
+      'Statutory rates',
     ]);
     await expect(page.locator('.hr-area')).toHaveCount(0);
     // One step open, with its own heading and a way on.
     await expect(page.locator('.hr-wiz__card h2')).toHaveCount(1);
-    await expect(page.locator('.hr-wiz__count')).toHaveText(/^Step \d of 5$/);
+    await expect(page.locator('.hr-wiz__count')).toHaveText(/^Step \d of 8$/);
 
     // Each step settled elsewhere opens that one page, still inside Settings.
     for (const [step, link, path, heading, section] of [

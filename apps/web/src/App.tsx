@@ -101,6 +101,7 @@ import { PayrollSettingsPage } from './admin/hr/PayrollSettingsPage';
 import { PayrollItemsPage } from './admin/hr/PayrollItemsPage';
 import { StatutoryRatesPage } from './admin/hr/StatutoryRatesPage';
 import { HrSettingsPage } from './admin/hr/HrSettingsPage';
+import { HrLanding } from './admin/hr/HrLanding';
 import { AttendanceSettingsPage } from './admin/hr/AttendanceSettingsPage';
 import { PayrollMonthPage } from './admin/hr/PayrollMonthPage';
 import { PayrollHistoryPage } from './admin/hr/PayrollHistoryPage';
@@ -310,7 +311,7 @@ export function App() {
               * arrives meaning to look at. The old landing keeps a URL of its
               * own — it is a useful screen, just not the front door.
               */}
-            <Route path="/admin/hr" element={<Navigate to="/admin/hr/payroll" replace />} />
+            <Route path="/admin/hr" element={<HrLanding />} />
             <Route path="/admin/hr/today" element={<HrOverviewPage />} />
 
             {/* SIX GROUPS, AND THE URLS THAT USED TO BE TWELVE.

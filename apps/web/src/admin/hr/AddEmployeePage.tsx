@@ -16,6 +16,7 @@ import { REST_DAY_CHOICES, restDayBody } from './restDay';
 import { useJobTitles, useLegalEmployers } from '../hooks/useAdmin';
 import { JobTitlePicker } from './JobTitlePicker';
 import { MALAYSIAN_STATES } from './malaysianStates';
+import { useHrSetup } from './useHrSetup';
 import { RELATIONSHIPS } from './ui/reasons';
 import type { EmployeeIntakeResult, EmployeeIntakeRowDto, EmployeeIntakeRowResult } from '../types';
 
@@ -311,10 +312,36 @@ export function AddEmployeePage() {
   const roleLabel = ROLES.find((option) => option.value === values.role)?.label;
 
   /*
-   * WHAT PAYROLL WILL STILL BE MISSING, said before they click rather than
-   * discovered when the pay run leaves somebody out.
+   * THE SERVER'S ANSWER, NOT A SECOND GUESS (new-clinic UAT, 15 October
+   * 2026: Review said "Ready to be paid" and payroll then showed Blocked).
+   * On the Review stage the row goes to the same intake check that adds it,
+   * without saving, and its readiness is the list payroll refuses on.
    */
-  const outstanding = [
+  const [preview, setPreview] = useState<{ blocking: string[]; advisory: string[] } | null>(null);
+  useEffect(() => {
+    if (stage !== STAGES.length - 1) return;
+    let live = true;
+    apiClient
+      .post<EmployeeIntakeResult>('/workforce/employees/intake', { rows: [intakeRowOf(form.getFieldsValue(true), clinicId)], commit: false })
+      .then((result) => {
+        const row = result.results[0];
+        if (live && row) setPreview({ blocking: [...row.problems.map((problem) => problem.message), ...row.readiness.blocking], advisory: row.readiness.advisory });
+      })
+      .catch(() => live && setPreview(null));
+    return () => {
+      live = false;
+    };
+  }, [stage, form, clinicId]);
+  // Clinic-wide setup still to do is part of the answer too: a complete record cannot be paid before it.
+  const setup = useHrSetup();
+  const setupLeft = setup.steps.filter((step) => !step.done && step.key !== 'employees');
+
+  /*
+   * WHAT PAYROLL WILL STILL BE MISSING, said before they click rather than
+   * discovered when the pay run leaves somebody out. The server's list when
+   * it has answered; this local one until then.
+   */
+  const local = [
     // The run's own blockers, in the order it raises them.
     !values.legalEmployerId ? 'No employing company — payroll cannot be worked out for them, and this cannot be skipped.' : null,
     !values.salaryAmount ? 'No salary in force — payroll leaves them out.' : null,
@@ -327,6 +354,7 @@ export function AddEmployeePage() {
     !values.taxResidence || !values.pcbCategory ? 'No tax residence or MTD category — monthly tax has to be entered by hand each month.' : null,
     !values.bankAccountNo ? 'No bank account — they cannot be paid out.' : null,
   ].filter(Boolean) as string[];
+  const outstanding = preview ? [...preview.blocking, ...preview.advisory] : local;
 
   return (
     <AdminShell
@@ -742,15 +770,21 @@ export function AddEmployeePage() {
 
             <Panel
               title="Payroll readiness"
-              tone={outstanding.length > 0 ? 'attention' : 'ok'}
+              tone={outstanding.length > 0 || setupLeft.length > 0 ? 'attention' : 'ok'}
               hint={
                 outstanding.length === 0
-                  ? 'Everything payroll needs is here. They can be included in next month’s payroll.'
+                  ? setupLeft.length === 0
+                    ? 'Everything payroll needs is here. They will be in the next payroll month.'
+                    : `Their record is complete. Payroll can start once setup is finished: ${setupLeft.map((step) => step.title).join(', ')}.`
                   : undefined
               }
             >
               {outstanding.length === 0 ? (
-                <StatusChip tone="ok">Ready to be paid</StatusChip>
+                setupLeft.length === 0 ? (
+                  <StatusChip tone="ok">Ready to be paid</StatusChip>
+                ) : (
+                  <StatusChip tone="attention">Record complete · setup not finished</StatusChip>
+                )
               ) : (
                 <ul className="kw-readiness">
                   {outstanding.map((line) => (

@@ -488,6 +488,11 @@ export class PayrollJourneyService {
         (e) => e.severity === 'BLOCKING' && !(e.overridable && e.overriddenByStaffId),
       );
       const paid = lineByStaff.has(employee.staffId);
+      // NOBODY IS IN A MONTH THAT WAS NEVER WORKED OUT (new-clinic UAT, 15
+      // October 2026): that is the month's state, not this person's, and
+      // calling it "Blocked" with a Fix to a complete record was a dead end.
+      const notWorkedOut = !paid && run.lines.length === 0 && blocking.length === 0;
+      const noSalary = salary.kind === 'NO_SALARY';
       return {
         staffId: employee.staffId,
         name: employee.staff.fullName,
@@ -499,10 +504,21 @@ export class PayrollJourneyService {
           ? blocking.length > 0
             ? ('NEEDS_ATTENTION' as const)
             : ('READY' as const)
-          : ('NEEDS_SETUP' as const),
+          : notWorkedOut && !noSalary
+            ? ('NOT_WORKED_OUT' as const)
+            : ('NEEDS_SETUP' as const),
         reason: paid
           ? blocking.map((e) => e.cause).join(' ') || null
-          : (blocking[0]?.cause ?? (salary.kind === 'NO_SALARY' ? 'No salary is on file for this period.' : null)),
+          : (blocking[0]?.cause ??
+            (noSalary
+              ? 'No salary is on file for this month.'
+              : notWorkedOut
+                ? 'This month has not been worked out yet.'
+                : 'Left out when the month was last worked out. Work it out again to include them.')),
+        /** Where the reason is fixed; null when the fix is working the month out again. */
+        fixLink:
+          blocking.find((e) => e.deepLink)?.deepLink ??
+          (noSalary ? `/admin/hr/employees/${employee.staffId}?tab=employment&focus=salary` : null),
         includedInRun: paid,
       };
     });

@@ -1,4 +1,4 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
@@ -7,6 +7,8 @@ import { requirePermission, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { CreatePublicHolidayDto } from './dto/create-public-holiday.dto';
 import { UpdatePublicHolidayDto } from './dto/update-public-holiday.dto';
+import { LoadHolidayPresetsDto } from './dto/load-holiday-presets.dto';
+import { HOLIDAY_PRESET_YEARS, holidayPresets, isMalaysianState } from './holiday-presets';
 
 /**
  * THE TENANT'S HOLIDAY CALENDAR. One calendar for every branch, which is why
@@ -82,6 +84,49 @@ export class PublicHolidayService {
         source: 'hr.settings',
       });
       return saved;
+    });
+  }
+
+  /** The starting list for a year and state, with the dates already on the calendar marked. */
+  async presets(year: number, state: string) {
+    await requirePermission(this.rawPrisma, 'hr.view');
+    if (!isMalaysianState(state)) throw new BadRequestException('Choose a Malaysian state.');
+    const existing = await this.prisma.publicHoliday.findMany({ select: { date: true } });
+    const onFile = new Set(existing.map((row) => row.date.toISOString().slice(0, 10)));
+    return {
+      year,
+      state,
+      available: HOLIDAY_PRESET_YEARS.includes(year),
+      holidays: holidayPresets(year, state).map((row) => ({ ...row, onCalendar: onFile.has(row.date) })),
+    };
+  }
+
+  /** Adds the ticked dates of the starting list; a date already on the calendar is left as it is. */
+  async loadPresets(dto: LoadHolidayPresetsDto) {
+    if (!isMalaysianState(dto.state)) throw new BadRequestException('Choose a Malaysian state.');
+    const list = new Map(holidayPresets(dto.year, dto.state).map((row) => [row.date, row]));
+    const wanted = dto.dates.map((date) => date.slice(0, 10));
+    const unknown = wanted.filter((date) => !list.has(date));
+    if (unknown.length > 0) throw new BadRequestException(`Not on the ${dto.year} list for ${dto.state}: ${unknown.join(', ')}.`);
+    return withAdminTx(this.rawPrisma, 'settings.manage', async (tx, actor) => {
+      const existing = await tx.publicHoliday.findMany({ select: { date: true } });
+      const onFile = new Set(existing.map((row) => row.date.toISOString().slice(0, 10)));
+      const added = wanted.filter((date) => !onFile.has(date)).map((date) => list.get(date)!);
+      if (added.length > 0) {
+        await tx.publicHoliday.createMany({
+          data: added.map((row) => ({ tenantId: currentTenantId(), date: new Date(row.date), name: row.name, kind: 'ORDINARY' as const })),
+          skipDuplicates: true,
+        });
+        await recordAudit(tx, actor, {
+          action: 'publicHoliday.created',
+          entityType: 'PublicHoliday',
+          entityId: `preset:${dto.year}:${dto.state}`,
+          reason: `Loaded ${added.length} ${dto.year} public holidays for ${dto.state}`,
+          after: { dates: added.map((row) => row.date) },
+          source: 'hr.settings',
+        });
+      }
+      return { added: added.length, skipped: wanted.length - added.length };
     });
   }
 

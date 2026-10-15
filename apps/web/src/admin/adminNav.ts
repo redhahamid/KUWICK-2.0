@@ -91,13 +91,12 @@ export const ADMIN_CATEGORIES: HubCategory[] = [
     // between attendance, leave and payroll and needs to know where they are
     // the whole time.
     layout: 'rail',
-    // CLICKING "HR" AND TYPING /admin/hr HAVE TO LAND IN THE SAME PLACE.
-    // Without this the module tab went to the first rail entry, Employees,
-    // while the bare URL redirected to Payroll — the same gesture, two
-    // answers. Payroll is the answer: paying people is why this module is
-    // opened at all. Employees keeps its seat first in the rail because that
-    // is the order the work is set up in, not the order it is done in.
-    landing: '/admin/hr/payroll',
+    // CLICKING "HR" AND TYPING /admin/hr HAVE TO LAND IN THE SAME PLACE:
+    // both go to /admin/hr, which opens "Set up payroll" while setup is
+    // unfinished and Payroll after (HrLanding; new-clinic UAT, 15 October
+    // 2026). Employees keeps its seat first in the rail because that is the
+    // order the work is set up in, not the order it is done in.
+    landing: '/admin/hr',
     settings: { path: '/admin/hr/settings', label: 'Settings' },
     items: [
       /*

@@ -2704,8 +2704,10 @@ export interface PayrollJourney {
       position: string | null;
       employerName: string | null;
       startDate: string | null;
-      state: "READY" | "NEEDS_ATTENTION" | "NEEDS_SETUP";
+      state: "READY" | "NEEDS_ATTENTION" | "NEEDS_SETUP" | "NOT_WORKED_OUT";
       reason: string | null;
+      /** Where the reason is fixed; null when the fix is working the month out again. */
+      fixLink?: string | null;
       includedInRun: boolean;
     }[];
     contractors: { staffId: string; name: string }[];

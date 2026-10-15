@@ -356,6 +356,8 @@ export interface LeftOutRow {
   name: string;
   position: string | null;
   reason: string | null;
+  /** Where the reason is fixed; null means working the month out again is the fix. */
+  fixLink?: string | null;
 }
 
 export function PayrollGrid({
@@ -609,10 +611,12 @@ export function PayrollGrid({
                 </td>
               ))}
               <td>
-                {/* Left out means no salary or no employer: the Employment tab, where both are set. */}
-                <Link className="hr-fixLink" to={`/admin/hr/employees/${row.staffId}?tab=employment`}>
-                  Fix
-                </Link>
+                {/* The page that fixes the reason given, never a record that is already complete. */}
+                {row.fixLink ? (
+                  <Link className="hr-fixLink" to={row.fixLink}>
+                    Fix
+                  </Link>
+                ) : null}
               </td>
             </tr>
           ))}

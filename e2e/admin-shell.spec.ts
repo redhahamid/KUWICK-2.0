@@ -85,11 +85,12 @@ test.describe('Admin shell', () => {
     await expect(page).toHaveURL(/\/admin\/stock/);
     await expect(page.locator('.kw-admin__title')).toHaveText('Stock');
 
-    // HR opens where the work is, not on a summary of it: the module tab and
-    // the bare /admin/hr URL both land on the month being paid.
+    // HR opens where the work is: "Set up payroll" while setup is unfinished,
+    // as in the seeded clinic (new-clinic UAT, 15 October 2026), the month
+    // being paid after. The module tab and the bare /admin/hr URL agree.
     await page.getByRole('tab', { name: 'HR', exact: true }).click();
-    await expect(page).toHaveURL(/\/admin\/hr\/payroll/);
-    await expect(page.locator('.kw-admin__title')).toHaveText('Payroll');
+    await expect(page).toHaveURL(/\/admin\/hr\/settings/);
+    await expect(page.getByRole('heading', { name: 'Set up payroll', exact: true })).toBeVisible();
   });
 });
 

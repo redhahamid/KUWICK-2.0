@@ -178,6 +178,17 @@ function daysInMonth(start: Date): number {
  * THE LOCK IS IN THE DATABASE. An approved run's lines cannot be updated at
  * all — a trigger refuses it. A correction is a `PayrollAdjustment` row.
  */
+/**
+ * A REFUSAL THE SCREEN CAN ACT ON (new-clinic UAT, 15 October 2026): a month
+ * that cannot be worked out says why in plain words and names the page that
+ * fixes it, so the payroll screen can link straight there.
+ */
+const ITEMS_FIX = { to: '/admin/hr/settings/payroll-items', label: 'Open Payroll items' };
+const PAY_RULES_FIX = { to: '/admin/hr/settings/payroll', label: 'Open Pay rules' };
+function refuseWithFix(message: string, fix: { to: string; label: string }) {
+  return new BadRequestException({ statusCode: 400, error: 'Bad Request', message, fix });
+}
+
 @Injectable()
 export class PayrollService {
   constructor(
@@ -748,13 +759,13 @@ export class PayrollService {
         new Date(periodEnd.getTime() - 86_400_000),
       );
       if (catalogue.size === 0) {
-        throw new BadRequestException(
-          'No pay components are configured for this period, so nothing on a payslip could say what it is liable to. ' +
-            'Seed the component catalogue in Payroll settings before running payroll.',
+        throw refuseWithFix(
+          'No payroll items are set up yet, so there is nothing to put on a payslip. Add the standard items first.',
+          ITEMS_FIX,
         );
       }
       const orpBaseProblem = checkOrdinaryRateBase(catalogue);
-      if (orpBaseProblem) throw new BadRequestException(orpBaseProblem);
+      if (orpBaseProblem) throw refuseWithFix(orpBaseProblem, ITEMS_FIX);
 
       // Every holiday in the month, and which of them the clinic marked
       // festive: a festive day is a public holiday the rule set may price
@@ -802,11 +813,12 @@ export class PayrollService {
       // configuration error affecting everybody, and a hundred identical
       // exceptions would bury the ones that are about people.
       const orpPolicyProblem = checkOrdinaryRatePolicy('MONTHLY', orpConfig.overtimeDaysPerMonth);
-      if (orpPolicyProblem) throw new BadRequestException(orpPolicyProblem);
+      if (orpPolicyProblem) throw refuseWithFix(orpPolicyProblem, PAY_RULES_FIX);
       if (orpConfig.hoursPerDay > MAX_HOURS_PER_DAY) {
-        throw new BadRequestException(
+        throw refuseWithFix(
           `Normal hours are set to ${orpConfig.hoursPerDay} a day. Section 60A(1) of the Employment Act caps them at ` +
             `${MAX_HOURS_PER_DAY}, and a longer normal day both breaches that and shrinks the hourly rate overtime is priced from.`,
+          PAY_RULES_FIX,
         );
       }
 

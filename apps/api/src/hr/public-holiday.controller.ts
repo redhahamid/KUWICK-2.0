@@ -1,7 +1,8 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { PublicHolidayService } from './public-holiday.service';
 import { CreatePublicHolidayDto } from './dto/create-public-holiday.dto';
 import { UpdatePublicHolidayDto } from './dto/update-public-holiday.dto';
+import { LoadHolidayPresetsDto } from './dto/load-holiday-presets.dto';
 
 @Controller('public-holidays')
 export class PublicHolidayController {
@@ -10,6 +11,17 @@ export class PublicHolidayController {
   @Get()
   findAll() {
     return this.publicHolidays.findAll();
+  }
+
+  /** The year's federal and state holidays for one state, to tick before loading. */
+  @Get('presets')
+  presets(@Query('year') year: string, @Query('state') state: string) {
+    return this.publicHolidays.presets(Number(year), state);
+  }
+
+  @Post('presets')
+  loadPresets(@Body() dto: LoadHolidayPresetsDto) {
+    return this.publicHolidays.loadPresets(dto);
   }
 
   @Post()

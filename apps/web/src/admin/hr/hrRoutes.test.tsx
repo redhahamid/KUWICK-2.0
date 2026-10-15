@@ -109,11 +109,9 @@ describe('the HR addresses', () => {
     // different screens depending on how you did it.
     const { ADMIN_CATEGORIES } = await import('../AdminLayout');
     const hr = ADMIN_CATEGORIES.find((category) => category.key === 'hr');
-    const bareUrl = routes.find((route) => route.path === '/admin/hr');
-    expect({ tab: hr?.landing ?? null, url: bareUrl?.redirectsTo ?? null }).toEqual({
-      tab: '/admin/hr/payroll',
-      url: '/admin/hr/payroll',
-    });
+    // Both go to /admin/hr, whose HrLanding picks Set up payroll or Payroll (new-clinic UAT, 15 October 2026).
+    expect(hr?.landing).toBe('/admin/hr');
+    expect(appSource).toContain('<Route path="/admin/hr" element={<HrLanding />} />');
   });
 
   it('send the rail at screens, never at a redirect', async () => {

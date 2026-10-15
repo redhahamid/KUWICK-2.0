@@ -506,17 +506,17 @@ describe('the payroll grid', () => {
     expect(document.querySelectorAll('.hr-grid__short')).toHaveLength(3);
   });
 
-  it('still lists somebody the run left out — blocked, with dashes, and a Fix to their record', () => {
+  it('still lists somebody the run left out — blocked, with dashes, and a Fix to the cause', () => {
     // A person with no line is not a person with no problem; a grid that
     // omits them is a month that is quietly one person short.
     viewport(1440);
-    grid({ leftOut: [{ staffId: 'staff-7', name: 'Wan Azman', position: 'Panel clerk', reason: 'No salary on record' }] });
+    grid({ leftOut: [{ staffId: 'staff-7', name: 'Wan Azman', position: 'Panel clerk', reason: 'No salary on record', fixLink: '/admin/hr/employees/staff-7?tab=employment&focus=salary' }] });
     const rows = document.querySelectorAll('tbody tr');
     expect(rows).toHaveLength(2);
     const last = rows[1] as HTMLElement;
     expect(within(last).getByText('Blocked')).toBeVisible();
-    // Straight to the employment tab, where the salary is recorded — not the top of the record.
-    expect(within(last).getByRole('link', { name: 'Fix' })).toHaveAttribute('href', '/admin/hr/employees/staff-7?tab=employment');
+    // Straight to where the cause is fixed — the server names it (new-clinic UAT, 15 October 2026).
+    expect(within(last).getByRole('link', { name: 'Fix' })).toHaveAttribute('href', '/admin/hr/employees/staff-7?tab=employment&focus=salary');
     expect(within(last).getAllByText('—').length).toBe(GRID_COLUMNS.length);
   });
 
@@ -530,7 +530,7 @@ describe('the payroll grid', () => {
    */
   it('pins the name and the status to the left, in the header, the rows and the foot', () => {
     viewport(1440);
-    grid({ leftOut: [{ staffId: 'staff-7', name: 'Wan Azman', position: 'Panel clerk', reason: 'No salary on record' }] });
+    grid({ leftOut: [{ staffId: 'staff-7', name: 'Wan Azman', position: 'Panel clerk', reason: 'No salary on record', fixLink: '/admin/hr/employees/staff-7?tab=employment&focus=salary' }] });
     const frozen = (scope: string) =>
       [...document.querySelectorAll(`${scope} .hr-grid__freeze`)].map((cell) =>
         cell.classList.contains('hr-grid__freeze--who') ? 'who' : cell.classList.contains('hr-grid__freeze--status') ? 'status' : '?',

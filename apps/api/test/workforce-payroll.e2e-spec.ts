@@ -1550,7 +1550,8 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
         .set('Authorization', bearer)
         .expect(400);
-      expect(refused.body.message).toMatch(/No pay components are configured/);
+      expect(refused.body.message).toMatch(/No payroll items are set up yet/);
+      expect(refused.body.fix).toEqual({ to: '/admin/hr/settings/payroll-items', label: 'Open Payroll items' });
     });
 
     it('takes a component’s statutory treatment from the CATALOGUE, not from the engine', async () => {

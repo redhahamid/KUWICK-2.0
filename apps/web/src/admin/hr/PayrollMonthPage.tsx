@@ -5,7 +5,7 @@ import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useCalculatePayroll, useCreatePayrollRun, usePayrollHome } from '../hooks/useAdmin';
 import { useCan } from '../../core/hooks/useCan';
 import { PayrollStartGate } from './PayrollStartGate';
-import { PayrollWorkspace } from './PayrollRunPage';
+import { PayrollWorkspace, calcRefusalOf, type CalcRefusal } from './PayrollRunPage';
 import { ProvisionalBanner } from './ProvisionalBanner';
 import { ringgit } from '../components/DataTable';
 import { HrPage, Panel, PanelHead, SegControl, StatCard, StatRow, StatusChip, type ChipTone } from './ui';
@@ -184,14 +184,17 @@ export function PayrollMonthPage() {
                               8,
                             );
                           }
+                          // A refusal travels with the page, so the grid can say why the
+                          // month is empty and link to the fix (new-clinic UAT, 15 October 2026).
+                          let refusal: CalcRefusal | null = null;
                           try {
                             await calculate.mutateAsync(created.id);
                           } catch (error) {
-                            message.error((error as Error).message);
+                            refusal = calcRefusalOf(error);
                           }
                           // Straight into the grid, on the stage the work
                           // starts at — not back to a summary of what happened.
-                          navigate(`/admin/hr/payroll/${created.id}?step=prepare`);
+                          navigate(`/admin/hr/payroll/${created.id}?step=prepare`, { state: refusal ? { refusal } : undefined });
                         } catch (error) {
                           message.error((error as Error).message);
                         }

@@ -91,9 +91,7 @@ export function StatutoryRatesPage() {
   const onMark = () =>
     mark.mutate(undefined, {
       onSuccess: () =>
-        message.success(
-          "Recorded. The registry itself is unchanged; this is your check.",
-        ),
+        message.success("Acknowledged."),
       onError: (error: Error) => message.error(error.message),
     });
 
@@ -106,7 +104,7 @@ export function StatutoryRatesPage() {
         </>
       }
       title="Statutory rates"
-      sub="What Kuwick deducts and what the clinic pays on top. Rates come from KWSP, PERKESO and LHDN tables — you check them, you don't type them."
+      sub="What Kuwick deducts and what the clinic pays on top. The rates are KWSP's, PERKESO's and LHDN's own tables, kept up to date by Kuwick. Nothing here is typed in."
       error={rates.error instanceof Error ? rates.error.message : null}
       actions={
         <>
@@ -119,28 +117,29 @@ export function StatutoryRatesPage() {
             format="MMM YYYY"
             style={{ width: 132 }}
           />
-          {check ? (
-            <StatusChip tone={check.current ? "done" : "attn"}>
-              {check.current ? "Checked" : "Checked before the current edition"}{" "}
-              {dayjs(check.checkedAt).format("D MMM YYYY")}
+          {/* ONE FACT, ONE WORD (new-clinic UAT, 15 October 2026): the
+              editions are Kuwick's to keep right; the clinic acknowledges
+              having seen which ones are in use. */}
+          {check?.current ? (
+            <StatusChip tone="done">
+              Acknowledged {dayjs(check.checkedAt).format("D MMM YYYY")}
               {check.checkedBy ? ` · ${check.checkedBy}` : ""}
             </StatusChip>
           ) : (
-            <StatusChip tone="attn">Not checked by this clinic</StatusChip>
+            <button
+              type="button"
+              className="hr-btn hr-btn--primary"
+              onClick={onMark}
+              disabled={!mayCheck || mark.isPending}
+              title={
+                mayCheck
+                  ? undefined
+                  : "The person who approves payroll acknowledges these."
+              }
+            >
+              {check ? "Acknowledge the new edition" : "Acknowledge these rates"}
+            </button>
           )}
-          <button
-            type="button"
-            className="hr-btn hr-btn--primary"
-            onClick={onMark}
-            disabled={!mayCheck || mark.isPending}
-            title={
-              mayCheck
-                ? undefined
-                : "Only somebody who can approve payroll may record a check."
-            }
-          >
-            Mark as checked
-          </button>
         </>
       }
     >
@@ -398,7 +397,7 @@ export function StatutoryRatesPage() {
       <Panel>
         <PanelHead
           title="Editions on file"
-          sub="Built-in editions come with Kuwick and are already checked. A later edition is added by Kuwick, never typed by a clinic; a month is priced on the edition in force on its last day."
+          sub="Each edition shows the date it came into force and where it comes from. A month is paid on the edition in force on its last day."
         />
         {(data?.versions ?? []).length === 0 ? (
           <div className="hr-panelNote">
