@@ -174,9 +174,9 @@ export async function checkIntakeRow(row: EmployeeIntakeRowDto, ctx: IntakeConte
   if (!role) problems.push({ field: 'role', message: 'Which account role? Pick one.' });
   else if (!EMPLOYEE_ROLES.includes(role)) problems.push({ field: 'role', message: role === 'PATIENT_PORTAL' ? 'A patient portal login is not an employee role.' : 'Not an account role.' });
   problems.push(...(await dtoProblems(plainToInstance(CreateEmployeeDto, createBody), '')));
-  for (const field of ['dateOfBirth', 'startDate'] as const) {
+  for (const field of ['dateOfBirth', 'startDate', 'confirmedDate'] as const) {
     const value = createBody[field];
-    if (typeof value === 'string' && !dateOk(value)) problems.push({ field, message: `${field === 'startDate' ? 'The start date' : 'The date of birth'} must be YYYY-MM-DD.` });
+    if (typeof value === 'string' && !dateOk(value)) problems.push({ field, message: `${field === 'startDate' ? 'The start date' : field === 'confirmedDate' ? 'The probation end date' : 'The date of birth'} must be YYYY-MM-DD.` });
   }
 
   // THE BRANCH, THE COMPANY AND THE TITLE: real, and the account's to use.

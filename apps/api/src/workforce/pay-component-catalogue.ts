@@ -63,6 +63,12 @@ export interface SeedPayComponent {
    * the clinic changes it under Payroll items.
    */
   payDay?: number;
+  /**
+   * Offered, not added (new-clinic UAT, 15 October 2026): items one clinic
+   * uses and most do not. "Add the standard items" leaves them out; the
+   * Payroll items page lists them to add one at a time.
+   */
+  addOn?: boolean;
 }
 
 /**
@@ -123,7 +129,10 @@ export const SEED_PAY_COMPONENTS: SeedPayComponent[] = [
   {
     code: 'BONUS', name: 'Bonus', type: 'ADDITION', category: 'REMUNERATION',
     includeIn: 'GROSS_AND_NET',
-    pcbLiable: true, epfLiable: true, socsoLiable: true, eisLiable: true, hrdLiable: false,
+    // Annual bonus is not "wages" for SOCSO or EIS: PERKESO's own leaflet lists
+    // it among the payments outside the contribution base (new-clinic UAT, 15
+    // October 2026). EPF and PCB do apply to bonus.
+    pcbLiable: true, epfLiable: true, socsoLiable: false, eisLiable: false, hrdLiable: false,
     includeInOrpBase: false, includeInUnpaidLeaveBase: false,
     additionalRemuneration: true, prorated: false, employerSide: false,
   },
@@ -265,39 +274,39 @@ export const SEED_PAY_COMPONENTS: SeedPayComponent[] = [
    * gives it its own date there.
    */
   {
-    code: 'NIGHT_INCENTIVE', name: 'Night incentive', type: 'ADDITION', category: 'REMUNERATION',
+    code: 'NIGHT_INCENTIVE', name: 'Night shift pay', type: 'ADDITION', category: 'REMUNERATION',
     includeIn: 'GROSS_AND_NET',
     pcbLiable: true, epfLiable: true, socsoLiable: true, eisLiable: true, hrdLiable: false,
     includeInOrpBase: false, includeInUnpaidLeaveBase: false,
     additionalRemuneration: false, prorated: false, employerSide: false,
   },
   {
-    code: 'MARKETING', name: 'Marketing', type: 'ADDITION', category: 'REMUNERATION',
+    code: 'MARKETING', name: 'Marketing incentive', type: 'ADDITION', category: 'REMUNERATION',
     includeIn: 'GROSS_AND_NET',
     pcbLiable: true, epfLiable: true, socsoLiable: true, eisLiable: true, hrdLiable: false,
     includeInOrpBase: false, includeInUnpaidLeaveBase: false,
-    additionalRemuneration: false, prorated: false, employerSide: false,
+    additionalRemuneration: false, prorated: false, employerSide: false, addOn: true,
   },
   {
-    code: 'PROCEDURE_INCENTIVE_BOD', name: 'Incentive procedure (BOD)', type: 'ADDITION', category: 'REMUNERATION',
+    code: 'PROCEDURE_INCENTIVE_BOD', name: 'Procedure incentive (director)', type: 'ADDITION', category: 'REMUNERATION',
     includeIn: 'GROSS_AND_NET',
     pcbLiable: true, epfLiable: true, socsoLiable: true, eisLiable: true, hrdLiable: false,
     includeInOrpBase: false, includeInUnpaidLeaveBase: false,
-    additionalRemuneration: false, prorated: false, employerSide: false,
+    additionalRemuneration: false, prorated: false, employerSide: false, addOn: true,
   },
   {
-    code: 'PROCEDURE_INCENTIVE_RESIDENT', name: 'Incentive procedure (resident)', type: 'ADDITION', category: 'REMUNERATION',
+    code: 'PROCEDURE_INCENTIVE_RESIDENT', name: 'Procedure incentive (resident doctor)', type: 'ADDITION', category: 'REMUNERATION',
     includeIn: 'GROSS_AND_NET',
     pcbLiable: true, epfLiable: true, socsoLiable: true, eisLiable: true, hrdLiable: false,
     includeInOrpBase: false, includeInUnpaidLeaveBase: false,
-    additionalRemuneration: false, prorated: false, employerSide: false,
+    additionalRemuneration: false, prorated: false, employerSide: false, addOn: true,
   },
   {
-    code: 'HOUSECALL', name: 'Housecall', type: 'ADDITION', category: 'REMUNERATION',
+    code: 'HOUSECALL', name: 'House call', type: 'ADDITION', category: 'REMUNERATION',
     includeIn: 'GROSS_AND_NET',
     pcbLiable: true, epfLiable: true, socsoLiable: true, eisLiable: true, hrdLiable: false,
     includeInOrpBase: false, includeInUnpaidLeaveBase: false,
-    additionalRemuneration: false, prorated: false, employerSide: false, payDay: 15,
+    additionalRemuneration: false, prorated: false, employerSide: false, addOn: true, payDay: 15,
   },
   // Claims: money the employee spent, given back. Not wages, and not taxed.
   {
@@ -305,29 +314,29 @@ export const SEED_PAY_COMPONENTS: SeedPayComponent[] = [
     includeIn: 'GROSS_AND_NET',
     pcbLiable: false, epfLiable: false, socsoLiable: false, eisLiable: false, hrdLiable: false,
     includeInOrpBase: false, includeInUnpaidLeaveBase: false,
-    additionalRemuneration: false, prorated: false, employerSide: false, payDay: 15,
+    additionalRemuneration: false, prorated: false, employerSide: false, addOn: true, payDay: 15,
   },
   {
-    code: 'MEDICAL_CHECKUP_REFUND', name: 'Refund medical checkup', type: 'ADDITION', category: 'PERQUISITE',
+    code: 'MEDICAL_CHECKUP_REFUND', name: 'Medical check-up refund', type: 'ADDITION', category: 'PERQUISITE',
     includeIn: 'GROSS_AND_NET',
     pcbLiable: false, epfLiable: false, socsoLiable: false, eisLiable: false, hrdLiable: false,
     includeInOrpBase: false, includeInUnpaidLeaveBase: false,
-    additionalRemuneration: false, prorated: false, employerSide: false,
+    additionalRemuneration: false, prorated: false, employerSide: false, addOn: true,
   },
   // Recoveries, taken from net pay after the statutory deductions like a uniform charge.
   {
-    code: 'MEDICAL_CLAIM_RECOVERY', name: 'Hutang medical claim / overpaid', type: 'DEDUCTION', category: 'PAYROLL_DEDUCTION',
+    code: 'MEDICAL_CLAIM_RECOVERY', name: 'Medical claim overpaid (recovery)', type: 'DEDUCTION', category: 'PAYROLL_DEDUCTION',
     includeIn: 'NET_ONLY',
     pcbLiable: false, epfLiable: false, socsoLiable: false, eisLiable: false, hrdLiable: false,
     includeInOrpBase: false, includeInUnpaidLeaveBase: false,
-    additionalRemuneration: false, prorated: false, employerSide: false,
+    additionalRemuneration: false, prorated: false, employerSide: false, addOn: true,
   },
   {
-    code: 'MEDICAL_CHECKUP_DEDUCTION', name: 'Medical checkup', type: 'DEDUCTION', category: 'PAYROLL_DEDUCTION',
+    code: 'MEDICAL_CHECKUP_DEDUCTION', name: 'Medical check-up deduction', type: 'DEDUCTION', category: 'PAYROLL_DEDUCTION',
     includeIn: 'NET_ONLY',
     pcbLiable: false, epfLiable: false, socsoLiable: false, eisLiable: false, hrdLiable: false,
     includeInOrpBase: false, includeInUnpaidLeaveBase: false,
-    additionalRemuneration: false, prorated: false, employerSide: false,
+    additionalRemuneration: false, prorated: false, employerSide: false, addOn: true,
   },
 ];
 

@@ -13,8 +13,8 @@ import { EmployerLogoField } from './EmployerLogoField';
 
 /** The Act's own words for each class, and the rate the Act fixes for it. */
 const HRD_LABELS: Record<string, string> = {
-  MANDATORY_SECTION_14: 'Registered — s.14 mandatory (1%)',
-  OPTIONAL_SECTION_15: 'Registered — s.15 optional (0.5%)',
+  MANDATORY_SECTION_14: 'Registered, must pay (10 or more Malaysian staff) · 1%',
+  OPTIONAL_SECTION_15: 'Registered by choice (5 to 9 Malaysian staff) · 0.5%',
   NOT_REGISTERED: 'Not registered',
 };
 
@@ -159,7 +159,7 @@ export function LegalEmployersPage() {
   async function saveHrd() {
     setHrdError(null);
     if (!hrdClass) {
-      setHrdError('Choose the registration class. The Act fixes the rate — 1% under s.14, 0.5% under s.15.');
+      setHrdError('Choose how the company is registered with HRD Corp. The rate follows from it: 1% or 0.5%.');
       return;
     }
     if (!hrdReason.trim()) {
@@ -241,7 +241,7 @@ export function LegalEmployersPage() {
                     {row.hrdRegistration !== 'NOT_REGISTERED' ? (
                       <span className="hr-faint hr-small">
                         {' '}
-                        · levy on {row.hrdLevyBase === 'BASIC_ONLY' ? 'basic salary only' : 'basic + allowances marked HRD'}
+                        · levy on {row.hrdLevyBase === 'BASIC_ONLY' ? 'basic salary only' : 'basic + allowances (PSMB Act)'}
                       </span>
                     ) : null}
                   </span>
@@ -375,7 +375,7 @@ export function LegalEmployersPage() {
               onChange={setLevyBase}
               style={{ width: '100%' }}
               options={[
-                { value: 'BASIC_PLUS_FIXED_ALLOWANCES', label: 'Basic + allowances marked HRD (PSMB Act)' },
+                { value: 'BASIC_PLUS_FIXED_ALLOWANCES', label: 'Basic + allowances (PSMB Act)' },
                 { value: 'BASIC_ONLY', label: 'Basic salary only' },
               ]}
             />

@@ -8,36 +8,43 @@ seperti di skrin (Bahasa Inggeris).
 
 ## 1. Persediaan kali pertama
 
-1. Buka **HR → Settings**.
-   Anda nampak **Set up payroll**: lima langkah dengan kiraan seperti "3/5".
-2. Langkah 1, **Company & statutory numbers**: taip nama majikan, no.
-   pendaftaran syarikat, no. majikan KWSP, kod majikan PERKESO dan no. majikan
-   LHDN (E). Tekan **Save**.
-   Anda nampak langkah itu bertukar hijau. Nombor ini dicetak pada slip gaji,
-   senarai fail dan Borang EA.
-3. Ada syarikat kedua? Buka **Settings → Company & statutory** dan tekan
-   **+ New employer**.
-   Anda nampak kedua-dua syarikat dalam senarai, setiap satu dengan "Could it file?".
-4. Langkah 2, **Pay rules**: semak cara bayaran bulan tidak penuh, peraturan
-   lebih masa dan hari had pekerja baharu. Tekan **Save**.
-   Anda nampak ringkasan satu baris, contohnya "Calendar-day proration · OT on 26 days".
-5. Langkah 3, **Payroll items**: jika senarai kosong, tekan **Add the standard items**.
-   Anda nampak tiga kumpulan: Earnings, Claims dan Deductions.
-6. Klik mana-mana item untuk melihat apa yang dikira (EPF, SOCSO, EIS, PCB,
-   HRD), bila dibayar dan **EA form box**. Ubah hanya yang klinik anda buat
-   secara berbeza.
-   Anda nampak perubahan disimpan, bermula dari bulan yang anda pilih.
-7. Langkah 5, **Check statutory rates**: buka dan sahkan kadar.
-   Anda nampak langkah itu bertukar hijau.
-8. Buka **Settings → Attendance & leave** dan tetapkan waktu buka, hari mula
-   minggu, peraturan kehadiran QR, jenis cuti dan jenis tuntutan.
-9. Buka **Settings → Public holidays** dan semak senarai tahun ini bagi negeri anda.
+1. Buka **HR**. Selagi persediaan belum siap, HR dibuka pada **Set up
+   payroll**: lapan langkah ringkas dengan kiraan seperti "3/8". Buat
+   mengikut apa-apa susunan.
+2. **Company & statutory numbers**: taip nama syarikat, no. pendaftaran, no.
+   KWSP, PERKESO dan LHDN (E), pilih **HRD Corp registration** ("Not
+   registered" juga satu jawapan) dan muat naik logo untuk slip gaji. Tekan
+   **Save & next**.
+   Anda nampak langkah itu hijau. "Missing" di halaman Company kini sepadan.
+3. **Company bank account**: pilih bank, taip nama dan no. akaun.
+   Anda nampak "On file". Nombor penuh tidak ditunjuk lagi, hanya empat digit akhir.
+4. **Pay rules**: semak cara bulan tidak penuh, lebih masa dan kelulusan.
+   Di bawah **Defaults for new staff** tetapkan hari bekerja seminggu,
+   tempoh percubaan dan senarai jabatan.
+5. **Payroll items**: tekan **Add the standard items**. Item yang hanya
+   dibayar oleh sesetengah klinik (house call, panel claim, insentif
+   prosedur) ada di bawah **Optional items**: tambah yang anda guna. Setiap
+   item menyatakan bila dibayar (contohnya 30hb, atau 15hb bulan berikutnya).
+6. **Public holidays**: pilih negeri, nyahtanda hari yang klinik tidak
+   cuti, tekan **Add … holidays**. Tarikh bertanda *check* boleh berubah;
+   sahkan dengan senarai rasmi. Tambah cuti ganti sendiri.
+7. **Opening balances**: adakah klinik sudah membayar gaji tahun ini dalam
+   sistem lain? *No* menamatkan langkah ini. *Yes* membuka Opening balances
+   untuk memasukkan gaji setiap orang setakat ini, supaya cukai dan Borang
+   EA mereka betul.
+8. **Employees**: tambah pekerja (bahagian 2).
+9. **Statutory rates**: lihat jadual KWSP, PERKESO dan EIS yang digunakan
+   (tarikh dan sumber) dan tekan **Acknowledge**.
+   Anda nampak **Setup complete**. Selepas ini HR dibuka pada Payroll.
 
 ## 2. Pekerja
 
 1. Buka **HR → Employees** dan tekan **+ Add employee**.
 2. Taip nama, cawangan, jawatan, tarikh mula dan jenis pekerjaan. Tekan **Save**.
    Anda nampak rekod baharu dengan titik berwarna bagi maklumat yang belum lengkap.
+   **Probation until** diisi daripada tetapan klinik; halaman Employees
+   mengingatkan anda sebulan sebelum tamat. Langkah **Review** menyatakan
+   sama ada gaji boleh dibayar, menggunakan semakan yang sama dengan payroll.
 3. Pada rekod itu, tekan **Edit** pada setiap bahagian dan isi IC atau
    pasport, no. cukai pendapatan, no. KWSP dan PERKESO, akaun bank dan gaji.
    Anda nampak titik bertukar hijau. "Complete" bermaksud gaji boleh dibayar.
@@ -143,3 +150,8 @@ seperti di skrin (Bahasa Inggeris).
    Fail Borang E di e-Filing LHDN **sebelum 31 Mac**.
 5. Sebelum mencetak, semak **EA form box** bagi item gaji yang luar biasa di
    **Settings → Payroll items**. Jika tidak pasti, tanya penasihat cukai anda.
+6. Nama pegawai yang menandatangani dan jawatannya (contohnya PENGARAH)
+   dicetak pada setiap borang: tetapkan sekali di **Settings → Company &
+   statutory**. Tarikh dicetak ialah 31 Disember kecuali anda pilih yang lain
+   di **Date on the forms**.
+

@@ -27,6 +27,7 @@ import {
 import { Table } from './ui/Table';
 import { IconEdit, IconPlus } from './ui/icons';
 import type { OvertimeMode, PayrollPolicyRow } from '../types';
+import { useNewStaffDefaults, useSetNewStaffDefaults, type NewStaffDefaults } from './newStaffDefaults';
 
 /**
  * PAYROLL POLICIES — one settings area, reached from the Settings landing.
@@ -192,6 +193,74 @@ const belowActSentence = (m: { label: string; act: number; what: string; provisi
 
 type MultiplierField = (typeof MULTIPLIERS)[number]['field'];
 
+/**
+ * DEFAULTS FOR NEW STAFF (new-clinic UAT, 15 October 2026): what Add employee
+ * starts from. Each is the clinic's own; Kuwick's defaults apply until set.
+ */
+function NewStaffDefaultsPanel({ mayEdit }: { mayEdit: boolean }) {
+  const { message } = App.useApp();
+  const current = useNewStaffDefaults();
+  const save = useSetNewStaffDefaults();
+  const [draft, setDraft] = useState<NewStaffDefaults | null>(null);
+  const shown = draft ?? current;
+  const commit = () =>
+    draft &&
+    save.mutate(
+      { ...draft, departments: draft.departments.map((name) => name.trim()).filter(Boolean) },
+      { onSuccess: () => { setDraft(null); message.success('Saved.'); }, onError: (e: Error) => message.error(e.message) },
+    );
+  return (
+    <Panel className="hr-mt">
+      <PanelHead title="Defaults for new staff" sub="What Add employee fills in. Each can still be changed for one person." />
+      <div className="hr-kv">
+        <span className="hr-kv__k">Days a week</span>
+        <span className="hr-kv__v">
+          <Select
+            size="small"
+            disabled={!mayEdit}
+            value={shown.workDaysPerWeek}
+            onChange={(value: number) => setDraft({ ...shown, workDaysPerWeek: value })}
+            options={[{ value: 5, label: '5 days' }, { value: 5.5, label: '5½ days' }, { value: 6, label: '6 days' }]}
+            style={{ width: 110 }}
+          />
+        </span>
+        <span className="hr-kv__k">Probation</span>
+        <span className="hr-kv__v">
+          <Select
+            size="small"
+            disabled={!mayEdit}
+            value={shown.probationMonths}
+            onChange={(value: number) => setDraft({ ...shown, probationMonths: value })}
+            options={[0, 1, 2, 3, 6].map((months) => ({ value: months, label: months === 0 ? 'None' : `${months} month${months === 1 ? '' : 's'}` }))}
+            style={{ width: 110 }}
+          />
+        </span>
+        <span className="hr-kv__k">Departments</span>
+        <span className="hr-kv__v">
+          <Select
+            mode="tags"
+            size="small"
+            disabled={!mayEdit}
+            value={shown.departments}
+            onChange={(value: string[]) => setDraft({ ...shown, departments: value })}
+            style={{ minWidth: 260 }}
+          />
+        </span>
+      </div>
+      {draft && mayEdit ? (
+        <div className="hr-mt">
+          <button type="button" className="hr-btn hr-btn--primary" disabled={save.isPending} onClick={commit}>
+            Save defaults
+          </button>{' '}
+          <button type="button" className="hr-btn" onClick={() => setDraft(null)}>
+            Cancel
+          </button>
+        </div>
+      ) : null}
+    </Panel>
+  );
+}
+
 export function PayrollSettingsPage() {
   const { message } = App.useApp();
   const approval = usePayrollApprovalPolicy();
@@ -209,6 +278,7 @@ export function PayrollSettingsPage() {
   const error = [approval, policies].find((query) => query.error)?.error;
 
   const mayManage = useCan('hr.statutory.manage');
+  const mayEditDefaults = useCan('hr.employee.manage');
   const upsert = useUpsertPayrollPolicy();
   // A rule set nobody uses can go. The server is the judge: it refuses one that
   // prices somebody, has somebody assigned, is the default, or that a payslip names.
@@ -892,7 +962,7 @@ export function PayrollSettingsPage() {
               onChange={setPartMonth}
               style={{ width: '100%', maxWidth: 460 }}
               options={[
-                { value: 'CALENDAR_DAYS', label: 'Calendar days (Employment Act s.18A)' },
+                { value: 'CALENDAR_DAYS', label: 'Calendar days (the law’s way)' },
                 { value: 'WORKING_DAYS', label: 'Working days' },
               ]}
             />
@@ -1148,6 +1218,8 @@ export function PayrollSettingsPage() {
           ) : null}
         </div>
       </Drawer>
+
+      <NewStaffDefaultsPanel mayEdit={mayEditDefaults} />
 
       <Panel className="hr-mt">
         <PanelHead title="Also decided in Settings" sub="Each of these has one home. Payroll reads them; it does not set them." />

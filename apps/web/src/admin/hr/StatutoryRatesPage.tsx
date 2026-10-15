@@ -39,8 +39,8 @@ import {
 const pct = (value: number) => `${value}%`;
 
 const HRD_LABELS: Record<string, string> = {
-  MANDATORY_SECTION_14: "Registered — s.14, 1%",
-  OPTIONAL_SECTION_15: "Registered — s.15, 0.5%",
+  MANDATORY_SECTION_14: "Registered, must pay · 1%",
+  OPTIONAL_SECTION_15: "Registered by choice · 0.5%",
   NOT_REGISTERED: "Not registered",
 };
 
@@ -344,7 +344,7 @@ export function StatutoryRatesPage() {
                   )}
                   <span className="hr-fld__help">
                     {data
-                      ? `${pct(data.hrd.mandatoryPercent)} of eligible wages under s.14, ${pct(data.hrd.optionalPercent)} under s.15 — employer only, when registered.`
+                      ? `${pct(data.hrd.mandatoryPercent)} of wages for a company that must register, ${pct(data.hrd.optionalPercent)} for one registered by choice. Paid by the employer only.`
                       : ""}
                   </span>
                 </span>
@@ -444,9 +444,9 @@ export function StatutoryRatesPage() {
         }
         sub={
           showBands === "SOCSO"
-            ? `Act 4 schedule, including SKBBK · ${data?.socso.bands.length ?? 0} wage bands · ceiling ${data?.wageCeilingLabel ?? ""}`
+            ? `SOCSO table, including LINDUNG 24 JAM · ${data?.socso.bands.length ?? 0} wage bands · up to ${data?.wageCeilingLabel ?? ""}`
             : showBands === "EIS"
-              ? `Act 800 schedule · ${data?.eis.bands.length ?? 0} wage bands · ceiling ${data?.wageCeilingLabel ?? ""}`
+              ? `EIS table · ${data?.eis.bands.length ?? 0} wage bands · up to ${data?.wageCeilingLabel ?? ""}`
               : showBands === "EPF"
                 ? (editionLine(data?.editions?.EPF) ?? "")
                 : (editionLine(data?.editions?.PCB) ?? "")

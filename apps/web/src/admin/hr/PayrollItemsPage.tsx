@@ -425,7 +425,7 @@ export function PayrollItemsPage() {
               className="hr-btn hr-btn--primary"
               disabled={seed.isPending}
               onClick={() =>
-                seed.mutate(undefined, {
+                seed.mutate({ baseOnly: true }, {
                   onSuccess: () =>
                     message.success(
                       rows.length === 0
@@ -446,6 +446,31 @@ export function PayrollItemsPage() {
         </>
       }
     >
+      {/* OPTIONAL ITEMS (new-clinic UAT, 15 October 2026): ones some clinics
+          pay and most do not, added one at a time rather than with the standard set. */}
+      {mayManage && (components.data?.addOns ?? []).length > 0 ? (
+        <Panel>
+          <div className="hr-addOns" data-testid="pay-item-add-ons">
+            <span className="hr-small hr-muted">Optional items:</span>
+            {(components.data?.addOns ?? []).map((addOn) => (
+              <button
+                key={addOn.code}
+                type="button"
+                className="hr-btn hr-btn--sm"
+                disabled={seed.isPending}
+                onClick={() =>
+                  seed.mutate({ codes: [addOn.code] }, {
+                    onSuccess: () => message.success(`Added ${addOn.name}. Check what it counts towards before using it.`),
+                    onError: (e: Error) => message.error(e.message),
+                  })
+                }
+              >
+                + {addOn.name}
+              </button>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
       {rows.length === 0 ? (
         <Panel>
           <div className="hr-faint">{components.isLoading ? 'Loading…' : 'No pay items are set up yet. Add the standard items, then say what each one counts towards.'}</div>
@@ -920,6 +945,10 @@ function ItemPanel({
 
       <section className="hr-itemSection">
         <h3 className="hr-itemPanel__head">Paid on</h3>
+        <p className="hr-small hr-muted">
+          The day of the month this item reaches staff. Salary is usually paid on the 30th; items only known after the month
+          closes, like overtime and claims, are often paid on the 15th of the next month. Each date gets its own bank listing.
+        </p>
         <PayDateCell row={row} disabled={!mayManage} />
         {kinds.length > 0 ? <span style={{ display: 'inline-flex', gap: 4, marginLeft: 8 }}>{kinds}</span> : null}
       </section>

@@ -97,6 +97,8 @@ export class EmployeeService {
         employmentType: row.employeeProfile?.employmentType ?? null,
         employmentStatus: row.employeeProfile?.employmentStatus ?? null,
         startDate: row.employeeProfile?.startDate ?? null,
+        /** Probation until (the day they are confirmed in post), for the Employees page reminder. */
+        confirmedDate: row.employeeProfile?.confirmedDate ?? null,
         endDate: row.employeeProfile?.endDate ?? null,
         manager: row.employeeProfile?.manager?.fullName ?? null,
         leavePolicy: row.employeeProfile?.leavePolicy?.name ?? null,

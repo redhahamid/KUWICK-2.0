@@ -65,6 +65,7 @@ vi.mock('../hooks/useAdmin', () => ({
 }));
 
 vi.mock('../../core/hooks/useCan', () => ({ useCan: () => true }));
+vi.mock('./newStaffDefaults', () => ({ useNewStaffDefaults: () => ({ workDaysPerWeek: 6, probationMonths: 3, departments: ['Clinical', 'Pharmacy', 'Front desk', 'Admin'] }) }));
 
 const { EmployeeEditDrawer } = await import('./EmployeeEditDrawer');
 

@@ -21,6 +21,13 @@ import { CreateJobTitleDto, UpdateJobTitleDto } from './dto/job-title.dto';
  * it. The first time a clinic opens the list, the positions already typed on
  * its records become its titles, so nobody starts from an empty page.
  */
+/**
+ * A STARTING LIST FOR A NEW CLINIC (new-clinic UAT, 15 October 2026): the
+ * jobs nearly every Malaysian clinic has. Added once, when the clinic has no
+ * titles at all; it renames or retires any of them like its own.
+ */
+export const STARTING_JOB_TITLES = ['Doctor', 'Nurse', 'Clinic Assistant', 'Pharmacy Assistant', 'Clerk', 'Locum'];
+
 @Injectable()
 export class JobTitleService {
   constructor(
@@ -30,6 +37,12 @@ export class JobTitleService {
 
   async list() {
     await requirePermission(this.rawPrisma, 'hr.view');
+    if ((await this.prisma.jobTitle.count()) === 0) {
+      await this.prisma.jobTitle.createMany({
+        data: STARTING_JOB_TITLES.map((name, sortOrder) => ({ tenantId: currentTenantId(), name, sortOrder })),
+        skipDuplicates: true,
+      });
+    }
     await this.adoptTypedPositions();
     const rows = await this.prisma.jobTitle.findMany({
       orderBy: [{ active: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],

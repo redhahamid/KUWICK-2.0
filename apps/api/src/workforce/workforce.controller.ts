@@ -657,8 +657,11 @@ export class WorkforceController {
   }
 
   @Post('pay-components/seed')
-  seedPayComponents() {
-    return this.payComponents.seed();
+  seedPayComponents(@Body() body: { baseOnly?: boolean; codes?: string[] } = {}) {
+    return this.payComponents.seed({
+      baseOnly: body?.baseOnly === true,
+      codes: Array.isArray(body?.codes) ? body.codes.filter((code): code is string => typeof code === 'string') : undefined,
+    });
   }
 
   @Post('pay-components')

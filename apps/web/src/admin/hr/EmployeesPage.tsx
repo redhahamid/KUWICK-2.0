@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Dropdown } from 'antd';
 import dayjs from 'dayjs';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -149,6 +149,13 @@ export function EmployeesPage() {
    */
   const employed = all.filter((row) => row.hasProfile && !GONE.has(row.employmentStatus ?? ''));
   const withoutRecord = all.filter((row) => !row.hasProfile).length;
+  // Probation ending within a month, or ended in the last month and still on probation.
+  const probationSoon = employed.filter(
+    (row) =>
+      row.confirmedDate &&
+      dayjs(row.confirmedDate).isBefore(dayjs().add(31, 'day')) &&
+      (dayjs(row.confirmedDate).isAfter(dayjs().subtract(1, 'day')) || row.employmentStatus === 'PROBATION'),
+  );
 
   const rows = useMemo(
     () =>
@@ -278,6 +285,22 @@ export function EmployeesPage() {
       }
     >
       {mayManage ? <BankChangesNotice /> : null}
+      {/* PROBATION ENDING (new-clinic UAT, 15 October 2026): a month's notice to confirm or extend. */}
+      {probationSoon.length > 0 ? (
+        <div className="hr-notice hr-notice--attn" data-testid="probation-reminder">
+          <strong>Probation ending:</strong>{' '}
+          {probationSoon.map((row, index) => (
+            <span key={row.staffId}>
+              {index > 0 ? ', ' : ''}
+              <Link className="hr-link" to={`/admin/hr/employees/${row.staffId}?tab=employment`}>
+                {row.fullName}
+              </Link>{' '}
+              {dayjs(row.confirmedDate).isBefore(dayjs(), 'day') ? `(ended ${dayjs(row.confirmedDate).format('D MMM')})` : `on ${dayjs(row.confirmedDate).format('D MMM')}`}
+            </span>
+          ))}
+          . Confirm them in post, or move the date if probation is extended.
+        </div>
+      ) : null}
       {titlesOpen ? <JobTitlesDrawer open onClose={() => setTitlesOpen(false)} /> : null}
       {clinicId && epfBranchOpen ? (
         <EpfBasisForBranchDrawer

@@ -7,36 +7,41 @@ change it in Settings.
 
 ## 1. First-time setup
 
-1. Open **HR → Settings**.
-   You see **Set up payroll**: five steps with a counter such as "3/5".
-2. Step 1, **Company & statutory numbers**: type the employer name, company
-   registration number, EPF employer number, SOCSO employer code and LHDN
-   employer number (E). Press **Save**.
-   You see the step turn green. These numbers print on payslips, filing
-   listings and EA forms.
-3. A second company? Open **Settings → Company & statutory** and press
-   **+ New employer**.
-   You see both companies in the list, each with "Could it file?".
-4. Step 2, **Pay rules**: check how part months are paid, the overtime rules
-   and the joiner cut-off day. Press **Save**.
-   You see a one-line summary, e.g. "Calendar-day proration · OT on 26 days".
-5. Step 3, **Payroll items**: if the list is empty, press **Add the standard items**.
-   You see three groups: Earnings, Claims and Deductions.
-6. Click any item to see what it counts towards (EPF, SOCSO, EIS, PCB, HRD),
-   when it is paid and its **EA form box**. Change only what your clinic does
-   differently.
-   You see the change saved, dated from the month you chose.
-7. Step 5, **Check statutory rates**: open it and confirm the rates.
-   You see the step turn green.
-8. Open **Settings → Attendance & leave** and set opening hours, week start,
-   the QR attendance rules, leave types and claim types.
-9. Open **Settings → Public holidays** and check this year's list for your state.
+1. Open **HR**. While setup is unfinished, HR opens on **Set up payroll**:
+   eight short steps with a counter such as "3/8". Do them in any order.
+2. **Company & statutory numbers**: type the company name, registration
+   number, EPF, SOCSO and LHDN (E) numbers, choose the **HRD Corp
+   registration** ("Not registered" is an answer too) and upload the logo
+   for payslips. Press **Save & next**.
+   You see the step turn green. "Missing" on the Company page now matches it.
+3. **Company bank account**: choose the bank, type the account name and number.
+   You see "On file". The number is never shown again, only its last four digits.
+4. **Pay rules**: check how a part month, overtime and approval work.
+   Under **Defaults for new staff** set days a week, probation length and
+   your department list.
+5. **Payroll items**: press **Add the standard items**. Items only some
+   clinics pay (house call, panel claim, procedure incentives) are under
+   **Optional items**: add the ones you use. Each item says when it is paid
+   (e.g. the 30th, or the 15th of the next month).
+6. **Public holidays**: choose your state, untick any day you do not
+   observe, press **Add … holidays**. Dates marked *check* can move; confirm
+   them against the official list. Add replacement days (cuti ganti) by hand.
+7. **Opening balances**: did you pay staff this year in another system?
+   *No* finishes the step. *Yes* opens Opening balances to bring in each
+   person's pay so far, so their tax and EA form are right.
+8. **Employees**: add your staff (section 2).
+9. **Statutory rates**: see which EPF, SOCSO and EIS tables are used (date
+   and source) and press **Acknowledge**.
+   You see **Setup complete**. From now on HR opens on Payroll.
 
 ## 2. Employees
 
 1. Open **HR → Employees** and press **+ Add employee**.
 2. Type the name, branch, position, start date and type of employment. Press **Save**.
    You see the new record with coloured dots for what is still missing.
+   **Probation until** is filled from your default; the Employees page
+   reminds you a month before it ends. The **Review** step says whether
+   payroll can pay them, using the same check payroll uses.
 3. On the record, press **Edit** on each part and fill in IC or passport,
    income tax number, EPF and SOCSO numbers, bank account and salary.
    You see the dots turn green. "Complete" means payroll can pay them.
@@ -141,3 +146,7 @@ change it in Settings.
    File Borang E on LHDN e-Filing **by 31 March**.
 5. Before printing, check the **EA form box** of any unusual payroll item in
    **Settings → Payroll items**. When unsure, ask your tax adviser.
+6. The officer who signs and their position (e.g. PENGARAH) print on every
+   form: set them once in **Settings → Company & statutory**. The date
+   printed is 31 December unless you choose another in **Date on the forms**.
+

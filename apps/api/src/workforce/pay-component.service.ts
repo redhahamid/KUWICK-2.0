@@ -291,7 +291,12 @@ export class PayComponentService {
        * Named rather than counted, because "one item is missing" invites the
        * question this answers.
        */
-      missingPresets: SEED_PAY_COMPONENTS.filter((preset) => !alreadyHere(preset, rows)).map((preset) => ({
+      missingPresets: SEED_PAY_COMPONENTS.filter((preset) => !preset.addOn && !alreadyHere(preset, rows)).map((preset) => ({
+        code: preset.code,
+        name: preset.name,
+      })),
+      /** Optional items one clinic uses and most do not, offered one at a time. */
+      addOns: SEED_PAY_COMPONENTS.filter((preset) => preset.addOn && !alreadyHere(preset, rows)).map((preset) => ({
         code: preset.code,
         name: preset.name,
       })),
@@ -366,12 +371,20 @@ export class PayComponentService {
    *
    * Idempotent, and it never overwrites a row a clinic has already edited.
    */
-  async seed() {
+  /**
+   * Adds Kuwick's preset items the clinic does not have yet. `baseOnly` (the
+   * "Add the standard items" button) leaves the optional add-ons out; `codes`
+   * adds just those. With neither, every preset, as before.
+   */
+  async seed(options: { baseOnly?: boolean; codes?: string[] } = {}) {
     return withAdminTx(this.rawPrisma, 'hr.statutory.manage', async (tx, actor) => {
       let created = 0;
       let existing = 0;
       const held = await tx.payComponent.findMany({ select: { code: true, name: true } });
-      for (const c of SEED_PAY_COMPONENTS) {
+      const wanted = SEED_PAY_COMPONENTS.filter((c) =>
+        options.codes?.length ? options.codes.includes(c.code) : !(options.baseOnly && c.addOn),
+      );
+      for (const c of wanted) {
         if (alreadyHere(c, held)) {
           existing += 1;
           continue;

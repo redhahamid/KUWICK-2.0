@@ -39,6 +39,8 @@ export class EmployeeIntakeRowDto {
   @IsOptional() @IsString() @MaxLength(80) department?: string;
   @IsOptional() @IsString() @MaxLength(20) employmentType?: string;
   @IsOptional() @IsString() @MaxLength(10) startDate?: string;
+  /** Probation until: the day they are confirmed in post. */
+  @IsOptional() @IsString() @MaxLength(10) confirmedDate?: string;
   @IsOptional() @IsNumber() workDaysPerWeek?: number;
   @IsOptional() @IsString() @MaxLength(20) identifierType?: string;
   @IsOptional() @IsString() @MaxLength(40) identifierValue?: string;

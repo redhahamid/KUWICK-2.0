@@ -15,8 +15,10 @@ import { PhoneField } from './ui/PhoneField';
 import { REST_DAY_CHOICES, restDayBody } from './restDay';
 import { useJobTitles, useLegalEmployers } from '../hooks/useAdmin';
 import { JobTitlePicker } from './JobTitlePicker';
-import { MALAYSIAN_STATES } from './malaysianStates';
+import { MALAYSIAN_STATES, bankOptions } from './malaysianStates';
+import { stateOfPostcode, useNewStaffDefaults } from './newStaffDefaults';
 import { useHrSetup } from './useHrSetup';
+import { LawRef } from './ui/LawRef';
 import { RELATIONSHIPS } from './ui/reasons';
 import type { EmployeeIntakeResult, EmployeeIntakeRowDto, EmployeeIntakeRowResult } from '../types';
 
@@ -155,6 +157,7 @@ function intakeRowOf(values: Record<string, any>, fallbackClinicId: string | und
     department: values.department || undefined,
     employmentType: values.employmentType || undefined,
     startDate: values.startDate ? values.startDate.format('YYYY-MM-DD') : undefined,
+    confirmedDate: values.confirmedDate ? values.confirmedDate.format('YYYY-MM-DD') : undefined,
     identifierType: values.identifierValue ? (values.identifierType ?? 'NRIC') : undefined,
     identifierValue: values.identifierValue || undefined,
     // A passport on file as the identity document is the passport; a non-citizen with an IC on file may add theirs beside it.
@@ -181,11 +184,18 @@ function intakeRowOf(values: Record<string, any>, fallbackClinicId: string | und
     // an identifier on a form; whether somebody contributes, and under which
     // Part, is a dated position and goes in the standing.
     epfNumber: values.epfNumber || undefined,
-    socsoNumber: values.socsoNumber || undefined,
+    socsoNumber: values.socsoNumber || socsoFromIc(values) || undefined,
     taxNumber: values.taxNumber || undefined,
     salary: values.salaryAmount ? { amount: String(values.salaryAmount), basis: values.salaryBasis ?? 'MONTHLY', effectiveFrom: salaryFrom } : undefined,
     standing: Object.keys(standing).length > 0 ? { ...standing, effectiveFrom: standingFrom } : undefined,
   };
+}
+
+/** A Malaysian's SOCSO number is their IC number (PERKESO): filled when the box is left empty. */
+export function socsoFromIc(values: { identifierType?: string; identifierValue?: string; epfMembership?: string }): string | null {
+  if ((values.identifierType ?? 'NRIC') !== 'NRIC' || values.epfMembership !== 'MALAYSIAN_CITIZEN') return null;
+  const digits = String(values.identifierValue ?? '').replace(/\D/g, '');
+  return digits.length === 12 ? digits : null;
 }
 
 const EPF_LABEL: Record<string, string> = {
@@ -218,6 +228,24 @@ export function AddEmployeePage() {
   const identifierType = Form.useWatch('identifierType', form);
   const identifierValue = Form.useWatch('identifierValue', form);
   const jobTitles = useJobTitles();
+  const defaults = useNewStaffDefaults();
+  const startDate = Form.useWatch('startDate', form);
+  const postcode = Form.useWatch('postcode', form);
+  // The clinic's usual week, and probation from the start date, filled in
+  // until somebody types their own (new-clinic UAT, 15 October 2026).
+  const typedProbation = useRef(false);
+  useEffect(() => {
+    if (form.getFieldValue('workDaysPerWeek') === undefined) form.setFieldValue('workDaysPerWeek', defaults.workDaysPerWeek);
+  }, [defaults.workDaysPerWeek, form]);
+  useEffect(() => {
+    if (typedProbation.current || !startDate || defaults.probationMonths <= 0) return;
+    form.setFieldValue('confirmedDate', startDate.add(defaults.probationMonths, 'month'));
+  }, [startDate, defaults.probationMonths, form]);
+  // The state a postcode is in; a state already chosen by hand stays.
+  useEffect(() => {
+    const state = stateOfPostcode(postcode);
+    if (state && !form.getFieldValue('state')) form.setFieldValue('state', state);
+  }, [postcode, form]);
   /*
    * THE IC SAYS WHEN THEY WERE BORN AND WHICH THEY ARE. A valid Malaysian IC
    * fills the date of birth and the gender, into a box that is still a box:
@@ -368,7 +396,7 @@ export function AddEmployeePage() {
   return (
     <AdminShell
       title="Add employee"
-      subtitle="A name and a job create the record. Payroll also needs an employing company, a rest day, the statutory standing and a salary, all asked for here; the person’s page lists whatever is still missing."
+      subtitle="Four short steps. Only the name is required to save; the Review step says what payroll still needs."
       actions={
         <Button onClick={() => navigate('/admin/hr/employees')} disabled={saving}>
           Cancel
@@ -402,9 +430,7 @@ export function AddEmployeePage() {
                       photograph — there is no column and no file store — so an
                       upload control here would be a button that loses a file.
                       The avatar is generated from the name and is stable. */}
-                  <p className="kw-formPage__photoHint">
-                    Photographs are not stored yet. Initials are generated from the name.
-                  </p>
+                  <p className="kw-formPage__photoHint">Their initials are shown in place of a photo.</p>
                 </div>
                 <div className="kw-formPage__fields">
                   <Form.Item
@@ -533,12 +559,16 @@ export function AddEmployeePage() {
                 <Form.Item name="jobTitleId" label="Job title" extra="The clinic’s own list. Add to it here if the title is new.">
                   <JobTitlePicker id="jobTitleId" />
                 </Form.Item>
-                <Form.Item name="department" label="Department or team">
-                  <Input placeholder="e.g. Clinical" />
+                <Form.Item name="department" label="Department" extra="The clinic’s list, set in Settings → Pay rules → Defaults for new staff.">
+                  <Select allowClear placeholder="Choose" options={defaults.departments.map((name) => ({ value: name, label: name }))} />
                 </Form.Item>
               </div>
               <div className="kw-formRow">
-                <Form.Item name="workDaysPerWeek" label="Days a week" extra="Shown on their record. The days used to work out overtime still come from the pay rules.">
+                <Form.Item
+                  name="workDaysPerWeek"
+                  label="Days a week"
+                  extra="Their usual working week, from the clinic's default. It changes pay only when Pay rules count a part month by working days: then a joiner or leaver is paid for the working days in this week."
+                >
                   <Select
                     allowClear
                     placeholder="Choose"
@@ -556,6 +586,13 @@ export function AddEmployeePage() {
                 </Form.Item>
                 <Form.Item name="startDate" label="Started on">
                   <DatePicker style={{ width: '100%' }} format="D MMM YYYY" />
+                </Form.Item>
+                <Form.Item
+                  name="confirmedDate"
+                  label="Probation until"
+                  extra="The Employees page reminds you a month before. Leave blank if there is no probation."
+                >
+                  <DatePicker style={{ width: '100%' }} format="D MMM YYYY" onChange={() => (typedProbation.current = true)} />
                 </Form.Item>
                 <Form.Item name="clinicId" label="Branch">
                   <Select
@@ -576,7 +613,10 @@ export function AddEmployeePage() {
               ) : null}
             </Panel>
 
-            <Panel title="Access to Kuwick" hint="A locum with no account is perfectly normal, and still gets paid.">
+            <Panel
+              title="Access to Kuwick"
+              hint="With a login they can use My Kuwick on their phone: clock in with the clinic's QR code, apply for leave, send claims and see their payslips. Without one they are still paid as normal."
+            >
               <Form.Item name="wantsLogin" label="Give them a login now" valuePropName="checked">
                 <Switch />
               </Form.Item>
@@ -603,7 +643,7 @@ export function AddEmployeePage() {
           </div>
 
           <div style={{ display: stage === 2 ? 'block' : 'none' }}>
-            <Panel title="Pay" hint="Salary is dated, so a later change closes this one rather than overwriting it.">
+            <Panel title="Pay" hint="Their monthly salary from the start date. A raise later is added as a new salary from its own date; past months stay as they were.">
               <div className="kw-formRow">
                 <Form.Item name="salaryAmount" label="Basic salary">
                   <Input prefix="RM" inputMode="decimal" placeholder="e.g. 3200.00" />
@@ -623,7 +663,7 @@ export function AddEmployeePage() {
               </div>
               <div className="kw-formRow">
                 <Form.Item name="bankName" label="Bank">
-                  <Input placeholder="e.g. Maybank" />
+                  <Select allowClear showSearch placeholder="Choose the bank" options={bankOptions} />
                 </Form.Item>
                 <Form.Item
                   name="bankAccountNo"
@@ -656,7 +696,13 @@ export function AddEmployeePage() {
                 <Form.Item
                   name="restDayOfWeek"
                   label="Rest day"
-                  extra="Section 60(1) gives one whole day a week and the employer appoints it. Payroll refuses to work out a month without it. Where it varies week to week or rotates with the roster, say so: payroll still goes ahead, and rest-day pay is entered by hand."
+                  extra={
+                    <>
+                      Every employee gets one whole rest day a week, chosen by the clinic. Payroll needs it to pay work on that day. If it changes
+                      week to week or follows the roster, choose that.{' '}
+                      <LawRef>Employment Act 1955, section 60(1)</LawRef>
+                    </>
+                  }
                 >
                   <Select allowClear placeholder="Choose" options={REST_DAY_CHOICES} />
                 </Form.Item>
@@ -678,7 +724,11 @@ export function AddEmployeePage() {
                 <Form.Item
                   name="epfMembership"
                   label="EPF membership"
-                  extra="Decides the Third Schedule Part their contributions come from."
+                  extra={
+                    <>
+                      Decides their EPF rate. <LawRef>EPF Act 1991, Third Schedule: Part A, C, E or F</LawRef>
+                    </>
+                  }
                 >
                   <Select
                     allowClear
@@ -735,7 +785,12 @@ export function AddEmployeePage() {
               <Form.Item
                 name="overtimeContractPolicy"
                 label="Overtime above the Act limit"
-                extra="Matters only for wages above the Employment Act’s First Schedule ceiling, where the Act’s overtime rates do not apply by law and the contract decides. Payroll asks for it before pricing their overtime."
+                extra={
+                  <>
+                    Only for staff earning above RM4,000 a month, where the law leaves overtime pay to the contract. Payroll asks before paying their
+                    overtime. <LawRef>Employment Act 1955, First Schedule wage ceiling</LawRef>
+                  </>
+                }
               >
                 <Select
                   allowClear
@@ -750,8 +805,8 @@ export function AddEmployeePage() {
                 <Form.Item name="epfNumber" label="EPF number">
                   <Input placeholder="e.g. 12345678" />
                 </Form.Item>
-                <Form.Item name="socsoNumber" label="SOCSO number">
-                  <Input />
+                <Form.Item name="socsoNumber" label="SOCSO number" extra="For a Malaysian this is their IC number; left blank, the IC is used.">
+                  <Input placeholder={socsoFromIc(values) ?? undefined} />
                 </Form.Item>
                 <Form.Item name="taxNumber" label="Income tax number">
                   <Input placeholder="e.g. SG 12345678090" />
@@ -776,6 +831,7 @@ export function AddEmployeePage() {
                         label: 'Starts',
                         value: values.startDate ? values.startDate.format('D MMM YYYY') : null,
                       },
+                      { label: 'Probation until', value: values.confirmedDate ? values.confirmedDate.format('D MMM YYYY') : null },
                       { label: 'Branch', value: clinics?.find((clinic) => clinic.id === (values.clinicId ?? clinicId))?.name },
                       {
                         label: 'Salary',
@@ -786,7 +842,7 @@ export function AddEmployeePage() {
                       { label: 'Bank', value: values.bankAccountNo ? values.bankName || 'On file' : null },
                       // The statutory answers payroll works from (new-clinic UAT, 15 October 2026).
                       { label: 'EPF', value: EPF_LABEL[values.epfMembership as string] ?? null },
-                      { label: 'SOCSO', value: values.socsoNumber ? `No. ${values.socsoNumber}` : values.epfMembership ? 'Number not yet given' : null },
+                      { label: 'SOCSO', value: values.socsoNumber || socsoFromIc(values) ? `No. ${values.socsoNumber || socsoFromIc(values)}` : values.epfMembership ? 'Number not yet given' : null },
                       { label: 'Monthly tax', value: [TAX_LABEL[values.taxResidence as string], PCB_LABEL[values.pcbCategory as string]].filter(Boolean).join(' · ') || null },
                       { label: 'Rest day', value: REST_DAY_CHOICES.find((choice) => choice.value === values.restDayOfWeek)?.label ?? null },
                       { label: 'Signs in', value: values.wantsLogin ? values.loginEmail : 'No login' },

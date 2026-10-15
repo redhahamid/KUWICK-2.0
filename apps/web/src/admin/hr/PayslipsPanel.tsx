@@ -76,6 +76,7 @@ export function PayslipsPanel({ runId }: { runId: string }) {
         <span style={{ display: 'inline-flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <PayslipPreviewButton runId={runId} />
           <span className="kw-muted" style={{ fontSize: 12.5, display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+            {/* One approved version is the normal case and says nothing; corrections show as versions. */}
             {data.versions > 1 ? (
               <Select
                 size="small"
@@ -86,14 +87,11 @@ export function PayslipsPanel({ runId }: { runId: string }) {
                   .reverse()
                   .map((version) => ({
                     value: version,
-                    label: `Revision ${version} of ${data.versions}${version < data.versions ? ' (superseded)' : ''}`,
+                    label: `Version ${version} of ${data.versions}${version < data.versions ? ' (replaced)' : ''}`,
                   }))}
                 style={{ minWidth: 210 }}
               />
-            ) : (
-              <>Revision {data.snapshotVersion} of {data.versions}</>
-            )}
-            · verification {data.verdict}
+            ) : null}
           </span>
         </span>
       }

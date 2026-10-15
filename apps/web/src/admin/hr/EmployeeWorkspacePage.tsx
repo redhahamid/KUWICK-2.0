@@ -382,7 +382,7 @@ function EmploymentTab({ data, onEdit, onResign }: { data: EmployeeRecord; onEdi
           ],
           ['Branch', employment.clinicName ?? 'All branches'],
           ['Reports to', employment.manager],
-          ['Confirmed', date(employment.confirmedDate)],
+          ['Probation until', date(employment.confirmedDate)],
           [
             'Status',
             <span key="status">

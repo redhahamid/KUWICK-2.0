@@ -18,7 +18,9 @@ import { ReasonPicker } from './ui/ReasonPicker';
 import { EMPLOYER_REASONS, RELATIONSHIPS } from './ui/reasons';
 import { NO_FIXED_DAY_HELP, REST_DAY_CHOICES, restDayBody, restDayChoiceOf, type RestDayChoice } from './restDay';
 import { JobTitlePicker } from './JobTitlePicker';
-import { MALAYSIAN_STATES } from './malaysianStates';
+import { MALAYSIAN_STATES, bankOptions } from './malaysianStates';
+import { useNewStaffDefaults } from './newStaffDefaults';
+import { LawRef } from './ui/LawRef';
 import type { EmployeeRecord } from '../types';
 import { useCan } from '../../core/hooks/useCan';
 
@@ -109,6 +111,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
   const [jobTitleId, setJobTitleId] = useState<string | undefined>();
   const [workDays, setWorkDays] = useState<number | undefined>();
   const [department, setDepartment] = useState('');
+  const defaults = useNewStaffDefaults();
   const [employmentType, setEmploymentType] = useState<string | undefined>();
   // Doctor or staff: 'ROLE' leaves it to the account role.
   const [staffGroup, setStaffGroup] = useState<'DOCTOR' | 'STAFF' | 'ROLE'>('ROLE');
@@ -619,14 +622,22 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
               </div>
               <div>
                 <label htmlFor="ed-dept">Department</label>
-                <Input id="ed-dept" value={department} onChange={(e) => setDepartment(e.target.value)} />
+                <Select
+                  id="ed-dept"
+                  allowClear
+                  value={department || undefined}
+                  onChange={(next) => setDepartment(next ?? '')}
+                  // The clinic's list, plus whatever an older record already says.
+                  options={[...new Set([...defaults.departments, ...(department ? [department] : [])])].map((name) => ({ value: name, label: name }))}
+                  style={{ width: '100%' }}
+                />
               </div>
               <div>
                 <label htmlFor="ed-start">Joined</label>
                 <DatePicker id="ed-start" value={startDate} onChange={setStartDate} format="D MMM YYYY" style={{ width: '100%' }} />
               </div>
               <div>
-                <label htmlFor="ed-conf">Confirmed</label>
+                <label htmlFor="ed-conf">Probation until</label>
                 <DatePicker id="ed-conf" value={confirmedDate} onChange={setConfirmedDate} format="D MMM YYYY" style={{ width: '100%' }} />
               </div>
             </div>
@@ -666,9 +677,9 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
                 options={REST_DAY_CHOICES}
               />
               <div className="hr-form__help">
-                {restDayNote} Section 60(1) gives one whole day a week and the employer appoints it. Payroll cannot
-                work out a month without it, and this cannot be skipped. Where it varies week to week or rotates
-                with the roster, say so: payroll still goes ahead, and the month notes that their rest-day pay is entered by hand.
+                {restDayNote} Every employee gets one whole rest day a week, chosen by the clinic. Payroll needs it to pay work on
+                that day. If it changes week to week or follows the roster, choose that.{' '}
+                <LawRef>Employment Act 1955, section 60(1)</LawRef>
                 {restDay === 'VARIES' || restDay === 'ROSTER' ? ` ${NO_FIXED_DAY_HELP}` : ''}
               </div>
             </div>
@@ -715,7 +726,17 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
           <>
             <div>
               <label htmlFor="ed-bank">Bank</label>
-              <Input id="ed-bank" value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="Maybank, CIMB, Public Bank…" />
+              <Select
+                id="ed-bank"
+                allowClear
+                showSearch
+                value={bankName || undefined}
+                onChange={(next) => setBankName(next ?? '')}
+                // The list, plus a name typed on an older record so it is not lost.
+                options={[...bankOptions, ...(bankName && !bankOptions.some((option) => option.value === bankName) ? [{ value: bankName, label: bankName }] : [])]}
+                placeholder="Choose the bank"
+                style={{ width: '100%' }}
+              />
             </div>
             <div>
               <label htmlFor="ed-acctname">Account name</label>

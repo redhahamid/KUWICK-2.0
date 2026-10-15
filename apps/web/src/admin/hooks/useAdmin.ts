@@ -1700,7 +1700,9 @@ export function useSetPayDate() {
 
 export function useSeedPayComponents() {
   return useAdminMutation(
-    () => apiClient.post("/workforce/pay-components/seed", {}),
+    // `baseOnly` leaves the optional add-ons out; `codes` adds just those.
+    (body?: { baseOnly?: boolean; codes?: string[] }) =>
+      apiClient.post("/workforce/pay-components/seed", body ?? {}),
     ["admin-hr"],
   );
 }

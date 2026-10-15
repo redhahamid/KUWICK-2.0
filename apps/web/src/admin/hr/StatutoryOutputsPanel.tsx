@@ -149,10 +149,11 @@ export function StatutoryOutputsPanel({ runId }: { runId: string }) {
             <div className="kw-outputScheme__head">
               <div>
                 <strong>{SCHEME_LABEL[block.scheme] ?? block.scheme}</strong>
+                {/* The official table used, in words; Kuwick's internal code stays in the tooltip (new-clinic UAT, 15 October 2026). */}
                 {block.schedule?.scheduleId ? (
-                  <Tooltip title={block.schedule.document ?? undefined}>
+                  <Tooltip title={`${block.schedule.document ?? ''} (${block.schedule.scheduleId})`}>
                     <span className="kw-provenance" style={{ marginLeft: 8 }}>
-                      {block.schedule.scheduleId} · {block.schedule.verification}
+                      Official table
                     </span>
                   </Tooltip>
                 ) : null}

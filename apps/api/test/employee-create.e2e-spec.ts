@@ -354,12 +354,12 @@ describe('the employee record set (e2e)', () => {
   });
 
   it('adopts the positions already typed as job titles, picks one by id, and renames it through every record', async () => {
-    const typed = await create({ fullName: 'Typed Position Ujian', role: Role.FRONT_DESK_CLINICAL_STAFF, clinicId, position: 'Clinic assistant', startDate: '2026-09-01' }).expect(201);
+    const typed = await create({ fullName: 'Typed Position Ujian', role: Role.FRONT_DESK_CLINICAL_STAFF, clinicId, position: 'Dispensary aide', startDate: '2026-09-01' }).expect(201);
 
     const listed = (await request(server()).get('/workforce/job-titles').set('Authorization', bearer).expect(200)).body as { id: string; name: string; active: boolean; employeeCount: number }[];
-    const adopted = listed.find((row) => row.name === 'Clinic assistant')!;
+    const adopted = listed.find((row) => row.name === 'Dispensary aide')!;
     expect(adopted).toMatchObject({ active: true, employeeCount: 1 });
-    expect((await record(typed.body.staff.id)).employment).toMatchObject({ position: 'Clinic assistant', jobTitleId: adopted.id });
+    expect((await record(typed.body.staff.id)).employment).toMatchObject({ position: 'Dispensary aide', jobTitleId: adopted.id });
 
     const pharmacist = await request(server()).post('/workforce/job-titles').set('Authorization', bearer).send({ name: 'Pharmacist' }).expect(201);
     await request(server()).post('/workforce/job-titles').set('Authorization', bearer).send({ name: 'pharmacist' }).expect(409);

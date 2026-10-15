@@ -763,6 +763,8 @@ export interface EmployeeRow {
   employmentType: string | null;
   employmentStatus: string | null;
   startDate: string | null;
+  /** Probation until (the day they are confirmed in post). */
+  confirmedDate?: string | null;
   endDate: string | null;
   manager: string | null;
   leavePolicy: string | null;
@@ -2169,6 +2171,8 @@ export interface PayComponentList {
    * Empty for a clinic that is up to date, which is most of the time.
    */
   missingPresets: { code: string; name: string }[];
+  /** Optional items one clinic uses and most do not, offered one at a time. */
+  addOns?: { code: string; name: string }[];
   verificationNotice: { anyVerified: boolean; statement: string };
 }
 
@@ -3888,6 +3892,8 @@ export interface EmployeeIntakeRowDto {
   department?: string;
   employmentType?: string;
   startDate?: string;
+  /** Probation until: the day they are confirmed in post. */
+  confirmedDate?: string;
   workDaysPerWeek?: number;
   identifierType?: string;
   identifierValue?: string;

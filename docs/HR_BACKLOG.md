@@ -22,3 +22,7 @@ Not built in the HR core push. Each is a known gap, not a bug.
 | Email or phone notifications (leave decided, claim paid, payslip ready) | Staff see every status in My Kuwick; no mail or push sender exists in the product yet. |
 | A manager's own approvals inbox on the phone | Managers approve from HR → Leave / Claims / Attendance, which work on a phone; a single combined inbox can come later. |
 | Bank change: verify the account name against the bank | HR compares the proof photo by eye; no bank verification service is connected. |
+| Town filled in from the postcode | Kuwick fills the state from the postcode's first digits; the town needs Pos Malaysia's full postcode list, which is not in Kuwick yet. |
+| Public holidays for 2027 onward, and replacement days | The 2026 federal and state list is built in and ticked before adding; a new year's list is added when the government publishes it. Replacement days (cuti ganti) are added by hand. |
+| Borang EA box D5 | Left blank until the auditor confirms whether it is a count of children or an RM amount. |
+| Bonus already set as SOCSO/EIS-liable in an existing clinic | New clinics get Bonus without SOCSO/EIS (PERKESO: annual bonus is not wages). A clinic that seeded earlier changes it on Payroll items, with a date and a reason. |
