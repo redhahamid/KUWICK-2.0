@@ -13,14 +13,16 @@
  * It writes only rows of the new tenant. The password never reaches this
  * script: DEMO_OWNER_PASSWORD_HASH is a bcrypt hash made beforehand.
  *
- * Environment: DATABASE_URL (owner connection), DEMO_OWNER_EMAIL,
+ * Environment: DATABASE_URL (owner connection), DEMO_TENANT_NAME (default
+ * "Klinik Demo Baru"), DEMO_OWNER_EMAIL,
  * DEMO_OWNER_PASSWORD_HASH, DEMO_APPLY=true to create (else a dry run).
  */
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PlatformTenantService } from '../src/auth/platform-tenant.service';
 
-const NAME = 'Klinik Demo Baru';
+// "Klinik Demo Baru 2" for a second new-clinic test (owner's decision 7, 15 October 2026).
+const NAME = (process.env.DEMO_TENANT_NAME ?? '').trim() || 'Klinik Demo Baru';
 
 async function main() {
   const url = process.env.DATABASE_URL;

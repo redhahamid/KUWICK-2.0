@@ -21,6 +21,11 @@ on:
         type: boolean
         required: false
         default: false
+      tenant_name:
+        description: 'Clinic name'
+        type: string
+        required: false
+        default: 'Klinik Demo Baru'
       owner_email:
         description: 'Owner login email'
         type: string
@@ -170,6 +175,7 @@ jobs:
         working-directory: apps/api
         env:
           DEMO_APPLY: ${{ inputs.apply && 'true' || 'false' }}
+          DEMO_TENANT_NAME: ${{ inputs.tenant_name }}
           DEMO_OWNER_EMAIL: ${{ inputs.owner_email }}
           DEMO_OWNER_PASSWORD_HASH: ${{ inputs.owner_password_hash }}
         run: DATABASE_URL="$PG_DATABASE_URL" npx tsx prisma/create-demo-tenant.ts
