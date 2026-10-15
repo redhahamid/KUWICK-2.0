@@ -140,7 +140,11 @@ function drawPage(doc: PDFKit.PDFDocument, layout: Layout, fields: Record<string
   const ys = [0];
   for (const h of layout.rowHeightsPt) ys.push(ys[ys.length - 1] + h);
   const left = layout.marginsPt.left;
-  const top = Math.max(layout.marginsPt.top, (PAGE.height - ys[ys.length - 1] * s) / 2);
+  // CENTRED ON THE ROWS IN USE, so a 100% print keeps clear of the printer's
+  // unprintable edge: the template's empty rows below Part F used to push the
+  // form to 6 pt from the top of the A4 sheet.
+  const lastRow = Math.max(...layout.cells.map((cell) => cell.r2), ...layout.borders.map((border) => border.r));
+  const top = Math.max(layout.marginsPt.top, (PAGE.height - ys[lastRow + 1] * s) / 2);
   const X = (c: number) => left + xs[c] * s;
   const Y = (r: number) => top + ys[r] * s;
   const rect = (cell: LayoutCell) => ({ x: X(cell.c), y: Y(cell.r), w: X(cell.c2 + 1) - X(cell.c), h: Y(cell.r2 + 1) - Y(cell.r) });
@@ -150,6 +154,16 @@ function drawPage(doc: PDFKit.PDFDocument, layout: Layout, fields: Record<string
     if (!cell.fill) continue;
     const box = rect(cell);
     doc.rect(box.x, box.y, box.w, box.h).fill(`#${cell.fill}`);
+  }
+
+  // A vertical line under text that runs on past its cell is left out, as on
+  // the printed template ("No. Kakitangan/No. Gaji", auditor's review 15 October 2026).
+  const underText = new Set<string>();
+  for (const cell of layout.cells) {
+    if (!cell.text || cell.wrap || cell.c !== cell.c2 || cell.r !== cell.r2 || (cell.h && cell.h !== 'left')) continue;
+    doc.font(cell.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(sizeOf(cell) * s);
+    const end = X(cell.c) + PAD + doc.widthOfString(cell.text);
+    for (let k = cell.c + 1; k < xs.length && X(k) < end; k += 1) underText.add(`${cell.r}:${k}`);
   }
 
   // 2. Borders, side by side as the spreadsheet draws them.
@@ -165,8 +179,8 @@ function drawPage(doc: PDFKit.PDFDocument, layout: Layout, fields: Record<string
     const sides = border as { left?: string; right?: string; top?: string; bottom?: string };
     line(sides.top, x1, y1, x2, y1);
     line(sides.bottom, x1, y2, x2, y2);
-    line(sides.left, x1, y1, x1, y2);
-    line(sides.right, x2, y1, x2, y2);
+    if (!underText.has(`${border.r}:${border.c}`)) line(sides.left, x1, y1, x1, y2);
+    if (!underText.has(`${border.r}:${border.c + 1}`)) line(sides.right, x2, y1, x2, y2);
   }
 
   // 3. The template's own wording, then the figures in their boxes.
@@ -175,14 +189,17 @@ function drawPage(doc: PDFKit.PDFDocument, layout: Layout, fields: Record<string
     if (fill !== undefined && cell.ref !== 'A1') continue;
     const value = cell.ref === 'A1' && fill ? fill.text : cell.text;
     if (!value) continue;
+    const spill = cell.c === cell.c2 && cell.r === cell.r2;
     write(doc, rect(cell), value, {
-      size: cell.size * s,
+      size: sizeOf(cell) * s,
       bold: cell.bold,
       color: cell.color ? `#${cell.color}` : '#000000',
       align: (cell.h as 'left' | 'center' | 'right' | null) ?? 'left',
       valign: (cell.v as 'top' | 'center' | 'bottom' | null) ?? 'bottom',
       wrap: cell.wrap,
-      spill: cell.c === cell.c2 && cell.r === cell.r2,
+      spill,
+      // A box's own wording stays inside the box: "BAGI TAHUN BERAKHIR 31 DISEMBER" ran into the year.
+      shrink: !spill && !cell.wrap,
     });
   }
   const boxes = new Map<string, LayoutCell>(layout.cells.map((cell) => [cell.ref, cell]));
@@ -202,6 +219,11 @@ function drawPage(doc: PDFKit.PDFDocument, layout: Layout, fields: Record<string
   }
 }
 
+/** Item numerals ("1.", "2.") all print at the template's usual size; one "2." in Part E was set larger. */
+function sizeOf(cell: LayoutCell): number {
+  return cell.text && /^\d+\.$/.test(cell.text) ? 8 : cell.size;
+}
+
 function write(
   doc: PDFKit.PDFDocument,
   box: { x: number; y: number; w: number; h: number },
@@ -213,6 +235,10 @@ function write(
   // A long name in a box: smaller type rather than past the border.
   while (options.shrink && size > 4 && doc.fontSize(size).widthOfString(text) > box.w - 2 * PAD) size -= 0.25;
   doc.fontSize(size).fillColor(options.color);
+  // Wrapped wording that would spill out of its box is made smaller instead,
+  // down to one line: the black bar "BORANG EA INI PERLU…" fits as on the template.
+  while (options.wrap && size > 4 && doc.fontSize(size).heightOfString(text, { width: box.w - 2 * PAD }) > box.h) size -= 0.25;
+  doc.fontSize(size);
   const lineHeight = doc.currentLineHeight();
   if (options.wrap) {
     const height = doc.heightOfString(text, { width: box.w - 2 * PAD });
