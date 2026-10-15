@@ -81,4 +81,12 @@ describe('capConcurrency', () => {
     const { overflow } = capConcurrency([...monday, ...tuesday], 3, false);
     expect(overflow).toHaveLength(2);
   });
+
+  it('keeps a live booking visible when cancelled cards fill the same band (public booking walk, 15 October 2026)', () => {
+    const cancelled = ['x1', 'x2', 'x3', 'x4'].map((id) => ({ ...ev(id, [8, 0], [8, 30], 'doc-1'), released: true }));
+    const live = { ...ev('live', [8, 0], [8, 30], 'doc-1'), released: false };
+    const { visible, overflow } = capConcurrency([...cancelled, live], 3, false);
+    expect(visible.map((row) => row.id)).toContain('live');
+    expect(overflow[0].hidden.every((row) => row.released)).toBe(true);
+  });
 });

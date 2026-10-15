@@ -356,6 +356,8 @@ export interface ConcurrencyInput {
   start: Date;
   end: Date;
   resourceId?: string;
+  /** Cancelled or no-show: it gives up its place in a busy band before a live booking does. */
+  released?: boolean;
 }
 
 export interface OverflowBundle<T> {
@@ -407,10 +409,13 @@ export function capConcurrency<T extends ConcurrencyInput>(
       if (cluster.length <= limit) {
         visible.push(...cluster);
       } else {
-        // Keep the earliest (limit - 1) cards whole; the rest become one tile
-        // spanning the band they actually occupy.
-        const kept = cluster.slice(0, limit - 1);
-        const hidden = cluster.slice(limit - 1);
+        // Keep (limit - 1) cards whole, live bookings before cancelled ones,
+        // earliest first; the rest become one tile spanning their band. A
+        // patient who is coming must never sit behind "N more" while
+        // cancelled cards take the places (public booking walk, 15 October 2026).
+        const ordered = [...cluster].sort((a, b) => Number(Boolean(a.released)) - Number(Boolean(b.released)) || a.start.getTime() - b.start.getTime());
+        const kept = ordered.slice(0, limit - 1);
+        const hidden = ordered.slice(limit - 1);
         visible.push(...kept);
         overflow.push({
           id: `overflow:${hidden[0].id}:${hidden.length}`,
