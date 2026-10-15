@@ -6,6 +6,45 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 65 — 15 Oktober 2026 — UAT klinik baharu (A): panduan kali pertama
+
+**Tiada migrasi.**
+
+- `[D]` **HR dibuka pada *Set up payroll*** selagi ada langkah belum siap (bagi
+  orang yang boleh menyediakannya); selepas siap, pada Payroll. Tab HR dan URL
+  `/admin/hr` sama (`HrLanding`).
+- `[D]` Wizard kini lapan langkah: nombor syarikat + kelas HRD Corp + asas levi
+  (lalai Akta PSMB), akaun bank syarikat, pay rules, payroll items, **cuti umum**
+  (senarai 2026 persekutuan + negeri, ditanda dahulu sebelum ditambah), **opening
+  balances** (soalan "sudah bayar gaji tahun ini dalam sistem lain?"), pekerja
+  (rekod HR sahaja — akaun pemilik tidak dikira), kadar statutori.
+- `[D]` Wizard, kad Settings dan halaman Company membaca **satu status persediaan**
+  (`useHrSetup`), jadi "Setup complete" tidak lagi muncul bila Company kata "missing".
+  Klinik tanpa pekerja kini disemak juga (dahulu: hanya majikan yang ada pekerja).
+- `[D]` Punca "Blocked" dalam UAT: bila *Start payroll* tidak dapat mengira bulan
+  itu, run dibuka kosong dan semua orang "Blocked" tanpa sebab; *Fix* ke rekod yang
+  sudah lengkap. Kini: "This month has not been worked out yet" + sebab penolakan +
+  pautan ke halaman yang membetulkannya (cth. Payroll items); baris "left out"
+  memakai pautan *Fix* daripada server. `[A]` Dalam UAT punca sebenar mungkin item
+  gaji belum ditambah semasa bulan dimulakan; "kadar statutori belum disemak" tidak
+  menyekat apa-apa dalam kod `[D]`.
+- `[D]` Kadar statutori: "Mark as checked" diganti **Acknowledge these rates**, dengan
+  tarikh edisi dan sumber; ayat bercanggah "already checked" dibuang.
+- `[D]` Add employee → Review bertanya semakan intake server yang sama (tanpa simpan),
+  dan menyebut langkah persediaan yang belum siap.
+- `[A]` Senarai cuti 2026 disusun daripada kalendar terbitan (laman rasmi JPM tidak
+  dapat dicapai dari sini); tarikh yang berbeza antara sumber ditanda *check*. Cuti
+  ganti tidak dimasukkan.
+
+**Ujian:** API unit 2950 lulus. Integrasi 749/752 pada larian penuh — 3 gagal kerana
+transaksi tamat masa semasa saya menjalankan ujian lain serentak `[A]`; dua fail itu
+diulang sendirian: 51/51 lulus `[D]`. Web 2028/2028 bila diulang sendirian (larian
+pertama: 9 tamat masa 5 s sebab beban yang sama). Playwright 102/104: *hr-navigation*
+dibetulkan (URL kini ditunggu selepas redirect) dan lulus; tempahan awam gagal seperti
+Batch 62–64 (tugasan berasingan sudah dibuka) `[D]`.
+
+---
+
 ## Batch 64 — 15 Oktober 2026 — Borang EA mengikut templat juruaudit (C.P.8A Pin. 2017)
 
 **Migrasi:** `20261016110000_legal_employer_phone` (no. telefon majikan), dijalankan

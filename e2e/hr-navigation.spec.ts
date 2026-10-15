@@ -135,7 +135,8 @@ test.describe('every URL the six sections absorbed', () => {
       ['/management/hr/public-holidays', '/admin/hr/settings/public-holidays', 'Public holidays'],
     ] as const) {
       await gotoHr(page, old);
-      expect(new URL(page.url()).pathname, `${old} should land on ${destination}`).toBe(destination);
+      // Polled: /admin/hr reads the setup status before it chooses where to go.
+      await expect.poll(() => new URL(page.url()).pathname, { message: `${old} should land on ${destination}` }).toBe(destination);
       // By ROLE rather than by class: what a reader sees is a heading.
       await expect(page.getByRole('heading', { name: heading, exact: true }).first()).toBeVisible();
     }
