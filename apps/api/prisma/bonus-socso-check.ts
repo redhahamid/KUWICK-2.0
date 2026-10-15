@@ -107,7 +107,10 @@ async function report(prisma: PrismaClient) {
           ].join(' | '),
         );
       }
-      console.log(`\nApproved or paid payslips Jan–Sep 2026 with a bonus in the SOCSO/EIS wage: ${rows.length}`);
+      const withBonus = lines.filter((line) => ((line.breakdown ?? {}) as { components?: { code: string; kind: string; amount: unknown }[] }).components?.some((c) => codes.includes(c.code) && c.kind === 'EARNING' && cents(c.amount) > 0)).length;
+      const months = [...new Set(lines.map((line) => line.period.toISOString().slice(0, 7)))];
+      console.log(`\nApproved or paid payslips Jan–Sep 2026: ${lines.length}, in ${months.length} month(s): ${months.join(', ') || 'none'}. With a bonus paid: ${withBonus}.`);
+      console.log(`Of those, with the bonus in the SOCSO/EIS wage: ${rows.length}`);
       if (rows.length > 0) {
         console.log('month | run | emp no | name | bonus RM | SOCSO wage RM | SOCSO from bonus ee/er | EIS from bonus ee/er | SOCSO charged ee/er | EIS charged ee/er');
         for (const row of rows) console.log(row);
