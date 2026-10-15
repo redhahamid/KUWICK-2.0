@@ -484,7 +484,8 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
             <div className="hr-form__row">
               <div>
                 <label htmlFor="ed-ecn">Name</label>
-                <Input id="ed-ecn" value={ecName} onChange={(e) => setEcName(e.target.value)} />
+                <Input id="ed-ecn" value={ecName} status={!ecName.trim() && (ecPhone || ecRelation) ? 'warning' : undefined} onChange={(e) => setEcName(e.target.value)} />
+                {!ecName.trim() && (ecPhone || ecRelation) ? <small className="hr-warnText">Add the contact’s name, so whoever calls knows who to ask for.</small> : null}
               </div>
               <div>
                 <label htmlFor="ed-ecp">Phone</label>

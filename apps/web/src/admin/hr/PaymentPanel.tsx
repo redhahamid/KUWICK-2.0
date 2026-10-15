@@ -4,7 +4,9 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { AdminNotice, AdminSection } from '../components/AdminShell';
 import { DataTable, money } from '../components/DataTable';
 import { downloadFile } from '../../core/api-client';
-import { useChoosePayDate, usePaymentStatus, usePreparePayment, useRecordPaymentPaid } from '../hooks/useAdmin';
+import { Link } from 'react-router-dom';
+import { useChoosePayDate, useLegalEmployers, usePaymentStatus, usePreparePayment, useRecordPaymentPaid } from '../hooks/useAdmin';
+import { employersToSetUp } from './useHrSetup';
 import type { PaymentBatch, PaymentBatchLine, PayDateChoiceRow } from '../types';
 
 /** "30 Oct 2026". */
@@ -44,6 +46,9 @@ export function PaymentPanel({ runId }: { runId: string }) {
   const [reference, setReference] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  // The account salaries are paid from (new-clinic UAT, 15 October 2026): said before preparing, not discovered at the bank.
+  const employers = useLegalEmployers();
+  const noCompanyAccount = employersToSetUp(employers.data ?? []).filter((row) => !row.bankAccountOnFile);
 
   const data = query.data;
   if (!data) return null;
@@ -284,6 +289,13 @@ export function PaymentPanel({ runId }: { runId: string }) {
             style={{ marginBottom: 16, maxWidth: 720 }}
             items={[{ title: 'Prepare' }, { title: 'Download listing' }, { title: 'Pay at your bank' }, { title: 'Record the transfer' }]}
           />
+          {noCompanyAccount.length > 0 ? (
+            <AdminNotice tone="warn">
+              The company bank account is not on file for {noCompanyAccount.map((row) => row.name).join(', ')}, so the listing cannot say
+              which account pays.{' '}
+              <Link to="/admin/hr/settings?step=bank">Add the company bank account</Link>
+            </AdminNotice>
+          ) : null}
           <p className="kw-muted" style={{ marginTop: 0 }}>
             No payment listing has been prepared. Preparing composes {manyDates ? 'a listing for each date' : 'the listing'} from the
             approved figures, with each person's bank details as on file today.

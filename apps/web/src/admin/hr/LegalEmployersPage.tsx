@@ -399,7 +399,7 @@ export function LegalEmployersPage() {
             />
             <div className="hr-small hr-muted" style={{ marginTop: 4 }}>
               Each person who joins this employer is given this as their own dated EPF basis, from their start date, however
-              they are added. Staff already here keep theirs: change them on the Employees page with “Set EPF basis for branch”.
+              they are added. Staff already here keep theirs: change them on the Employees page with More → “Set EPF basis for this branch”.
             </div>
           </label>
           <div>

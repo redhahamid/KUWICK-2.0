@@ -7,6 +7,7 @@ import { useHolidayPresets, useLoadHolidayPresets } from '../../hr/hooks/usePubl
 import { useSetGlobalSetting } from '../../core/hooks/useGlobalSetting';
 import { useCan } from '../../core/hooks/useCan';
 import { HrPage, ProblemNotice, StatusChip } from './ui';
+import { EmployerLogoField } from './EmployerLogoField';
 import { bankOptions, stateOf, stateOptions } from './malaysianStates';
 import { OPENING_BALANCES_SETTING, employersToSetUp, type OpeningBalancesAnswer, type SetupStep, type SetupStepKey } from './useHrSetup';
 import type { LegalEmployerRow } from '../types';
@@ -379,6 +380,16 @@ function CompanyStep({ employers, finishes, onSaved }: StepProps) {
           </WizField>
         ) : null}
       </div>
+
+      {/* The logo on payslips (new-clinic UAT, 15 October 2026); without one the payslip prints the company's initials. */}
+      {row ? (
+        <div className="hr-wizBox">
+          <div>
+            <div className="hr-wizBox__title">Logo on payslips</div>
+            <EmployerLogoField key={row.id} employerId={row.id} employerName={row.name} logoMediaId={row.logoMediaId ?? null} mayManage={mayManage} />
+          </div>
+        </div>
+      ) : null}
 
       <div className="hr-wizBox">
         <div>

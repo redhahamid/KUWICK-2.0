@@ -228,8 +228,9 @@ export function StatutoryOutputsPanel({ runId }: { runId: string }) {
                   title: 'Membership no.',
                   dataIndex: 'membershipNo',
                   width: 160,
+                  // HRD Corp has no per-employee number (new-clinic UAT, 15 October 2026).
                   render: (value: string | null) =>
-                    value ?? <span style={{ color: '#b45309' }}>Not on file</span>,
+                    block.scheme === 'HRD' ? '–' : (value ?? <span style={{ color: '#b45309' }}>Not on file</span>),
                 },
                 {
                   title: 'Employee',

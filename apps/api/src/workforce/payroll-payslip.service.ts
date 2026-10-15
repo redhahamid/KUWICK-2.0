@@ -410,7 +410,7 @@ export class PayrollPayslipService {
       where: { staffId },
       // The identity number (NRIC or passport) is write-only on every screen
       // and appears here because the payslip is the employee's own document.
-      select: { epfNumber: true, socsoNumber: true, taxNumber: true, identifierType: true, identifierValue: true, bankAccountNo: true },
+      select: { epfNumber: true, socsoNumber: true, taxNumber: true, identifierType: true, identifierValue: true, bankAccountNo: true, startDate: true, endDate: true },
     });
     // WHERE THE PAY WENT (UAT, 12 October 2026): the account on this run's own
     // transfer list, or today's record where no list was prepared. Only the
@@ -542,6 +542,9 @@ export class PayrollPayslipService {
           ? { type: profile.identifierType ?? 'NRIC', value: profile.identifierValue }
           : null,
         identifiersAsAt: 'CURRENT' as const,
+        /** Joined or left inside this month (ISO dates), so the period printed is the part they worked. */
+        startedInPeriod: inPeriod(profile?.startDate ?? null, payload.period),
+        leftInPeriod: inPeriod(profile?.endDate ?? null, payload.period),
       },
       /**
        * THE SIGNATURES (payslip.html): who prepared the month and who approved
@@ -696,6 +699,12 @@ export class PayrollPayslipService {
 }
 
 export type PayslipData = Awaited<ReturnType<PayrollPayslipService['payslip']>>;
+
+/** The date as YYYY-MM-DD when it falls in the payroll month (YYYY-MM…), else null. */
+function inPeriod(date: Date | null, period: string): string | null {
+  const iso = date ? date.toISOString().slice(0, 10) : null;
+  return iso && iso.slice(0, 7) === period.slice(0, 7) ? iso : null;
+}
 
 /**
  * THE ADDRESS AS RECORDED, each part once (UAT, 12 October 2026: "no

@@ -941,6 +941,12 @@
 .hr-wizField .ant-input {
   min-height: 44px;
 }
+.hr-warnText {
+  display: block;
+  margin-top: 4px;
+  color: #b45309;
+  font-size: 13px;
+}
 .hr-wizField__help {
   color: var(--hr-ink2);
   font-size: 13px;

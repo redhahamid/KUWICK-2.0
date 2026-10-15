@@ -542,20 +542,30 @@ export class PayrollPaymentService {
 
       const escape = csvCell;
       const period = batch.payrollRun.period.toISOString().slice(0, 7);
+      // THE IC AND A REFERENCE (new-clinic UAT, 15 October 2026): bank portals
+      // ask for the payee's IC and a payment reference on each transfer.
+      const profiles = await tx.employeeProfile.findMany({
+        where: { staffId: { in: batch.lines.map((line) => line.staffId) } },
+        select: { staffId: true, identifierValue: true, passportNumber: true },
+      });
+      const idOf = new Map(profiles.map((row) => [row.staffId, row.identifierValue ?? row.passportNumber ?? null]));
+      const reference = `Salary ${batch.payrollRun.period.toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })}`;
       const rows = [
-        ['employee', 'bank', 'account_number', 'amount_rm', 'status', 'reason'].join(','),
+        ['employee', 'ic_or_passport', 'bank', 'account_number', 'amount_rm', 'payment_reference', 'status', 'reason'].join(','),
         ...batch.lines.map((line) =>
           [
             escape(line.name),
+            csvTextCell(idOf.get(line.staffId) ?? null),
             escape(line.bankName),
             // A 12-digit account number opened in Excel became 5.12346E+11.
             csvTextCell(line.bankAccountNo),
             (line.amountCents / 100).toFixed(2),
+            escape(reference),
             line.included ? 'PAY' : 'EXCLUDED',
             escape(line.exclusionReason),
           ].join(','),
         ),
-        ['TOTAL TO PAY', '', '', (batch.totalCents / 100).toFixed(2), '', ''].join(','),
+        ['TOTAL TO PAY', '', '', '', (batch.totalCents / 100).toFixed(2), '', '', ''].join(','),
       ];
       return {
         fileName: `payment-instruction-listing-${period}${paysOn ? `-paid-${paysOn}` : ''}-batch${batch.version}.csv`,

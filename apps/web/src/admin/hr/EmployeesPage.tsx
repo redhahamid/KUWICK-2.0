@@ -245,25 +245,28 @@ export function EmployeesPage() {
             </button>
           ) : null}
           {mayManage && view === 'employees' ? (
-            <button type="button" className="hr-btn" onClick={() => setTitlesOpen(true)}>
-              Job titles
-            </button>
-          ) : null}
-          {mayManage && view === 'employees' ? (
             <button type="button" className="hr-btn" onClick={() => navigate('/admin/hr/employees/bulk')}>
               Add several
             </button>
           ) : null}
-          {mayManage && mayPayroll && view === 'employees' ? (
-            <button
-              type="button"
-              className="hr-btn"
-              disabled={!clinicId}
-              title={clinicId ? undefined : 'Pick a branch first: this sets everybody in one branch.'}
-              onClick={() => setEpfBranchOpen(true)}
+          {/* Set once, rarely touched: behind "More", so Add employee is the one obvious button (new-clinic UAT, 15 October 2026). */}
+          {mayManage && view === 'employees' ? (
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: [
+                  { key: 'titles', label: 'Job titles' },
+                  ...(mayPayroll
+                    ? [{ key: 'epf', label: 'Set EPF basis for this branch', disabled: !clinicId, title: clinicId ? undefined : 'Pick a branch first: this sets everybody in one branch.' }]
+                    : []),
+                ],
+                onClick: ({ key }) => (key === 'titles' ? setTitlesOpen(true) : setEpfBranchOpen(true)),
+              }}
             >
-              Set EPF basis for branch
-            </button>
+              <button type="button" className="hr-btn" aria-label="More employee settings">
+                More
+              </button>
+            </Dropdown>
           ) : null}
           {mayManage ? (
             <button type="button" className="hr-btn hr-btn--primary" onClick={() => navigate('/admin/hr/employees/new')}>
@@ -301,7 +304,9 @@ export function EmployeesPage() {
               value={incomplete.length}
               tone={incomplete.length > 0 ? 'gold' : 'plain'}
               sub={
-                incomplete.length > 0
+                employed.length === 0
+                  ? 'Nobody on record yet'
+                  : incomplete.length > 0
                   ? commonest
                   : withoutBank > 0
                     ? `Every record is complete · ${withoutBank} without a bank account`
@@ -318,6 +323,24 @@ export function EmployeesPage() {
 
           <Panel>
             {tabs}
+            {employed.length === 0 && seg === 'ACTIVE' && !employees.isLoading ? (
+              <div className="hr-empty" data-testid="employees-empty">
+                <div className="hr-strong">No staff yet.</div>
+                <div className="hr-muted">Add the people the clinic pays. Each one takes a few minutes: name, IC, job, salary and bank account.</div>
+                {mayManage ? (
+                  <button type="button" className="hr-btn hr-btn--primary hr-mt" onClick={() => navigate('/admin/hr/employees/new')}>
+                    <IconPlus />
+                    Add your first staff
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            {seg === 'NO_RECORD' ? (
+              <p className="hr-note">
+                These are logins with no employment record, for example the owner&apos;s own account or a visiting doctor&apos;s login. They
+                are not counted as employees and are not paid through payroll. Open one to add an HR record if they should be.
+              </p>
+            ) : null}
             <Table<EmployeeRow>
               rowKey="staffId"
               rows={rows}

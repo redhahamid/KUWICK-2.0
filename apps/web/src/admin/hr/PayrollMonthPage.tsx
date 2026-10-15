@@ -137,7 +137,7 @@ export function PayrollMonthPage() {
           {({ canStart, reason }) => (
             <Panel>
               <PanelHead
-                title={`${label} has not been started`}
+                title={canStart ? `${label} has not been started` : `${label} can't start yet`}
                 sub={
                   canStart
                     ? `Kuwick will work out ${data.employeesExpected} ${data.employeesExpected === 1 ? 'payslip' : 'payslips'} from attendance, leave, claims, recurring items and incentives already approved.`

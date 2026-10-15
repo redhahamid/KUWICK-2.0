@@ -188,6 +188,15 @@ function intakeRowOf(values: Record<string, any>, fallbackClinicId: string | und
   };
 }
 
+const EPF_LABEL: Record<string, string> = {
+  MALAYSIAN_CITIZEN: 'Malaysian citizen',
+  PERMANENT_RESIDENT: 'Permanent resident',
+  NON_CITIZEN_ELECTED_PRE_1998: 'Non-citizen, elected before 1998',
+  NON_CITIZEN: 'Non-citizen',
+};
+const TAX_LABEL: Record<string, string> = { RESIDENT: 'Resident', NON_RESIDENT: 'Non-resident' };
+const PCB_LABEL: Record<string, string> = { CATEGORY_1: 'Category 1', CATEGORY_2: 'Category 2', CATEGORY_3: 'Category 3' };
+
 export function AddEmployeePage() {
   const { message } = App.useApp();
   const navigate = useNavigate();
@@ -488,7 +497,21 @@ export function AddEmployeePage() {
                 </Form.Item>
               </div>
               <div className="kw-formRow">
-                <Form.Item name="emergencyContactName" label="Emergency contact">
+                {/* A number with no name is a call nobody can make (new-clinic UAT, 15 October 2026): a warning, not a refusal. */}
+                <Form.Item
+                  name="emergencyContactName"
+                  label="Emergency contact"
+                  dependencies={['emergencyContactPhone', 'emergencyContactRelation']}
+                  rules={[
+                    ({ getFieldValue }) => ({
+                      warningOnly: true,
+                      validator: (_, value) =>
+                        !String(value ?? '').trim() && (getFieldValue('emergencyContactPhone') || getFieldValue('emergencyContactRelation'))
+                          ? Promise.reject(new Error('Add the contact’s name, so whoever calls knows who to ask for.'))
+                          : Promise.resolve(),
+                    }),
+                  ]}
+                >
                   <Input />
                 </Form.Item>
                 <Form.Item name="emergencyContactPhone" label="Their phone">
@@ -761,6 +784,11 @@ export function AddEmployeePage() {
                           : null,
                       },
                       { label: 'Bank', value: values.bankAccountNo ? values.bankName || 'On file' : null },
+                      // The statutory answers payroll works from (new-clinic UAT, 15 October 2026).
+                      { label: 'EPF', value: EPF_LABEL[values.epfMembership as string] ?? null },
+                      { label: 'SOCSO', value: values.socsoNumber ? `No. ${values.socsoNumber}` : values.epfMembership ? 'Number not yet given' : null },
+                      { label: 'Monthly tax', value: [TAX_LABEL[values.taxResidence as string], PCB_LABEL[values.pcbCategory as string]].filter(Boolean).join(' · ') || null },
+                      { label: 'Rest day', value: REST_DAY_CHOICES.find((choice) => choice.value === values.restDayOfWeek)?.label ?? null },
                       { label: 'Signs in', value: values.wantsLogin ? values.loginEmail : 'No login' },
                     ]}
                   />

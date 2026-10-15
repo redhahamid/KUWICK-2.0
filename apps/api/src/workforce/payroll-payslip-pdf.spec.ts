@@ -1,4 +1,4 @@
-import { renderPayslipPdf, renderPayslipsPdf } from './payroll-payslip-pdf';
+import { periodRange, renderPayslipPdf, renderPayslipsPdf } from './payroll-payslip-pdf';
 import { addressAsRecorded, type PayslipData } from './payroll-payslip.service';
 
 /*
@@ -43,6 +43,8 @@ const slip = (over: Partial<PayslipData> = {}): PayslipData =>
       taxNumber: null,
       identifier: null,
       identifiersAsAt: 'CURRENT',
+      startedInPeriod: null,
+      leftInPeriod: null,
     },
     preparedBy: { name: 'Demo Owner', position: null, at: '2026-02-01T00:00:00.000Z' },
     approvedBy: { name: 'Demo Owner', position: null, at: '2026-02-01T00:00:00.000Z' },
@@ -138,5 +140,14 @@ describe('the employer address as recorded', () => {
       '43650 Bandar Baru Bangi',
       'Selangor',
     ]);
+  });
+});
+
+describe('periodRange', () => {
+  it('prints the part of the month a joiner or leaver worked, with the days', () => {
+    const slip = (startedInPeriod: string | null, leftInPeriod: string | null) => ({ period: '2026-10', employee: { startedInPeriod, leftInPeriod } });
+    expect(periodRange(slip(null, null))).toBe('1 – 31 Oct 2026');
+    expect(periodRange(slip('2026-10-15', null))).toBe('15 – 31 Oct 2026 · 17 of 31 days');
+    expect(periodRange(slip(null, '2026-10-10'))).toBe('1 – 10 Oct 2026 · 10 of 31 days');
   });
 });

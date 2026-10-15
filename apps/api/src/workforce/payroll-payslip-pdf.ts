@@ -113,6 +113,20 @@ export function renderPayslipsPdf(slips: PayslipData[], logo: Buffer | null = nu
   return done;
 }
 
+/**
+ * THE PART THEY WORKED (new-clinic UAT, 15 October 2026): a 15 October
+ * joiner's payslip reads "15 – 31 Oct 2026 · 17 of 31 days", not the whole month.
+ */
+export function periodRange(slip: Pick<PayslipData, 'period'> & { employee: Pick<PayslipData['employee'], 'startedInPeriod' | 'leftInPeriod'> }): string {
+  const start = new Date(`${slip.period}-01T00:00:00.000Z`);
+  const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0));
+  const days = end.getUTCDate();
+  const from = slip.employee.startedInPeriod ? Number(slip.employee.startedInPeriod.slice(8, 10)) : 1;
+  const to = slip.employee.leftInPeriod ? Number(slip.employee.leftInPeriod.slice(8, 10)) : days;
+  const part = from !== 1 || to !== days ? ` · ${to - from + 1} of ${days} days` : '';
+  return `${from} – ${to} ${end.toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })}${part}`;
+}
+
 function drawPayslip(doc: PDFKit.PDFDocument, slip: PayslipData, logo: Buffer | null) {
 
   const left = doc.page.margins.left;
@@ -120,9 +134,7 @@ function drawPayslip(doc: PDFKit.PDFDocument, slip: PayslipData, logo: Buffer | 
   const width = right - left;
   const bottom = doc.page.height - doc.page.margins.bottom;
 
-  const periodStart = new Date(`${slip.period}-01T00:00:00.000Z`);
-  const periodEnd = new Date(Date.UTC(periodStart.getUTCFullYear(), periodStart.getUTCMonth() + 1, 0));
-  const range = `1 – ${periodEnd.getUTCDate()} ${periodEnd.toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })}`;
+  const range = periodRange(slip);
 
   // --- Header -----------------------------------------------------------------
   let y = doc.page.margins.top;

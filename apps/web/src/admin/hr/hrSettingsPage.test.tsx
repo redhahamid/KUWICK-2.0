@@ -75,6 +75,8 @@ vi.mock('../hooks/useAdmin', () => ({
   useEmployees: () => ok([{ active: true, hasProfile: true }, { active: true, hasProfile: true }, { active: true, hasProfile: false }]),
   useUpsertLegalEmployer: () => ({ mutateAsync: upsert, isPending: false }),
   useRecordEmployerHrd: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useSetEmployerLogo: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useRemoveEmployerLogo: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useMarkStatutoryChecked: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 let holidays: { date: string }[] = [];

@@ -203,6 +203,9 @@ describe('Payroll payment preparation (e2e)', () => {
     expect(body.charCodeAt(0)).toBe(0xfeff);
     expect(body).toContain('EXCLUDED');
     expect(body).toContain('TOTAL TO PAY');
+    // The payee's IC and a payment reference, as bank portals ask (new-clinic UAT, 15 October 2026).
+    expect(body).toContain('employee,ic_or_passport,bank,account_number,amount_rm,payment_reference,status,reason');
+    expect(body).toMatch(/,Salary [A-Z][a-z]{2} \d{4},/);
 
     const status = await request(app.getHttpServer())
       .get(`/workforce/payroll/runs/${runId}/payment`)

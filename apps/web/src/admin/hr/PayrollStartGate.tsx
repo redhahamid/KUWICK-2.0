@@ -62,13 +62,27 @@ export function PayrollStartGate({
     <>
       {children({
         canStart,
-        reason: canStart ? null : 'Nobody has a salary on record, so there is no pay to work out. Set at least one salary first.',
+        reason: canStart
+          ? null
+          : blocked.length > 0
+            ? 'It can start once somebody has a salary. Set one below.'
+            : 'It can start once somebody has a salary. Add your first employee.',
       })}
 
+      {/* ONE MESSAGE, AND THE WAY ON (new-clinic UAT, 15 October 2026): the
+          panel above already says the month cannot start, so this only lists
+          who needs a salary, or says where to add the first person. */}
       {!canStart ? (
         <Panel className="hr-mt">
-          <PanelHead title={`${data?.periodLabel ?? 'This month'} cannot start`} sub="Payroll needs at least one employee with a salary in force." />
-          {blocked.length > 0 ? <BlockedList rows={blocked} /> : null}
+          {blocked.length > 0 ? (
+            <BlockedList rows={blocked} />
+          ) : (
+            <div className="hr-empty">
+              <Link className="hr-btn hr-btn--primary" to="/admin/hr/employees/new">
+                Add an employee with a salary
+              </Link>
+            </div>
+          )}
         </Panel>
       ) : null}
 

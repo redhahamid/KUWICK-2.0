@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App as AntApp } from 'antd';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { PayDateChoiceRow, PaymentBatch, PaymentStatus } from '../types';
 
@@ -18,7 +19,9 @@ vi.mock('../hooks/useAdmin', () => ({
   usePreparePayment: () => ({ mutate: vi.fn(), isPending: false }),
   useRecordPaymentPaid: () => ({ mutate: recordMutate, isPending: false }),
   useChoosePayDate: () => ({ mutate: chooseMutate, isPending: false }),
+  useLegalEmployers: () => ({ data: employers }),
 }));
+let employers: { id: string; name: string; active: boolean; employeeCount: number; bankAccountOnFile: boolean }[] = [];
 
 const { PaymentPanel } = await import('./PaymentPanel');
 
@@ -46,7 +49,9 @@ const mount = (status: PaymentStatus) => {
   served = status;
   return render(
     <AntApp>
-      <PaymentPanel runId="run-1" />
+      <MemoryRouter>
+        <PaymentPanel runId="run-1" />
+      </MemoryRouter>
     </AntApp>,
   );
 };
@@ -120,6 +125,14 @@ describe('choosing the pay dates for one run', () => {
     batches: [],
     batch: null,
     ...over,
+  });
+
+  it('warns before preparing when the company bank account is not on file (new-clinic UAT, 15 October 2026)', () => {
+    employers = [{ id: 'e1', name: 'Klinik Demo Baru Sdn Bhd', active: true, employeeCount: 1, bankAccountOnFile: false }];
+    mount(choosing([row('2026-10-30')]));
+    expect(screen.getByText(/company bank account is not on file for Klinik Demo Baru Sdn Bhd/)).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Add the company bank account' })).toHaveAttribute('href', '/admin/hr/settings?step=bank');
+    employers = [];
   });
 
   it('offers a date for each of the record’s dates, sends the one picked, and goes back to the default in one click', async () => {
