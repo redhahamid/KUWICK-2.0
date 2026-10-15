@@ -6,6 +6,64 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 66 — 15 Oktober 2026 — UAT klinik baharu (E, C, B, D)
+
+**Migrasi:** `20261016120000_ea_signing_officer` (nama dan jawatan pegawai EA bagi
+setiap majikan), dijalankan di staging dengan *Migrate only* sebelum master — run #32.
+
+**E. Borang EA**
+- `[D]` Peraturan sifar (sampel juruaudit 2024): B1(a)–(f), B2, B3–B6, C1–C2, D1–D3
+  dan F mencetak **0.00** bila kosong. D4(a)/(b), E dan D5 kekal kosong bila tiada.
+- `[D]` Tetapan majikan baharu: *EA signing officer name* dan *position* (Settings →
+  Company & statutory), dicetak di Nama Pegawai / Jawatan; amaran CHECK jika kosong.
+- `[D]` Tarikh = tarikh keluaran, lalai 31 Disember tahun cukai, boleh diubah di
+  Reports → Year-end forms → *Date on the forms*.
+- `[D]` D5 tidak diisi sementara menunggu juruaudit (bilangan anak atau RM?).
+
+**C. Pepijat kecil**
+- `[D]` Slip gaji: tempoh mengikut hari bekerja, cth. "15 – 31 Oct 2026 · 17 of 31 days".
+- `[D]` CSV senarai bayaran: lajur IC/pasport dan rujukan "Salary Oct 2026".
+- `[D]` Amaran di langkah Pay bila akaun bank syarikat tiada; HRD: no. ahli "–".
+- `[D]` Employees: butang "Add your first staff" bila kosong; penapis "Accounts
+  without HR record" diterangkan; Job titles dan EPF basis di bawah *More*.
+- `[D]` Bulan yang belum boleh mula: satu mesej + pautan tambah pekerja bergaji.
+- `[D]` Amaran hubungan kecemasan tanpa nama; Review tunjuk EPF, SOCSO, kategori
+  cukai, hari rehat; muat naik logo dalam wizard.
+
+**B. Lalai bagi mana-mana klinik (semua tetapan klinik)**
+- `[D]` *Defaults for new staff* di Pay rules: hari seminggu (6), percubaan (3 bulan),
+  senarai jabatan (Clinical, Pharmacy, Front desk, Admin).
+- `[D]` *Probation until* memakai lajur sedia ada `confirmed_date` (tiada migrasi),
+  diisi dari tarikh mula, peringatan di Employees sebulan sebelum tamat.
+- `[D]` Senarai jawatan awal klinik baharu: Doctor, Nurse, Clinic Assistant, Pharmacy
+  Assistant, Clerk, Locum.
+- `[D]` Item gaji standard kini set asas generik; house call, panel claim, insentif
+  prosedur, marketing dan item pemeriksaan perubatan menjadi *Optional items*.
+  Nama Inggeris diseragamkan. *Night shift pay* kekal dalam set asas kerana roster
+  Kuwick membayar shift malam doktor ke item itu.
+- `[D]` **Bonus**: tidak lagi dikenakan SOCSO/EIS dalam set standard. Sumber: risalah
+  PERKESO menyenaraikan "annual bonus" sebagai bukan gaji. `[A]` EIS memakai takrif
+  gaji yang sama — sila sahkan dengan PERKESO. Klinik sedia ada kekal dengan tetapan
+  mereka (tukar di Payroll items dengan tarikh dan sebab).
+- `[D]` Poskod mengisi negeri (julat Pos Malaysia); bandar perlu senarai penuh (backlog).
+  No. PERKESO = IC bagi warganegara jika kosong; bank dan jabatan ialah senarai.
+- `[D]` *Days a week* **mengubah gaji** bila Pay rules mengira bulan tidak penuh
+  mengikut hari bekerja (`proration.ts`); petunjuk lama "display only" salah.
+
+**D. Bahasa mudah**
+- `[D]` Kod dalaman (EPF_THIRD_SCHEDULE…, "Revision 1 of 1 · verification") disorok.
+- `[D]` Rujukan undang-undang di belakang "?" (LawRef) di sebelah ayat mudah.
+- `[D]` Petunjuk Add employee ditulis semula; suis login menerangkan My Kuwick;
+  Payroll items menerangkan tarikh bayar 30hb / 15hb.
+
+**Ujian:** API unit 2951, web 2029 lulus. Integrasi: 1 gagal pada larian penuh —
+ujian item tangan "Housecall" mendedahkan nama baharu "House call" tidak dikenali;
+padanan nama kini abaikan ruang/tanda baca, 72/72 lulus bila diulang `[D]`.
+Playwright 102/104: kewangan (dikenali tidak stabil) lulus bila diulang; tempahan awam
+gagal seperti Batch 62–65 `[D]`.
+
+---
+
 ## Batch 65 — 15 Oktober 2026 — UAT klinik baharu (A): panduan kali pertama
 
 **Tiada migrasi.**

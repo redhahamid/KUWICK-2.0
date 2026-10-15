@@ -23,8 +23,10 @@ const EPOCH = new Date('1970-01-01T00:00:00.000Z');
  * second Housecall.
  */
 function alreadyHere(preset: { code: string; name: string }, rows: readonly { code: string; name: string }[]): boolean {
-  const name = preset.name.trim().toLowerCase();
-  return rows.some((row) => row.code === preset.code || row.name.trim().toLowerCase() === name);
+  // Letters and digits only: a clinic's own "Housecall" is the preset "House call".
+  const plain = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const name = plain(preset.name);
+  return rows.some((row) => row.code === preset.code || plain(row.name) === name);
 }
 
 /**

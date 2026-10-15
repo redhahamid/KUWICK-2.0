@@ -33,6 +33,7 @@ describe('when each payroll item is paid (e2e)', () => {
     (await request(server()).get('/workforce/pay-components').set('Authorization', auth).expect(200)).body as {
       components: Record<string, unknown>[];
       missingPresets: { code: string; name: string }[];
+      addOns: { code: string; name: string }[];
     };
   const find = async (code: string) => (await listOf(bearer)).components.find((row) => row.code === code)!;
   const versionsOf = (code: string) =>
@@ -163,13 +164,20 @@ describe('when each payroll item is paid (e2e)', () => {
       .send({ code: 'HOUSE_CALL', name: 'Housecall', type: 'ADDITION', category: 'REMUNERATION', epfLiable: true, socsoLiable: true, eisLiable: true })
       .expect(201);
 
+    // House call and panel claim are optional add-ons now (new-clinic UAT, 15 October 2026).
     const before = await listOf(otherBearer);
-    expect(before.missingPresets.map((preset) => preset.code)).not.toContain('HOUSECALL');
-    expect(before.missingPresets.map((preset) => preset.code)).toContain('PANEL_CLAIM');
+    expect(before.addOns.map((preset) => preset.code)).not.toContain('HOUSECALL');
+    expect(before.addOns.map((preset) => preset.code)).toContain('PANEL_CLAIM');
+    expect(before.missingPresets.map((preset) => preset.code)).not.toContain('PANEL_CLAIM');
 
+    // The standard set leaves the add-ons out; adding everything still makes no second house call.
+    await request(server()).post('/workforce/pay-components/seed').set('Authorization', otherBearer).send({ baseOnly: true }).expect(201);
+    const base = await listOf(otherBearer);
+    expect(base.missingPresets).toEqual([]);
+    expect(base.addOns.map((preset) => preset.code)).toContain('PANEL_CLAIM');
     await request(server()).post('/workforce/pay-components/seed').set('Authorization', otherBearer).expect(201);
     const after = await listOf(otherBearer);
-    expect(after.components.filter((row) => String(row.name).toLowerCase() === 'housecall')).toHaveLength(1);
-    expect(after.missingPresets).toEqual([]);
+    expect(after.components.filter((row) => String(row.name).toLowerCase().replace(/\s/g, '') === 'housecall')).toHaveLength(1);
+    expect(after.addOns).toEqual([]);
   });
 });

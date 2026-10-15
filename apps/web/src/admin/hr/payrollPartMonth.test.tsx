@@ -35,6 +35,10 @@ const ruleSet = {
   updatedAt: '2026-10-01T00:00:00.000Z',
 } as unknown as PayrollPolicyRow;
 
+vi.mock('./newStaffDefaults', () => ({
+  useNewStaffDefaults: () => ({ workDaysPerWeek: 6, probationMonths: 3, departments: ['Clinical'] }),
+  useSetNewStaffDefaults: () => ({ mutate: vi.fn(), isPending: false }),
+}));
 vi.mock('../../core/hooks/useCan', () => ({ useCan: () => true }));
 vi.mock('../hooks/useAdmin', () => ({
   usePayrollApprovalPolicy: () => ({ data: undefined, error: null }),
