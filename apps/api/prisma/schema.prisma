@@ -8158,6 +8158,9 @@ model LegalEmployer {
   /// Address as it must appear on a payslip and a statutory form.
   /// Printed as "No. Telefon Majikan" on Borang EA (auditor's template, 15 October 2026).
   phone             String?               @map("phone")
+  /// Signs the employees' Borang EA: "Nama Pegawai" and "Jawatan" (auditor's sample, 15 October 2026).
+  eaSignerName      String?               @map("ea_signer_name")
+  eaSignerPosition  String?               @map("ea_signer_position")
   addressLine1 String? @map("address_line1")
   addressLine2 String? @map("address_line2")
   postcode     String?

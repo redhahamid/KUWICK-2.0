@@ -2044,6 +2044,9 @@ export interface LegalEmployerRow {
   defaultEpfBasis: "BASIC_ONLY" | "BASIC_PLUS_SELECTED" | "ALL_APPLICABLE";
   /** Printed on Borang EA as the employer's telephone. */
   phone?: string | null;
+  /** Printed on Borang EA as "Nama Pegawai" and "Jawatan". */
+  eaSignerName?: string | null;
+  eaSignerPosition?: string | null;
   addressLine1: string | null;
   addressLine2: string | null;
   postcode: string | null;

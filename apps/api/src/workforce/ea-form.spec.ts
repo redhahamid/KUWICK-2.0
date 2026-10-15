@@ -64,6 +64,18 @@ describe('EA form boxes (overnight brief, 15 October 2026)', () => {
     expect(fields.AK44?.text).toBe('35,100.00');
     expect(fields.AK47?.text).toBe('860.00');
     expect(fields.J57?.text).toBe('KUMPULAN WANG SIMPANAN PEKERJA');
+    // The zero rule (auditor's 2024 sample): right-hand RM boxes print 0.00 when
+    // nil; D4's RM boxes and D5 stay blank (D5 waits on the auditor).
+    for (const ref of ['AK25', 'AK26', 'AK27', 'AK31', 'AK33', 'AK35', 'AK37', 'AK39', 'AK42', 'AK43', 'AK48', 'AK49']) {
+      expect([ref, fields[ref]]).toEqual([ref, { text: '0.00', align: 'right' }]);
+    }
+    expect(fields.Z51).toBeNull();
+    expect(fields.Z52).toBeNull();
+    expect(fields.AK54).toBeNull();
+    // The signing officer, the position and the issue date.
+    expect(fields.X64?.text).toBe('Demo Pengarah');
+    expect(fields.X66?.text).toBe('PENGARAH');
+    expect(fields.C72?.text).toBe('31/12/2026');
     // Every box named is a box on the template.
     const refs = new Set(LAYOUT.cells.map((cell) => cell.ref as string));
     expect(Object.keys(fields).filter((ref) => !refs.has(ref))).toEqual([]);
@@ -88,7 +100,10 @@ export function demoForm(): EaForm {
       address: 'No. 1, Jalan Demo, 43000 Kajang, Selangor',
       addressLines: ['No. 1, Jalan Demo', '43000 Kajang, Selangor'],
       phone: '03-0000 0000',
+      signerName: 'Demo Pengarah',
+      signerPosition: 'PENGARAH',
     },
+    issueDate: '2026-12-31',
     employee: {
       name: 'Demo Jururawat Satu',
       employeeNo: 'D-001',

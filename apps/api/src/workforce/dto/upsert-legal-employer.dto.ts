@@ -17,6 +17,9 @@ export class UpsertLegalEmployerDto {
   /** Stored only. NO calculation applies it — HRD is a blocked statutory item. */
   @IsOptional() @IsNumber() @Min(0) @Max(1) hrdLevyRate?: number;
   @IsOptional() @IsString() phone?: string;
+  /** Printed on Borang EA as "Nama Pegawai" and "Jawatan". */
+  @IsOptional() @IsString() @Length(0, 120) eaSignerName?: string;
+  @IsOptional() @IsString() @Length(0, 80) eaSignerPosition?: string;
   @IsOptional() @IsString() addressLine1?: string;
   @IsOptional() @IsString() addressLine2?: string;
   @IsOptional() @IsString() postcode?: string;

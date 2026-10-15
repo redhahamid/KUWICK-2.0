@@ -430,9 +430,11 @@ export class WorkforceController {
     @Query('year') year: string | undefined,
     @Query('legalEmployerId') legalEmployerId: string | undefined,
     @Query('clinicId') clinicId: string | undefined,
+    @Query('issueDate') issueDate: string | undefined,
     @Res() res: Response,
   ) {
     const { forms } = await this.eaForms.forms(wholeYear(year), legalEmployerId || undefined, clinicId || undefined);
+    for (const form of forms) form.issueDate = issueDateOf(issueDate, form.issueDate);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="borang-ea-${wholeYear(year)}.pdf"`);
     res.send(await renderEaFormsPdf(forms, `Borang EA ${wholeYear(year)}`));
@@ -443,9 +445,11 @@ export class WorkforceController {
     @Param('staffId') staffId: string,
     @Query('year') year: string | undefined,
     @Query('legalEmployerId') legalEmployerId: string | undefined,
+    @Query('issueDate') issueDate: string | undefined,
     @Res() res: Response,
   ) {
     const form = await this.eaForms.form(staffId, wholeYear(year), legalEmployerId || undefined);
+    form.issueDate = issueDateOf(issueDate, form.issueDate);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline');
     res.send(await renderEaFormsPdf([form], `Borang EA ${form.year} — ${form.employee.name}`));
@@ -1450,6 +1454,13 @@ export class WorkforceController {
 }
 
 /** A tax year from the query string, e.g. 2026. */
+/** "Tarikh" on Borang EA: the date chosen on the EA page, else 31 December of the year. */
+function issueDateOf(chosen: string | undefined, fallback: string): string {
+  if (!chosen) return fallback;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(chosen) || Number.isNaN(Date.parse(chosen))) throw new BadRequestException('issueDate must be a date, e.g. 2026-12-31.');
+  return chosen;
+}
+
 function wholeYear(year: string | undefined): number {
   const parsed = Number(year);
   if (!Number.isInteger(parsed) || parsed < 2000 || parsed > 2100) throw new BadRequestException('year must be a whole year, e.g. 2026.');

@@ -104,6 +104,8 @@ export class LegalEmployerService {
       })(),
       hrdEffectiveFrom: hrdFromByEmployer.get(row.id) ?? null,
       phone: row.phone,
+      eaSignerName: row.eaSignerName,
+      eaSignerPosition: row.eaSignerPosition,
       addressLine1: row.addressLine1,
       addressLine2: row.addressLine2,
       postcode: row.postcode,
@@ -294,6 +296,8 @@ export class LegalEmployerService {
         hrdLevyRate: null,
         // Left alone when a form does not send it (the setup wizard does not).
         phone: dto.phone === undefined ? undefined : dto.phone.trim() || null,
+        eaSignerName: dto.eaSignerName === undefined ? undefined : dto.eaSignerName.trim() || null,
+        eaSignerPosition: dto.eaSignerPosition === undefined ? undefined : dto.eaSignerPosition.trim() || null,
         addressLine1: dto.addressLine1 ?? null,
         addressLine2: dto.addressLine2 ?? null,
         postcode: dto.postcode ?? null,

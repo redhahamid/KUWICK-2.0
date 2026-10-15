@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { App, Select } from 'antd';
+import { App, Input, Select } from 'antd';
 import dayjs from 'dayjs';
 import { downloadFile } from '../../core/api-client';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -31,6 +31,9 @@ export function EaFormsPage() {
   const [year, setYear] = useState(dayjs().month() < 3 ? dayjs().year() - 1 : dayjs().year());
   const [employerId, setEmployerId] = useState<string | undefined>();
   const params = { year, legalEmployerId: employerId, clinicId };
+  // "Tarikh" printed on the forms: 31 December of the tax year unless chosen.
+  const [issueDate, setIssueDate] = useState<string | null>(null);
+  const printedDate = issueDate ?? `${year}-12-31`;
   const forms = useEaForms(params);
   const borangE = useBorangE(params);
   const employers = useLegalEmployers();
@@ -44,7 +47,7 @@ export function EaFormsPage() {
     downloadFile(path, fileName).catch((error) => message.error(error instanceof Error ? error.message : 'Could not download that.'));
   const downloadAll = async () => {
     setDownloading(true);
-    await download(`/workforce/ea-forms/all.pdf${query(params)}`, `borang-ea-${year}.pdf`);
+    await download(`/workforce/ea-forms/all.pdf${query({ ...params, issueDate: printedDate })}`, `borang-ea-${year}.pdf`);
     setDownloading(false);
   };
 
@@ -60,10 +63,24 @@ export function EaFormsPage() {
             size="small"
             aria-label="Tax year"
             value={year}
-            onChange={setYear}
+            onChange={(value: number) => {
+              setYear(value);
+              setIssueDate(null);
+            }}
             style={{ width: 100 }}
             options={[0, 1, 2].map((back) => ({ value: dayjs().year() - back, label: String(dayjs().year() - back) }))}
           />
+          <label className="hr-small">
+            Date on the forms{' '}
+            <Input
+              size="small"
+              type="date"
+              aria-label="Date on the forms"
+              value={printedDate}
+              onChange={(event) => setIssueDate(event.target.value || null)}
+              style={{ width: 150 }}
+            />
+          </label>
           <Select
             size="small"
             aria-label="Employer"
@@ -147,7 +164,7 @@ export function EaFormsPage() {
                   className="hr-btn hr-btn--sm"
                   onClick={() =>
                     download(
-                      `/workforce/ea-forms/${row.staffId}/pdf${query({ year, legalEmployerId: row.legalEmployerId })}`,
+                      `/workforce/ea-forms/${row.staffId}/pdf${query({ year, legalEmployerId: row.legalEmployerId, issueDate: printedDate })}`,
                       `borang-ea-${year}-${row.employee.name.replace(/\s+/g, '-').toLowerCase()}.pdf`,
                     )
                   }

@@ -30,8 +30,13 @@ type Fill = { text: string; align?: 'left' | 'right' | 'center' };
 
 const money = (cents: number) =>
   `${cents < 0 ? '-' : ''}${(Math.abs(cents) / 100).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-/** Nil prints blank, as a hand-filled form leaves it. */
-const amount = (cents: number): Fill | null => (cents === 0 ? null : { text: money(cents), align: 'right' });
+/**
+ * THE ZERO RULE, from the auditor's own filled 2024 sample (15 October 2026):
+ * every right-hand RM box prints its figure, "0.00" when nil. The few boxes
+ * the auditor leaves empty when nil (D4's two RM boxes, E's) use `ifAny`.
+ */
+const amount = (cents: number): Fill => ({ text: money(cents), align: 'right' });
+const ifAny = (cents: number): Fill | null => (cents === 0 ? null : amount(cents));
 const dayMonthYear = (iso: string | null) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
 
 export function eaFields(form: EaForm): Record<string, Fill | null> {
@@ -72,23 +77,27 @@ export function eaFields(form: EaForm): Record<string, Fill | null> {
     AK37: amount(b.B5),
     AK39: amount(b.B6),
     // C. Pencen — none through payroll; JUMLAH is Part B and C together.
-    AK42: null,
-    AK43: null,
+    AK42: amount(0),
+    AK43: amount(0),
     AK44: { text: money(remunerationCents(form)), align: 'right' },
     // D. Potongan
     AK47: amount(form.pcbCents),
     AK48: amount(form.cp38Cents),
     AK49: amount(form.zakatCents),
-    Z51: amount(form.tp1ReliefCents),
+    Z51: ifAny(form.tp1ReliefCents),
     Z52: null,
+    // D5: left blank until the auditor confirms whether it is a count of children or RM.
     AK54: null,
     // E. Caruman pekerja
     J57: form.epfCents > 0 ? { text: 'KUMPULAN WANG SIMPANAN PEKERJA' } : null,
-    AJ58: amount(form.epfCents),
-    AJ59: amount(form.socsoCents),
+    AJ58: ifAny(form.epfCents),
+    AJ59: ifAny(form.socsoCents),
     // F. Dikecualikan cukai
     AJ61: amount(b.F),
-    // Tandatangan: officer, designation and date are written by hand when signed.
+    // Tandatangan: the employer's signing officer and position, and the issue date.
+    X64: text(form.employer.signerName),
+    X66: text(form.employer.signerPosition),
+    C72: text(dayMonthYear(form.issueDate)),
     X68: text(form.employer.name),
     X69: text(form.employer.addressLines[0]),
     X70: text(form.employer.addressLines[1]),

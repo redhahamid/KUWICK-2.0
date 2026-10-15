@@ -28,6 +28,8 @@ const FIELDS: [string, string][] = [
   ['city', 'City'],
   ['state', 'State'],
   ['phone', 'Telephone (printed on EA forms)'],
+  ['eaSignerName', 'EA signing officer name (Nama Pegawai)'],
+  ['eaSignerPosition', 'EA signing officer position (Jawatan), e.g. PENGARAH'],
   ['bankName', 'Bank'],
   ['bankAccountNo', 'Bank account number'],
   ['bankAccountName', 'Account name'],
@@ -103,6 +105,8 @@ export function LegalEmployersPage() {
             city: row.city ?? '',
             state: row.state ?? '',
             phone: row.phone ?? '',
+            eaSignerName: row.eaSignerName ?? '',
+            eaSignerPosition: row.eaSignerPosition ?? '',
             bankName: row.bankName ?? '',
             // WRITE-ONLY: the server never sends the number back, so there is
             // nothing to prefill. Blank means "leave the one on file alone".

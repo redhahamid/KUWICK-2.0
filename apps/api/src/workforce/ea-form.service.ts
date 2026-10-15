@@ -20,7 +20,18 @@ export interface EaForm {
   staffId: string;
   legalEmployerId: string;
   year: number;
-  employer: { name: string; lhdnEmployerNo: string | null; address: string | null; addressLines: string[]; phone: string | null };
+  employer: {
+    name: string;
+    lhdnEmployerNo: string | null;
+    address: string | null;
+    addressLines: string[];
+    phone: string | null;
+    /** "Nama Pegawai" and "Jawatan": an employer setting. */
+    signerName: string | null;
+    signerPosition: string | null;
+  };
+  /** "Tarikh": the day the forms are issued, 31 December of the year unless chosen. */
+  issueDate: string;
   /** "No. Siri": a running number per employer and year, in name order. */
   serialNo: string;
   /** The form revision printed top left, e.g. "(C.P.8A - Pin. 2017)": a clinic setting. */
@@ -170,6 +181,7 @@ export class EaFormService {
       if (!idNumber) problems.push({ level: 'BLOCK', text: 'No IC or passport number on the employee record.' });
       if (!employer?.lhdnEmployerNo) problems.push({ level: 'BLOCK', text: `${employer?.name ?? 'The employer'} has no LHDN employer number (E).` });
       if (employer && !employer.phone) problems.push({ level: 'CHECK', text: `${employer.name} has no telephone number to print on the form (Settings → Company & statutory).` });
+      if (employer && !employer.eaSignerName) problems.push({ level: 'CHECK', text: `${employer.name} has no EA signing officer to print on the form (Settings → Company & statutory).` });
       if (figures.totalsOnlyMonths.length > 0) {
         problems.push({
           level: 'CHECK',
@@ -196,7 +208,10 @@ export class EaFormService {
           address: addressLines.join(', ') || null,
           addressLines,
           phone: employer?.phone ?? null,
+          signerName: employer?.eaSignerName ?? null,
+          signerPosition: employer?.eaSignerPosition ?? null,
         },
+        issueDate: `${year}-12-31`,
         serialNo: '',
         versionLabel,
         labels: figures.labels,
