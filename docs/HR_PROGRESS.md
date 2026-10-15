@@ -9,7 +9,7 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 ## Batch 64 — 15 Oktober 2026 — Borang EA mengikut templat juruaudit (C.P.8A Pin. 2017)
 
 **Migrasi:** `20261016110000_legal_employer_phone` (no. telefon majikan), dijalankan
-di staging dengan *Migrate only* sebelum master — run #MIGRATE_RUN.
+di staging dengan *Migrate only* sebelum master — run #31.
 
 - `[D]` Templat juruaudit disimpan di `docs/templates/EA_Pin2017_1.xlsx`.
 - `[D]` PDF kini **dilukis daripada templat itu sendiri**: lebar lajur, tinggi baris,
@@ -27,6 +27,11 @@ di staging dengan *Migrate only* sebelum master — run #MIGRATE_RUN.
 - `[A]` Dibiarkan kosong untuk diisi tangan: Cawangan LHDNM (Kuwick tidak menyimpan
   cawangan cukai pekerja), Nama Pegawai, Jawatan, Tarikh, tempoh ganjaran B1(f),
   D4(b) zakat bukan melalui gaji, D5 jumlah pelepasan anak. Amaun sifar dicetak kosong.
+
+**Ujian:** API 2947, web 2027 lulus. Integrasi 751/752: satu ujian senarai pekerja
+mendapat 500 pada larian pertama selepas lajur baharu ditambah, lulus 46/46 bila
+fail itu diulang `[A]`. Playwright 103/104: tempahan awam gagal pada data baharu dan
+lulus bila diulang (sama seperti Batch 62–63; tidak berkaitan EA) `[D]`.
 
 ---
 
