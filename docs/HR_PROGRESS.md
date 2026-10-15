@@ -6,6 +6,39 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 67 — 15 Oktober 2026 — keputusan pemilik pusingan 2
+
+**Tiada migrasi.**
+
+- `[D]` **Poskod → bandar dan negeri** daripada set data terbuka `malaysia-postcodes`
+  3.0.0 (lesen ISC, github.com/AsyrafHussin/malaysia-postcodes, 2,929 poskod);
+  dimuat hanya bila poskod ditaip. Sumber dicatat di HR_HANDOVER §11.
+- `[D]` Backlog: senarai cuti umum rasmi persekutuan + negeri diselenggara Kuwick
+  setiap tahun — **mesti siap sebelum klinik kedua digunakan**.
+- `[D]` Borang EA: teks pengepala tidak lagi bertindih kotak tahun; garisan tegak
+  di "No. Kakitangan/No. Gaji" dibuang; bar hitam satu baris; angka "2." Bahagian E
+  saiz sama; borang dipusatkan pada A4 (jidar 23 pt atas, 24 pt bawah pada 100%;
+  dahulu 6 pt dari tepi atas). Setiap baris gaji masuk satu kotak sahaja.
+- `[D]` **Kalendar temujanji**: dalam jalur masa yang sibuk, temujanji yang dibatalkan
+  tidak lagi menolak temujanji aktif ke dalam "N more". Inilah punca ujian tempahan
+  awam gagal setiap kali (hari ujian mengumpul banyak tempahan dibatalkan); tempahan
+  dalam talian sendiri berfungsi.
+- `[D]` Staging (aliran kerja *Staging checks*):
+  - Klinik Demo Baru: Bonus versi 2 dari 1 Nov 2026 tanpa SOCSO/EIS (Oktober diluluskan,
+    kekal seperti dibayar).
+  - Hijraa (cawangan dalam tenant "Klinik Contoh (UAT)"): Bonus SOCSO/EIS **ON**; 164
+    slip diluluskan Jan–Sep 2026, **tiada** bonus — tiada caj SOCSO/EIS atas bonus.
+    Data Hijraa tidak diubah.
+  - Tempahan awam di staging: satu-satunya halaman (`/book/hijraabangi`) tiada servis
+    "bookable online", jadi pesakit tidak nampak apa-apa untuk ditempah (tetapan).
+- `[D]` Tenant baharu **Klinik Demo Baru 2** (cawangan + log masuk pemilik sahaja).
+
+**Ujian:** API unit 2951, web 2032, Playwright 104/104 (termasuk tempahan awam). Integrasi
+751/752: senarai pekerja tamat masa transaksi pada panggilan pertama, lulus 46/46 bila
+diulang `[D]` (dicatat di backlog).
+
+---
+
 ## Batch 66 — 15 Oktober 2026 — UAT klinik baharu (E, C, B, D)
 
 **Migrasi:** `20261016120000_ea_signing_officer` (nama dan jawatan pegawai EA bagi
