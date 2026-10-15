@@ -8,8 +8,9 @@
  * it through the patient's own manage link, so the day's real schedule is left
  * as it was (the booking stays on record as CANCELLED).
  *
- * Only pages of tenants whose name says UAT, Contoh or Demo are used: a real
- * clinic's page is never booked into. Prints no personal data.
+ * Only pages of tenants whose name says UAT, Contoh or Demo, and that hold no
+ * real clinic branch (Hijraa), are used. For every page it also says why a
+ * service would not be offered. Prints no personal data.
  *
  * Environment: DATABASE_URL (to find the page slugs), API_URL,
  * BOOKING_APPLY=true to book and cancel (else it stops before booking).
@@ -38,14 +39,29 @@ async function main() {
   if (!url || !api) throw new Error('DATABASE_URL and API_URL are required.');
 
   const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
+  // Every page, with why its services may not show: a service is offered only
+  // when it is active, bookable online and has an active qualified provider.
   const pages = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.bypass_tenant_scope', 'true', true)`;
-    return tx.$queryRaw<{ slug: string; tenant: string; active: boolean }[]>`
-      SELECT p.slug, t.name AS tenant, p.active FROM clinic_booking_pages p JOIN tenants t ON t.id = p.tenant_id ORDER BY t.name`;
+    return tx.$queryRaw<{ slug: string; tenant: string; active: boolean; real_branch: boolean; services: number; bookable: number; offered: number }[]>`
+      SELECT p.slug, t.name AS tenant, p.active,
+             EXISTS (SELECT 1 FROM clinics c WHERE c.tenant_id = t.id AND c.name ILIKE '%hijraa%') AS real_branch,
+             (SELECT count(*)::int FROM service_catalog s WHERE s.tenant_id = t.id AND s.active) AS services,
+             (SELECT count(*)::int FROM service_catalog s WHERE s.tenant_id = t.id AND s.active AND s.bookable) AS bookable,
+             (SELECT count(*)::int FROM service_catalog s WHERE s.tenant_id = t.id AND s.active AND s.bookable
+                AND EXISTS (SELECT 1 FROM doctor_service_qualifications q JOIN staff st ON st.id = q.staff_id
+                            WHERE q.service_id = s.id AND st.active)) AS offered
+      FROM clinic_booking_pages p JOIN tenants t ON t.id = p.tenant_id ORDER BY t.name`;
   });
   await prisma.$disconnect();
   console.log(`Booking pages on this database: ${pages.length} (${pages.filter((p) => p.active).length} turned on).`);
-  const usable = pages.filter((p) => p.active && SYNTHETIC.test(p.tenant));
+  for (const p of pages) {
+    console.log(
+      `  /book/${p.slug} (${p.tenant}): ${p.active ? 'on' : 'off'}; active services ${p.services}, bookable online ${p.bookable}, with an active qualified provider ${p.offered}${p.real_branch ? '; has a real clinic branch, never booked into' : ''}`,
+    );
+  }
+  // Never book into a tenant that holds a real clinic's branch (Hijraa), whatever it is called.
+  const usable = pages.filter((p) => p.active && SYNTHETIC.test(p.tenant) && !p.real_branch);
   console.log(`Synthetic pages that are turned on: ${usable.map((p) => `${p.tenant} → /book/${p.slug}`).join('; ') || 'none'}`);
   if (usable.length === 0) throw new Error('No synthetic booking page is turned on, so there is nothing safe to book into.');
 

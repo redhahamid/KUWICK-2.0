@@ -10,9 +10,10 @@
  *             SOCSO or EIS wage, with the contribution the bonus added.
  *             Changes nothing.
  *   FIX_DEMO  "Klinik Demo Baru" only: turns SOCSO and EIS off on its Bonus
- *             item. In place while no month has been approved there (the
- *             seeded row nobody has used); refuses otherwise. BONUS_APPLY=true
- *             to write, else a dry run.
+ *             item. In place while no month has been approved there; once one
+ *             is, as a new dated version from the month after it, the way the
+ *             Payroll items page records a change. BONUS_APPLY=true to write,
+ *             else a dry run.
  *
  * The extra contribution is SOCSO (Act 4) and EIS on the wage with the bonus
  * minus the same without it, from Kuwick's own built-in tables. LINDUNG 24
@@ -69,8 +70,10 @@ async function report(prisma: PrismaClient) {
         WHERE l.tenant_id = ${tenant.tenant_id} AND r.status::text IN ('APPROVED', 'PAID')
           AND r.period >= DATE '2026-01-01' AND r.period < DATE '2026-10-01'
         ORDER BY r.period, s.full_name`;
+      // Resolved on the month's last day, as a payroll run resolves its items; effective_to is inclusive.
       const liableOn = (code: string, period: Date, scheme: 'socso_liable' | 'eis_liable') => {
-        const version = items.find((item) => item.code === code && item.effective_from <= period && (!item.effective_to || item.effective_to > period));
+        const lastDay = new Date(Date.UTC(period.getUTCFullYear(), period.getUTCMonth() + 1, 0));
+        const version = items.find((item) => item.code === code && item.effective_from <= lastDay && (!item.effective_to || item.effective_to >= lastDay));
         return Boolean(version?.[scheme]);
       };
       const rows: string[] = [];
@@ -119,43 +122,72 @@ async function fixDemo(prisma: PrismaClient, apply: boolean) {
     await tx.$executeRaw`SELECT set_config('app.bypass_tenant_scope', 'true', true)`;
     const tenant = await tx.tenant.findFirst({ where: { name: { equals: DEMO, mode: 'insensitive' } }, select: { id: true } });
     if (!tenant) throw new Error(`No tenant called "${DEMO}".`);
-    const approved = await tx.payrollRun.count({ where: { tenantId: tenant.id, status: { in: ['APPROVED', 'PAID'] } } });
+    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenant.id}, true)`;
+    const lastApproved = await tx.payrollRun.findFirst({
+      where: { tenantId: tenant.id, status: { in: ['APPROVED', 'PAID'] } },
+      orderBy: { period: 'desc' },
+      select: { period: true },
+    });
     const bonus = await tx.payComponent.findMany({ where: { tenantId: tenant.id, code: 'BONUS' }, orderBy: { effectiveFrom: 'asc' } });
-    console.log(`"${DEMO}": ${bonus.length} Bonus version(s); approved or paid months: ${approved}.`);
-    for (const row of bonus) console.log(`  from ${row.effectiveFrom.toISOString().slice(0, 10)}: SOCSO ${row.socsoLiable ? 'ON' : 'off'}, EIS ${row.eisLiable ? 'ON' : 'off'}`);
-    if (approved > 0) throw new Error('A month is approved here, so the Bonus item must be changed as a dated version on Payroll items, not in place. Nothing changed.');
-    const toChange = bonus.filter((row) => row.socsoLiable || row.eisLiable);
-    if (toChange.length === 0) {
+    console.log(`"${DEMO}": ${bonus.length} Bonus version(s); last approved month: ${lastApproved ? lastApproved.period.toISOString().slice(0, 7) : 'none'}.`);
+    for (const row of bonus) console.log(`  v${row.version} from ${row.effectiveFrom.toISOString().slice(0, 10)}${row.effectiveTo ? ` to ${row.effectiveTo.toISOString().slice(0, 10)}` : ''}: SOCSO ${row.socsoLiable ? 'ON' : 'off'}, EIS ${row.eisLiable ? 'ON' : 'off'}`);
+    const open = bonus.find((row) => row.effectiveTo === null);
+    if (!open) throw new Error('No open Bonus version. Nothing changed.');
+    if (!open.socsoLiable && !open.eisLiable) {
       console.log('Bonus already has SOCSO and EIS off. Nothing to do.');
       return;
     }
+    const reason = 'Annual bonus is not wages for SOCSO or EIS (PERKESO). Owner decision, 15 October 2026.';
+    // An approved month keeps the treatment it was paid with: the change starts the month after it.
+    const from = lastApproved
+      ? new Date(Date.UTC(lastApproved.period.getUTCFullYear(), lastApproved.period.getUTCMonth() + 1, 1))
+      : open.effectiveFrom;
     if (!apply) {
-      console.log(`DRY RUN: would turn SOCSO and EIS off on ${toChange.length} Bonus version(s). Nothing changed.`);
+      console.log(`DRY RUN: would turn SOCSO and EIS off on Bonus from ${from.toISOString().slice(0, 10)}${lastApproved ? ' as a new version' : ' in place'}. Nothing changed.`);
       return;
     }
-    for (const row of toChange) {
-      await tx.payComponent.update({
-        where: { id: row.id },
-        data: {
-          socsoLiable: false,
-          eisLiable: false,
-          changeReason: 'Annual bonus is not wages for SOCSO or EIS (PERKESO). Owner decision, 15 October 2026; no month approved yet.',
-        },
-      });
-      await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenant.id}, true)`;
-      await tx.auditLog.create({
-        data: {
-          tenantId: tenant.id,
-          actorUserId: null,
-          action: 'payComponent.changed',
-          entityType: 'PayComponent',
-          entityId: row.id,
-          before: { socsoLiable: row.socsoLiable, eisLiable: row.eisLiable } as never,
-          after: { socsoLiable: false, eisLiable: false, _reason: 'Bonus is not wages for SOCSO/EIS (PERKESO); owner decision 15 Oct 2026', _source: 'one-off script bonus-socso-check.ts' } as never,
-        },
-      });
+    if (!lastApproved) {
+      const saved = await tx.payComponent.update({ where: { id: open.id }, data: { socsoLiable: false, eisLiable: false, changeReason: reason } });
+      await audit(tx, tenant.id, saved.id, 'payComponent.changed', open, saved, reason);
+      console.log(`Turned SOCSO and EIS off on Bonus v${open.version} in place (no month approved).`);
+      return;
     }
-    console.log(`Turned SOCSO and EIS off on ${toChange.length} Bonus version(s) of "${DEMO}".`);
+    if (open.effectiveFrom >= from) throw new Error('The open Bonus version starts after the last approved month; change it on Payroll items. Nothing changed.');
+    await tx.payComponent.update({ where: { id: open.id }, data: { effectiveTo: new Date(from.getTime() - 86_400_000) } });
+    const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...copy } = open;
+    void _id;
+    void _createdAt;
+    void _updatedAt;
+    const saved = await tx.payComponent.create({
+      data: {
+        ...copy,
+        socsoLiable: false,
+        eisLiable: false,
+        version: open.version + 1,
+        effectiveFrom: from,
+        effectiveTo: null,
+        sourceRef: null,
+        clinicOverride: true,
+        changeReason: reason,
+        createdByStaffId: null,
+      } as never,
+    });
+    await audit(tx, tenant.id, saved.id, 'payComponent.updated', open, saved, reason);
+    console.log(`Bonus v${saved.version} from ${from.toISOString().slice(0, 10)}: SOCSO and EIS off. v${open.version} now ends ${new Date(from.getTime() - 86_400_000).toISOString().slice(0, 10)}.`);
+  });
+}
+
+async function audit(tx: Prisma.TransactionClient, tenantId: string, entityId: string, action: string, before: unknown, after: unknown, reason: string) {
+  await tx.auditLog.create({
+    data: {
+      tenantId,
+      actorUserId: null,
+      action,
+      entityType: 'PayComponent',
+      entityId,
+      before: JSON.parse(JSON.stringify(before)) as never,
+      after: { ...JSON.parse(JSON.stringify(after)), _reason: reason, _source: 'one-off script bonus-socso-check.ts' } as never,
+    },
   });
 }
 
