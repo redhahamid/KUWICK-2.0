@@ -453,6 +453,11 @@ describe('Payroll reports and finance contract (e2e)', () => {
     const borangE = await request(server()).get('/workforce/borang-e?year=2026').set('Authorization', bearer).expect(200);
     expect(borangE.body.dueDate).toBe('2027-03-31');
     expect(borangE.body.employers[0]).toMatchObject({ name: 'Reports Employer Sdn Bhd', employees: forms.length });
+    // The revision printed on the form is the clinic's setting.
+    expect((await request(server()).get('/workforce/ea-forms/version').set('Authorization', bearer).expect(200)).body.versionLabel).toBe('(C.P.8A - Pin. 2017)');
+    await request(server()).put('/workforce/ea-forms/version').set('Authorization', bearer).send({ versionLabel: '(C.P.8A - Pin. 2024)' }).expect(200);
+    const relabelled = await request(server()).get('/workforce/ea-forms?year=2026').set('Authorization', bearer).expect(200);
+    expect(relabelled.body.forms[0].versionLabel).toBe('(C.P.8A - Pin. 2024)');
     const csv = await request(server()).get('/workforce/borang-e/cp8d.csv?year=2026').set('Authorization', bearer).expect(200);
     expect(csv.text).toContain('Income tax number');
 

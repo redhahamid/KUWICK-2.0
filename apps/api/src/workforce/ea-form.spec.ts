@@ -1,5 +1,6 @@
 import { defaultEaBox, eaBoxOf, eaFigures, EaItem } from './ea-form';
-import { renderEaFormsPdf } from './ea-form-pdf';
+import { eaFields, renderEaFormsPdf } from './ea-form-pdf';
+import { LAYOUT } from './ea-layout/cp8a-pin2017';
 import type { EaForm } from './ea-form.service';
 
 const item = (over: Partial<EaItem> & { code: string }): EaItem => ({
@@ -51,26 +52,65 @@ describe('EA form boxes (overnight brief, 15 October 2026)', () => {
     expect(figures.differenceCents).toBe(0);
   });
 
-  it('prints one page per person', async () => {
-    const form = {
-      staffId: 's1',
-      legalEmployerId: 'e1',
-      year: 2026,
-      employer: { name: 'Klinik Demo Sdn Bhd', lhdnEmployerNo: 'E 1234567890', address: 'Jalan Demo, 43000 Kajang, Selangor' },
-      employee: { name: 'Demo Staf Satu', employeeNo: 'D-1', position: 'Nurse', idType: 'IC', idNumber: '900101-10-1234', taxNumber: 'IG 12345678090', epfNumber: '12345678', socsoNumber: '900101101234', startDate: null, endDate: null },
-      boxes: { B1a: 3600000, B1b: 0, B1c: 120000, B1d: 0, B1e: 0, B1f: 0, B2: 0, B3: 0, B4: 0, B5: 0, B6: 0, F: 0, NONE: 0 },
-      pcbCents: 120000,
-      cp38Cents: 0,
-      zakatCents: 0,
-      tp1ReliefCents: 0,
-      qualifyingChildren: 2,
-      epfCents: 396000,
-      socsoCents: 21000,
-      status: 'READY',
-      problems: [],
-    } as EaForm;
+  it('prints one page per person on the template, with the figures in its boxes', async () => {
+    const form = demoForm();
+    const fields = eaFields(form);
+    // Header, Part A, Part B and the totals land in the template's own boxes.
+    expect(fields.A1?.text).toBe('(C.P.8A - Pin. 2017)');
+    expect(fields.AE3?.text).toBe('IG 00000000000');
+    expect(fields.Q10?.text).toBe('Demo Jururawat Satu');
+    expect(fields.AK22).toEqual({ text: '32,400.00', align: 'right' });
+    expect(fields.AC24?.text).toBe('Elaun perjalanan');
+    expect(fields.AK44?.text).toBe('35,100.00');
+    expect(fields.AK47?.text).toBe('860.00');
+    expect(fields.J57?.text).toBe('KUMPULAN WANG SIMPANAN PEKERJA');
+    // Every box named is a box on the template.
+    const refs = new Set(LAYOUT.cells.map((cell) => cell.ref as string));
+    expect(Object.keys(fields).filter((ref) => !refs.has(ref))).toEqual([]);
     const pdf = await renderEaFormsPdf([form, { ...form, staffId: 's2' }]);
     expect(pdf.subarray(0, 4).toString()).toBe('%PDF');
     expect((pdf.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length).toBe(2);
   });
+
 });
+
+/** A demo person, made-up figures. */
+export function demoForm(): EaForm {
+  return {
+    staffId: 's1',
+    legalEmployerId: 'e1',
+    year: 2026,
+    serialNo: '2026/0001',
+    versionLabel: '(C.P.8A - Pin. 2017)',
+    employer: {
+      name: 'Klinik Demo Baru Sdn Bhd',
+      lhdnEmployerNo: 'E 9999999999',
+      address: 'No. 1, Jalan Demo, 43000 Kajang, Selangor',
+      addressLines: ['No. 1, Jalan Demo', '43000 Kajang, Selangor'],
+      phone: '03-0000 0000',
+    },
+    employee: {
+      name: 'Demo Jururawat Satu',
+      employeeNo: 'D-001',
+      position: 'Jururawat',
+      idType: 'IC',
+      idNumber: '000000-00-0000',
+      taxNumber: 'IG 00000000000',
+      epfNumber: '00000000',
+      socsoNumber: '000000000000',
+      startDate: '2026-03-01',
+      endDate: null,
+    },
+    boxes: { B1a: 3240000, B1b: 150000, B1c: 120000, B1d: 0, B1e: 0, B1f: 0, B2: 0, B3: 0, B4: 0, B5: 0, B6: 0, F: 45000, NONE: 0 },
+    labels: { B1a: ['Gaji pokok', 'Lebih masa'], B1b: ['Bonus'], B1c: ['Elaun perjalanan'], F: ['Tuntutan perubatan'] },
+    pcbCents: 86000,
+    cp38Cents: 0,
+    zakatCents: 0,
+    tp1ReliefCents: 0,
+    qualifyingChildren: 1,
+    epfCents: 386000,
+    socsoCents: 21500,
+    status: 'READY',
+    problems: [],
+  };
+}

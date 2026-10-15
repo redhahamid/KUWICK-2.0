@@ -103,6 +103,7 @@ export class LegalEmployerService {
         return current ? hrdLevyRatePercent(current) : null;
       })(),
       hrdEffectiveFrom: hrdFromByEmployer.get(row.id) ?? null,
+      phone: row.phone,
       addressLine1: row.addressLine1,
       addressLine2: row.addressLine2,
       postcode: row.postcode,
@@ -291,6 +292,8 @@ export class LegalEmployerService {
         // NOT written from this form any more. See the refusal above.
         hrdCategory: null,
         hrdLevyRate: null,
+        // Left alone when a form does not send it (the setup wizard does not).
+        phone: dto.phone === undefined ? undefined : dto.phone.trim() || null,
         addressLine1: dto.addressLine1 ?? null,
         addressLine2: dto.addressLine2 ?? null,
         postcode: dto.postcode ?? null,

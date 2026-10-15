@@ -215,13 +215,21 @@ CSV. Only approved months count; months not yet approved are named.
 **Code.** `api/workforce/ea-form.ts` (boxes, default box per item, the
 year's split — read this first), `api/workforce/ea-form.service.ts` (reads the
 year-to-date record and each approved month's frozen item lines),
-`api/workforce/ea-form-pdf.ts` (the page). Web: `web/admin/hr/EaFormsPage.tsx`;
+`api/workforce/ea-form-pdf.ts` (the page). The page is the auditor's template
+`docs/templates/EA_Pin2017_1.xlsx` (C.P.8A, Malay): `api/scripts/ea-template-to-layout.py`
+turns it into `api/workforce/ea-layout/cp8a-pin2017.ts` (column widths, row
+heights, merged boxes, borders, shading, wording) and the PDF draws exactly
+that, writing figures into the boxes listed in `eaFields()`. A newer LHDN
+revision: run the script on the new spreadsheet, check `eaFields()` cells,
+and change the **Form version** on the Year-end forms page (stored in
+`global_settings`, key `hr.eaForm.versionLabel`). Web: `web/admin/hr/EaFormsPage.tsx`;
 the box per item on `web/admin/hr/PayrollItemsPage.tsx`.
 
 **Tables.** `employee_ytd` (tax, zakat, EPF, SOCSO and EIS totals),
 `payroll_snapshots` (item lines per approved month), `pay_components.ea_field`
 (the box; empty = Kuwick's suggestion), `employee_profiles` (tax, IC, EPF,
-SOCSO numbers, children), `legal_employers.lhdn_employer_no`.
+SOCSO numbers, children), `legal_employers.lhdn_employer_no` and `.phone`
+(printed as "No. Telefon Majikan").
 
 **Change a rule.** Which box an item goes in: Payroll items → the item → *EA
 form box* (no code change). The suggestion for an item with no box:

@@ -4,7 +4,7 @@ import { App, Select } from 'antd';
 import dayjs from 'dayjs';
 import { downloadFile } from '../../core/api-client';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
-import { useBorangE, useEaForms, useLegalEmployers } from '../hooks/useAdmin';
+import { useBorangE, useEaFormVersion, useEaForms, useLegalEmployers, useSetEaFormVersion } from '../hooks/useAdmin';
 import { HrPage, Panel, PanelHead, StatusChip, type ChipTone } from './ui';
 import { Table } from './ui/Table';
 import { IconDownload } from './ui/icons';
@@ -110,7 +110,7 @@ export function EaFormsPage() {
       <Panel className="hr-mt">
         <PanelHead
           title="Borang EA"
-          sub="One page per employee, from approved payroll."
+          sub="One page per employee, from approved payroll, on the auditor's C.P.8A template."
           actions={
             rows.length > 0 ? (
               <button type="button" className="hr-btn hr-btn--sm" onClick={downloadAll} disabled={downloading}>
@@ -120,6 +120,7 @@ export function EaFormsPage() {
             ) : null
           }
         />
+        <FormVersion />
         <Table<EaForm>
           rows={rows}
           loading={forms.isLoading}
@@ -192,5 +193,46 @@ export function EaFormsPage() {
         </div>
       </Panel>
     </HrPage>
+  );
+}
+
+/**
+ * THE REVISION PRINTED TOP LEFT, e.g. "(C.P.8A - Pin. 2017)". A setting, so
+ * the clinic updates it when LHDN issues a newer form.
+ */
+function FormVersion() {
+  const { message } = App.useApp();
+  const version = useEaFormVersion();
+  const save = useSetEaFormVersion();
+  const [draft, setDraft] = useState<string | null>(null);
+  const value = draft ?? version.data?.versionLabel ?? '';
+  return (
+    <div className="hr-toolbar" style={{ gap: 8, marginBottom: 8 }}>
+      <label htmlFor="ea-version" className="hr-small">
+        Form version printed on each page
+      </label>
+      <input id="ea-version" className="hr-f" style={{ maxWidth: 240 }} value={value} onChange={(event) => setDraft(event.target.value)} />
+      {draft !== null && draft !== version.data?.versionLabel ? (
+        <button
+          type="button"
+          className="hr-btn hr-btn--sm hr-btn--primary"
+          disabled={save.isPending}
+          onClick={() =>
+            save.mutate(
+              { versionLabel: draft },
+              {
+                onSuccess: () => {
+                  message.success('Form version saved. New EA forms print it.');
+                  setDraft(null);
+                },
+                onError: (error: Error) => message.error(error.message),
+              },
+            )
+          }
+        >
+          Save
+        </button>
+      ) : null}
+    </div>
   );
 }

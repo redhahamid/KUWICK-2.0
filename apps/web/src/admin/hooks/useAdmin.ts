@@ -2396,6 +2396,18 @@ export function useEaForms(params: { year: number; legalEmployerId?: string; cli
   });
 }
 
+/** The C.P.8A revision printed on every EA form (auditor's template, 15 October 2026). */
+export function useEaFormVersion() {
+  return useQuery({
+    queryKey: ["admin-hr", "ea-form-version"],
+    queryFn: () => apiClient.get<{ versionLabel: string }>("/workforce/ea-forms/version"),
+  });
+}
+
+export function useSetEaFormVersion() {
+  return useAdminMutation((body: { versionLabel: string }) => apiClient.put("/workforce/ea-forms/version", body), ["admin-hr"]);
+}
+
 /** Borang E: the employer's yearly totals. */
 export function useBorangE(params: { year: number; legalEmployerId?: string; clinicId?: string }) {
   return useQuery({

@@ -2042,6 +2042,8 @@ export interface LegalEmployerRow {
   zakatThroughPayroll: boolean;
   /** The EPF basis new staff are given as their own dated record. */
   defaultEpfBasis: "BASIC_ONLY" | "BASIC_PLUS_SELECTED" | "ALL_APPLICABLE";
+  /** Printed on Borang EA as the employer's telephone. */
+  phone?: string | null;
   addressLine1: string | null;
   addressLine2: string | null;
   postcode: string | null;

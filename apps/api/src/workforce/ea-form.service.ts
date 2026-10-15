@@ -1,7 +1,8 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { currentTenantId } from '../core/tenant-context';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
-import { withScopedAdminTx } from '../finance/admin-actor';
+import { withAdminTx, withScopedAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { formatCents } from '../finance/money';
 import { compareByEmployeeName } from './employee-order';
@@ -19,7 +20,13 @@ export interface EaForm {
   staffId: string;
   legalEmployerId: string;
   year: number;
-  employer: { name: string; lhdnEmployerNo: string | null; address: string | null };
+  employer: { name: string; lhdnEmployerNo: string | null; address: string | null; addressLines: string[]; phone: string | null };
+  /** "No. Siri": a running number per employer and year, in name order. */
+  serialNo: string;
+  /** The form revision printed top left, e.g. "(C.P.8A - Pin. 2017)": a clinic setting. */
+  versionLabel: string;
+  /** Item names per box, for "Perihal pembayaran" (B1c) and "Nyatakan" (B3). */
+  labels: Partial<Record<EaBox, string[]>>;
   employee: {
     name: string;
     employeeNo: string | null;
@@ -46,6 +53,10 @@ export interface EaForm {
   status: 'READY' | 'CHECK' | 'INCOMPLETE';
   problems: EaProblem[];
 }
+
+/** The C.P.8A revision printed on the form; the clinic updates it when LHDN issues a newer one. */
+export const EA_VERSION_SETTING = 'hr.eaForm.versionLabel';
+export const EA_VERSION_DEFAULT = '(C.P.8A - Pin. 2017)';
 
 const APPROVED = ['APPROVED', 'PAID'];
 const MONTH = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -124,6 +135,7 @@ export class EaFormService {
       }),
     ]);
 
+    const versionLabel = await this.versionLabel();
     const items = new Map<string, EaItem>(components.map((row) => [row.code, row]));
     // The newest approved version of each month's figures.
     const latest = new Map<string, SnapshotPayload>();
@@ -157,6 +169,7 @@ export class EaFormService {
       if (!profile?.taxNumber) problems.push({ level: 'BLOCK', text: 'No income tax number on the employee record.' });
       if (!idNumber) problems.push({ level: 'BLOCK', text: 'No IC or passport number on the employee record.' });
       if (!employer?.lhdnEmployerNo) problems.push({ level: 'BLOCK', text: `${employer?.name ?? 'The employer'} has no LHDN employer number (E).` });
+      if (employer && !employer.phone) problems.push({ level: 'CHECK', text: `${employer.name} has no telephone number to print on the form (Settings → Company & statutory).` });
       if (figures.totalsOnlyMonths.length > 0) {
         problems.push({
           level: 'CHECK',
@@ -170,6 +183,9 @@ export class EaFormService {
         problems.push({ level: 'CHECK', text: `The boxes differ from the year's gross pay by RM${formatCents(Math.abs(figures.differenceCents))}.` });
       }
 
+      const addressLines = employer
+        ? [[employer.addressLine1, employer.addressLine2].filter(Boolean).join(', '), [[employer.postcode, employer.city].filter(Boolean).join(' '), employer.state].filter(Boolean).join(', ')].filter(Boolean)
+        : [];
       forms.push({
         staffId,
         legalEmployerId: employerId,
@@ -177,10 +193,13 @@ export class EaFormService {
         employer: {
           name: employer?.name ?? 'Unknown employer',
           lhdnEmployerNo: employer?.lhdnEmployerNo ?? null,
-          address: employer
-            ? [employer.addressLine1, employer.addressLine2, [employer.postcode, employer.city].filter(Boolean).join(' '), employer.state].filter(Boolean).join(', ') || null
-            : null,
+          address: addressLines.join(', ') || null,
+          addressLines,
+          phone: employer?.phone ?? null,
         },
+        serialNo: '',
+        versionLabel,
+        labels: figures.labels,
         employee: {
           name: profile?.legalName ?? person?.fullName ?? 'Unknown employee',
           employeeNo: profile?.employeeNo ?? null,
@@ -207,8 +226,43 @@ export class EaFormService {
     }
 
     forms.sort((a, b) => compareByEmployeeName({ name: a.employee.name, staffId: a.staffId }, { name: b.employee.name, staffId: b.staffId }));
+    const counters = new Map<string, number>();
+    for (const form of forms) {
+      const next = (counters.get(form.legalEmployerId) ?? 0) + 1;
+      counters.set(form.legalEmployerId, next);
+      form.serialNo = `${year}/${String(next).padStart(4, '0')}`;
+    }
     const notApproved = [...new Set(openRuns.map((run) => run.period.getUTCMonth() + 1))].sort((a, b) => a - b).map((month) => MONTH[month]);
     return { year, forms, notApproved };
+  }
+
+  /** The revision printed on the form; the default until the clinic changes it. */
+  async versionLabel(): Promise<string> {
+    const row = await this.prisma.globalSetting.findFirst({ where: { key: EA_VERSION_SETTING }, select: { value: true } });
+    return typeof row?.value === 'string' && row.value.trim() ? row.value : EA_VERSION_DEFAULT;
+  }
+
+  /** Change the revision label, e.g. when LHDN issues "Pin. 2024". The owner's and payroll's call. */
+  async setVersionLabel(label: string) {
+    const value = label.trim();
+    if (value.length < 3 || value.length > 60) throw new BadRequestException('Type the revision as printed on the form, e.g. (C.P.8A - Pin. 2017).');
+    return withAdminTx(this.rawPrisma, 'hr.payroll.export.reports', async (tx, actor) => {
+      const before = await tx.globalSetting.findFirst({ where: { key: EA_VERSION_SETTING } });
+      await tx.globalSetting.upsert({
+        where: { tenantId_key: { tenantId: currentTenantId(), key: EA_VERSION_SETTING } },
+        create: { tenantId: currentTenantId(), key: EA_VERSION_SETTING, value },
+        update: { value },
+      });
+      await recordAudit(tx, actor, {
+        action: 'eaForm.versionChanged',
+        entityType: 'GlobalSetting',
+        entityId: EA_VERSION_SETTING,
+        before: { value: before?.value ?? EA_VERSION_DEFAULT },
+        after: { value },
+        source: 'hr.payroll',
+      });
+      return { versionLabel: value };
+    });
   }
 
   /** One person's form. */

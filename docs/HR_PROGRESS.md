@@ -6,6 +6,30 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 64 — 15 Oktober 2026 — Borang EA mengikut templat juruaudit (C.P.8A Pin. 2017)
+
+**Migrasi:** `20261016110000_legal_employer_phone` (no. telefon majikan), dijalankan
+di staging dengan *Migrate only* sebelum master — run #MIGRATE_RUN.
+
+- `[D]` Templat juruaudit disimpan di `docs/templates/EA_Pin2017_1.xlsx`.
+- `[D]` PDF kini **dilukis daripada templat itu sendiri**: lebar lajur, tinggi baris,
+  kotak bercantum, garisan, warna (bar hitam A–F, kotak biru muda), fon Arial 8
+  dan semua perkataan, dicetak pada skala templat (83%) di A4. Skrip
+  `apps/api/scripts/ea-template-to-layout.py` menukar xlsx kepada susun atur.
+- `[D]` Kepala: versi (tetapan), No. Siri (tahun/nombor larian bagi setiap
+  majikan), No. Majikan E, tahun, No. Cukai Pendapatan Pekerja, Cawangan LHDNM.
+  Blok tandatangan: Nama Pegawai, Jawatan, Nama dan Alamat Majikan (3 baris),
+  Tarikh, No. Telefon Majikan.
+- `[D]` **Versi borang** ialah tetapan klinik di Reports → EA forms → *Form version*
+  (lalai "(C.P.8A - Pin. 2017)").
+- `[D]` No. telefon majikan baharu di Settings → Company & statutory; tiada nombor =
+  amaran pada senarai semakan.
+- `[A]` Dibiarkan kosong untuk diisi tangan: Cawangan LHDNM (Kuwick tidak menyimpan
+  cawangan cukai pekerja), Nama Pegawai, Jawatan, Tarikh, tempoh ganjaran B1(f),
+  D4(b) zakat bukan melalui gaji, D5 jumlah pelepasan anak. Amaun sifar dicetak kosong.
+
+---
+
 ## Batch 63 (Malam 6) — 15 Oktober 2026 — Panduan pengguna BM dan EN, butang Help
 
 **Tiada migrasi.**

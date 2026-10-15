@@ -414,6 +414,17 @@ export class WorkforceController {
     return this.eaForms.forms(wholeYear(year), legalEmployerId || undefined, clinicId || undefined);
   }
 
+  /** The C.P.8A revision printed on every EA form; changed when LHDN issues a newer one. */
+  @Get('ea-forms/version')
+  async eaFormVersion() {
+    return { versionLabel: await this.eaForms.versionLabel() };
+  }
+
+  @Put('ea-forms/version')
+  setEaFormVersion(@Body() body: { versionLabel?: string }) {
+    return this.eaForms.setVersionLabel(body.versionLabel ?? '');
+  }
+
   @Get('ea-forms/all.pdf')
   async eaFormsAll(
     @Query('year') year: string | undefined,

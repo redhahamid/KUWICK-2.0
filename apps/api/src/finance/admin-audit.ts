@@ -112,6 +112,7 @@ export type AuditAction =
   | 'me.contactUpdated'
   | 'bankChange.requested'
   | 'bankChange.decided'
+  | 'eaForm.versionChanged'
   | 'leave.decided'
   | 'leave.openingBalancesImported'
   | 'leaveType.created'

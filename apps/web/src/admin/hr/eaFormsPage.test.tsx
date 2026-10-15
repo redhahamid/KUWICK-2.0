@@ -55,6 +55,8 @@ vi.mock('../hooks/useAdmin', () => ({
     },
   }),
   useLegalEmployers: () => ({ data: [] }),
+  useEaFormVersion: () => ({ data: { versionLabel: '(C.P.8A - Pin. 2017)' } }),
+  useSetEaFormVersion: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 const { EaFormsPage } = await import('./EaFormsPage');
@@ -72,6 +74,7 @@ describe('year-end forms (overnight brief, 15 October 2026)', () => {
     expect(screen.getByTestId('ea-check-list').textContent).toContain('Demo Staf Dua: No income tax number on the employee record.');
     expect(screen.getByText('Missing details')).toBeTruthy();
     expect(screen.getByText(/due by 31 March 2027/)).toBeTruthy();
+    expect((screen.getByLabelText('Form version printed on each page') as HTMLInputElement).value).toBe('(C.P.8A - Pin. 2017)');
     fireEvent.click(screen.getByRole('button', { name: /Download all \(2\)/ }));
     expect(downloadFile.mock.calls[0][0]).toMatch(/^\/workforce\/ea-forms\/all\.pdf\?year=\d{4}/);
   });

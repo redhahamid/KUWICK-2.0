@@ -61,11 +61,13 @@ export interface EaMonth {
   month: number;
   grossCents: number;
   /** Null for an imported opening balance or a month approved before item lines were kept. */
-  lines: { code: string; kind: string; amountCents: number }[] | null;
+  lines: { code: string; kind: string; amountCents: number; label?: string }[] | null;
 }
 
 export interface EaFigures {
   boxes: Record<EaBox, number>;
+  /** The items paid into each box, by name: the form's "Perihal pembayaran" and "Nyatakan". */
+  labels: Partial<Record<EaBox, string[]>>;
   /** Months whose total went into B1(a) because no item lines exist for them. */
   totalsOnlyMonths: number[];
   /** Item codes paid this year with no item record to say where they go (put in B1(a)). */
@@ -79,6 +81,7 @@ export function eaFigures(months: EaMonth[], items: Map<string, EaItem>): EaFigu
   const boxes = Object.fromEntries(EA_BOXES.map((box) => [box, 0])) as Record<EaBox, number>;
   const totalsOnlyMonths: number[] = [];
   const unknown = new Set<string>();
+  const labels: Partial<Record<EaBox, Set<string>>> = {};
   let grossCents = 0;
   for (const month of months) {
     grossCents += month.grossCents;
@@ -94,8 +97,11 @@ export function eaFigures(months: EaMonth[], items: Map<string, EaItem>): EaFigu
       if (!item) unknown.add(line.code);
       const box = item ? eaBoxOf(item) : 'B1a';
       boxes[box] += line.kind === 'WAGE_REDUCTION' ? -line.amountCents : line.amountCents;
+      // "Earned in Aug 2026" and the like are the month's note, not the item's name.
+      if (line.kind === 'EARNING' && line.label) (labels[box] ??= new Set()).add(line.label.replace(/\s*\(.*\)$/, ''));
     }
   }
   const counted = EA_BOXES.filter((box) => box !== 'NONE').reduce((sum, box) => sum + boxes[box], 0);
-  return { boxes, totalsOnlyMonths, unknownCodes: [...unknown].sort(), differenceCents: counted + boxes.NONE - grossCents };
+  const named = Object.fromEntries(Object.entries(labels).map(([box, set]) => [box, [...(set as Set<string>)]])) as EaFigures['labels'];
+  return { boxes, labels: named, totalsOnlyMonths, unknownCodes: [...unknown].sort(), differenceCents: counted + boxes.NONE - grossCents };
 }

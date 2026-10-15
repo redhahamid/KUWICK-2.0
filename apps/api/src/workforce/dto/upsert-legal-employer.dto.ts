@@ -16,6 +16,7 @@ export class UpsertLegalEmployerDto {
   @IsOptional() @IsString() @Length(1, 50) hrdCategory?: string;
   /** Stored only. NO calculation applies it — HRD is a blocked statutory item. */
   @IsOptional() @IsNumber() @Min(0) @Max(1) hrdLevyRate?: number;
+  @IsOptional() @IsString() phone?: string;
   @IsOptional() @IsString() addressLine1?: string;
   @IsOptional() @IsString() addressLine2?: string;
   @IsOptional() @IsString() postcode?: string;

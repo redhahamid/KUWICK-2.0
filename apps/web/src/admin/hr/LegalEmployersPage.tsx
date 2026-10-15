@@ -27,6 +27,7 @@ const FIELDS: [string, string][] = [
   ['addressLine1', 'Address'],
   ['city', 'City'],
   ['state', 'State'],
+  ['phone', 'Telephone (printed on EA forms)'],
   ['bankName', 'Bank'],
   ['bankAccountNo', 'Bank account number'],
   ['bankAccountName', 'Account name'],
@@ -101,6 +102,7 @@ export function LegalEmployersPage() {
             addressLine1: row.addressLine1 ?? '',
             city: row.city ?? '',
             state: row.state ?? '',
+            phone: row.phone ?? '',
             bankName: row.bankName ?? '',
             // WRITE-ONLY: the server never sends the number back, so there is
             // nothing to prefill. Blank means "leave the one on file alone".
