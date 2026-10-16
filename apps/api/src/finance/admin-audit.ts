@@ -227,7 +227,9 @@ export type AuditAction =
   | 'locumSession.settled'
   | 'employee.engagementChanged'
   // Access
-  | 'role.changed';
+  | 'role.changed'
+  // Clinic settings saved by key
+  | 'globalSetting.changed';
 
 export interface AuditEntry {
   action: AuditAction;

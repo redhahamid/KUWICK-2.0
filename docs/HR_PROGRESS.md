@@ -6,6 +6,26 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 68 — 16 Oktober 2026 — siapa boleh mengubah tetapan klinik
+
+**Tiada migrasi.**
+
+- `[D]` **Kebenaran pada tetapan klinik** (`PUT /global-settings/:key`). Dahulu sesiapa
+  yang log masuk ke klinik boleh menyimpan apa-apa tetapan. Sekarang setiap kunci
+  memerlukan kebenaran skrinnya: *Defaults for new staff* → `hr.employee.manage`
+  (pemilik, pentadbir, HR, pengurus klinik); jawapan *Opening balances* →
+  `hr.payroll.run` (pemilik/pentadbir, orang yang menjalankan gaji); kunci lain →
+  `settings.manage` (pemilik). Setiap perubahan mencatat baris audit
+  `globalSetting.changed` (sebelum/selepas). Membaca tetapan tidak berubah.
+- `[D]` **Pepijat ditemui oleh ujian baharu**: medan `value` tiada penghias pengesah,
+  jadi paip *whitelist* membuangnya dan setiap simpanan gagal (500). Ini menjejaskan
+  butang *Save* pada *Defaults for new staff* dan jawapan *Opening balances* dalam
+  wizard sejak Batch 65–66. Dibetulkan (`@IsDefined()`); simpanan tanpa nilai kini 400.
+- `[D]` Ujian `apps/api/test/global-setting-permission.e2e-spec.ts`: log masuk staf
+  biasa (kaunter) ditolak 403 dan tiada apa-apa ditulis; HR boleh ubah lalai staf
+  baharu sahaja; pemilik boleh semua, dengan 3 baris audit; nilai disimpan seperti dihantar.
+- `[D]` Halaman tempahan staging dibiarkan; pemilik akan menghidupkan servis sendiri.
+
 ## Batch 67 — 15 Oktober 2026 — keputusan pemilik pusingan 2
 
 **Tiada migrasi.**
