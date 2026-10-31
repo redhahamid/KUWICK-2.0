@@ -6,6 +6,21 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 69 — 31 Oktober 2026 — staging terhenti (tiada perubahan kod aplikasi)
+
+**Tiada migrasi.**
+
+- `[D]` Tugasan baharu *health* dalam aliran kerja *Staging checks* (baca sahaja,
+  `apps/api/prisma/staging-health.ts`): pangkalan data, peranan `kuwick_app`,
+  migrasi, kiraan data, log masuk Klinik Demo Baru 2, API dan laman web.
+- `[D]` Larian 31 Okt 05:37 UTC: pooler Supabase menjawab `XX000 tenant/user
+  postgres.<projek> not found`; API tidak menjawab `/health` (3 cubaan × 90 s);
+  laman web 200.
+- `[A]` Punca: projek Supabase percuma dijeda selepas tiada penggunaan (aktiviti
+  terakhir kami 16 Okt). API enggan bermula tanpa pangkalan data, lalu Render
+  melaporkan "Exited with status 1". Tiada kod perlu diubah; pemilik perlu
+  *Restore* projek di papan pemuka Supabase.
+
 ## Batch 68 — 16 Oktober 2026 — siapa boleh mengubah tetapan klinik
 
 **Tiada migrasi.**

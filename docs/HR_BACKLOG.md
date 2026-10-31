@@ -27,5 +27,6 @@ Not built in the HR core push. Each is a known gap, not a bug.
 | Bonus already set as SOCSO/EIS-liable in an existing clinic | New clinics get Bonus without SOCSO/EIS (PERKESO: annual bonus is not wages). A clinic that seeded earlier changes it on Payroll items, with a date and a reason. |
 | Bonus SOCSO/EIS in the Hijraa clinic | Still ON there (left as it is, owner asked). No Jan–Sep 2026 payslip had a bonus, so nothing was charged. Decide with the auditor before the first bonus is paid. |
 | Test only: first employee-list call of an integration run can time out | The 5-second database transaction of the employees list is exceeded on a cold start in the local test database; the same spec passes when run again. Not seen on staging. |
+| Staging stops when the free Supabase project is paused | A free project is paused after about a week without use; the API then cannot start ("Exited with status 1"). Restore it in the Supabase dashboard, or move staging to a paid plan before regular testing or a demo. |
 | Staging public booking page offers no services | `/book/hijraabangi` has 4 active services, none switched to "bookable online", so a patient sees nothing to book. A setting for the clinic, not a code fault. Left as it is: the owner switches a service on as a clinic owner would. |
 
