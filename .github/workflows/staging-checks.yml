@@ -9,8 +9,13 @@
 #   booking-check    Books one made-up patient on a synthetic clinic's public
 #                    page through the live API and cancels it straight away.
 #                    "Apply" unticked stops before booking.
+#   health           READ-ONLY (31 October 2026). Why staging is down: does the
+#                    database answer, can the app role log in, are migrations
+#                    applied, is the data there, would the Klinik Demo Baru 2
+#                    owner login be accepted, do the API and web site answer.
 #
-# Scripts: apps/api/prisma/bonus-socso-check.ts, public-booking-check.ts. Only
+# Scripts: apps/api/prisma/bonus-socso-check.ts, public-booking-check.ts,
+# staging-health.ts. Only
 # SUPABASE_DATABASE_URL is in the environment; the app role is never touched.
 
 name: Staging checks (one-off, manual)
@@ -21,7 +26,7 @@ on:
       task:
         description: 'What to run'
         type: choice
-        options: [bonus-report, demo-bonus-fix, booking-check]
+        options: [bonus-report, demo-bonus-fix, booking-check, health]
         required: true
       apply:
         description: 'Write (demo-bonus-fix) or book and cancel (booking-check). Unticked changes nothing.'
@@ -181,4 +186,5 @@ jobs:
             bonus-report)   DATABASE_URL="$PG_DATABASE_URL" BONUS_TASK=REPORT npx tsx prisma/bonus-socso-check.ts ;;
             demo-bonus-fix) DATABASE_URL="$PG_DATABASE_URL" BONUS_TASK=FIX_DEMO BONUS_APPLY="$APPLY" npx tsx prisma/bonus-socso-check.ts ;;
             booking-check)  DATABASE_URL="$PG_DATABASE_URL" BOOKING_APPLY="$APPLY" npx tsx prisma/public-booking-check.ts ;;
+            health)         DATABASE_URL="$PG_DATABASE_URL" npx tsx prisma/staging-health.ts ;;
           esac
