@@ -203,6 +203,7 @@ function NewStaffDefaultsPanel({ mayEdit }: { mayEdit: boolean }) {
   const save = useSetNewStaffDefaults();
   const [draft, setDraft] = useState<NewStaffDefaults | null>(null);
   const shown = draft ?? current;
+  const prefix = (shown.employeeNoPrefix ?? '').trim() || 'E';
   const commit = () =>
     draft &&
     save.mutate(
@@ -251,13 +252,13 @@ function NewStaffDefaultsPanel({ mayEdit }: { mayEdit: boolean }) {
           <Input
             size="small"
             disabled={!mayEdit}
-            value={shown.employeeNoPrefix}
+            value={shown.employeeNoPrefix ?? ''}
             maxLength={10}
             aria-label="Employee numbers start with"
             onChange={(e) => setDraft({ ...shown, employeeNoPrefix: e.target.value })}
             style={{ width: 110 }}
           />{' '}
-          <span className="hr-small hr-muted">Next numbers: {(shown.employeeNoPrefix.trim() || 'E')}001, {(shown.employeeNoPrefix.trim() || 'E')}002…</span>
+          <span className="hr-small hr-muted">Next numbers: {prefix}001, {prefix}002…</span>
         </span>
       </div>
       {draft && mayEdit ? (

@@ -109,7 +109,7 @@ export function PublicHolidaysPage() {
       <Panel>
         {/* What the two kinds mean, on the list itself (new-clinic UAT #2, item 67). */}
         <p className="hr-small hr-muted" style={{ margin: '0 0 10px' }}>
-          <b>Ordinary</b>: a public holiday, paid at the pay rules’ holiday rate when worked. <b>Festive</b>: a holiday the pay rules may
+          <b>An ordinary holiday</b> is paid at the pay rules’ holiday rate when worked. <b>A festive holiday</b> is one the pay rules may
           pay at a higher rate (Hari Raya, say). Change one with “Mark festive” or “Mark ordinary”.
         </p>
         <Table<PublicHoliday>

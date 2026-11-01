@@ -198,7 +198,9 @@ describe('a leaver’s settlement (e2e)', () => {
     orphanId = siti.id;
     await employ(orphanId, 'L-003', '2600.00', '2026-08-15');
     // No policy, but somebody keyed a balance by hand, which is the only way
-    // days exist at all without one.
+    // days exist at all without one. A new record is now put on the clinic's
+    // policy (new-clinic UAT #2), so this is somebody on file from before.
+    await withTenantContext(prisma, tenantId, (tx) => tx.employeeProfile.update({ where: { staffId: orphanId }, data: { leavePolicyId: null } }));
     await withTenantContext(prisma, tenantId, (tx) =>
       tx.leaveBalance.create({
         data: { tenantId, staffId: orphanId, leaveType: 'ANNUAL', benefitYear: 2026, entitledDays: 6, carriedInDays: 0, adjustmentDays: 0 },
