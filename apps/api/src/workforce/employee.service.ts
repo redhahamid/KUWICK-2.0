@@ -5,6 +5,7 @@ import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { actorCan, requirePermission, requireScope, withAdminTx } from '../finance/admin-actor';
 import { diffOf, recordAudit } from '../finance/admin-audit';
+import { defaultLeavePolicyId, nextEmployeeNo } from './new-staff-defaults';
 import { workforceCategoryOf } from './workforce-category';
 import { DoctorRatesDto } from './dto/doctor-rates.dto';
 import { UpsertEmployeeDto } from './dto/upsert-employee.dto';
@@ -165,7 +166,7 @@ export class EmployeeService {
       where: { staffId },
       include: {
         staff: {
-          select: { id: true, fullName: true, role: true, active: true, clinicId: true, professionalType: true, professionalActive: true, staffGroup: true, clinicalAccess: true },
+          select: { id: true, fullName: true, role: true, active: true, clinicId: true, professionalType: true, professionalActive: true, staffGroup: true, clinicalAccess: true, userId: true },
         },
         manager: { select: { id: true, fullName: true } },
         leavePolicy: { select: { id: true, name: true, entitlements: { select: { leaveType: true, daysPerYear: true } } } },
@@ -311,6 +312,8 @@ export class EmployeeService {
         fullName: profile.staff.fullName,
         legalName: profile.legalName,
         accountActive: profile.staff.active,
+        // No login was given ("Give them a login" off): the record says so (new-clinic UAT #2, item 71).
+        hasLogin: profile.staff.userId !== null,
         accountRole: profile.staff.role,
         email: profile.email,
         phone: profile.phone,
@@ -1006,6 +1009,11 @@ export class EmployeeService {
     });
   }
 
+  /** The number the next new employee would be given, for the Add employee form to show. */
+  async nextEmployeeNumber() {
+    return withAdminTx(this.rawPrisma, 'hr.employee.manage', async (tx) => ({ employeeNo: await nextEmployeeNo(tx) }));
+  }
+
   async upsert(staffId: string, dto: UpsertEmployeeDto) {
     return withAdminTx(this.rawPrisma, 'hr.employee.manage', async (tx, actor) => {
       const staff = await tx.staff.findUnique({ where: { id: staffId }, select: { id: true } });
@@ -1071,8 +1079,17 @@ export class EmployeeService {
         if (!title) throw new BadRequestException('That job title is not on this clinic’s list.');
         titledPosition = title.name;
       }
+      // A NEW RECORD gets the clinic's leave policy and the next employee
+      // number unless the form gave its own (new-clinic UAT #2, items 70, 73).
+      const startingDefaults = before
+        ? {}
+        : {
+            ...(dto.leavePolicyId === undefined ? { leavePolicyId: await defaultLeavePolicyId(tx) } : {}),
+            ...(!dto.employeeNo?.trim() ? { employeeNo: await nextEmployeeNo(tx) } : {}),
+          };
       const data = {
         ...dto,
+        ...startingDefaults,
         ...(titledPosition === undefined ? {} : { position: titledPosition }),
         ...(payFields && !mayEditPay ? { bankAccountNo: undefined } : {}),
         ...(dto.dateOfBirth ? { dateOfBirth: new Date(dto.dateOfBirth) } : {}),

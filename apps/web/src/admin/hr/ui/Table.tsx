@@ -55,7 +55,7 @@ export function Table<T extends object>({
   emptyText?: string;
   emptyHint?: string;
   summary?: (rows: readonly T[]) => ReactNode;
-  onRow?: (row: T) => { onClick?: () => void };
+  onRow?: (row: T) => { onClick?: () => void; className?: string };
   rowClassName?: (row: T) => string;
 }) {
   const [query, setQuery] = useState('');

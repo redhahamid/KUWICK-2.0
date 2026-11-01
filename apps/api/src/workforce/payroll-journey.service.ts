@@ -675,7 +675,7 @@ export class PayrollJourneyService {
     // Employee No. on every paid row: the export leads with it (UAT, 10 October 2026).
     const lineProfiles = await this.prisma.employeeProfile.findMany({
       where: { staffId: { in: run.lines.map((line) => line.staffId) } },
-      select: { staffId: true, employeeNo: true, endDate: true },
+      select: { staffId: true, employeeNo: true, endDate: true, epfNumber: true, taxNumber: true },
     });
     const numberByStaff = new Map(lineProfiles.map((row) => [row.staffId, row.employeeNo]));
     // FINAL PAY (UAT, 12 October 2026): a line for somebody who left before the month.
@@ -1193,6 +1193,22 @@ export class PayrollJourneyService {
               }
             : { ...gate, recordsChanged: false },
         attention,
+        /*
+         * MEMBERSHIP NUMBERS THE FILINGS NEED (new-clinic UAT #2, item 77): a
+         * warning before Approve, never a block. EPF is asked of anybody this
+         * month contributes EPF for; the income tax number of everybody, since
+         * the PCB listing and the year-end forms carry it.
+         */
+        filingNumbersMissing: run.lines
+          .map((line) => {
+            const profile = lineProfiles.find((row) => row.staffId === line.staffId);
+            const missing = [
+              Number(line.epfEmployee ?? 0) + Number(line.epfEmployer ?? 0) > 0 && !profile?.epfNumber ? 'EPF number' : null,
+              !profile?.taxNumber ? 'income tax number' : null,
+            ].filter((label): label is string => label !== null);
+            return { staffId: line.staffId, name: line.staff.fullName, missing };
+          })
+          .filter((row) => row.missing.length > 0),
         /** Null when this branch has no run for the month before. */
         previousRun: previousRun
           ? { runId: previousRun.id, period: previousRun.period.toISOString().slice(0, 7), periodLabel: monthLabel(previousRun.period), status: previousRun.status }

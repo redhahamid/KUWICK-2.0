@@ -70,7 +70,7 @@ export function ClaimTypesPanel() {
           {(types.data ?? []).map((type) => (
             <tr key={type.id} className={type.active ? undefined : 'hr-faint'}>
               <td>
-                <span className="hr-strong">{type.name}</span> <span className="hr-faint">{type.code}</span>
+                <span className="hr-strong">{type.name}</span>
               </td>
               <td>{type.unit ? `RM ${Number(type.ratePerUnit ?? 0).toFixed(2)} per km` : 'Amount claimed'}</td>
               <td>{type.unit && type.dailyUnitCap !== null ? `${type.dailyUnitCap} km a day` : '—'}</td>

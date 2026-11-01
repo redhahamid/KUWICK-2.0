@@ -1503,6 +1503,8 @@ export interface EmployeeRecord {
     fullName: string;
     legalName: string | null;
     accountActive: boolean;
+    /** False when the person was added without a login. Absent from older servers. */
+    hasLogin?: boolean;
     accountRole: string;
     email: string | null;
     phone: string | null;
@@ -2945,6 +2947,8 @@ export interface PayrollJourney {
     }[];
     mustFix: number;
     worthALook: number;
+    /** People whose EPF or income tax number is not on file: a warning before Approve. Absent from older servers. */
+    filingNumbersMissing?: { staffId: string; name: string; missing: string[] }[];
   };
   /**
    * STEP 6 — who is allowed to approve, and whether this reader is one of them.

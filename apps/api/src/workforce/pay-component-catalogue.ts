@@ -119,6 +119,20 @@ export const SEED_PAY_COMPONENTS: SeedPayComponent[] = [
     includeInOrpBase: false, includeInUnpaidLeaveBase: false,
     additionalRemuneration: false, prorated: false, employerSide: false,
   },
+  /*
+   * REST DAY / PUBLIC HOLIDAY PAY (new-clinic UAT #2, item 59): for a day
+   * worked that the clinic keys by hand, at its own figure (a rest day that
+   * varies, a flat holiday rate). Hours Kuwick prices from attendance stay on
+   * Overtime. Treated as overtime is, so a keyed day and a priced one count
+   * towards the same things; the clinic changes it on Payroll items.
+   */
+  {
+    code: 'REST_DAY_PH_PAY', name: 'Rest day / public holiday pay', type: 'ADDITION', category: 'REMUNERATION',
+    includeIn: 'GROSS_AND_NET',
+    pcbLiable: true, epfLiable: false, socsoLiable: true, eisLiable: true, hrdLiable: false,
+    includeInOrpBase: false, includeInUnpaidLeaveBase: false,
+    additionalRemuneration: false, prorated: false, employerSide: false,
+  },
   {
     code: 'MILEAGE', name: 'Mileage / travelling allowance', type: 'ADDITION', category: 'ALLOWANCE',
     includeIn: 'GROSS_AND_NET',

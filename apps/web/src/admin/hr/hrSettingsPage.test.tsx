@@ -61,6 +61,7 @@ const STANDARD_ITEMS = [
   { name: "Director's fee", active: true, payDay: 1, paidInArrears: false, paidFollowingMonth: false },
 ];
 let items: unknown[] = STANDARD_ITEMS;
+let leavePolicies: unknown[] = [{ active: true, carryForwardDays: 3, payUntakenLeaveOnExit: true }];
 const ok = (data: unknown) => ({ data, isLoading: false, error: null });
 
 vi.mock('../hooks/useAdmin', () => ({
@@ -72,7 +73,7 @@ vi.mock('../hooks/useAdmin', () => ({
   usePayrollRuns: () => ok([]),
   useStatutoryRates: () => ok({ check }),
   useAttendancePolicy: () => ok({ source: 'KUWICK_DEFAULT' }),
-  useLeavePolicies: () => ok([{ active: true, carryForwardDays: 3, payUntakenLeaveOnExit: true }]),
+  useLeavePolicies: () => ok(leavePolicies),
   useEmployees: () => ok([{ active: true, hasProfile: true }, { active: true, hasProfile: true }, { active: true, hasProfile: false }]),
   useUpsertLegalEmployer: () => ({ mutateAsync: upsert, isPending: false }),
   useRecordEmployerHrd: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -224,6 +225,14 @@ describe('Settings when setup is done', () => {
     check = { checkedAt: '2026-10-05T00:00:00.000Z', checkedBy: 'Demo Owner', current: true };
     holidays = [{ date: `${new Date().getFullYear()}-05-01` }];
     opening = { answer: 'NONE', year: new Date().getFullYear() };
+  });
+
+  it('says unused leave is paid out when the clinic has no leave policy yet, as the Act says (item 74)', () => {
+    leavePolicies = [];
+    mount();
+    const card = screen.getByRole('heading', { name: 'Attendance & leave' }).closest('.hr-area') as HTMLElement;
+    expect(within(card).getByText('Unused leave on leaving').nextElementSibling).toHaveTextContent('Paid out');
+    leavePolicies = [{ active: true, carryForwardDays: 3, payUntakenLeaveOnExit: true }];
   });
 
   it('offers the first payroll once setup is complete (item 75)', () => {

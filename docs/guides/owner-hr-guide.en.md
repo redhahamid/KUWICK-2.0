@@ -9,36 +9,49 @@ change it in Settings.
 
 1. Open **HR**. While setup is unfinished, HR opens on **Set up payroll**:
    eight short steps with a counter such as "3/8". Do them in any order.
+   When a step opens another page, the eight steps stay pinned on the left;
+   press a step to go back, or **Leave setup** to see the normal HR menu.
 2. **Company & statutory numbers**: type the company name, registration
-   number, EPF, SOCSO and LHDN (E) numbers, choose the **HRD Corp
-   registration** ("Not registered" is an answer too) and upload the logo
-   for payslips. Press **Save & next**.
+   number, EPF, SOCSO and LHDN (E) numbers, the company phone and address
+   (the postcode fills the town and state), and who signs the EA form and
+   their position. Choose the **HRD Corp registration** ("Not registered" is
+   an answer too) and upload the logo for payslips. Press **Save & next**.
    You see the step turn green. "Missing" on the Company page now matches it.
 3. **Company bank account**: choose the bank, type the account name and number.
    You see "On file". The number is never shown again, only its last four digits.
 4. **Pay rules**: check how a part month, overtime and approval work.
-   Under **Defaults for new staff** set days a week, probation length and
-   your department list.
-5. **Payroll items**: press **Add the standard items**. Items only some
-   clinics pay (house call, panel claim, procedure incentives) are under
-   **Optional items**: add the ones you use. Each item says when it is paid
-   (e.g. the 30th, or the 15th of the next month).
+   Under **Defaults for new staff** set days a week, probation length, your
+   department list and what employee numbers start with (E gives E001,
+   E002…).
+5. **Payroll items**: press **Add default items** (right in the step). On
+   the Payroll items page, items only some clinics pay (house call, panel
+   claim, procedure incentives) are then listed under **Optional items**:
+   press **Add** beside the ones you use. Each item says when it is paid
+   (e.g. the 30th, or the 15th of the next month). Click a row to change it.
 6. **Public holidays**: choose your state, untick any day you do not
    observe, press **Add … holidays**. Dates marked *check* can move; confirm
-   them against the official list. Add replacement days (cuti ganti) by hand.
+   them against the official list. A holiday on the weekly rest day brings
+   its replacement day (cuti ganti), also marked *check*. Kuwick remembers
+   your state. **Edit the calendar** opens the Public holidays page.
 7. **Opening balances**: did you pay staff this year in another system?
    *No* finishes the step. *Yes* opens Opening balances to bring in each
    person's pay so far, so their tax and EA form are right.
-8. **Employees**: add your staff (section 2).
+8. **Employees**: press **Add your first employee** (section 2).
 9. **Statutory rates**: see which EPF, SOCSO and EIS tables are used (date
    and source) and press **Acknowledge**.
-   You see **Setup complete**. From now on HR opens on Payroll.
+   You see **Setup complete** and **Run your first payroll →**. From now on
+   HR opens on Payroll.
 
 ## 2. Employees
 
 1. Open **HR → Employees** and press **+ Add employee**.
 2. Type the name, branch, position, start date and type of employment. Press **Save**.
+   The employee number is filled in with the next one (E001, E002…); change
+   it if you need to. A new person is put on the clinic's leave policy
+   (Kuwick makes "Standard leave" from your leave types if you have none:
+   annual leave 8 days a year, pro-rated in the year they join).
    You see the new record with coloured dots for what is still missing.
+   *Account: No login* means you did not give them a login.
    **Probation until** is filled from your default; the Employees page
    reminds you a month before it ends. The **Review** step says whether
    payroll can pay them, using the same check payroll uses.
@@ -123,7 +136,10 @@ change it in Settings.
 3. After any change, press **Work the month out again**. Then open **Review**.
    You see what blocks the month (red), what is worth a look (amber) and the totals.
 4. Fix each red item, usually a missing record, and press **Work the month out again**.
-5. **Approve**: read the summary and press **Approve the month**.
+   A month earlier in the year with no payroll shows **Run <month> payroll →**.
+5. **Approve**: read the summary and press **Approve the month**. An amber
+   line names anybody without an EPF or income tax number: you can still
+   approve, but the EPF and PCB filings will be missing their number.
    You see the month locked and payslips made.
 6. **Pay**: download the bank listing, pay at your bank's website, then press
    **Record the transfer** with the date and bank reference.

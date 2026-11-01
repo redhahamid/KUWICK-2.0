@@ -8,8 +8,14 @@
  * Compiled from published 2026 calendars, which agree on most dates; those
  * marked `check` differ between sources (moon-sighted Islamic dates, some
  * state days) and should be checked against the Jabatan Perdana Menteri
- * list or the state gazette. Replacement days (cuti ganti) are not listed:
- * they are announced case by case, so the clinic adds them by hand.
+ * list or the state gazette.
+ *
+ * REPLACEMENT DAYS (cuti ganti, new-clinic UAT #2, item 63) are worked out
+ * here, not listed: a holiday on the state's weekly rest day (Sunday; Friday
+ * in Kedah, Kelantan and Terengganu, whose weekend is Friday and Saturday)
+ * moves to the next working day that is not already a holiday. Each one is
+ * marked `check`, because the government announces them and can choose
+ * otherwise; the clinic sees and can untick every one.
  *
  * A new year is a new block below, added when the government publishes it.
  */
@@ -112,16 +118,40 @@ const observedIn = (preset: Preset, state: MalaysianState) =>
       ? preset.states.includes(state)
       : !preset.states.except.includes(state);
 
+/** States whose weekend is Friday and Saturday; everywhere else it is Saturday and Sunday. */
+const FRIDAY_WEEKEND: MalaysianState[] = ['Kedah', 'Kelantan', 'Terengganu'];
+
+export type HolidayPresetRow = { date: string; name: string; check: boolean; replacement: boolean };
+
+const dayOf = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay();
+const nextDay = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+
 /**
  * The year's holidays for one state, one row per date: two holidays on the
  * same day (Thaipusam and Federal Territory Day) are one day off, named once.
+ * A holiday on the weekly rest day brings its replacement day with it.
  */
-export function holidayPresets(year: number, state: MalaysianState) {
-  const byDate = new Map<string, { date: string; name: string; check: boolean }>();
+export function holidayPresets(year: number, state: MalaysianState): HolidayPresetRow[] {
+  const byDate = new Map<string, HolidayPresetRow>();
   for (const preset of PRESETS[year] ?? []) {
     if (!observedIn(preset, state)) continue;
     const seen = byDate.get(preset.date);
-    byDate.set(preset.date, seen ? { ...seen, name: `${seen.name} / ${preset.name}`, check: seen.check || Boolean(preset.check) } : { date: preset.date, name: preset.name, check: Boolean(preset.check) });
+    byDate.set(
+      preset.date,
+      seen
+        ? { ...seen, name: `${seen.name} / ${preset.name}`, check: seen.check || Boolean(preset.check) }
+        : { date: preset.date, name: preset.name, check: Boolean(preset.check), replacement: false },
+    );
+  }
+  const fridayWeekend = FRIDAY_WEEKEND.includes(state);
+  const restDay = fridayWeekend ? 5 : 0;
+  const weekend = fridayWeekend ? [5, 6] : [6, 0];
+  for (const holiday of [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date))) {
+    if (dayOf(holiday.date) !== restDay) continue;
+    let date = nextDay(holiday.date);
+    while (weekend.includes(dayOf(date)) || byDate.has(date)) date = nextDay(date);
+    if (!date.startsWith(String(year))) continue;
+    byDate.set(date, { date, name: `Replacement holiday for ${holiday.name}`, check: true, replacement: true });
   }
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }

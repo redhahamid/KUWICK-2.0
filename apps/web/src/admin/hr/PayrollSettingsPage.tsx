@@ -246,6 +246,19 @@ function NewStaffDefaultsPanel({ mayEdit }: { mayEdit: boolean }) {
             style={{ minWidth: 260 }}
           />
         </span>
+        <span className="hr-kv__k">Employee numbers start with</span>
+        <span className="hr-kv__v">
+          <Input
+            size="small"
+            disabled={!mayEdit}
+            value={shown.employeeNoPrefix}
+            maxLength={10}
+            aria-label="Employee numbers start with"
+            onChange={(e) => setDraft({ ...shown, employeeNoPrefix: e.target.value })}
+            style={{ width: 110 }}
+          />{' '}
+          <span className="hr-small hr-muted">Next numbers: {(shown.employeeNoPrefix.trim() || 'E')}001, {(shown.employeeNoPrefix.trim() || 'E')}002…</span>
+        </span>
       </div>
       {draft && mayEdit ? (
         <div className="hr-mt">

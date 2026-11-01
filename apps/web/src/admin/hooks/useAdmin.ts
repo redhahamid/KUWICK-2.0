@@ -977,6 +977,14 @@ export function useUpsertEmployee() {
 }
 
 /** The clinic's own job titles, picked from and added to on the employee form. */
+/** The number the next new employee would be given (new-clinic UAT #2, item 70). */
+export function useNextEmployeeNo() {
+  return useQuery({
+    queryKey: ["admin-hr", "employees", "next-number"],
+    queryFn: () => apiClient.get<{ employeeNo: string }>("/workforce/employees/next-number"),
+  });
+}
+
 export function useJobTitles() {
   return useQuery({
     queryKey: ["admin-hr", "job-titles"],

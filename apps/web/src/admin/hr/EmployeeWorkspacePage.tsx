@@ -16,6 +16,7 @@ import { RecurringItemsPanel } from './RecurringItemsPanel';
 import { EpfBasisPanel } from './EpfBasisPanel';
 import { EmployeeTaxPanel } from './EmployeeTaxPanel';
 import { DAY_NAMES, StatutoryStandingManager } from './StatutoryStandingManager';
+import { accountLabel, taxCategoryLabel } from './recordLabels';
 import { EmployeeEditDrawer, type EditSection } from './EmployeeEditDrawer';
 import { MarkResignedModal } from './MarkResignedModal';
 import { DeleteEmployeeModal } from './DeleteEmployeeModal';
@@ -313,7 +314,8 @@ function ProfileTab({ data, onEdit }: { data: EmployeeRecord; onEdit?: () => voi
       <PanelHead rule title="Account" sub="An account, an employment and a clinical credential are three separate facts." />
       <Kv
         pairs={[
-          ['Account', id.accountActive ? 'Active' : 'Inactive'],
+          // "Give them a login" off means no account at all (new-clinic UAT #2, item 71).
+          ['Account', accountLabel(id)],
           ['Account role', humanise(id.accountRole)],
         ]}
       />
@@ -458,7 +460,8 @@ function StatutoryTab({ data, onEdit }: { data: EmployeeRecord; onEdit?: () => v
           ['EPF / KWSP number', <StatusChip key="epf" tone={s.epfNumberOnFile ? 'done' : 'attn'}>{s.epfNumberOnFile ? 'On file' : 'Missing'}</StatusChip>],
           ['SOCSO / PERKESO number', <StatusChip key="socso" tone={s.socsoNumberOnFile ? 'done' : 'attn'}>{s.socsoNumberOnFile ? 'On file' : 'Missing'}</StatusChip>],
           ['Income tax number', <StatusChip key="tax" tone={s.taxNumberOnFile ? 'done' : 'attn'}>{s.taxNumberOnFile ? 'On file' : 'Missing'}</StatusChip>],
-          ['Tax category on file', s.taxCategory],
+          // The MTD category in force, the one the form below records (new-clinic UAT #2, item 72).
+          ['Tax category on file', taxCategoryLabel(s)],
         ]}
       />
       <div data-focus="standing">

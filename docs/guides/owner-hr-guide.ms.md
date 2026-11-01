@@ -10,38 +10,52 @@ seperti di skrin (Bahasa Inggeris).
 
 1. Buka **HR**. Selagi persediaan belum siap, HR dibuka pada **Set up
    payroll**: lapan langkah ringkas dengan kiraan seperti "3/8". Buat
-   mengikut apa-apa susunan.
+   mengikut apa-apa susunan. Bila satu langkah membuka halaman lain, lapan
+   langkah itu kekal di sebelah kiri; tekan satu langkah untuk kembali, atau
+   **Leave setup** untuk menu HR biasa.
 2. **Company & statutory numbers**: taip nama syarikat, no. pendaftaran, no.
-   KWSP, PERKESO dan LHDN (E), pilih **HRD Corp registration** ("Not
-   registered" juga satu jawapan) dan muat naik logo untuk slip gaji. Tekan
-   **Save & next**.
+   KWSP, PERKESO dan LHDN (E), telefon dan alamat syarikat (poskod mengisi
+   bandar dan negeri), serta pegawai yang menandatangani Borang EA dan
+   jawatannya. Pilih **HRD Corp registration** ("Not registered" juga satu
+   jawapan) dan muat naik logo untuk slip gaji. Tekan **Save & next**.
    Anda nampak langkah itu hijau. "Missing" di halaman Company kini sepadan.
 3. **Company bank account**: pilih bank, taip nama dan no. akaun.
    Anda nampak "On file". Nombor penuh tidak ditunjuk lagi, hanya empat digit akhir.
 4. **Pay rules**: semak cara bulan tidak penuh, lebih masa dan kelulusan.
    Di bawah **Defaults for new staff** tetapkan hari bekerja seminggu,
-   tempoh percubaan dan senarai jabatan.
-5. **Payroll items**: tekan **Add the standard items**. Item yang hanya
-   dibayar oleh sesetengah klinik (house call, panel claim, insentif
-   prosedur) ada di bawah **Optional items**: tambah yang anda guna. Setiap
+   tempoh percubaan, senarai jabatan dan awalan nombor pekerja (E memberi
+   E001, E002…).
+5. **Payroll items**: tekan **Add default items** (terus dalam langkah ini).
+   Di halaman Payroll items, item yang hanya dibayar oleh sesetengah klinik
+   (house call, panel claim, insentif prosedur) kemudian disenaraikan di
+   bawah **Optional items**: tekan **Add** di sebelah yang anda guna. Setiap
    item menyatakan bila dibayar (contohnya 30hb, atau 15hb bulan berikutnya).
+   Klik satu baris untuk mengubahnya.
 6. **Public holidays**: pilih negeri, nyahtanda hari yang klinik tidak
    cuti, tekan **Add … holidays**. Tarikh bertanda *check* boleh berubah;
-   sahkan dengan senarai rasmi. Tambah cuti ganti sendiri.
+   sahkan dengan senarai rasmi. Cuti yang jatuh pada hari rehat mingguan
+   membawa cuti gantinya, juga bertanda *check*. Kuwick mengingati negeri
+   anda. **Edit the calendar** membuka halaman Public holidays.
 7. **Opening balances**: adakah klinik sudah membayar gaji tahun ini dalam
    sistem lain? *No* menamatkan langkah ini. *Yes* membuka Opening balances
    untuk memasukkan gaji setiap orang setakat ini, supaya cukai dan Borang
    EA mereka betul.
-8. **Employees**: tambah pekerja (bahagian 2).
+8. **Employees**: tekan **Add your first employee** (bahagian 2).
 9. **Statutory rates**: lihat jadual KWSP, PERKESO dan EIS yang digunakan
    (tarikh dan sumber) dan tekan **Acknowledge**.
-   Anda nampak **Setup complete**. Selepas ini HR dibuka pada Payroll.
+   Anda nampak **Setup complete** dan **Run your first payroll →**. Selepas
+   ini HR dibuka pada Payroll.
 
 ## 2. Pekerja
 
 1. Buka **HR → Employees** dan tekan **+ Add employee**.
 2. Taip nama, cawangan, jawatan, tarikh mula dan jenis pekerjaan. Tekan **Save**.
+   Nombor pekerja diisi dengan nombor seterusnya (E001, E002…); ubah jika
+   perlu. Pekerja baharu diletakkan pada polisi cuti klinik (Kuwick membuat
+   "Standard leave" daripada jenis cuti anda jika belum ada: cuti tahunan 8
+   hari setahun, pro-rata pada tahun mula bekerja).
    Anda nampak rekod baharu dengan titik berwarna bagi maklumat yang belum lengkap.
+   *Account: No login* bermaksud anda tidak memberi log masuk.
    **Probation until** diisi daripada tetapan klinik; halaman Employees
    mengingatkan anda sebulan sebelum tamat. Langkah **Review** menyatakan
    sama ada gaji boleh dibayar, menggunakan semakan yang sama dengan payroll.
@@ -126,7 +140,10 @@ seperti di skrin (Bahasa Inggeris).
    Anda nampak apa yang menyekat bulan itu (merah), apa yang patut disemak (kuning) dan jumlah.
 4. Betulkan setiap perkara merah, biasanya rekod yang tidak lengkap, dan tekan
    **Work the month out again**.
-5. **Approve**: baca ringkasan dan tekan **Approve the month**.
+   Bulan lebih awal dalam tahun tanpa gaji menunjukkan **Run <month> payroll →**.
+5. **Approve**: baca ringkasan dan tekan **Approve the month**. Baris
+   kuning menamakan sesiapa tanpa no. KWSP atau no. cukai pendapatan: anda
+   masih boleh meluluskan, tetapi fail KWSP dan PCB tidak akan ada nombor itu.
    Anda nampak bulan itu dikunci dan slip gaji dibuat.
 6. **Pay**: muat turun senarai bank, bayar di laman bank anda, kemudian tekan
    **Record the transfer** dengan tarikh dan rujukan bank.

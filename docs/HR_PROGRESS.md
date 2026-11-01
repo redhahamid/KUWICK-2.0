@@ -6,6 +6,41 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 71 — 1 November 2026 — UAT klinik baharu #2 (B, C, D)
+
+**Tiada migrasi.**
+
+- `[D]` **Cuti ganti** (63): cuti pada hari rehat mingguan (Ahad; Jumaat di Kedah,
+  Kelantan, Terengganu) membawa cuti ganti pada hari bekerja seterusnya yang bukan
+  cuti, bertanda *check*. Selangor 2026: 2 Feb, 23 Mac, 2 Jun, 9 Nov (diuji).
+- `[D]` **Polisi cuti lalai** (73): pekerja baharu diletakkan pada polisi aktif pertama
+  klinik; jika tiada, Kuwick membuat "Standard leave" daripada jenis cuti klinik
+  (tahunan 8 hari, pro-rata tahun mula, minimum Akta naik mengikut tempoh khidmat).
+- `[D]` **Cuti tidak diambil semasa berhenti** (74): lalai sudah "Paid out" di pelayan;
+  kad Settings tersalah tulis "Not paid out" bila klinik belum ada polisi. Dibetulkan.
+- `[D]` Item standard **Rest day / public holiday pay** (59), dilayan seperti Overtime.
+- `[D]` **Nombor pekerja** (70): E001, E002… dengan awalan sebagai tetapan klinik
+  (Pay rules → Defaults for new staff); diisi dalam Add employee, boleh diubah.
+- `[D]` Sebelum Approve (77): baris kuning bagi pekerja tanpa no. KWSP atau no. cukai.
+- `[D]` C: My Kuwick pemilik tanpa rekod HR tiada cuti (53); "No login" (71);
+  kategori cukai dari kategori MTD yang berkuat kuasa (72).
+- `[D]` D: label HRD kadar dahulu (55); "Add default items" (61); *Optional items*
+  selepas item lalai, satu baris setiap satu (58); nama item gelap, seluruh baris
+  boleh diklik, ikon kunci diganti "Built in" dengan penerangan (62); lencana
+  *Unchecked* dibuang (60); kod dalaman disembunyikan (66); cuti umum: Ordinary/Festive
+  diterangkan, satu butang **Remove** (67); mesej "Kuwick is waking up" (56).
+
+## Batch 70 — 1 November 2026 — UAT klinik baharu #2 (A): aliran wizard
+
+**Tiada migrasi.**
+
+- `[D]` My Kuwick: "Back to Kuwick admin" dan menu profil (52).
+- `[D]` Halaman yang dibuka dari wizard mengekalkan 8 langkah di kiri (69).
+- `[D]` "Add default items" dalam langkah 4; "Add your first employee" dalam langkah 7 (57/68).
+- `[D]` "Edit the calendar" membuka Public holidays (65); negeri diingati (64).
+- `[D]` Langkah 1: alamat, telefon, pegawai tandatangan EA (54).
+- `[D]` "Run your first payroll →" (75); "Run <bulan> payroll →" pada amaran (76).
+
 ## Batch 69 — 31 Oktober 2026 — staging terhenti (tiada perubahan kod aplikasi)
 
 **Tiada migrasi.**

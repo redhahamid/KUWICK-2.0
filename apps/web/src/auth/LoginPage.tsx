@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../core/auth-store';
 import { usePlatformAuthStore } from '../core/platform-auth-store';
 import { ApiError } from '../core/api-client';
+import { WAKING_TEXT, useSlow } from '../core/WakingNote';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -55,6 +56,7 @@ export function LoginPage() {
   const setSession = useAuthStore((state) => state.setSession);
   const setPlatformSession = usePlatformAuthStore((state) => state.setSession);
   const [loading, setLoading] = useState(false);
+  const slowLogin = useSlow(loading);
   const [error, setError] = useState<string>();
   // Hidden by default — only shown when the backend answers 409 ("this
   // email+password is valid at more than one clinic"), the one case where
@@ -205,6 +207,11 @@ export function LoginPage() {
             <Button type="primary" htmlType="submit" loading={loading} block size="large">
               Log in
             </Button>
+            {slowLogin ? (
+              <p role="status" style={{ marginTop: 12, color: '#5b6472', fontSize: 13 }}>
+                {WAKING_TEXT}
+              </p>
+            ) : null}
           </Form>
         </div>
       </div>

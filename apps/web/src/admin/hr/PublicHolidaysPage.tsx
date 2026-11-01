@@ -2,9 +2,8 @@ import { useState } from 'react';
 import { App, DatePicker, Form, Input, InputNumber, Popconfirm, Radio } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { Link } from 'react-router-dom';
-import { Drawer, HrPage, IconButton, Panel, StatusChip } from './ui';
+import { Drawer, HrPage, Panel, StatusChip } from './ui';
 import { Table } from './ui/Table';
-import { IconClose } from './ui/icons';
 import {
   useCreatePublicHoliday,
   useDeletePublicHoliday,
@@ -108,6 +107,11 @@ export function PublicHolidaysPage() {
       ) : null}
 
       <Panel>
+        {/* What the two kinds mean, on the list itself (new-clinic UAT #2, item 67). */}
+        <p className="hr-small hr-muted" style={{ margin: '0 0 10px' }}>
+          <b>Ordinary</b>: a public holiday, paid at the pay rules’ holiday rate when worked. <b>Festive</b>: a holiday the pay rules may
+          pay at a higher rate (Hari Raya, say). Change one with “Mark festive” or “Mark ordinary”.
+        </p>
         <Table<PublicHoliday>
           rowKey="id"
           loading={isLoading}
@@ -174,15 +178,13 @@ export function PublicHolidaysPage() {
             },
             {
               title: '',
-              width: 60,
+              width: 100,
               render: (_: unknown, row: PublicHoliday) =>
                 mayWrite ? (
-                  <Popconfirm title="Remove this holiday?" onConfirm={() => deleteHoliday.mutate(row.id)}>
-                    <span>
-                      <IconButton label={`Remove ${row.name}`}>
-                        <IconClose />
-                      </IconButton>
-                    </span>
+                  <Popconfirm title={`Remove ${row.name}?`} okText="Remove" onConfirm={() => deleteHoliday.mutate(row.id)}>
+                    <button type="button" className="hr-btn hr-btn--sm" aria-label={`Remove ${row.name}`}>
+                      Remove
+                    </button>
                   </Popconfirm>
                 ) : null,
             },

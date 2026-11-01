@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { RecordsChangedBanner } from './RecordsChangedBanner';
+import { filingNumbersCheck } from './recordLabels';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { App, Grid, Input, Modal } from 'antd';
 import dayjs from 'dayjs';
@@ -760,6 +761,13 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
           .filter((w) => w.code === 'UNAPPROVED_OVERTIME' || w.code === 'MISSING_PUNCH')
           .map((w) => [w.name, w.what].filter(Boolean).join(' — '))
           .join(' ') || 'Nothing is waiting on a manager.',
+    },
+    {
+      // A warning, never a block (new-clinic UAT #2, item 77).
+      key: 'numbers',
+      title: 'EPF and income tax numbers on file',
+      ...filingNumbersCheck(data.review.filingNumbersMissing),
+      warnOnly: true,
     },
     {
       key: 'pcb',

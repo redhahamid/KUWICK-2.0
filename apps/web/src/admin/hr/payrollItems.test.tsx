@@ -259,7 +259,8 @@ describe('the statutory treatment of a payroll item', () => {
   it('never claims any of it has been checked against an authority', () => {
     mount();
     expect(screen.getByText(/not a statement of Malaysian law/i)).toBeTruthy();
-    expect(screen.getByText('Unchecked')).toBeTruthy();
+    // No orange badge over the list (new-clinic UAT #2, item 60); the notice says it.
+    expect(screen.queryByText('Unchecked')).toBeNull();
   });
 });
 
@@ -380,8 +381,8 @@ describe('a component the clinic makes itself', () => {
   describe('standard items added after this clinic seeded', () => {
     it('offers nothing when the catalogue is already complete', () => {
       mount(list);
-      expect(screen.queryByRole('button', { name: /^Add .*standard item/ })).toBeNull();
-      expect(screen.queryByRole('button', { name: 'Add the standard items' })).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Add .*default item/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Add default items' })).toBeNull();
     });
 
     it('names the one item it would add, rather than counting it', () => {
@@ -397,12 +398,20 @@ describe('a component the clinic makes itself', () => {
           { code: 'SOMETHING_ELSE', name: 'Something else' },
         ],
       });
-      expect(screen.getByRole('button', { name: 'Add 2 standard items' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Add 2 default items' })).toBeTruthy();
     });
 
-    it('still offers the first seed on an empty catalogue', () => {
-      mount({ ...list, components: [] });
-      expect(screen.getByRole('button', { name: 'Add the standard items' })).toBeTruthy();
+    it('still offers the first seed on an empty catalogue, and no optional items before it (item 58)', () => {
+      mount({ ...list, components: [], addOns: [{ code: 'HOUSECALL', name: 'House call' }] });
+      expect(screen.getByRole('button', { name: 'Add default items' })).toBeTruthy();
+      expect(screen.queryByTestId('pay-item-add-ons')).toBeNull();
+    });
+
+    it('lists optional items one a line once the defaults are in (item 58)', () => {
+      mount({ ...list, addOns: [{ code: 'HOUSECALL', name: 'House call' }, { code: 'PANEL_CLAIM', name: 'Panel claim' }] });
+      const section = screen.getByTestId('pay-item-add-ons');
+      expect(within(section).getAllByRole('listitem').map((row) => row.textContent)).toEqual(['House callAdd', 'Panel claimAdd']);
+      expect(screen.getByRole('button', { name: 'Add House call' })).toBeTruthy();
     });
   });
 });

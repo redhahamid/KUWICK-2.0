@@ -97,9 +97,11 @@ export function MyHomePage() {
           sub={
             annual
               ? `of ${annual.available} · ${data?.leave.medicalUsed ?? 0} medical used`
-              : data?.leave.policyName
-                ? 'No annual leave on your policy'
-                : 'No leave policy assigned yet'
+              : data?.leave.hasHrRecord === false
+                ? 'No HR record for this account'
+                : data?.leave.policyName
+                  ? 'No annual leave on your policy'
+                  : 'No leave policy assigned yet'
           }
         />
         <StatCard

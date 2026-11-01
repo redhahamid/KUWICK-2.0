@@ -367,6 +367,7 @@ export class MeService {
         medicalUsed: medical?.taken ?? 0,
         medicalAvailable: medical?.available ?? null,
         policyName: balances.policyName,
+        hasHrRecord: balances.hasHrRecord,
       },
       claims: {
         awaitingTotal: awaitingTotal.toFixed(2),
@@ -1168,6 +1169,8 @@ export class MeService {
     return {
       year,
       policyName: row.policyName,
+      /** False for an account with no HR record: no leave to show (new-clinic UAT #2, item 53). */
+      hasHrRecord: row.hasHrRecord,
       /** Every leave type the person can ask for, in the clinic's order (Section D). */
       types: kinds
         .filter((kind) => kind.active)

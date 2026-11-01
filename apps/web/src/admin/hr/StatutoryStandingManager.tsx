@@ -33,7 +33,7 @@ import { NO_FIXED_DAY_HELP, REST_DAY_CHOICES, restDayBody, restDayChoiceOf, rest
 export { DAY_NAMES } from './restDay';
 
 /** The stored codes, in the words the editor uses. A screen that prints MALAYSIAN_CITIZEN is talking to a developer. */
-const STANDING_LABELS: Record<string, string> = {
+export const STANDING_LABELS: Record<string, string> = {
   MALAYSIAN_CITIZEN: 'Malaysian citizen',
   PERMANENT_RESIDENT: 'Permanent resident',
   NON_CITIZEN_ELECTED_PRE_1998: 'Non-citizen, elected before 1 Aug 1998',

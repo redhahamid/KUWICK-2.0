@@ -39,8 +39,8 @@ import {
 const pct = (value: number) => `${value}%`;
 
 const HRD_LABELS: Record<string, string> = {
-  MANDATORY_SECTION_14: "Registered, must pay · 1%",
-  OPTIONAL_SECTION_15: "Registered by choice · 0.5%",
+  MANDATORY_SECTION_14: "1% · Must pay (10+ Malaysian staff)",
+  OPTIONAL_SECTION_15: "0.5% · By choice (5–9 staff)",
   NOT_REGISTERED: "Not registered",
 };
 

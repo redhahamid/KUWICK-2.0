@@ -735,6 +735,12 @@ export class WorkforceController {
    * this route never runs. The same trap `provider-shift.controller.ts`
    * records for `/month`.
    */
+  /** Before `employees/:staffId`, for the same reason as the route below. */
+  @Get('employees/next-number')
+  nextEmployeeNumber() {
+    return this.employees.nextEmployeeNumber();
+  }
+
   @Get('employees/incomplete')
   incompleteProfiles() {
     return this.employees.incompleteProfiles();

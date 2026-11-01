@@ -5,6 +5,7 @@ import { useLeavePolicies, useAttendancePolicy } from '../hooks/useAdmin';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { IconTile } from '../../design-system/components/IconTile';
 import type { TileTone } from '../../design-system/tokens';
+import { WakingNote } from '../../core/WakingNote';
 import { HrPage, StatusChip, type ChipTone } from './ui';
 import { IconClock, IconCompany, IconList, IconSliders } from './ui/icons';
 import { SettingsSetupWizard, type SetupStepKey } from './SettingsSetupWizard';
@@ -49,7 +50,7 @@ export function HrSettingsPage() {
   if (loading) {
     return (
       <HrPage title="Settings" error={error instanceof Error ? error.message : null}>
-        <div className="hr-note">Loading…</div>
+        <WakingNote />
       </HrPage>
     );
   }
@@ -129,7 +130,8 @@ export function HrSettingsPage() {
         },
         {
           label: 'Unused leave on leaving',
-          value: leaveRule?.payUntakenLeaveOnExit ? 'Paid out' : 'Not paid out',
+          // No policy yet means Kuwick's default, which is the Act's (new-clinic UAT #2, item 74).
+          value: !leaveRule || leaveRule.payUntakenLeaveOnExit ? 'Paid out' : 'Not paid out',
         },
         {
           label: `Public holidays ${thisYear}`,

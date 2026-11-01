@@ -4,6 +4,7 @@ import { App, DatePicker, Input, Radio, Select, Switch, Tooltip } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useCan } from '../../core/hooks/useCan';
 import { useEmployees, usePayComponentHistory, usePayComponents, useSeedPayComponents, useUpsertPayComponent } from '../hooks/useAdmin';
+import { WakingNote } from '../../core/WakingNote';
 import { Drawer, HrPage, Panel, PanelHead, StatusChip } from './ui';
 import { Table } from './ui/Table';
 import { PayDateCell, ordinal } from './PayDateCell';
@@ -384,23 +385,6 @@ export function PayrollItemsPage() {
   const kinds = (row: PayComponentRow) =>
     row.type === 'ADDITION' && row.includeIn === 'NET_ONLY' ? [<StatusChip key="r" tone="info">Reimbursement</StatusChip>] : [];
 
-  /**
-   * ONE VERDICT FOR THE LIST, not one per row. Every seeded row is DRAFT
-   * until somebody reads the authority's schedule against it, and a column of
-   * seventeen "Unchecked" chips was the same sentence seventeen times.
-   */
-  const checkedCount = rows.filter((row) => row.verificationStatus === 'VERIFIED').length;
-  const listCheck =
-    rows.length === 0 ? null : checkedCount === rows.length ? (
-      <StatusChip tone="done">Checked</StatusChip>
-    ) : checkedCount === 0 ? (
-      <StatusChip tone="attn">Unchecked</StatusChip>
-    ) : (
-      <StatusChip tone="attn">
-        {checkedCount} of {rows.length} checked
-      </StatusChip>
-    );
-
   return (
     <HrPage
       crumb={
@@ -413,7 +397,6 @@ export function PayrollItemsPage() {
       error={components.error instanceof Error ? components.error.message : null}
       actions={
         <>
-          {listCheck}
           {mayManage && rows.length > 0 ? (
             <button type="button" className="hr-btn" onClick={() => { setAdding(true); setDraft(BLANK); setAddProblem(null); }}>
               Add an item
@@ -429,51 +412,54 @@ export function PayrollItemsPage() {
                   onSuccess: () =>
                     message.success(
                       rows.length === 0
-                        ? 'Standard items added. Check what each one counts towards before using it.'
-                        : `Added ${missing.length === 1 ? missing[0].name : `${missing.length} standard items`}. Check the flags before using it.`,
+                        ? 'Default items added. Check what each one counts towards before using it.'
+                        : `Added ${missing.length === 1 ? missing[0].name : `${missing.length} default items`}. Check what it counts towards before using it.`,
                     ),
                   onError: (e: Error) => message.error(e.message),
                 })
               }
             >
               {rows.length === 0
-                ? 'Add the standard items'
+                ? 'Add default items'
                 : missing.length === 1
                   ? `Add ${missing[0].name}`
-                  : `Add ${missing.length} standard items`}
+                  : `Add ${missing.length} default items`}
             </button>
           ) : null}
         </>
       }
     >
-      {/* OPTIONAL ITEMS (new-clinic UAT, 15 October 2026): ones some clinics
-          pay and most do not, added one at a time rather than with the standard set. */}
-      {mayManage && (components.data?.addOns ?? []).length > 0 ? (
+      {/* OPTIONAL ITEMS (new-clinic UAT #2, item 58): ones some clinics pay and
+          most do not, shown once the default items are in, one line each. */}
+      {mayManage && rows.length > 0 && (components.data?.addOns ?? []).length > 0 ? (
         <Panel>
-          <div className="hr-addOns" data-testid="pay-item-add-ons">
-            <span className="hr-small hr-muted">Optional items:</span>
+          <PanelHead title="Optional items" sub="Some clinics pay these. Add only the ones yours uses." />
+          <ul className="hr-optionalItems" data-testid="pay-item-add-ons">
             {(components.data?.addOns ?? []).map((addOn) => (
-              <button
-                key={addOn.code}
-                type="button"
-                className="hr-btn hr-btn--sm"
-                disabled={seed.isPending}
-                onClick={() =>
-                  seed.mutate({ codes: [addOn.code] }, {
-                    onSuccess: () => message.success(`Added ${addOn.name}. Check what it counts towards before using it.`),
-                    onError: (e: Error) => message.error(e.message),
-                  })
-                }
-              >
-                + {addOn.name}
-              </button>
+              <li key={addOn.code}>
+                <span>{addOn.name}</span>
+                <button
+                  type="button"
+                  className="hr-btn hr-btn--sm"
+                  disabled={seed.isPending}
+                  aria-label={`Add ${addOn.name}`}
+                  onClick={() =>
+                    seed.mutate({ codes: [addOn.code] }, {
+                      onSuccess: () => message.success(`Added ${addOn.name}. Check what it counts towards before using it.`),
+                      onError: (e: Error) => message.error(e.message),
+                    })
+                  }
+                >
+                  Add
+                </button>
+              </li>
             ))}
-          </div>
+          </ul>
         </Panel>
       ) : null}
       {rows.length === 0 ? (
         <Panel>
-          <div className="hr-faint">{components.isLoading ? 'Loading…' : 'No pay items are set up yet. Add the standard items, then say what each one counts towards.'}</div>
+          <div className="hr-faint">{components.isLoading ? <WakingNote className="hr-faint" /> : 'No pay items are set up yet. Add the default items, then check what each one counts towards.'}</div>
         </Panel>
       ) : null}
       {GROUPS.map((group) => {
@@ -486,19 +472,21 @@ export function PayrollItemsPage() {
               rows={groupRows}
               rowKey="id"
               emptyText="None."
-              onRow={(row) => ({ onClick: () => openItem(row) })}
+              onRow={(row) => ({ onClick: () => openItem(row), className: 'hr-row--click' })}
               columns={[
                 {
                   title: 'Item',
                   dataIndex: 'name',
                   render: (value: string, row) => (
                     <div>
-                      <button type="button" className="hr-linkButton hr-strong" onClick={(event) => { event.stopPropagation(); openItem(row); }}>
+                      {/* Dark text, not a link; the whole row opens the item, and the name
+                          stays a button for the keyboard (new-clinic UAT #2, item 62). */}
+                      <button type="button" className="hr-rowButton" onClick={(event) => { event.stopPropagation(); openItem(row); }}>
                         {value}
                       </button>
                       {row.systemControlled ? (
-                        <span className="hr-lock" role="img" aria-label="System item: its kind is fixed, its treatment is not">
-                          <IconLock />
+                        <span className="hr-faint hr-small" title="Kuwick works this item out itself. You can change what it counts towards, not what kind of item it is.">
+                          {' '}· Built in
                         </span>
                       ) : null}
                       {row.clinicOverride ? <div className="hr-faint hr-small">Your clinic’s setting</div> : null}

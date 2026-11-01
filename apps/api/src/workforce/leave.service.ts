@@ -297,9 +297,13 @@ export class LeaveService {
     // THE CLINIC'S LEAVE TYPES (Section D): a person with a policy has the
     // policy's types; without one, every active type with yearly days. Any
     // type they have a stored row or a request for is shown too.
-    const listed = profile?.leavePolicy
-      ? profile.leavePolicy.entitlements.map((entitlement) => entitlement.leaveType)
-      : kinds.filter((kind) => kind.active && kind.daysPerYear !== null).map((kind) => kind.code);
+    // Somebody with no HR record at all (the owner's own login) is entitled
+    // to nothing until HR makes one (new-clinic UAT #2, item 53).
+    const listed = !profile
+      ? []
+      : profile.leavePolicy
+        ? profile.leavePolicy.entitlements.map((entitlement) => entitlement.leaveType)
+        : kinds.filter((kind) => kind.active && kind.daysPerYear !== null).map((kind) => kind.code);
     const types: LeaveType[] = [...new Set([...listed, ...stored.map((row) => row.leaveType), ...requests.map((row) => row.leaveType)])];
     const years = yearsOfServiceAt(profile?.startDate, year);
 
@@ -320,6 +324,8 @@ export class LeaveService {
       // A person with no policy is reported as such, not silently given zero:
       // "nobody has assigned a leave policy" is a piece of HR work.
       policyAssigned: Boolean(profile?.leavePolicy),
+      /** False for an account with no employment record: it has no leave to show. */
+      hasHrRecord: Boolean(profile),
       balances: types.map((leaveType) => {
         const entitlement = profile?.leavePolicy?.entitlements.find((row) => row.leaveType === leaveType);
         const kind = kindOf.get(leaveType);

@@ -18,8 +18,9 @@ export type { SetupStep, SetupStepKey } from './useHrSetup';
 
 /** The HRD Corp classes, in plain words. Recorded as a dated version of the employer. */
 const HRD_CLASSES = [
-  { value: 'MANDATORY_SECTION_14', label: 'Registered, must pay (10 or more Malaysian staff) · 1%' },
-  { value: 'OPTIONAL_SECTION_15', label: 'Registered by choice (5 to 9 Malaysian staff) · 0.5%' },
+  // The rate first, so a narrow box still shows it (new-clinic UAT #2, item 55).
+  { value: 'MANDATORY_SECTION_14', label: '1% · Must pay (10+ Malaysian staff)' },
+  { value: 'OPTIONAL_SECTION_15', label: '0.5% · By choice (5–9 staff)' },
   { value: 'NOT_REGISTERED', label: 'Not registered' },
 ];
 
@@ -424,6 +425,7 @@ function CompanyStep({ employers, finishes, onSaved }: StepProps) {
             placeholder="Choose one"
             disabled={!mayManage}
             options={HRD_CLASSES}
+            popupMatchSelectWidth={false}
             status={hrdClass ? undefined : 'warning'}
             onChange={setHrdClass}
           />
@@ -589,7 +591,7 @@ function HolidaysStep({ employers, finishes, onSaved, done }: StepProps & { done
       {rows.length > 0 ? (
         <>
           <p className="hr-sub">
-            Untick any day the clinic does not observe. Dates marked “check” can move (moon sighting or state announcement): confirm them against the official list. Replacement days (cuti ganti) are not included; add them when announced.
+            Untick any day the clinic does not observe. Dates marked “check” can move (moon sighting or state announcement): confirm them against the official list. A holiday that falls on the weekly rest day brings its replacement day (cuti ganti), also marked “check”.
           </p>
           <ul className="hr-holidayList">
             {rows.map((row) => (

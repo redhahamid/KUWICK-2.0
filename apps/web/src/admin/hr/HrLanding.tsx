@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import { useCan } from '../../core/hooks/useCan';
+import { WakingNote } from '../../core/WakingNote';
 import { HrPage } from './ui';
 import { useHrSetup } from './useHrSetup';
 
@@ -14,7 +15,7 @@ export function HrLanding() {
   if (maySetUp && setup.loading) {
     return (
       <HrPage title="HR">
-        <div className="hr-note">Loading…</div>
+        <WakingNote />
       </HrPage>
     );
   }

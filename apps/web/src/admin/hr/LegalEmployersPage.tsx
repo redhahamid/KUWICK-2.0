@@ -13,8 +13,8 @@ import { EmployerLogoField } from './EmployerLogoField';
 
 /** The Act's own words for each class, and the rate the Act fixes for it. */
 const HRD_LABELS: Record<string, string> = {
-  MANDATORY_SECTION_14: 'Registered, must pay (10 or more Malaysian staff) · 1%',
-  OPTIONAL_SECTION_15: 'Registered by choice (5 to 9 Malaysian staff) · 0.5%',
+  MANDATORY_SECTION_14: '1% · Must pay (10+ Malaysian staff)',
+  OPTIONAL_SECTION_15: '0.5% · By choice (5–9 staff)',
   NOT_REGISTERED: 'Not registered',
 };
 

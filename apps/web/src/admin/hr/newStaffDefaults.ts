@@ -12,6 +12,8 @@ export interface NewStaffDefaults {
   probationMonths: number;
   /** The department list Add employee picks from. */
   departments: string[];
+  /** What employee numbers start with: E gives E001, E002… (new-clinic UAT #2, item 70). */
+  employeeNoPrefix: string;
 }
 
 export const NEW_STAFF_DEFAULTS_SETTING = 'hr.newStaffDefaults';
@@ -19,6 +21,7 @@ export const KUWICK_NEW_STAFF_DEFAULTS: NewStaffDefaults = {
   workDaysPerWeek: 6,
   probationMonths: 3,
   departments: ['Clinical', 'Pharmacy', 'Front desk', 'Admin'],
+  employeeNoPrefix: 'E',
 };
 
 export function useNewStaffDefaults(): NewStaffDefaults {

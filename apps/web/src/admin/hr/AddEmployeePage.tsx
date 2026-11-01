@@ -13,7 +13,7 @@ import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { parseNric } from '../../core/nric';
 import { PhoneField } from './ui/PhoneField';
 import { REST_DAY_CHOICES, restDayBody } from './restDay';
-import { useJobTitles, useLegalEmployers } from '../hooks/useAdmin';
+import { useJobTitles, useLegalEmployers, useNextEmployeeNo } from '../hooks/useAdmin';
 import { JobTitlePicker } from './JobTitlePicker';
 import { MALAYSIAN_STATES, bankOptions } from './malaysianStates';
 import { useNewStaffDefaults } from './newStaffDefaults';
@@ -238,6 +238,11 @@ export function AddEmployeePage() {
   useEffect(() => {
     if (form.getFieldValue('workDaysPerWeek') === undefined) form.setFieldValue('workDaysPerWeek', defaults.workDaysPerWeek);
   }, [defaults.workDaysPerWeek, form]);
+  // The next employee number, filled in and editable (new-clinic UAT #2, item 70).
+  const nextNo = useNextEmployeeNo().data?.employeeNo;
+  useEffect(() => {
+    if (nextNo && !form.getFieldValue('employeeNo')) form.setFieldValue('employeeNo', nextNo);
+  }, [nextNo, form]);
   useEffect(() => {
     if (typedProbation.current || !startDate || defaults.probationMonths <= 0) return;
     form.setFieldValue('confirmedDate', startDate.add(defaults.probationMonths, 'month'));
@@ -561,8 +566,8 @@ export function AddEmployeePage() {
           <div style={{ display: stage === 1 ? 'block' : 'none' }}>
             <Panel title="The job">
               <div className="kw-formRow">
-                <Form.Item name="employeeNo" label="Employee number">
-                  <Input placeholder="e.g. E-1024" />
+                <Form.Item name="employeeNo" label="Employee number" extra="The next number, from Settings → Pay rules. Change it if you need to.">
+                  <Input placeholder={nextNo ?? 'e.g. E001'} />
                 </Form.Item>
                 <Form.Item name="jobTitleId" label="Job title" extra="The clinic’s own list. Add to it here if the title is new.">
                   <JobTitlePicker id="jobTitleId" />

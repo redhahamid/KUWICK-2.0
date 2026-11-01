@@ -3918,3 +3918,38 @@ textarea.hr-f {
 .hr-mb {
   margin-bottom: 14px;
 }
+
+/* A row that opens something (new-clinic UAT #2, item 62). */
+.hr-row--click {
+  cursor: pointer;
+}
+.hr-optionalItems {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.hr-optionalItems li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--hr-line2);
+}
+.hr-optionalItems li:first-child {
+  border-top: 0;
+}
+.hr-rowButton {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--hr-ink);
+  cursor: pointer;
+  text-align: left;
+}
+.hr-rowButton:focus-visible {
+  outline: 2px solid var(--hr-action);
+  outline-offset: 2px;
+}

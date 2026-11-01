@@ -94,6 +94,8 @@ export interface MyHome {
     medicalUsed: number;
     medicalAvailable: number | null;
     policyName: string | null;
+    /** False for an account with no HR record (the owner's own login). */
+    hasHrRecord?: boolean;
   };
   claims: { awaitingTotal: string; awaitingCount: number; payrollPeriod: string | null };
   recent: MyRecentEvent[];
