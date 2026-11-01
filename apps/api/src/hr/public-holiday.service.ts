@@ -10,6 +10,9 @@ import { UpdatePublicHolidayDto } from './dto/update-public-holiday.dto';
 import { LoadHolidayPresetsDto } from './dto/load-holiday-presets.dto';
 import { HOLIDAY_PRESET_YEARS, holidayPresets, isMalaysianState } from './holiday-presets';
 
+/** The state whose holidays the clinic last loaded: `{ state }`. */
+export const HOLIDAY_STATE_SETTING = 'hr.holidayState';
+
 /**
  * THE TENANT'S HOLIDAY CALENDAR. One calendar for every branch, which is why
  * writing it is a tenant-wide act: the payroll engine prices public-holiday
@@ -126,6 +129,13 @@ export class PublicHolidayService {
           source: 'hr.settings',
         });
       }
+      // The clinic's state, remembered for the next visit (new-clinic UAT #2, item 64).
+      const where = { tenantId_key: { tenantId: currentTenantId(), key: HOLIDAY_STATE_SETTING } };
+      await tx.globalSetting.upsert({
+        where,
+        create: { tenantId: currentTenantId(), key: HOLIDAY_STATE_SETTING, value: { state: dto.state } },
+        update: { value: { state: dto.state } },
+      });
       return { added: added.length, skipped: wanted.length - added.length };
     });
   }

@@ -57,6 +57,13 @@ describe('earlier months of the year with no payroll', () => {
     expect(notice).toHaveTextContent('Demo Clerk: Aug–Sep 2026');
     expect(notice).not.toHaveTextContent('Demo Doctor');
     expect(screen.getByRole('button', { name: 'Work out the month' })).toBeEnabled();
+    // The way on is the missing month itself, latest first (new-clinic UAT #2, item 76).
+    expect(within(notice).getByRole('link', { name: 'Run September payroll →' })).toHaveAttribute('href', '/admin/hr/payroll?period=2026-09');
+    expect(within(notice).getAllByRole('link', { name: /^Run .* payroll →$/ }).map((link) => link.textContent)).toEqual([
+      'Run September payroll →',
+      'Run August payroll →',
+      'Run July payroll →',
+    ]);
   });
 
   it('says nothing when every earlier month is on record', () => {

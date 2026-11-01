@@ -2,15 +2,17 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { App, Checkbox, Input, Select, Switch } from 'antd';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { useMarkStatutoryChecked, useRecordEmployerHrd, useUpsertLegalEmployer } from '../hooks/useAdmin';
+import { useMarkStatutoryChecked, useRecordEmployerHrd, useSeedPayComponents, useUpsertLegalEmployer } from '../hooks/useAdmin';
 import { useHolidayPresets, useLoadHolidayPresets } from '../../hr/hooks/usePublicHolidays';
-import { useSetGlobalSetting } from '../../core/hooks/useGlobalSetting';
+import { useGlobalSetting, useSetGlobalSetting } from '../../core/hooks/useGlobalSetting';
 import { useCan } from '../../core/hooks/useCan';
 import { HrPage, ProblemNotice, StatusChip } from './ui';
 import { EmployerLogoField } from './EmployerLogoField';
 import { bankOptions, stateOf, stateOptions } from './malaysianStates';
+import { placeOfPostcode } from './postcode';
 import { OPENING_BALANCES_SETTING, employersToSetUp, type OpeningBalancesAnswer, type SetupStep, type SetupStepKey } from './useHrSetup';
 import type { LegalEmployerRow } from '../types';
+import { endSetupTrail, fromSetup } from './setupTrail';
 
 export type { SetupStep, SetupStepKey } from './useHrSetup';
 
@@ -54,6 +56,8 @@ export function employerSaveBody(
         state: row.state,
         bankName: row.bankName,
         bankAccountName: row.bankAccountName,
+        eaSignerName: row.eaSignerName,
+        eaSignerPosition: row.eaSignerPosition,
       }
     : {};
   const merged = { ...kept, ...edits };
@@ -116,6 +120,7 @@ export function SettingsSetupWizard({
 
   const next = () => {
     if (finishes) {
+      endSetupTrail();
       onFinished();
       return;
     }
@@ -172,29 +177,7 @@ export function SettingsSetupWizard({
       }
     >
       <div className="hr-wiz">
-        <nav aria-label="Setup steps" className="hr-wiz__steps">
-          {steps.map((row, i) => (
-            <button
-              key={row.key}
-              type="button"
-              className={`hr-wizStep${row.key === step.key ? ' is-open' : ''}`}
-              aria-current={row.key === step.key ? 'step' : undefined}
-              onClick={() => onOpen(row.key)}
-            >
-              <span className={`hr-wizStep__num${row.key === step.key ? ' is-open' : row.done ? ' is-done' : ''}`}>
-                {row.done && row.key !== step.key ? '✓' : i + 1}
-              </span>
-              <span>
-                <span className="hr-wizStep__title">{row.title}</span>
-                {row.done ? (
-                  <span className="hr-wizStep__sum">{row.summary}</span>
-                ) : (
-                  <StatusChip tone="attn">{row.summary}</StatusChip>
-                )}
-              </span>
-            </button>
-          ))}
-        </nav>
+        <SetupStepList steps={steps} open={step.key} onOpen={onOpen} />
 
         <section className="hr-wiz__card" aria-labelledby="hr-wiz-title">
           <div className="hr-wiz__count">
@@ -221,11 +204,51 @@ export function SettingsSetupWizard({
               // with nothing else left, the page's own button is the way on.
               canMoveOn={step.done || left.length > 0}
               onNext={next}
+              first={step.key === 'items' && !step.done ? <AddDefaultItems /> : step.key === 'employees' && !step.done ? <AddFirstEmployee /> : null}
             />
           )}
         </section>
       </div>
     </HrPage>
+  );
+}
+
+/**
+ * THE STEP LIST, where each step stands. Drawn in the wizard and, while
+ * somebody works on a page the wizard opened, pinned in the HR side rail
+ * (new-clinic UAT #2, item 69), so they never lose the wizard.
+ */
+export function SetupStepList({
+  steps,
+  open,
+  onOpen,
+  compact,
+}: {
+  steps: SetupStep[];
+  open: SetupStepKey | null;
+  onOpen: (key: SetupStepKey) => void;
+  compact?: boolean;
+}) {
+  return (
+    <nav aria-label="Setup steps" className={`hr-wiz__steps${compact ? ' hr-wiz__steps--rail' : ''}`}>
+      {steps.map((row, i) => (
+        <button
+          key={row.key}
+          type="button"
+          className={`hr-wizStep${row.key === open ? ' is-open' : ''}`}
+          aria-current={row.key === open ? 'step' : undefined}
+          onClick={() => onOpen(row.key)}
+        >
+          <span className={`hr-wizStep__num${row.key === open ? ' is-open' : row.done ? ' is-done' : ''}`}>
+            {row.done && row.key !== open ? '✓' : i + 1}
+          </span>
+          <span>
+            <span className="hr-wizStep__title">{row.title}</span>
+            {row.done ? <span className="hr-wizStep__sum">{row.summary}</span> : <StatusChip tone="attn">{row.summary}</StatusChip>}
+          </span>
+        </button>
+      ))}
+    </nav>
   );
 }
 
@@ -311,12 +334,33 @@ function CompanyStep({ employers, finishes, onSaved }: StepProps) {
       epfEmployerNo: row?.epfEmployerNo ?? '',
       socsoEmployerNo: row?.socsoEmployerNo ?? '',
       lhdnEmployerNo: row?.lhdnEmployerNo ?? '',
+      phone: row?.phone ?? '',
+      addressLine1: row?.addressLine1 ?? '',
+      addressLine2: row?.addressLine2 ?? '',
+      postcode: row?.postcode ?? '',
+      city: row?.city ?? '',
+      state: row?.state ?? '',
+      eaSignerName: row?.eaSignerName ?? '',
+      eaSignerPosition: row?.eaSignerPosition ?? '',
     });
     setLevyBase(row?.hrdLevyBase ?? 'BASIC_PLUS_FIXED_ALLOWANCES');
     setHrdClass(row?.hrdRegistration ?? null);
     setZakat(row?.zakatThroughPayroll ?? false);
     setError(null);
   }, [row]);
+
+  // The postcode fills the town and state when they are blank.
+  const postcode = form.postcode;
+  useEffect(() => {
+    let live = true;
+    void placeOfPostcode(postcode).then((place) => {
+      if (!live || !place) return;
+      setForm((f) => ({ ...f, city: f.city || place.town, state: f.state || place.state }));
+    });
+    return () => {
+      live = false;
+    };
+  }, [postcode]);
 
   const save = async (advance: boolean) => {
     setError(null);
@@ -364,6 +408,16 @@ function CompanyStep({ employers, finishes, onSaved }: StepProps) {
         {field('epfEmployerNo', 'EPF employer no.', 'e.g. 012345678', 'Needed for the KWSP listing')}
         {field('socsoEmployerNo', 'SOCSO employer code', 'e.g. A3100012345X', 'Needed for the PERKESO listing')}
         {field('lhdnEmployerNo', 'LHDN employer no. (E)', 'e.g. E 1234567890', 'Needed for the PCB listing')}
+        {field('phone', 'Company phone', 'e.g. 03-1234 5678', 'Printed on payslips')}
+        {field('addressLine1', 'Address', 'Street and number', 'Printed on payslips and the EA form', true)}
+        {field('addressLine2', 'Address (line 2)', 'Optional', undefined, true)}
+        {field('postcode', 'Postcode', 'e.g. 43000')}
+        {field('city', 'Town', 'Filled from the postcode')}
+        <WizField label="State">
+          <Select showSearch value={form.state || undefined} placeholder="Choose the state" disabled={!mayManage} options={stateOptions} onChange={(value) => setForm((f) => ({ ...f, state: value }))} />
+        </WizField>
+        {field('eaSignerName', 'EA form signed by', 'Name of the officer who signs Borang EA', 'Printed on each EA form')}
+        {field('eaSignerPosition', 'Their position', 'e.g. Pengarah')}
         <WizField label="HRD Corp registration" ok={Boolean(row?.hrdRegistration) && hrdClass === row?.hrdRegistration} help="Decides the HRD levy. “Not registered” is an answer too.">
           <Select
             value={hrdClass ?? undefined}
@@ -497,7 +551,13 @@ function HolidaysStep({ employers, finishes, onSaved, done }: StepProps & { done
   const { message } = App.useApp();
   const mayManage = useCan('settings.manage');
   const year = dayjs().year();
+  // The state chosen last time holidays were added, else the employer's.
+  const remembered = useGlobalSetting<{ state: string }>('hr.holidayState');
   const [state, setState] = useState<string | null>(stateOf(employersToSetUp(employers)[0]?.state));
+  const rememberedState = remembered.data?.state ?? null;
+  useEffect(() => {
+    if (rememberedState) setState(rememberedState);
+  }, [rememberedState]);
   const presets = useHolidayPresets(year, state);
   const load = useLoadHolidayPresets();
   const [unticked, setUnticked] = useState<Set<string>>(new Set());
@@ -525,7 +585,7 @@ function HolidaysStep({ employers, finishes, onSaved, done }: StepProps & { done
           <Select showSearch value={state ?? undefined} placeholder="Choose the state" options={stateOptions} onChange={(value) => { setState(value); setUnticked(new Set()); }} />
         </WizField>
       </div>
-      {state && presets.data && !presets.data.available ? <p className="hr-sub">Kuwick has no list for {year} yet. Add the holidays on the Attendance &amp; leave page.</p> : null}
+      {state && presets.data && !presets.data.available ? <p className="hr-sub">Kuwick has no list for {year} yet. Add the holidays on the Public holidays page.</p> : null}
       {rows.length > 0 ? (
         <>
           <p className="hr-sub">
@@ -556,7 +616,7 @@ function HolidaysStep({ employers, finishes, onSaved, done }: StepProps & { done
         </>
       ) : null}
       <StepFoot>
-        <Link className="hr-btn" to="/admin/hr/settings/attendance-leave">
+        <Link className="hr-btn" to={fromSetup('/admin/hr/settings/public-holidays')}>
           Edit the calendar
         </Link>
         {mayManage && toAdd.length > 0 ? (
@@ -604,7 +664,7 @@ function OpeningStep({ finishes, onSaved }: { finishes: boolean; onSaved: () => 
       {answer === 'IMPORTED' ? (
         <p className="hr-sub">
           Bring in what each person was paid this year so far (pay, EPF, SOCSO, EIS and tax), so their tax and year-end EA form are right.{' '}
-          <Link className="hr-link" to="/admin/hr/settings/opening-balances">
+          <Link className="hr-link" to={fromSetup('/admin/hr/settings/opening-balances')}>
             Open Opening balances
           </Link>
         </p>
@@ -651,7 +711,7 @@ function RatesStep({ facts, finishes, onSaved }: { facts: { label: string; value
       </div>
       <p className="hr-sub">Kuwick keeps these tables up to date. When a new edition comes into force, you will be asked to acknowledge it again.</p>
       <StepFoot>
-        <Link className="hr-btn" to="/admin/hr/settings/statutory">
+        <Link className="hr-btn" to={fromSetup('/admin/hr/settings/statutory')}>
           See the tables
         </Link>
         {mayApprove ? (
@@ -666,6 +726,46 @@ function RatesStep({ facts, finishes, onSaved }: { facts: { label: string; value
   );
 }
 
+/**
+ * THE FIRST THING TO DO, INSIDE THE WIZARD (new-clinic UAT #2, items 57/68).
+ * Step 4 adds Kuwick's default items here; step 7 opens Add employee with the
+ * steps still pinned beside it.
+ */
+function AddDefaultItems() {
+  const { message } = App.useApp();
+  const seed = useSeedPayComponents();
+  const mayManage = useCan('hr.statutory.manage');
+  if (!mayManage) return <span className="hr-sub">The person who manages company settings adds the items.</span>;
+  return (
+    <button
+      type="button"
+      className="hr-btn hr-btn--primary"
+      disabled={seed.isPending}
+      onClick={() =>
+        seed.mutate(
+          { baseOnly: true },
+          {
+            onSuccess: () => message.success('Default items added. Open Payroll items to check what each one counts towards.'),
+            onError: (e: Error) => message.error(e.message),
+          },
+        )
+      }
+    >
+      Add default items
+    </button>
+  );
+}
+
+function AddFirstEmployee() {
+  const mayManage = useCan('hr.employee.manage');
+  if (!mayManage) return null;
+  return (
+    <Link className="hr-btn hr-btn--primary" to={fromSetup('/admin/hr/employees/new')}>
+      Add your first employee
+    </Link>
+  );
+}
+
 /** Steps settled on their own pages. The card says where things stand and opens the page. */
 function FactStep({
   page,
@@ -673,12 +773,15 @@ function FactStep({
   finishes,
   canMoveOn,
   onNext,
+  first,
 }: {
   page: { to: string; label: string };
   facts: { label: string; value: ReactNode }[];
   finishes: boolean;
   canMoveOn: boolean;
   onNext: () => void;
+  /** The step's own first action, drawn before the page link. */
+  first?: ReactNode;
 }) {
   return (
     <>
@@ -691,11 +794,12 @@ function FactStep({
         ))}
       </div>
       <StepFoot>
-        <Link className={`hr-btn${!canMoveOn ? ' hr-btn--primary' : ''}`} to={page.to}>
+        {first}
+        <Link className={`hr-btn${!canMoveOn && !first ? ' hr-btn--primary' : ''}`} to={fromSetup(page.to)}>
           {page.label}
         </Link>
         {canMoveOn ? (
-          <button type="button" className="hr-btn hr-btn--primary" onClick={onNext}>
+          <button type="button" className={`hr-btn${first ? '' : ' hr-btn--primary'}`} onClick={onNext}>
             {finishes ? 'Finish setup' : 'Next'}
           </button>
         ) : null}

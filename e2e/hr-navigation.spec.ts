@@ -195,21 +195,24 @@ test.describe('Settings is the setup steps until setup is done', () => {
     await expect(page.locator('.hr-wiz__card h2')).toHaveCount(1);
     await expect(page.locator('.hr-wiz__count')).toHaveText(/^Step \d of 8$/);
 
-    // Each step settled elsewhere opens that one page, still inside Settings.
-    for (const [step, link, path, heading, section] of [
-      ['Pay rules', 'Open Pay rules', '/admin/hr/settings/payroll', 'Pay rules', 'Settings'],
-      ['Payroll items', 'Open Payroll items', '/admin/hr/settings/payroll-items', 'Payroll items', 'Settings'],
-      // Employees are not a setting: the step leaves for the Employees page.
-      ['Employees', 'Open the Employees page', '/admin/hr/employees', 'Employees', 'Employees'],
+    // Each step settled elsewhere opens that one page, with the eight steps
+    // pinned in the rail and that step lit (new-clinic UAT #2, item 69).
+    for (const [step, link, path, heading] of [
+      ['Pay rules', 'Open Pay rules', '/admin/hr/settings/payroll', 'Pay rules'],
+      ['Payroll items', 'Open Payroll items', '/admin/hr/settings/payroll-items', 'Payroll items'],
+      ['Employees', 'Open the Employees page', '/admin/hr/employees', 'Employees'],
     ] as const) {
       await gotoHr(page, '/admin/hr/settings');
       await page.locator('.hr-wizStep', { hasText: step }).click();
       await expect(page.locator('.hr-wiz__card h2')).toHaveText(step);
       await page.getByRole('link', { name: link, exact: true }).click();
-      await expect(page).toHaveURL(new RegExp(`${path}$`));
+      await expect(page).toHaveURL(new RegExp(`${path}\\?from=setup$`));
       await expect(page.getByRole('heading', { name: heading, exact: true }).first()).toBeVisible();
-      await expect(page.locator('.kw-hubRail__item.is-active .hr-side__label')).toHaveText(section);
+      await expect(page.locator('.hr-setupRail .hr-wizStep[aria-current="step"] .hr-wizStep__title')).toHaveText(step);
     }
+    // "Leave setup" gives the HR sections back.
+    await page.getByRole('button', { name: 'Leave setup' }).click();
+    await expect(page.locator('.hr-setupRail')).toHaveCount(0);
 
     // Attendance & leave carries public holidays.
     await gotoHr(page, '/admin/hr/settings/attendance-leave');

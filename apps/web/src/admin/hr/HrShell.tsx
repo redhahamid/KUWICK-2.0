@@ -18,6 +18,7 @@ import {
 } from './ui/icons';
 import { SectionTileContext, type SectionTile } from './ui/sectionTile';
 import { fontFamily } from '../../design-system/tokens';
+import { SetupRail, useSetupTrail } from './setupTrail';
 import './ui/slate.css';
 
 /**
@@ -64,6 +65,7 @@ export function HrShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
+  const trail = useSetupTrail();
 
   const hr = ADMIN_CATEGORIES.find((category) => category.key === 'hr');
   const may = useCanCheck();
@@ -164,8 +166,12 @@ export function HrShell() {
                 />
               </div>
             ) : null}
-            <nav aria-label="HR sections">{items.map((item) => railItem(item.path, item.label))}</nav>
-            {settings ? (
+            {trail.on ? (
+              <SetupRail onLeave={trail.leave} />
+            ) : (
+              <nav aria-label="HR sections">{items.map((item) => railItem(item.path, item.label))}</nav>
+            )}
+            {settings && !trail.on ? (
               <div className="hr-side__bottom">
                 <nav aria-label="HR settings">{railItem(settings.path, settings.label, true)}</nav>
               </div>

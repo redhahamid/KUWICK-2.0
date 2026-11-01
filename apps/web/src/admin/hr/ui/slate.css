@@ -2667,6 +2667,18 @@ a.hr-who:hover .hr-who__name {
   font-size: 12px;
   text-decoration: none;
   flex: none;
+  border: 0;
+  cursor: pointer;
+}
+.hr-top__back {
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  /* On a phone the account menu carries the way back. */
+  .hr-top__back,
+  .hr-top__name {
+    display: none;
+  }
 }
 .hr-portal__main {
   padding: 28px 36px 56px;
@@ -3874,4 +3886,35 @@ textarea.hr-f {
 .kw-help__after {
   color: var(--hr-ink2);
   font-size: 14px;
+}
+
+/* The wizard's steps pinned in the HR rail (new-clinic UAT #2, item 69). */
+.hr-setupRail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 8px;
+}
+.hr-wiz__steps--rail {
+  flex: none;
+  box-shadow: none;
+  padding: 0;
+  background: transparent;
+}
+.hr-wiz__steps--rail .hr-wizStep {
+  padding: 8px;
+}
+.hr-setupRail__leave {
+  align-self: flex-start;
+  margin: 4px 8px 0;
+}
+
+/* A row of buttons under a message (new-clinic UAT #2). */
+.hr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.hr-mb {
+  margin-bottom: 14px;
 }

@@ -159,6 +159,14 @@ export function HrSettingsPage() {
         <span className="hr-sub">{complete ? `${steps.length} of ${steps.length} steps` : 'Finish the rest to start payroll'}</span>
         <span className="hr-setupDone__link">{complete ? 'Review setup' : 'Continue setup'}</span>
       </Link>
+      {/* Setup is the way to the first payroll (new-clinic UAT #2, item 75). */}
+      {complete && !setup.runs.some((row) => row.status !== 'CANCELLED') ? (
+        <div className="hr-actions hr-mb">
+          <Link className="hr-btn hr-btn--primary" to="/admin/hr/payroll">
+            Run your first payroll →
+          </Link>
+        </div>
+      ) : null}
 
       <div className="hr-areas">
         {areas.map((area) => (

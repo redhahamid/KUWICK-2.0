@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import dayjs from 'dayjs';
 import { usePayrollReadiness } from '../hooks/useAdmin';
 import { Panel, PanelHead, StatusChip } from './ui';
 import { Table } from './ui/Table';
@@ -108,6 +109,20 @@ export function PayrollStartGate({
               title={`${gaps.text} ${gaps.months.length === 1 ? 'has' : 'have'} no payroll — PCB may be understated`}
               sub={`For ${gaps.people} ${gaps.people === 1 ? 'person' : 'people'} employed then. The month can still be worked out.`}
             />
+            {/* The way on (new-clinic UAT #2, item 76): run the missing month itself, latest first. */}
+            <div className="hr-actions hr-mb">
+              {[...gaps.months]
+                .sort((a, b) => b - a)
+                .slice(0, 3)
+                .map((month) => {
+                  const missing = dayjs(`${gaps.taxYear}-${String(month).padStart(2, '0')}-01`);
+                  return (
+                    <Link key={month} className="hr-btn hr-btn--sm" to={`/admin/hr/payroll?period=${missing.format('YYYY-MM')}`}>
+                      Run {missing.format('MMMM')} payroll →
+                    </Link>
+                  );
+                })}
+            </div>
             <details className="hr-details">
               <summary>Details</summary>
               <p className="hr-small">

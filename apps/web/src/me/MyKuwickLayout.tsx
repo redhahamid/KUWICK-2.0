@@ -1,17 +1,21 @@
 import type { ReactNode } from "react";
 import { canvas, fontFamily } from "../design-system/tokens";
-import { ConfigProvider } from "antd";
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { ConfigProvider, Dropdown } from "antd";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
+  ArrowLeftOutlined,
   CalendarOutlined,
   ClockCircleOutlined,
   FileDoneOutlined,
   HomeOutlined,
+  LogoutOutlined,
+  QuestionCircleOutlined,
   UserOutlined,
   WalletOutlined,
 } from "@ant-design/icons";
 import { SectionTileContext, type SectionTile } from "../admin/hr/ui/sectionTile";
 import { useAuthStore } from "../core/auth-store";
+import { useCan } from "../core/hooks/useCan";
 import { setClinicTimeZone } from "../clinical/clinicTime";
 import { initialsOf } from "../admin/hr/ui/who";
 import "../admin/hr/ui/slate.css";
@@ -47,8 +51,22 @@ const TILES: Record<string, SectionTile> = {
   "/my/profile": { tone: "slate", icon: <UserOutlined aria-hidden="true" /> },
 };
 
+/**
+ * THE WAY BACK (new-clinic UAT #2, item 52). My Kuwick sits outside the
+ * workspace shell, so an owner or HR person who opened it had no way back but
+ * the browser's. Anyone who can see HR goes back to Kuwick admin; everyone
+ * else back to the clinic workspace they signed in to.
+ */
+export function useWayBack(): { to: string; label: string } {
+  const mayHr = useCan("hr.view");
+  return mayHr ? { to: "/admin/hr", label: "Back to Kuwick admin" } : { to: "/appointments", label: "Back to Kuwick" };
+}
+
 export function MyKuwickLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const back = useWayBack();
+  const clearAuth = useAuthStore((state) => state.clearAuth);
   const { data: profile } = useMyProfile();
   const { data: home } = useMyHome();
   const tenantName = useAuthStore((state) => state.tenant?.name ?? null);
@@ -89,17 +107,38 @@ export function MyKuwickLayout() {
             {tenantName ? (
               <span className="hr-top__clinic">{tenantName}</span>
             ) : null}
+            <Link to={back.to} className="hr-btn hr-btn--sm hr-top__back">
+              <ArrowLeftOutlined aria-hidden="true" /> {back.label}
+            </Link>
             <Link to="/my/help" className="hr-top__help">
               Help
             </Link>
             <span className="hr-top__name">{name || "—"}</span>
-            <Link
-              to="/my/profile"
-              className="hr-top__avatar"
-              aria-label="My profile"
+            <Dropdown
+              trigger={["click"]}
+              placement="bottomRight"
+              menu={{
+                items: [
+                  { key: "profile", icon: <UserOutlined />, label: "My profile", onClick: () => navigate("/my/profile") },
+                  { key: "back", icon: <ArrowLeftOutlined />, label: back.label, onClick: () => navigate(back.to) },
+                  { key: "help", icon: <QuestionCircleOutlined />, label: "Help", onClick: () => navigate("/my/help") },
+                  { type: "divider" },
+                  {
+                    key: "logout",
+                    icon: <LogoutOutlined />,
+                    label: "Log out",
+                    onClick: () => {
+                      clearAuth();
+                      navigate("/login");
+                    },
+                  },
+                ],
+              }}
             >
-              {name ? initialsOf(name) : "·"}
-            </Link>
+              <button type="button" className="hr-top__avatar" aria-label="Account menu">
+                {name ? initialsOf(name) : "·"}
+              </button>
+            </Dropdown>
           </div>
         </header>
 

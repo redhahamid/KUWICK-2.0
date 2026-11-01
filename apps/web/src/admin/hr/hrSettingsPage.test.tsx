@@ -54,18 +54,19 @@ const employer = (over: Partial<LegalEmployerRow> = {}): LegalEmployerRow => {
 let employers: LegalEmployerRow[] = [];
 let check: { checkedAt: string; checkedBy: string | null; current: boolean } | null = null;
 const upsert = vi.fn(async () => ({}));
+const seed = vi.fn();
+const STANDARD_ITEMS = [
+  { name: 'Basic salary', active: true, payDay: 30, paidInArrears: false, paidFollowingMonth: false },
+  { name: 'Overtime', active: true, payDay: 15, paidInArrears: true, paidFollowingMonth: false },
+  { name: "Director's fee", active: true, payDay: 1, paidInArrears: false, paidFollowingMonth: false },
+];
+let items: unknown[] = STANDARD_ITEMS;
 const ok = (data: unknown) => ({ data, isLoading: false, error: null });
 
 vi.mock('../hooks/useAdmin', () => ({
   useLegalEmployers: () => ok(employers),
-  usePayComponents: () =>
-    ok({
-      components: [
-        { name: 'Basic salary', active: true, payDay: 30, paidInArrears: false, paidFollowingMonth: false },
-        { name: 'Overtime', active: true, payDay: 15, paidInArrears: true, paidFollowingMonth: false },
-        { name: "Director's fee", active: true, payDay: 1, paidInArrears: false, paidFollowingMonth: false },
-      ],
-    }),
+  usePayComponents: () => ok({ components: items }),
+  useSeedPayComponents: () => ({ mutate: seed, isPending: false }),
   usePayrollApprovalPolicy: () => ok({ mode: 'STANDARD' }),
   usePayrollPolicies: () => ok({ policies: [{ isDefault: true, partMonthBasis: 'CALENDAR_DAYS', overtime: { days: 26, hoursPerDay: 8 } }] }),
   usePayrollRuns: () => ok([]),
@@ -107,6 +108,8 @@ const mount = (path = '/admin/hr/settings') =>
 
 beforeEach(() => {
   upsert.mockClear();
+  seed.mockClear();
+  items = STANDARD_ITEMS;
   employers = [employer()];
   check = null;
   holidays = [];
@@ -172,7 +175,46 @@ describe('Settings while setup is incomplete', () => {
 
   it('sends the Employees step to the Employees page', () => {
     mount('/admin/hr/settings?step=employees');
-    expect(screen.getByRole('link', { name: 'Open the Employees page' })).toHaveAttribute('href', '/admin/hr/employees');
+    expect(screen.getByRole('link', { name: 'Open the Employees page' })).toHaveAttribute('href', '/admin/hr/employees?from=setup');
+  });
+
+  /* New-clinic UAT #2, 1 November 2026. */
+  it('adds the default items from inside step 4 (item 57)', () => {
+    items = [];
+    mount('/admin/hr/settings?step=items');
+    fireEvent.click(screen.getByRole('button', { name: 'Add default items' }));
+    expect(seed).toHaveBeenCalledWith({ baseOnly: true }, expect.anything());
+    expect(screen.getByRole('link', { name: 'Open Payroll items' })).toHaveAttribute('href', '/admin/hr/settings/payroll-items?from=setup');
+  });
+
+  it('opens the Public holidays page itself from step 5, keeping the steps beside it (items 65, 69)', () => {
+    mount('/admin/hr/settings?step=holidays');
+    expect(screen.getByRole('link', { name: 'Edit the calendar' })).toHaveAttribute('href', '/admin/hr/settings/public-holidays?from=setup');
+  });
+
+  it('asks the company address, phone and EA signing officer in step 1 (item 54)', async () => {
+    mount();
+    fireEvent.change(screen.getByPlaceholderText('e.g. 03-1234 5678'), { target: { value: '03-0000 0000' } });
+    fireEvent.change(screen.getByPlaceholderText('Name of the officer who signs Borang EA'), { target: { value: 'Demo Pengarah' } });
+    fireEvent.change(screen.getByPlaceholderText('e.g. Pengarah'), { target: { value: 'Pengarah' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save & next' }));
+    await vi.waitFor(() => expect(upsert).toHaveBeenCalledTimes(1));
+    expect((upsert.mock.calls[0] as unknown[])[0]).toMatchObject({
+      phone: '03-0000 0000',
+      addressLine1: '1 Jalan Demo',
+      eaSignerName: 'Demo Pengarah',
+      eaSignerPosition: 'Pengarah',
+    });
+  });
+});
+
+describe('Adding the first employee from the wizard (item 68)', () => {
+  it('opens Add employee with the steps still pinned', async () => {
+    const admin = await import('../hooks/useAdmin');
+    const spy = vi.spyOn(admin, 'useEmployees').mockReturnValue(ok([]) as never);
+    mount('/admin/hr/settings?step=employees');
+    expect(screen.getByRole('link', { name: 'Add your first employee' })).toHaveAttribute('href', '/admin/hr/employees/new?from=setup');
+    spy.mockRestore();
   });
 });
 
@@ -182,6 +224,11 @@ describe('Settings when setup is done', () => {
     check = { checkedAt: '2026-10-05T00:00:00.000Z', checkedBy: 'Demo Owner', current: true };
     holidays = [{ date: `${new Date().getFullYear()}-05-01` }];
     opening = { answer: 'NONE', year: new Date().getFullYear() };
+  });
+
+  it('offers the first payroll once setup is complete (item 75)', () => {
+    mount();
+    expect(screen.getByRole('link', { name: 'Run your first payroll →' })).toHaveAttribute('href', '/admin/hr/payroll');
   });
 
   it('is one line, four cards with three facts each, and Advanced folded away', () => {
