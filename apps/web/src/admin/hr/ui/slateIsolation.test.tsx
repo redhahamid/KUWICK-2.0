@@ -9,17 +9,25 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 /**
- * SLATE CANNOT REACH THE OTHER FOUR MODULES.
+ * SLATE CANNOT LEAK OUT OF THE MODULES THAT OPTED INTO IT.
  *
  * `design-system/tokens.ts` is the one source for the whole product: it feeds
  * antd's theme AND generates the `--kw-*` properties in `index.css`. Its
- * palette is navy. Slate is a different palette, and HR is the only module
- * being rebuilt on it — so the Slate values live under `.kw-hrSlate` and
- * `.kw-hrSlateHeader`, and nowhere else.
+ * palette is navy. Slate is a different palette, so the Slate values live
+ * under `.kw-hrSlate` and `.kw-hrSlateHeader`, and nowhere else.
  *
  * This is the guard for that sentence. Without it the first convenient
- * `:root { --hr-teal: … }` repaints Operation, Stock, Panel and Finance, and
- * nobody notices until somebody opens Finance.
+ * `:root { --hr-teal: … }` repaints Operation, Stock and Finance, and nobody
+ * notices until somebody opens Finance.
+ *
+ * WHAT CHANGED ON 3 NOVEMBER 2026, and what did not. The owner asked for the
+ * Panel module to look like HR, so `admin/panel/` joined the kit's territory
+ * below. That is a change of TERRITORY, decided by a person, and it is the
+ * only thing that moved: the ban on declaring `--hr-*` at `:root` stands, the
+ * ban on Slate hexes reaching the global tokens stands, and the three modules
+ * that did not opt in are still unreachable from here. Panel imports the kit
+ * from `admin/hr/ui` rather than copying it — one kit with an `hr-` prefix for
+ * historical reasons, not two that drift.
  *
  * Stylesheets are read from DISK rather than imported. Vite's CSS plugin
  * answers a `?raw` import of a `.css` file with an empty string, so a guard
@@ -63,12 +71,27 @@ const SOURCES = import.meta.glob("../../../**/*.{ts,tsx}", {
  * everything else in the app is at least two levels up.
  */
 /*
- * The kit's territory: the HR module, and — since Piece 3g — the employee
- * portal (`src/me`), which the portal mockups draw on the same Slate kit.
- * Everywhere else keeps the product-wide palette.
+ * THE KIT'S TERRITORY, as a list rather than a shape.
+ *
+ *   - the HR module, where the kit was written (keys that are `./x` or `../x`)
+ *   - the employee portal (`src/me`), since Piece 3g
+ *   - the Panel module (`admin/panel`), since 3 November 2026
+ *   - the two files that choose a shell per route, which must name both
+ *     workspaces to route between them
+ *
+ * Everywhere else keeps the product-wide palette, and this list is the only
+ * place that changes when a module opts in — so opting one in is a decision
+ * somebody makes, not an import somebody adds.
  */
-const insideHr = (file: string) =>
-  !file.startsWith("../../") || file.startsWith("../../../me/");
+const TERRITORY = [
+  "../../../me/",
+  "../../panel/",
+  "../../AdminLayout.tsx",
+  "../../../design-system/components/AppLayout.tsx",
+];
+
+const insideTerritory = (file: string) =>
+  !file.startsWith("../../") || TERRITORY.some((allowed) => file.startsWith(allowed));
 
 describe("the Slate kit", () => {
   it("was actually read, so the rest of this file means something", () => {
@@ -91,9 +114,9 @@ describe("the Slate kit", () => {
     expect(rules(slateCss)).not.toContain(":root");
   });
 
-  it("is not reachable from any file outside the HR module", () => {
+  it("is not reachable from any file outside that territory", () => {
     const outsiders = Object.entries(SOURCES)
-      .filter(([file]) => !insideHr(file))
+      .filter(([file]) => !insideTerritory(file))
       .filter(
         ([, source]) =>
           source.includes("--hr-") || source.includes("ui/slate.css"),
@@ -104,7 +127,7 @@ describe("the Slate kit", () => {
 
   it("left the product-wide palette alone", () => {
     // If a Slate colour has found its way into the global tokens or the global
-    // stylesheet, the other four modules have been repainted.
+    // stylesheet, the modules that did not opt in have been repainted.
     const found = SLATE_HEXES.filter(
       (hex) =>
         tokensSource.toLowerCase().includes(hex) ||
