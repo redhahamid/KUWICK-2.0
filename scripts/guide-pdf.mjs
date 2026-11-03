@@ -29,6 +29,8 @@ const inline = (text) =>
     .replace(/`([^`]+)`/g, '<code>$1</code>');
 
 const html = [];
+/** Every picture, so it can be embedded as a JPEG: a PDF keeps a JPEG as it is, a WebP or PNG grows several times. */
+const pictures = [];
 let list = null;
 let paragraph = [];
 const flushParagraph = () => {
@@ -52,9 +54,9 @@ for (const raw of readFileSync(input, 'utf8').split('\n')) {
   if (picture) {
     flushParagraph();
     flushList();
-    const src = pathToFileURL(resolve(base, picture[2])).href;
+    pictures.push(resolve(base, picture[2]));
     const phone = /phone/.test(picture[2]) ? ' class="phone"' : '';
-    html.push(`<figure><img${phone} src="${src}" alt="${escape(picture[1])}"></figure>`);
+    html.push(`<figure><img${phone} src="picture-${pictures.length - 1}.jpg" alt="${escape(picture[1])}"></figure>`);
   } else if (line.startsWith('#')) {
     flushParagraph();
     flushList();
@@ -83,15 +85,36 @@ const page = `<!doctype html><html><head><meta charset="utf-8"><style>
   h3 { font-size: 12pt; margin: 14pt 0 4pt; break-after: avoid; }
   p, li { margin: 0 0 5pt; }
   figure { margin: 4pt 0 8pt; break-inside: avoid; }
-  img { display: block; max-width: 100%; max-height: 120mm; border: 1px solid #d0d5dd; border-radius: 4pt; }
-  img.phone { max-height: 110mm; }
+  img { display: block; max-width: 100%; max-height: 95mm; border: 1px solid #d0d5dd; border-radius: 4pt; }
+  img.phone { max-height: 90mm; }
   code { font-size: 10pt; background: #f2f4f7; padding: 0 2pt; border-radius: 2pt; }
 </style></head><body>${html.join('\n')}</body></html>`;
 
 const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {});
 const tab = await browser.newPage();
-// From a file, so the pictures (file:// beside the guide) are allowed to load.
+// The page and its JPEG pictures go in one folder, opened as a file.
 const folder = mkdtempSync(join(tmpdir(), 'guide-pdf-'));
+for (const [index, path] of pictures.entries()) {
+  const type = path.endsWith('.png') ? 'png' : path.endsWith('.jpg') ? 'jpeg' : 'webp';
+  const jpeg = await tab.evaluate(
+    async ({ data, type }) => {
+      const image = new Image();
+      image.src = `data:image/${type};base64,${data}`;
+      await image.decode();
+      const scale = Math.min(1, 1400 / image.naturalWidth);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(image.naturalWidth * scale);
+      canvas.height = Math.round(image.naturalHeight * scale);
+      const context = canvas.getContext('2d');
+      context.fillStyle = '#fff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/jpeg', 0.82).split(',')[1];
+    },
+    { data: readFileSync(path).toString('base64'), type },
+  );
+  writeFileSync(join(folder, `picture-${index}.jpg`), Buffer.from(jpeg, 'base64'));
+}
 writeFileSync(join(folder, 'guide.html'), page);
 await tab.goto(pathToFileURL(join(folder, 'guide.html')).href, { waitUntil: 'load' });
 await tab.pdf({
