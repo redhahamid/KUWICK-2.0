@@ -2,6 +2,8 @@
 
 Panduan ini mengikut satu klinik baharu melalui dua bulan gaji pertamanya: dari log masuk pertama pemilik hingga Borang EA. Setiap gambar ialah skrin sebenar dari laman staging Kuwick, diambil pada 3 November 2026 semasa langkah-langkah di bawah dibuat.
 
+Nota kuning "Payroll statutory setup is not yet production-ready" pada sesetengah gambar adalah milik laman staging, yang untuk ujian; klinik sebenar tidak melihatnya.
+
 Klinik ini ialah demo: **Klinik Panduan Sdn Bhd** di Bandar Baru Bangi, Selangor. No. KWSP, PERKESO dan LHDN syarikat adalah rekaan. Tiga orangnya juga rekaan: **Dr Amin Contoh** (doktor, gaji bulanan), **Siti Contoh** (jururawat, gaji bulanan, mula bekerja pertengahan Oktober) dan **Dr Lim Contoh** (lokum luar yang dibayar ikut sesi).
 
 Setiap langkah ada satu gambar, apa yang perlu dibuat, dan **Semak:** apa yang perlu dilihat sebelum teruskan. Nama butang ditulis seperti di skrin (Bahasa Inggeris). Langkah bertanda ⚠ ada masalah semasa ujian; semuanya disenaraikan di bawah "Masalah yang ditemui" di hujung panduan.
@@ -322,7 +324,7 @@ Telefon berkata **Clocked in at …** dan butang bertukar menjadi **Scan to cloc
 
 HR → **Attendance** menunjukkan setiap orang berbanding syifnya. Siti tertulis **On duty · late … min**.
 
-**Semak:** kad "Late / left early" di atas, dan minit tenggang dalam "Rules in force".
+**Semak:** kad "Late / left early" di atas, dan minit tenggang dalam "Rules in force". ⚠ Semasa halaman masih dimuatkan, baris doktor tertulis "Not on the employee list"; lihat masalah 12.
 
 ### D6. ⚠ HR merekod clock-in yang tertinggal
 
@@ -330,7 +332,7 @@ HR → **Attendance** menunjukkan setiap orang berbanding syifnya. Siti tertulis
 
 Pada Isnin 2 November Siti terlupa telefonnya. Pergi ke hari itu (‹), tekan **Fix** pada barisnya, taip masa clock-in (08:00) dan tekan **Record the clock-in**.
 
-**Semak:** rekod itu ditanda "Entered by HR". Langkah ini gagal semasa ujian dan sudah dibaiki; lihat masalah 1.
+**Semak:** rekod itu ditanda "Entered by HR". Langkah ini gagal dalam larian latihan pertama dan dibaiki sebelum larian staging; lihat masalah 1.
 
 ### D7. Dia memohon pembetulan
 
@@ -380,13 +382,7 @@ Jenis: Unpaid leave, 12 November. **Submit request**.
 
 **Semak:** cuti tanpa gaji tiada baki; gaji menolaknya.
 
-### E3. Permohonannya
-
-![Permohonan cutinya](img/payroll-a-z/e03-phone-requests.webp)
-
-**Semak:** kedua-duanya tersenarai di bawah **My requests**, menunggu keputusan.
-
-### E4. Senarai HR
+### E3. Senarai HR
 
 ![HR → Leave](img/payroll-a-z/e04-hr-leave-list.webp)
 
@@ -394,21 +390,21 @@ HR → **Leave** menunjukkan permohonan yang menunggu keputusan. Tekan **Review*
 
 **Semak:** kiraan "Waiting for decision" dan lencana di menu.
 
-### E5. Luluskan cuti tahunan
+### E4. Luluskan cuti tahunan
 
 ![Menyemak cuti tahunan](img/payroll-a-z/e05-hr-annual.webp)
 
 Laci itu menunjukkan tarikh, baki selepas, siapa lagi bercuti, dan kesannya pada gaji. Tekan **Approve**.
 
-**Semak:** "Feeds payroll: no deduction (paid leave)". (Semasa ujian ini tertulis "Annual leave leave"; sudah dibaiki, lihat masalah 2.)
+**Semak:** "Feeds payroll: no deduction (paid leave)". (Dalam larian latihan pertama ini tertulis "Annual leave leave"; dibaiki sebelum larian staging, lihat masalah 2.)
 
-### E6. Luluskan cuti tanpa gaji
+### E5. Luluskan cuti tanpa gaji
 
 ![Menyemak cuti tanpa gaji](img/payroll-a-z/e06-hr-unpaid.webp)
 
 **Semak:** "Feeds payroll" menyatakan gaji November dikurangkan sehari.
 
-### E7. Kedua-duanya diluluskan
+### E6. Kedua-duanya diluluskan
 
 ![Cuti diluluskan](img/payroll-a-z/e07-hr-leave-approved.webp)
 
@@ -432,13 +428,7 @@ Jenis: Travel (toll, parking, fares), RM 12.00, dengan gambar resit. **Submit cl
 
 **Semak:** gambar dilampirkan sebelum menghantar; sesetengah jenis tuntutan mewajibkannya.
 
-### F3. Tuntutannya
-
-![Tuntutannya](img/payroll-a-z/f03-phone-claims.webp)
-
-**Semak:** kedua-duanya tersenarai di bawah **My claims**, menunggu keputusan.
-
-### F4. Senarai HR
+### F3. Senarai HR
 
 ![HR → Claims](img/payroll-a-z/f04-hr-claims.webp)
 
@@ -446,7 +436,7 @@ HR → **Claims** menyenaraikan tuntutan yang menunggu. Tekan **Review**.
 
 **Semak:** jumlah yang menunggu di atas.
 
-### F5. Luluskan perbatuan
+### F4. Luluskan perbatuan
 
 ![Menyemak tuntutan perbatuan](img/payroll-a-z/f05-hr-mileage.webp)
 
@@ -454,7 +444,7 @@ Laci menunjukkan cara Kuwick mengira harganya (24 km × RM 0.60). Anda boleh mel
 
 **Semak:** "Paid from: With their salary", jadi ia masuk gaji.
 
-### F6. Luluskan tuntutan resit
+### F5. Luluskan tuntutan resit
 
 ![Menyemak tuntutan resit](img/payroll-a-z/f06-hr-receipt.webp)
 
@@ -462,7 +452,7 @@ Buka resit untuk menyemaknya, kemudian **Approve RM 12.00**.
 
 **Semak:** jumlah dan tarikh pada resit sama dengan tuntutan.
 
-### F7. Diluluskan, menunggu gaji
+### F6. Diluluskan, menunggu gaji
 
 ![Tuntutan diluluskan](img/payroll-a-z/f07-hr-claims-approved.webp)
 
@@ -582,7 +572,7 @@ November ada dua tarikh bayaran, jadi ada dua senarai (CSV) dan dua pemindahan u
 
 ![Pemindahan direkod](img/payroll-a-z/g14-november-paid.webp)
 
-**Semak:** setiap tarikh tertulis "Transfer recorded" dengan rujukannya.
+**Semak:** setiap tarikh tertulis "Transfer recorded" dengan rujukannya. ⚠ Kuwick masih menawarkan **Record the transfer** untuk tarikh yang sudah direkod (tetingkap dalam gambar memberi amaran "This listing is already recorded as paid"); lihat masalah 11.
 
 ### G16. Caruman berkanun: KWSP
 
@@ -642,10 +632,10 @@ HR → **Reports** → **Year-end forms**, tahun 2026. **Check before you print*
 
 ## Masalah yang ditemui
 
-Semasa ujian, langkah-langkah ini rosak, mengelirukan atau gagal. Setiap satu menyatakan apa yang dilihat dan apa yang dibuat.
+Semasa ujian (larian latihan pada salinan tempatan, kemudian larian staging), langkah-langkah ini rosak, mengelirukan atau gagal. Setiap satu menyatakan apa yang dilihat dan apa yang dibuat.
 
 1. **Rosak, sudah dibaiki (D6).** HR tidak dapat merekod clock-in untuk hari tanpa sebarang rekod: menyimpan meminta sebab, tetapi borang itu tiada kotak sebab. Dibaiki dalam kumpulan ini: sebab hanya diminta apabila rekod sedia ada diubah.
-2. **Perkataan, sudah dibaiki (E5).** Semakan cuti tertulis "Annual leave leave". Dibaiki.
+2. **Perkataan, sudah dibaiki (E4).** Semakan cuti tertulis "Annual leave leave". Dibaiki.
 3. **Tidak disokong (B12, C7).** Gaji hanya membayar gaji bulanan. Lokum yang dibayar ikut jam atau sesi tidak boleh dibayar melalui gaji, dan tiada skrin untuk menanda seseorang sebagai kontraktor. Cara yang berfungsi: letakkan lokum luar dalam roster ikut nama dan bayar dengan baucar bayaran melalui Finance.
 4. **Mengelirukan (A5, G5).** Wizard berkata "Approved by: Somebody other than the preparer", tetapi pemilik meluluskan seorang diri. Ini dibenarkan oleh tetapan "pemilik boleh meluluskan gajinya sendiri" (hidup secara asal, untuk klinik seorang), tetapi wizard tidak menyebutnya.
 5. **Mengelirukan (G5).** Selepas no. cukai yang tiada diakui, senarai semak Approve tertulis "EPF and income tax numbers on file — Everyone's numbers are on file", walaupun jururawat masih tiada no. cukai.
@@ -654,3 +644,6 @@ Semasa ujian, langkah-langkah ini rosak, mengelirukan atau gagal. Setiap satu me
 8. **Soalan (G11).** Kuwick membenarkan November diluluskan pada 3 November, sebelum kebanyakan bulan itu berlaku. Satu-satunya tanda ialah "1 day has no clock-in or clock-out". Amaran seperti "bulan ini belum tamat" mungkin membantu.
 9. **Perkataan (A5).** Ringkasan Pay rules tertulis "overtime on Days in the month", yang sukar difahami.
 10. **Nampak salah, sebenarnya betul (G18, H2).** PCB RM 0.00 untuk doktor bergaji RM 9,000 sebulan. Dia mula pada Oktober, dan kaedah berkomputer HASiL hanya mengira gaji tahun kalendar ini (RM 15,030 bercukai selepas pelepasan), jadi belum ada cukai. **How this was worked out** pada bulan orang itu menunjukkan angkanya.
+11. **Mengelirukan (G15).** Selepas kedua-dua pemindahan November direkod, butang **Record the transfer** masih ditawarkan untuk tarikh yang sudah dibayar; tetingkapnya memberi amaran "This listing is already recorded as paid".
+12. **Mengelirukan (D5, G9).** Pada sambungan perlahan, sesetengah halaman menunjukkan mesej "tiada" semasa masih dimuatkan, dan ia dibaca seperti fakta. Attendance menunjukkan doktor sebagai "Not on the employee list" (dengan "Rules in force: loading"); halaman November jururawat berkata "No approved month on record for 2026 yet" dan "No October payroll to compare with", walaupun Oktober sudah diluluskan dan dibayar. Pada salinan tempatan, halaman yang sama menunjukkan nama yang betul, jumlah tahun semasa (Oct–Nov 2026) dan gaji bersih Oktober.
+13. **Pelayan perlahan (G3, G8).** Di staging, sejurus selepas **Start … payroll** grid tertulis "This month has not been worked out yet" dengan jumlah RM 0.00; angka muncul sebentar kemudian tanpa menekan apa-apa. Gambar G3, G8 dan G9 diambil semula selepas angka sudah ada.

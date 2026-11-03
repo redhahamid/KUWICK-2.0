@@ -2,6 +2,8 @@
 
 This guide follows one new clinic through its first two payroll months: from the owner's first login to a Borang EA. Every picture is a real screen from Kuwick's staging site, taken on 3 November 2026 while the walk-through below was carried out.
 
+The yellow note "Payroll statutory setup is not yet production-ready" on some pictures belongs to the staging site, which is for testing; a live clinic does not see it.
+
 The clinic is a demo: **Klinik Panduan Sdn Bhd** in Bandar Baru Bangi, Selangor. Its EPF, SOCSO and LHDN numbers are made up. The three people are made up too: **Dr Amin Contoh** (doctor, monthly salary), **Siti Contoh** (staff nurse, monthly salary, joined in the middle of October) and **Dr Lim Contoh** (an outside locum paid by the session).
 
 Each step has one picture, what to do, and **Check:** what to look at before you go on. Steps marked ⚠ had a problem during the walk-through; they are listed under "Issues found" at the end.
@@ -322,7 +324,7 @@ The phone says **Clocked in at …** and the button becomes **Scan to clock out*
 
 HR → **Attendance** shows each person against their shift. Siti reads **On duty · late … min**.
 
-**Check:** the "Late / left early" card at the top, and the grace minutes in "Rules in force".
+**Check:** the "Late / left early" card at the top, and the grace minutes in "Rules in force". ⚠ While the page was still loading, the doctor's row read "Not on the employee list"; see issue 12.
 
 ### D6. ⚠ HR records a missing clock-in
 
@@ -330,7 +332,7 @@ HR → **Attendance** shows each person against their shift. Siti reads **On dut
 
 On Monday 2 November Siti forgot her phone. Go back to that day (‹), press **Fix** on her row, type the clock-in time (08:00) and press **Record the clock-in**.
 
-**Check:** the punch is marked "Entered by HR". This step failed during the walk-through and was fixed; see issue 1.
+**Check:** the punch is marked "Entered by HR". This step failed in the first practice run and was fixed before the staging run; see issue 1.
 
 ### D7. She asks for a correction
 
@@ -380,13 +382,7 @@ Type: Unpaid leave, 12 November. **Submit request**.
 
 **Check:** unpaid leave has no balance; payroll deducts it.
 
-### E3. Her requests
-
-![Her leave requests](img/payroll-a-z/e03-phone-requests.webp)
-
-**Check:** both are listed under **My requests**, waiting for a decision.
-
-### E4. HR's list
+### E3. HR's list
 
 ![HR → Leave](img/payroll-a-z/e04-hr-leave-list.webp)
 
@@ -394,21 +390,21 @@ HR → **Leave** shows requests waiting for a decision. Press **Review** on a ro
 
 **Check:** the "Waiting for decision" count and the menu badge.
 
-### E5. Approve the annual leave
+### E4. Approve the annual leave
 
 ![Reviewing the annual leave](img/payroll-a-z/e05-hr-annual.webp)
 
 The drawer shows the dates, her balance after, who else is away, and how payroll treats it. Press **Approve**.
 
-**Check:** "Feeds payroll: no deduction (paid leave)". (During the walk-through this said "Annual leave leave"; fixed, see issue 2.)
+**Check:** "Feeds payroll: no deduction (paid leave)". (In the first practice run this said "Annual leave leave"; fixed before the staging run, see issue 2.)
 
-### E6. Approve the unpaid leave
+### E5. Approve the unpaid leave
 
 ![Reviewing the unpaid leave](img/payroll-a-z/e06-hr-unpaid.webp)
 
 **Check:** "Feeds payroll" says November's pay is reduced by one day.
 
-### E7. Both approved
+### E6. Both approved
 
 ![Leave approved](img/payroll-a-z/e07-hr-leave-approved.webp)
 
@@ -432,13 +428,7 @@ Type: Travel (toll, parking, fares), RM 12.00, and a photo of the receipt. **Sub
 
 **Check:** the photo is attached before you submit; some claim types require it.
 
-### F3. Her claims
-
-![Her claims](img/payroll-a-z/f03-phone-claims.webp)
-
-**Check:** both are listed under **My claims**, waiting for a decision.
-
-### F4. HR's list
+### F3. HR's list
 
 ![HR → Claims](img/payroll-a-z/f04-hr-claims.webp)
 
@@ -446,7 +436,7 @@ HR → **Claims** lists claims waiting. Press **Review**.
 
 **Check:** the total waiting at the top.
 
-### F5. Approve the mileage
+### F4. Approve the mileage
 
 ![Reviewing the mileage claim](img/payroll-a-z/f05-hr-mileage.webp)
 
@@ -454,7 +444,7 @@ The drawer shows how Kuwick priced it (24 km × RM 0.60). You can approve a smal
 
 **Check:** "Paid from: With their salary", so it goes into payroll.
 
-### F6. Approve the receipt claim
+### F5. Approve the receipt claim
 
 ![Reviewing the receipt claim](img/payroll-a-z/f06-hr-receipt.webp)
 
@@ -462,7 +452,7 @@ Open the receipt to check it, then **Approve RM 12.00**.
 
 **Check:** the receipt's amount and date match the claim.
 
-### F7. Approved, waiting for payroll
+### F6. Approved, waiting for payroll
 
 ![Claims approved](img/payroll-a-z/f07-hr-claims-approved.webp)
 
@@ -582,7 +572,7 @@ November has two pay dates, so there are two listings (CSV) and two transfers to
 
 ![Transfers recorded](img/payroll-a-z/g14-november-paid.webp)
 
-**Check:** each date reads "Transfer recorded" with its reference.
+**Check:** each date reads "Transfer recorded" with its reference. ⚠ Kuwick still offered **Record the transfer** for a date already recorded (the dialog in the picture warns "This listing is already recorded as paid"); see issue 11.
 
 ### G16. Statutory filing: EPF (KWSP)
 
@@ -642,10 +632,10 @@ HR → **Reports** → **Year-end forms**, year 2026. **Check before you print**
 
 ## Issues found
 
-During the walk-through these steps were broken, confusing or failed. Each says what was seen and what was done.
+During the walk-through (practice runs on a local copy, then the staging run) these steps were broken, confusing or failed. Each says what was seen and what was done.
 
 1. **Broken, fixed (D6).** HR could not record a clock-in for a day with no punch: saving asked for a reason, but that form has no reason box. Fixed in this batch: the reason is asked for only when an existing punch is changed.
-2. **Wording, fixed (E5).** The leave review said "Annual leave leave". Fixed.
+2. **Wording, fixed (E4).** The leave review said "Annual leave leave". Fixed.
 3. **Not supported (B12, C7).** Payroll pays monthly salaries only. A locum paid by the hour or session cannot be paid through payroll, and no screen marks a person as a contractor. The way that works: put outside locums on the roster by name and pay them by payment voucher through Finance.
 4. **Confusing (A5, G5).** The wizard says "Approved by: Somebody other than the preparer", yet the owner approved alone. This is allowed by the setting "owner may approve their own run" (on by default, for one-person clinics), but the wizard does not say so.
 5. **Confusing (G5).** After the missing tax number was acknowledged, the Approve checklist reads "EPF and income tax numbers on file — Everyone's numbers are on file", though the nurse still has none.
@@ -654,3 +644,6 @@ During the walk-through these steps were broken, confusing or failed. Each says 
 8. **Question (G11).** Kuwick let November be approved on 3 November, before most of the month had happened. The only sign was "1 day has no clock-in or clock-out". A warning such as "this month has not ended" may help.
 9. **Wording (A5).** The Pay rules summary reads "overtime on Days in the month", which is hard to follow.
 10. **Looks wrong, is right (G18, H2).** PCB is RM 0.00 for a doctor on RM 9,000 a month. He joined in October, and HASiL's computerised method counts only the pay of this calendar year (RM 15,030 chargeable after reliefs), so no tax is due yet. **How this was worked out** on the person's month shows the figures.
+11. **Confusing (G15).** After both November transfers were recorded, a **Record the transfer** button was still offered for a date already paid; its dialog warns "This listing is already recorded as paid".
+12. **Confusing (D5, G9).** On a slow connection some pages show a "nothing" message while they are still loading, and it reads like a fact. Attendance showed the doctor as "Not on the employee list" (with "Rules in force: loading"); the nurse's November page said "No approved month on record for 2026 yet" and "No October payroll to compare with", though October was approved and paid. On a local copy the same pages show the right names, the year to date (Oct–Nov 2026) and October's net pay.
+13. **Slow server (G3, G8).** On staging, straight after **Start … payroll** the grid read "This month has not been worked out yet" with RM 0.00 totals; the figures appeared a moment later without pressing anything. The pictures of G3, G8 and G9 were taken again once the figures were there.

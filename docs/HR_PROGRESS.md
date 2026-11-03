@@ -32,6 +32,16 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
   (seperti konsol platform), tunggu staging pada komit ini, jalankan skrip, simpan gambar
   sebagai artifak 3 hari. Kata laluan dibuat dalam runner, tidak dicetak; kata laluan pemilik
   dikembalikan disulitkan kepada kunci awam yang diberi.
+- `[D]` **Larian staging** (run 41602416705, komit `0487ae8`): "Klinik Panduan" dibuat, 76/78
+  langkah lulus. Dua gambar grid gaji diambil sebelum angka sampai (pelayan perlahan); diambil
+  semula dalam mod *retake* (run selepas `4bd0a25`: kata laluan pemilik baharu untuk tenant demo
+  itu sahaja, tiga skrin baca-sahaja). Gambar disalin ke cabang `guide-shots` kerana stor artifak
+  tidak boleh dicapai dari sesi ini.
+- `[D]` Panduan akhir: `docs/guides/payroll-a-z-en.md` / `-bm.md`, 78 gambar WebP
+  (`docs/guides/img/payroll-a-z/`, 4.4 MB), PDF 42 halaman setiap satu. 13 perkara dalam
+  "Issues found"; dua dibaiki dalam batch ini.
+- `[D]` Ditemui di staging: butang *Record the transfer* masih ditawarkan untuk tarikh yang sudah
+  direkod; teks "tiada" semasa memuatkan dibaca seperti fakta (Attendance, halaman bulan pekerja).
 - `[A]` PCB RM 0.00 untuk doktor RM 9,000 yang mula Oktober adalah betul mengikut kaedah
   berkomputer HASiL (P = RM 15,030 selepas pelepasan; kerja dalam `breakdown.workings.pcb`).
 
