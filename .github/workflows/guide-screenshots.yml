@@ -32,6 +32,11 @@ on:
         description: 'Wait until the staging API reports this commit (first 7+ characters)'
         type: string
         required: true
+      mode:
+        description: 'walk = create the clinic and walk it; retake = new owner password, retake the payroll grid screens only'
+        type: choice
+        options: [walk, retake]
+        default: walk
 
 permissions:
   contents: read
@@ -127,6 +132,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Create Klinik Panduan
+        if: inputs.mode == 'walk'
         working-directory: apps/api
         run: |
           PG_URL="${DATABASE_URL/sslmode=require/sslmode=no-verify}"
@@ -135,8 +141,18 @@ jobs:
           DATABASE_URL="$PG_URL" DEMO_TENANT_NAME="Klinik Panduan" DEMO_OWNER_EMAIL="$OWNER_EMAIL" \
             DEMO_OWNER_PASSWORD_HASH="$HASH" DEMO_APPLY=true npx tsx prisma/create-demo-tenant.ts
 
+      - name: A new owner password for Klinik Panduan (retake only)
+        if: inputs.mode == 'retake'
+        working-directory: apps/api
+        run: |
+          PG_URL="${DATABASE_URL/sslmode=require/sslmode=no-verify}"
+          echo "::add-mask::$PG_URL"
+          HASH="$(node -e 'process.stdout.write(require("bcryptjs").hashSync(process.env.GUIDE_OWNER_PASSWORD, 10))')"
+          DATABASE_URL="$PG_URL" GUIDE_OWNER_PASSWORD_HASH="$HASH" npx tsx prisma/guide-owner-password.ts
+
       - name: Walk it
         env:
+          GUIDE_RETAKE: ${{ inputs.mode == 'retake' && '1' || '' }}
           E2E_WEB_URL: ${{ env.WEB_URL }}
           GUIDE_API_URL: ${{ env.API_URL }}
           GUIDE_OUT: guide-out

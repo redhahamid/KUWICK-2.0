@@ -152,6 +152,7 @@ test.describe.configure({ mode: 'serial' });
 test.use({ timezoneId: 'Asia/Kuala_Lumpur', locale: 'en-MY' });
 
 test('payroll A–Z for a new clinic', async ({ page, browser }) => {
+  test.skip(Boolean(process.env.GUIDE_RETAKE), 'Retaking the payroll screens only.');
   test.setTimeout(3_600_000);
   if (!OWNER_EMAIL || !OWNER_PASSWORD) throw new Error('GUIDE_OWNER_EMAIL and GUIDE_OWNER_PASSWORD are required.');
   mkdirSync(OUT, { recursive: true });
@@ -1088,4 +1089,41 @@ test('payroll A–Z for a new clinic', async ({ page, browser }) => {
     await saveDownload(page.locator('tr', { hasText: doctor.name }).first().getByRole('button', { name: 'PDF' }), 'borang-ea-2026-doctor.pdf');
   });
   await phoneContext.close();
+});
+
+/*
+ * RETAKE THE PAYROLL GRID SCREENS (3 November 2026). On staging the first
+ * walk pictured October's and November's grids a moment before the figures
+ * arrived ("not worked out yet"). The months are approved now; the same
+ * figures are pictured again, read only, under the same names.
+ */
+test('payroll A–Z: the payroll grids again', async ({ page }) => {
+  test.skip(!process.env.GUIDE_RETAKE, 'Only when retaking.');
+  test.setTimeout(600_000);
+  mkdirSync(OUT, { recursive: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  page.setDefaultTimeout(30_000);
+  await login(page, OWNER_EMAIL, OWNER_PASSWORD);
+  const nurseRow = () => page.locator('tr', { hasText: 'Siti Contoh' }).first();
+  const grid = async (period: string) => {
+    await page.goto(`/admin/hr/payroll?period=${period}`);
+    await page
+      .getByRole('button', { name: /Prepare/ })
+      .filter({ hasText: /blocked|ready|worked out/i })
+      .first()
+      .click();
+    await expect(nurseRow()).toBeVisible({ timeout: 60_000 });
+    await page.waitForTimeout(1500);
+  };
+  await step(page, 'g03-october-grid', 'October worked out: the nurse is paid from 15 October', () => grid('2026-10'));
+  await step(page, 'g08-november-grid', 'The grid: overtime, unpaid leave and claims', async () => {
+    await grid('2026-11');
+    await nurseRow().scrollIntoViewIfNeeded();
+  });
+  await step(page, 'g09-november-nurse', "Siti Contoh's November: where each figure comes from", async () => {
+    await nurseRow().getByRole('link', { name: 'Siti Contoh' }).click();
+    await expect(page.getByText('What fed this month')).toBeVisible({ timeout: 60_000 });
+    await page.waitForTimeout(1000);
+  });
+  if (steps.some((row) => !row.ok)) throw new Error('A retake failed; see steps.json.');
 });
