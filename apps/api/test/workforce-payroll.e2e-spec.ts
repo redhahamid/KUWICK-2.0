@@ -115,6 +115,9 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         ...(opts.endDate ? { endDate: opts.endDate } : {}),
         // EPF, SOCSO and EIS all change at age 60, so payroll refuses to guess.
         dateOfBirth: '1990-06-15',
+        // A complete record carries the numbers its filings are addressed with.
+        epfNumber: '00000001',
+        taxNumber: 'SG 0000000001',
       })
       .expect(201);
 

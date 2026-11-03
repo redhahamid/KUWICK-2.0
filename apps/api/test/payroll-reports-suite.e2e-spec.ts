@@ -158,6 +158,8 @@ describe('Payroll reports and finance contract (e2e)', () => {
         dateOfBirth: '1991-03-03',
         bankName: 'Maybank',
         bankAccountNo: '514499887766',
+        epfNumber: '00000003',
+        taxNumber: 'SG 0000000003',
       })
       .expect(201);
     await request(server())

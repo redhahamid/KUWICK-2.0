@@ -71,6 +71,8 @@ describe('payroll register reconciliation (e2e)', () => {
         employmentType: 'PERMANENT',
         startDate: '2024-01-01',
         dateOfBirth: '1990-06-15',
+        epfNumber: '00000001',
+        taxNumber: 'SG 0000000001',
       })
       .expect(201);
     await request(server())
@@ -118,6 +120,8 @@ describe('payroll register reconciliation (e2e)', () => {
         employmentType: 'PERMANENT',
         startDate: '2024-01-01',
         dateOfBirth: '1988-03-02',
+        epfNumber: '00000002',
+        taxNumber: 'SG 0000000002',
       })
       .expect(201);
     await request(server())

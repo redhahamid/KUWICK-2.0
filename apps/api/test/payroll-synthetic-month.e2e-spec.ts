@@ -265,6 +265,8 @@ describe('Synthetic payroll month (e2e)', () => {
         ...(opts.endDate ? { endDate: opts.endDate } : {}),
         dateOfBirth: '1992-05-05',
         ...(opts.bank === false ? {} : { bankName: 'Maybank', bankAccountNo: `51244${Math.floor(Math.random() * 10000000)}` }),
+        epfNumber: '00000004',
+        taxNumber: 'SG 0000000004',
       })
       .expect(201);
     await request(server())
