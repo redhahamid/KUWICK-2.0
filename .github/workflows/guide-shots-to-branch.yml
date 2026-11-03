@@ -1,0 +1,45 @@
+# ONE-OFF: copy the Payroll A–Z screenshots from a guide-screenshots run onto
+# the branch "guide-shots", so they can be fetched with git where the
+# artifact store cannot be reached (3 November 2026). Demo clinic only; the
+# encrypted password file is printed to the log, never committed.
+
+name: Payroll A–Z screenshots to a branch (one-off, manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'The guide-screenshots run whose pictures to copy'
+        type: string
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: payroll-a-z-shots
+          path: shots
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Commit to the guide-shots branch
+        env:
+          REPO: ${{ github.repository }}
+          TOKEN: ${{ github.token }}
+        run: |
+          cd shots
+          if [ -f passwords.enc ]; then echo "ENCRYPTED: $(cat passwords.enc)"; rm passwords.enc; fi
+          git init -q -b guide-shots
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Payroll A–Z screenshots from run ${{ inputs.run_id }}"
+          git push -q --force "https://x-access-token:${TOKEN}@github.com/${REPO}.git" guide-shots
+          echo "Pushed $(git ls-files | wc -l) files to guide-shots."
