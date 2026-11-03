@@ -14,7 +14,8 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
   menunjukkan angka yang sama dengan halaman Leave dan My Kuwick ("8 days a year ·
   1.5 this year · Standard leave"). Semakan staging baharu *staff-defaults* memberi
   polisi cuti dan nombor pekerja kepada staf sedia ada yang tiada (dry run dahulu;
-  tenant cawangan Hijraa tidak disentuh).
+  tenant cawangan Hijraa tidak disentuh). Dijalankan di staging 3 Nov: Klinik Demo Baru 1,
+  Klinik Demo Baru 2 1 (+ nombor E001), Kuwick UAT Staging 1; Klinik Contoh (UAT) 28 dibiarkan.
 - `[D]` **Cuti bersalin / paterniti** (79): bersalin untuk wanita sahaja, paterniti untuk
   lelaki sahaja (jantina tidak direkod: kedua-duanya ditunjuk).
 - `[D]` **Pembundaran** (80): tetapan klinik `hr.leaveEntitlements` — setengah hari
