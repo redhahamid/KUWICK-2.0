@@ -21,6 +21,7 @@
     "verify:hr-flows": "tsx prisma/verify-hr-flows.ts",
     "seed:catalogues": "tsx prisma/seed-clinic-catalogues.ts",
     "seed:reference": "tsx prisma/seed-reference-catalogs.ts",
+    "seed:default-panels": "tsx prisma/seed-default-panels.ts",
     "seed:standard-rx": "tsx prisma/seed-standard-prescriptions.ts",
     "list:dose-priced-lines": "tsx prisma/list-dose-priced-invoice-lines.ts",
     "correct:appointment-instants": "tsx prisma/correct-appointment-instants.ts"

@@ -109,8 +109,18 @@ export class PlatformTenantService {
         tx.defaultDocumentTemplate.findMany({ where: { active: true } }),
       ]);
       if (defaultPanels.length > 0) {
+        // N-1 — the NAME was the only field carried over, so a new clinic lost
+        // the portal address and the kind of body each panel is the moment it
+        // was provisioned, and had to re-enter both. Everything else on the
+        // default row is deliberately NOT copied: terms, fees and limits are
+        // per-clinic contract facts, and the setup wizard asks for them.
         await tx.panelClinic.createMany({
-          data: defaultPanels.map((panel) => ({ tenantId: tenant.id, name: panel.name })),
+          data: defaultPanels.map((panel) => ({
+            tenantId: tenant.id,
+            name: panel.name,
+            portalUrl: panel.url,
+            panelType: panel.panelType,
+          })),
         });
       }
       if (defaultProcedures.length > 0) {

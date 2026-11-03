@@ -83,6 +83,7 @@ import { PanelWorkspacePage } from './admin/panel/PanelWorkspacePage';
 import { PayablesPage } from './admin/finance/PayablesPage';
 import { PanelMoneyPage } from './admin/finance/PanelMoneyPage';
 import { ClaimImportPage } from './admin/panel/ClaimImportPage';
+import { PanelSetupPage } from './admin/panel/PanelSetupPage';
 import { NewItemRequestsPage } from './admin/stock/NewItemRequestsPage';
 import { PanelConfigPage } from './admin/panel/PanelConfigPage';
 import { HrOverviewPage } from './admin/hr/HrOverviewPage';
@@ -302,6 +303,7 @@ export function App() {
             <Route path="/admin/panel/import" element={<ClaimImportPage />} />
             <Route path="/admin/stock/new-item-requests" element={<NewItemRequestsPage />} />
             <Route path="/admin/panel/configuration" element={<PanelConfigPage />} />
+            <Route path="/admin/panel/setup" element={<PanelSetupPage />} />
             <Route path="/admin/panel/batches" element={<PanelClaimsPage />} />
             <Route path="/admin/panel/companies" element={<PanelClinicsPage />} />
 

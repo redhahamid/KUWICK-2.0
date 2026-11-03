@@ -18,6 +18,7 @@ import {
   PanelSubmissionMethod,
   PanelTermAnchor,
   PanelTermUnit,
+  PanelType,
 } from '@prisma/client';
 
 /**
@@ -27,6 +28,19 @@ import {
  * already owns them; this does not duplicate them.
  */
 export class UpsertPanelConfigDto {
+  /**
+   * WHAT KIND OF BODY THIS PANEL IS — see `PanelType`.
+   *
+   * Lives here rather than on the commercial endpoint because it drives no
+   * arithmetic: it groups this screen and decides which questions the setup
+   * wizard asks. Omitted leaves it as it was; it cannot be cleared back to
+   * unclassified, because a kind somebody took the trouble to record should
+   * not be erasable by a form that simply did not send the field.
+   */
+  @IsOptional()
+  @IsEnum(PanelType)
+  panelType?: PanelType;
+
   @IsOptional()
   @IsString()
   @MaxLength(160)

@@ -54,6 +54,58 @@ describe('PlatformTenantService', () => {
     });
   });
 
+  /**
+   * N-1 — the default panel list is copied into a new tenant, and the NAME used
+   * to be the only field that travelled. A clinic therefore lost the portal
+   * address and the kind of body each panel is at the moment it was created,
+   * and had to re-enter both by hand on a screen that could not suggest them.
+   */
+  it('carries the portal URL and the kind of panel over from the default list', async () => {
+    const { service, prisma } = createService();
+    (prisma.tenant.create as jest.Mock).mockResolvedValue({ id: 'tenant-1' });
+    (prisma.defaultPanelClinic.findMany as jest.Mock).mockResolvedValue([
+      { id: 'd1', name: 'Demo TPA A', url: 'https://portal.example.test', panelType: 'TPA', active: true },
+      { id: 'd2', name: 'Demo Government Scheme', url: null, panelType: 'GOVERNMENT', active: true },
+    ]);
+
+    await service.create({ name: 'New Clinic' });
+
+    expect(prisma.panelClinic.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          tenantId: 'tenant-1',
+          name: 'Demo TPA A',
+          portalUrl: 'https://portal.example.test',
+          panelType: 'TPA',
+        },
+        {
+          tenantId: 'tenant-1',
+          name: 'Demo Government Scheme',
+          portalUrl: null,
+          panelType: 'GOVERNMENT',
+        },
+      ],
+    });
+  });
+
+  /**
+   * And nothing MORE than those three. A term, a fee or a limit copied from the
+   * platform's list would be a guess wearing the authority of a default, on
+   * numbers that decide what a panel owes. The setup wizard (N-2) asks instead.
+   */
+  it('copies no term, fee or limit onto a new tenant\u2019s panels', async () => {
+    const { service, prisma } = createService();
+    (prisma.tenant.create as jest.Mock).mockResolvedValue({ id: 'tenant-1' });
+    (prisma.defaultPanelClinic.findMany as jest.Mock).mockResolvedValue([
+      { id: 'd1', name: 'Demo TPA A', url: null, panelType: 'TPA', active: true },
+    ]);
+
+    await service.create({ name: 'New Clinic' });
+
+    const [{ data }] = (prisma.panelClinic.createMany as jest.Mock).mock.calls[0];
+    expect(Object.keys(data[0]).sort()).toEqual(['name', 'panelType', 'portalUrl', 'tenantId']);
+  });
+
   // D-049 — the clinic's first OWNER_ADMIN login is created with the clinic.
   it('creates the owner-admin user + staff when owner credentials are given', async () => {
     const { service, prisma } = createService();

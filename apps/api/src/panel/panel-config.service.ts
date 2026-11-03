@@ -37,6 +37,8 @@ export class PanelConfigService {
       id: panel.id,
       name: panel.name,
       code: panel.code,
+      /** NULL means unclassified. The screen counts those and asks. */
+      panelType: panel.panelType,
       payerName: panel.payerName,
       active: panel.active,
       portalUrl: panel.portalUrl,
@@ -98,6 +100,7 @@ export class PanelConfigService {
       const updated = await tx.panelClinic.update({
         where: { id },
         data: {
+          panelType: dto.panelType,
           payerName: dto.payerName,
           portalUrl: dto.portalUrl,
           submissionMethod: dto.submissionMethod,

@@ -117,7 +117,18 @@ export function AppLayout() {
    * would mean you could not reach Finance from HR without going back to a
    * hub, which every other screen promises you can.
    */
-  const inAdminHr = location.pathname.startsWith('/admin/hr');
+  // The two Slate workspaces, HR and Panel. One header serves the whole
+  // product, so it is not rebuilt for a module: on these routes it takes a
+  // class and one extra element, and everywhere else it renders as it did.
+  // WHICH Slate module, so the crumb and the lit module tab name the real one.
+  // This was hardcoded to HR, and leaving it that way would have put
+  // "Administration / HR" above the panel claim queue.
+  const slateModule: 'hr' | 'panel' | null = location.pathname.startsWith('/admin/hr')
+    ? 'hr'
+    : location.pathname.startsWith('/admin/panel')
+      ? 'panel'
+      : null;
+  const inAdminSlate = slateModule !== null;
 
   const handleLogout = () => {
     clearAuth();
@@ -200,7 +211,7 @@ export function AppLayout() {
     <Layout style={{ height: '100vh', overflow: 'hidden' }}>
       <Header
         style={{ display: 'flex', alignItems: 'center', gap: 16, height: canvas.topBarHeight, lineHeight: `${canvas.topBarHeight}px` }}
-        className={`kw-app-header kw-app-header-canvas${inAdminHr ? ' kw-hrSlateHeader' : ''}`}
+        className={`kw-app-header kw-app-header-canvas${inAdminSlate ? ' kw-hrSlateHeader' : ''}`}
       >
         {/* The wordmark, as the canvas design sets it: the word, in ink. */}
         <span className="kw-wordmark" aria-label="Kuwick">
@@ -218,9 +229,9 @@ export function AppLayout() {
             </Link>
             {/* minWidth 0 so this truncates instead of pushing the user menu
                 off the right edge of a phone, where it was unreachable. */}
-            {inAdminHr ? (
+            {slateModule ? (
               <span className="kw-app-header-crumbs" style={{ flexShrink: 0 }}>
-                Administration <b>/ HR</b>
+                Administration <b>/ {slateModule === 'hr' ? 'HR' : 'Panel'}</b>
               </span>
             ) : (
               <Text strong style={{ flex: 1, minWidth: 0 }} ellipsis>
@@ -231,10 +242,10 @@ export function AppLayout() {
                 {inSettings ? 'Clinic Settings' : inAdmin ? 'Administration' : 'Management'}
               </Text>
             )}
-            {inAdminHr ? (
+            {slateModule ? (
               <Tabs
                 className="hr-modules"
-                activeKey="hr"
+                activeKey={slateModule}
                 onChange={(key) => {
                   const category = ADMIN_CATEGORIES.find((entry) => entry.key === key);
                   if (category) navigate(category.landing ?? category.items[0].path);

@@ -2550,6 +2550,112 @@ The easiest to get wrong is *nothing invented*, and specifically **the template 
 
 ---
 
+## D-117 — The Panel module: a kind, a starter list, a setup wizard, and the Slate surface
+
+**Status: DECIDED** (owner instruction and five answers, 2026-11-03)
+
+**What the audit found first, and why it shaped everything after.** Panel was
+briefed as a new module. It is not: 13 tables, 11 enums, 9 services, 16 routes,
+6 screens and 143 passing unit tests already existed, and 8 of the 10 Kuwick
+1.0 panel features were already carried over. The work was therefore the
+missing 20%, named as N-1…N-10 in
+[`PANEL_MODULE_AUDIT_AND_PLAN.md`](./PANEL_MODULE_AUDIT_AND_PLAN.md), not a
+rebuild. The two 1.0 regressions were *last-used panel remembered* and *panel
+auto-selected at the counter*, which are one piece together (N-5).
+
+**`PanelType` drives no arithmetic, and that is the decision.** A clinic owner
+already distinguishes a TPA administering someone else's scheme from an insurer
+carrying its own risk, from a company billed directly, from a statutory body —
+and nothing in Kuwick could record it. It now can, and **no fee, term or
+bill-split path reads it**. A classification that quietly moved money would be
+a second source of truth beside `panel_fee_terms`, which is exactly what D-112
+was spent removing. It groups the configuration screen and decides which
+questions the wizard asks. Nullable with no backfill: an unclassified panel is
+reported and answered, never guessed from its name.
+
+**The default panel list existed and was empty.** `default_panel_clinics` has
+been in the schema since the first core migration, has had platform CRUD and
+has been copied into every new tenant at provisioning — with nothing in it. So
+every clinic Kuwick ever provisioned started with zero panels. It is seeded
+now, under four rules each held by a test: names and kinds only (inclusion
+asserts no commercial relationship), **no portal URLs** (a wrong one sends a
+claim to the wrong place and Kuwick cannot verify them), no terms/fees/limits
+(per-clinic contract facts), and **no corporate panels** (every clinic's are
+its own; there is no national list to seed). The provisioning copy was also
+losing the portal URL, which a new tenant then had to re-enter.
+
+**The seed never overwrites a human edit.** The operator curates this list, and
+a seed that reset `active` on every deploy would silently undo that. One repair
+only: a row whose kind is NULL. It never deletes, never deactivates, never
+renames, and has a `--dry-run`.
+
+**The wizard records what it was not told.** Every step is skippable, and
+skipping one stores the absence rather than a plausible value. A clinic that
+answers only "these are my panels" gets working panels with no term and no fee
+rule, both of which the configuration screen already counts and chases. The
+alternative — refusing to save until a term is typed — is answered with a
+guess, and a guessed term decides when a claim is called overdue and a panel is
+chased for money it does not owe. A skipped fee stores `UNCONFIGURED`, never
+`NO_FEE`: "nobody has asked" and "this panel charges nothing" are different
+facts, and separating them is what D-112 established.
+
+Every panel created gets an **opening `PanelFeeTerm`**, including an
+`UNCONFIGURED` one. `PanelClinic.feeTreatment` is a mirror of the
+effective-dated history, and a mirror with nothing behind it is the one state
+that convention cannot survive.
+
+**Panel wears the Slate surface** (owner design instruction). It earns it for
+the reason HR does — it is a place somebody spends a morning, not a page they
+glance at. One kit, imported from `admin/hr/ui`, not a second copy that would
+drift. The isolation guard changed **territory, not teeth**: its allowlist
+names `admin/panel/`, and every other assertion stands. The guard was
+negative-tested.
+
+**The five owner answers**, with their effect:
+
+| Q | Answer | Effect |
+|---|---|---|
+| Annual limit | counts **CLAIMED**, excluding rejected and cancelled; policy year per panel, default January | N-4 unblocked. A member's entitlement is spent when the clinic claims against it, not when the panel pays — and a refused claim never touched it |
+| RM4.31/patient | **per visit, so per claim** | `PER_PATIENT` **will not be built**: identical arithmetic to the existing `AMOUNT` type, and two ways to say one thing get reconciled by hand forever |
+| Auto-raise the claim | **yes, default ON**; staff still choose when to submit | N-8. Submission stays manual, because a batch goes out when somebody has the documents |
+| Employer company | **a real list per panel**, quick-add at the counter | N-5 grew to a `PanelEmployer` table — and now closes **G-9** ("VARY BASED ON COMPANY") too |
+| Fee with two values | **check the dates first** | Implemented as a report rather than argued — below |
+
+**G-8 is computed, not guessed.** The workbook is not in this repository and
+`PANEL_LEGACY_WORKFLOW_AUDIT.md` §4.2 records the counts, not the dates. A
+count cannot tell a fee that changed in March from seven typing mistakes, and
+the two lead to opposite builds. So `src/panel/fee-value-variance.ts` holds the
+deciding rule (13 unit tests) and `prisma/reports/panel-fee-value-variance.ts`
+runs it over the claims, returning `SINGLE` / `BY_DATE` (→ `PanelFeeTerm`
+history, no feature) / `INTERLEAVED` (→ the per-claim override) / `STRAY` (a
+handful of rows to open, not a tier — §4.2 found floating-point dust and
+another panel's fee pasted into five rows) / `UNDATED`. **The real answer needs
+the clinic's claims and is not yet known.**
+
+**Found while building it: an existing money report was tenant-blind.**
+`panel-fee-treatment-impact.ts` scoped per tenant with
+`set_config('app.tenant_id', …)` and row-level security — correct for the
+application role, and useless for the role its own docstring tells you to use.
+`REPORT_DATABASE_URL` is the migration/owner role: `SUPERUSER` and
+`BYPASSRLS`, and RLS binds neither. Measured on 525 tenants it printed **525
+rows carrying the identical 164 claims and the identical RM1,952
+overstatement** — the whole database repeated once per tenant, under 525
+different clinic names. With `where: { tenantId }`: 120 rows of 1–3 claims,
+summing to exactly 164.
+
+D-112 requires that report to be run against production **before any prior
+panel receivable figure is quoted**, so a group total would have been quoted at
+one clinic as its own. **Any figure taken from it before 2026-11-03 must be
+discarded and the report re-run.** Both reports now carry explicit tenant
+scoping as well as the `set_config`, and `report-tenant-scoping.spec.ts` fails
+if a tenant-looping report loses either; the guard was negative-tested.
+
+**Reversibility**: high. `panel_type` is additive and nullable; the seed never
+deletes; the wizard only creates; the Slate change is presentational and
+guarded. The report fix is a correction, not a change of behaviour.
+
+---
+
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:
 
 - Doctor incentive formula: worked semantics now captured in full from Klinik Hijraa (`docs/PROPOSED_ADDENDUM_2026-08-01_klinik-hijraa-admin-reference.md`) — spec is no longer the blocker, building it is; still needs owner go-ahead to schedule (OQ#2, blocks 1c only)

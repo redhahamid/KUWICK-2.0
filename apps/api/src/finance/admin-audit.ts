@@ -64,6 +64,14 @@ export type AuditAction =
   | 'stock.newItemRejected'
   | 'panel.configured'
   /**
+   * A PANEL CREATED BY THE SETUP WIZARD (N-2). Its own action rather than a
+   * `panel.configured` on a row that did not exist a moment earlier: the first
+   * question asked of a panel whose figures look wrong is who set it up and
+   * what they were told, and "configured" on a creation would read as an edit
+   * to something that was already there.
+   */
+  | 'panel.created'
+  /**
    * The fee treatment changed and unsent claims were re-stamped with it. Kept
    * as its own action because it silently changes the arithmetic on claims
    * nobody edited, and "who changed our receivable and when" is exactly the

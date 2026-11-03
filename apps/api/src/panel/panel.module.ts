@@ -4,6 +4,7 @@ import { PanelWorkspaceController } from './panel.controller';
 import { ClaimWorkspaceService } from './claim-workspace.service';
 import { PanelConfigService } from './panel-config.service';
 import { ClaimImportService } from './claim-import.service';
+import { PanelSetupService } from './panel-setup.service';
 
 /**
  * WAVE 3 of the admin programme.
@@ -21,7 +22,7 @@ import { ClaimImportService } from './claim-import.service';
 @Module({
   imports: [CoreModule],
   controllers: [PanelWorkspaceController],
-  providers: [ClaimWorkspaceService, PanelConfigService, ClaimImportService],
+  providers: [ClaimWorkspaceService, PanelConfigService, ClaimImportService, PanelSetupService],
   exports: [ClaimWorkspaceService],
 })
 export class PanelModule {}

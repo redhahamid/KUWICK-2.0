@@ -635,10 +635,71 @@ export const FEE_TREATMENT_HINT: Record<PanelFeeTreatment, string> = {
     "Nobody has established the rule. The fee is applied in neither direction and every receivable on this panel excludes it.",
 };
 
+/** What kind of body a panel is. NULL means nobody has said. */
+export type PanelType =
+  | "TPA"
+  | "INSURER"
+  | "CORPORATE"
+  | "GOVERNMENT"
+  | "OTHER";
+
+/** Plain language for a clinic owner — never the enum name on screen. */
+export const PANEL_TYPE_LABEL: Record<PanelType, string> = {
+  TPA: "Administrator (TPA)",
+  INSURER: "Insurance company",
+  CORPORATE: "Company we bill direct",
+  GOVERNMENT: "Government body",
+  OTHER: "Other",
+};
+
+export const PANEL_TYPE_HINT: Record<PanelType, string> = {
+  TPA: "Runs someone else's scheme. The company that pays is usually a different one, and the payment term can be set by the employer behind each claim.",
+  INSURER: "Carries the cover itself, so the panel and the payer are the same company.",
+  CORPORATE: "An employer you bill directly for its own staff.",
+  GOVERNMENT: "A statutory or public body. Usually no portal and no admin fee.",
+  OTHER: "Does not fit the four above.",
+};
+
+/** N-2 — whether the Panel module has been set up, and what to offer. */
+export interface PanelSetupStatus {
+  /** The clinic has no ACTIVE panel, so it lands on a blank claim workspace. */
+  needsSetup: boolean;
+  panels: {
+    id: string;
+    name: string;
+    panelType: PanelType | null;
+    active: boolean;
+    /** Shown so the wizard can say what is still unanswered rather than
+        implying a panel is finished because it exists. */
+    hasTerm: boolean;
+    feeSettled: boolean;
+  }[];
+  /** The platform's starter list, minus panels the clinic already has. */
+  suggestions: { name: string; portalUrl: string | null; panelType: PanelType | null }[];
+}
+
+/**
+ * One panel as the wizard will send it. Everything but the name is optional —
+ * an unanswered term stays NULL and an unanswered fee stays "not established",
+ * both of which the panel screens already chase.
+ */
+export interface PanelSetupDraft {
+  name: string;
+  panelType?: PanelType;
+  portalUrl?: string;
+  paymentTermDays?: number;
+  paymentTermUnit?: "CALENDAR_DAYS" | "WORKING_DAYS";
+  paymentTermAnchor?: "SERVICE_DATE" | "SUBMISSION_DATE" | "INVOICE_DATE";
+  feeTreatment?: PanelFeeTreatment;
+  claimFeeType?: "PERCENT" | "AMOUNT";
+  claimFeeValue?: number;
+}
+
 export interface PanelConfigRow {
   id: string;
   name: string;
   code: string | null;
+  panelType: PanelType | null;
   payerName: string | null;
   active: boolean;
   portalUrl: string | null;

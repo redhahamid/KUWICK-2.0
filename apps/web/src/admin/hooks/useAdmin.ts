@@ -25,6 +25,8 @@ import type {
   OpenDayRow,
   OperationsOverview,
   PanelConfigRow,
+  PanelSetupStatus,
+  PanelSetupDraft,
   NewItemRequestRow,
   PayableInvoiceRow,
   ClaimImportBatchRow,
@@ -563,6 +565,30 @@ export function usePanelConfigs() {
     queryKey: ["admin-panel", "panels"],
     queryFn: () => apiClient.get<PanelConfigRow[]>("/panel-workspace/panels"),
   });
+}
+
+/**
+ * N-2 — whether the Panel module has been set up, and what to offer.
+ *
+ * `needsSetup` is computed on the server from the clinic's own panels, not
+ * from this list being empty: a failed request must not be read as "you have
+ * no panels" and send somebody into a wizard that then refuses every name as a
+ * duplicate.
+ */
+export function usePanelSetupStatus() {
+  return useQuery({
+    queryKey: ["admin-panel", "setup"],
+    queryFn: () => apiClient.get<PanelSetupStatus>("/panel-workspace/setup"),
+  });
+}
+
+export function useCreatePanels() {
+  return useAdminMutation(
+    (body: { panels: PanelSetupDraft[] }) => apiClient.post("/panel-workspace/setup", body),
+    // Creating a panel changes the rail counts, the configuration screen and
+    // what the claim workspace can offer.
+    ["admin-panel"],
+  );
 }
 
 export function useUpdatePanelConfig() {
