@@ -1,6 +1,9 @@
 # Panel module — audit and build plan (Step 1)
 
-**Date:** 2026-11-03 · **Base:** `master` @ `8ad1e94` (re-fetched) · **Status:** audit only, nothing built
+**Date:** 2026-11-03 · **Base:** `master` @ `8ad1e94` (re-fetched)
+**Status:** audit complete; the owner answered all five questions on 3 November
+2026 and gave the go-ahead. **N-1 and N-2 are built.** Build order and verdicts
+below are updated with those answers.
 
 The headline finding: **the Panel module is not a new module.** It is roughly
 80% built, it is the most evidence-driven domain in Kuwick 2.0, and all 143 of
@@ -106,11 +109,87 @@ claims derive from invoices and therefore cannot disagree.
 
 ---
 
+## 2a · The owner's answers (3 November 2026)
+
+All five questions from §5 are answered. Where an answer changed the plan, the
+gap below says so.
+
+| Q | Answer | Effect on the plan |
+|---|---|---|
+| 1 · Annual limit | Used-to-date counts the **CLAIMED** amount, excluding rejected and cancelled. Policy year is a **per-panel** setting, default January. | N-4 unblocked. `limitYearStartMonth` confirmed as needed, defaulting to 1. |
+| 2 · RM4.31 per patient | **Per visit — so per claim.** It is the existing `AMOUNT` fee type. | **N-3 shrank.** `PER_PATIENT` is not needed at all; Medilink is already expressible today. Only `PERCENT_BATCH` (G-7) remains. |
+| 3 · Auto-raise the claim | **Yes, default ON.** Staff still choose when to submit a batch. | N-8's setting flips to default on. |
+| 4 · Employer company | **A real list per panel**, with quick-add at the counter. It is also where a per-employer payment term lives (G-9). | **N-5 grew.** `PanelEmployer` is a table from the start, not free text later — and it closes G-9 as well. |
+| 5 · Fee with two values | Check whether the values **split by date** first. If yes it is `PanelFeeTerm` history and no feature is needed; if not, a per-claim override with a required reason. | See below — this is now **computed, not guessed**. |
+
+### Q5 is answered by a report, because the evidence is not in this repository
+
+The clinic's workbook is deliberately not committed, and
+[`PANEL_LEGACY_WORKFLOW_AUDIT.md`](./PANEL_LEGACY_WORKFLOW_AUDIT.md) §4.2
+records only the **counts** — "2,261 claims at one fee value, 7 at a different
+one" — not the dates. A count cannot tell a fee that changed in March from
+seven typing mistakes, and those two findings lead to opposite builds. So the
+rule is implemented rather than asserted:
+
+- `src/panel/fee-value-variance.ts` — the deciding rule, pure arithmetic, 13 unit tests.
+- `prisma/reports/panel-fee-value-variance.ts` — reads the claims and prints a verdict per panel.
+
+```bash
+npx tsx prisma/reports/panel-fee-value-variance.ts
+```
+
+Five verdicts, and only one of them is a feature:
+
+| Verdict | Meaning | What to build |
+|---|---|---|
+| `SINGLE` | One fee value. | Nothing. |
+| `BY_DATE` | The ranges do not overlap — the value **changed on a date**. | **Nothing.** `PanelFeeTerm` already does this. |
+| `INTERLEAVED` | The ranges overlap — two values in use **at once**. | The per-claim override with a required reason (G-8). |
+| `STRAY` | One value holds nearly every claim; the rest is a handful (under 2% and fewer than 20). | **Nothing yet** — open the named claims. §4.2 found floating-point dust and another panel's fee pasted into five rows, and a tier table would enshrine that as a rule. |
+| `UNDATED` | Some claims carry no service date. | Import the dates, or answer that panel by hand. |
+
+**The answer for the real panel is not yet known, and this report is how it
+gets known.** It needs the clinic's own claims — either the workbook imported
+through the existing importer, or a run against production. Run on the
+synthetic UAT database it reports `SINGLE` for every real panel and
+`INTERLEAVED` only for four fixture tenants whose test claims carry two fee
+values on one day, which is fixture noise rather than evidence.
+
+### Found while building Q5's report: an existing money report was tenant-blind
+
+`prisma/reports/panel-fee-treatment-impact.ts` scoped each tenant's figures
+with `set_config('app.tenant_id', …)` and row-level security. That is correct
+for the application role and **does nothing for the role its own docstring
+tells you to use**: `REPORT_DATABASE_URL` is the migration/owner role, which is
+`SUPERUSER` and `BYPASSRLS`, and RLS binds neither.
+
+So every tenant iteration read every tenant's claims. Measured on a database
+with 525 tenants:
+
+| | Before | After |
+|---|--:|--:|
+| Tenant rows printed | 525 | 120 |
+| Distinct figures across them | **1** | 16 |
+| Claims reported per tenant | 164 (every row) | 1–3 |
+| Sum of claims across rows | 86,100 | **164** — the true total |
+
+Every one of the 525 rows carried the identical 164 claims and the identical
+RM1,952 overstatement: the whole database repeated once per tenant, under 525
+different clinic names. D-112 states this report **must be run against
+production before any prior panel receivable figure is quoted**, so a group
+total would have been quoted at one clinic as its own.
+
+Both reports now carry `where: { tenantId }` as well as the `set_config`, and
+`src/panel/report-tenant-scoping.spec.ts` fails if a tenant-looping report
+loses either. The guard was negative-tested.
+
+---
+
 ## 3 · What is genuinely new — gap register N-1 … N-10
 
 Each gap names the brief item, the evidence, the proposed model, and its size.
 
-### N-1 · Panel type, and an empty default list — **MISSING** · S
+### N-1 · Panel type, and an empty default list — **BUILT** (3 Nov 2026) · S
 
 No `panelType` anywhere in the schema. `payerName` is free text and answers a
 different question (who signs the cheque, not what kind of body this is).
@@ -145,7 +224,7 @@ fix provisioning to copy `url` and `panelType`.
 > into a panel's portal ever says "Kuwick". Demo tenants use neutral labels
 > ("Demo TPA A", "Demo Insurer B").
 
-### N-2 · Setup wizard when the module is empty — **MISSING** · M
+### N-2 · Setup wizard when the module is empty — **BUILT** (3 Nov 2026) · M
 
 HR has `PayrollStartGate`. Panel has no empty state at all: a clinic with zero
 panels lands on a blank claim workspace.
@@ -165,19 +244,23 @@ panels lands on a blank claim workspace.
 Every step is skippable and every answer is a setting with a default. A clinic
 that skips everything gets working panels with 30-day terms and no fee.
 
-### N-3 · Fee rule: RM per patient, and batch-level fees — **PARTIAL** · M
+### N-3 · Batch-level fees — **PARTIAL, and smaller than first thought** · S
 
-`PanelClaimFeeType` is `PERCENT | AMOUNT`, both applied **per claim**. The real
-workbook shows `RM8/claim` (built), `10%`/`15%` (built), and **`RM4.31/patient`
-(not expressible)**. Open gaps G-7 (10% of a consolidated *monthly invoice*) and
-G-8 (fee tiers) are the same shape: a fee the batch owns, not a claim.
+**Revised by the owner's answer 2.** `RM4.31/patient` (Medilink) is charged
+**per visit, which is per claim** — so it is the existing `AMOUNT` fee type and
+is already expressible today. `PER_PATIENT` is **not needed and will not be
+built**: a fee type whose arithmetic is identical to one that exists would be a
+second way to say the same thing, and the two would be reconciled by hand
+forever.
+
+What remains is G-7 alone: one panel charges **10% of a consolidated monthly
+invoice**, which is a fee the *batch* owns rather than a claim.
 
 ```prisma
 enum PanelClaimFeeType {
-  PERCENT        // of each claim           (built)
-  AMOUNT         // RM per claim            (built)
-  PER_PATIENT    // RM × distinct patients in the batch     NEW
-  PERCENT_BATCH  // % of the batch total — closes G-7       NEW
+  PERCENT        // of each claim                      (built)
+  AMOUNT         // RM per claim — incl. RM4.31/patient (built, per answer 2)
+  PERCENT_BATCH  // % of the batch total — closes G-7   NEW
 }
 
 model ClaimBatch {
@@ -225,23 +308,54 @@ same discipline as `computeClaimBalance`: one formula, derived, never typed. A
 cached table only earns its place if that read is measured slow, and a cache
 that can drift from the claims is exactly the defect this module exists to kill.
 
-Needs one owner answer (Q1): does usage count **claimed**, **approved** or
-**paid** amounts?
+**Answered (Q1):** usage counts the **CLAIMED** amount, excluding rejected and
+cancelled claims. The policy year is a **per-panel** setting defaulting to
+January, which is why `limitYearStartMonth` stays — a per-panel field with a
+default, not a guess.
+
+Counting claimed rather than paid is the owner's call and it is the right one
+for the question the limit answers: a member's entitlement is spent when the
+clinic claims against it, not weeks later when the panel pays. Excluding
+rejected matters just as much — a claim the panel refused never touched the
+member's limit, and counting it would exhaust an entitlement the member still
+has.
 
 ### N-5 · Counter: employer, relationship, and panel memory — **MISSING** · M
 
 Three small things, one piece, because they are all pre-fill at the same moment.
 
+**Revised by the owner's answer 4:** the employer is **a real list per panel**,
+with quick-add at the counter — not free text. That is more work and it is the
+right call: free text cannot answer "what did we bill for Company X", and a
+list is also the only place a **per-employer payment term** can live, which
+closes the long-open **G-9** ("VARY BASED ON COMPANY") at the same time.
+
 ```prisma
 enum PanelRelationship { SELF  SPOUSE  CHILD  PARENT  OTHER }
 
+/// AN EMPLOYER BEHIND A PANEL (owner answer 4, and G-9).
+///
+/// Scoped to one panel, because the same company reached through two TPAs is
+/// two agreements with two different terms.
+model PanelEmployer {
+  id            String  @id @default(uuid())
+  tenantId      String  @map("tenant_id")
+  panelClinicId String  @map("panel_clinic_id")
+  name          String
+  code          String?
+  /// G-9. NULL means this employer takes the panel's own term, which is what
+  /// every employer means until somebody says otherwise.
+  paymentTermDays Int?  @map("payment_term_days")
+  active        Boolean @default(true)
+
+  @@unique([tenantId, panelClinicId, name])
+}
+
 model Visit {
-  /// Which company the member works for. Free text in piece one — a real
-  /// `PanelEmployer` table only once there is a report that needs to group by
-  /// it (and that is also where G-9's per-employer term would live).
-  panelEmployerName String?            @map("panel_employer_name")
+  panelEmployerId   String?            @map("panel_employer_id")
   panelRelationship PanelRelationship? @map("panel_relationship")
 }
+```
 
 model Patient {
   /// LAST-USED PANEL, so the counter can pre-fill. A suggestion, never a
@@ -300,6 +414,8 @@ each line ticked or not — it never blocks submission on it.
 
 ### N-8 · Claim raised automatically from the bill — **PARTIAL** · M
 
+**Owner answer 3: yes, default ON.**
+
 Today a settled panel invoice appears as **UNCLAIMED** immediately
 (`claim-batch.service.ts:293`) and staff choose what goes into a batch. That is
 closer to the real workflow than the brief's "created automatically" — one panel
@@ -307,9 +423,14 @@ batches daily, another monthly, and both are the same feature.
 
 So: make it a setting rather than a rewrite.
 
-- `panel.autoRaiseClaimOnSettlement`, default **off** (today's behaviour).
-  When on, settling a panel invoice puts a claim line into that panel's standing
-  `BATCHED` batch.
+- `panel.autoRaiseClaimOnSettlement`, default **ON** (owner answer 3). Settling
+  a panel invoice puts a claim line into that panel's standing `BATCHED` batch.
+  Staff still choose **when to submit** a batch, which is the part that was
+  never automatic and must not become so — a batch goes out when somebody has
+  the documents in hand.
+
+  Defaulting it on is a change to existing clinics' behaviour, so the switch
+  stays: a clinic that wants to pick what gets claimed can turn it off.
 - The brief's five status names are a **display mapping** over the existing 15
   states, not a schema change:
 
@@ -366,20 +487,27 @@ Each piece is one migration (or none), one service change, one screen, tests,
 and a `DECISIONS.md` entry. Order is chosen so nothing waits on an owner answer
 that has not arrived.
 
-| # | Piece | Gap | Blocked on | Size |
-|---|---|---|---|---|
-| **1** | Panel type + seed the global default list + copy `url`/`panelType` at provisioning | N-1 | — | S |
-| **2** | Portal-credential decision, schema comment, autofill guard | N-10 | — | S |
-| **3** | Setup wizard for an empty Panel module | N-2 | piece 1 | M |
-| **4** | Counter: employer, relationship, last-used panel pre-fill | N-5 | — | M |
-| **5** | Claim proof upload against the panel's checklist | N-7 | — | S |
-| **6** | Plain-language status names + `autoRaiseClaimOnSettlement` setting | N-8 | Q3 | M |
-| **7** | Batch-level fees: `PER_PATIENT`, `PERCENT_BATCH` (closes G-7) | N-3 | Q2 | M |
-| **8** | Annual limit with a derived used-to-date figure | N-4 | Q1 | L |
-| **9** | Panel-specific consultation price by time band | N-6 | — | M |
-| **10** | `.xlsx` import on the existing endpoint | N-9 | — | M |
+Every question is answered, so nothing is blocked. Order is unchanged except
+where an answer resized a piece.
 
-Pieces 1, 2, 4, 5, 9 and 10 need **no owner answer** and can start immediately.
+| # | Piece | Gap | Status | Size |
+|---|---|---|---|---|
+| **1** | Panel type + seed the global default list + copy `url`/`panelType` at provisioning | N-1 | **done** | S |
+| **1a** | Panel on the Slate kit — the premium surface, per the owner's design instruction | — | **done** | M |
+| **2** | Setup wizard for an empty Panel module, with a start gate on the workspace | N-2 | **done** | M |
+| **2a** | The G-8 fee-variance report, which answers Q5 from data | — | **done** | S |
+| **3** | Portal-credential decision, schema comment, autofill guard | N-10 | next | S |
+| **4** | Counter: `PanelEmployer` list + relationship + last-used panel pre-fill (also closes G-9) | N-5 | | L |
+| **5** | Claim proof upload against the panel's checklist | N-7 | | S |
+| **6** | Plain-language status names + `autoRaiseClaimOnSettlement`, default on | N-8 | | M |
+| **7** | `PERCENT_BATCH` batch-level fee (closes G-7) | N-3 | | S |
+| **8** | Annual limit, used-to-date from CLAIMED, per-panel policy year | N-4 | | L |
+| **9** | Panel-specific consultation price by time band | N-6 | | M |
+| **10** | `.xlsx` import on the existing endpoint | N-9 | | M |
+
+Two resizings worth noting: **N-3 shrank** from M to S (no `PER_PATIENT`
+needed), and **N-5 grew** from M to L (a real `PanelEmployer` table rather than
+free text) — but it now closes G-9 as well, which was not previously in scope.
 
 Three rules held throughout, same as HR:
 
@@ -394,42 +522,40 @@ Three rules held throughout, same as HR:
 
 ---
 
-## 5 · Questions for the owner (5)
+## 5 · Questions — all five answered
 
-1. **Annual limit** — when a panel says "RM150 per year", does the used-to-date
-   figure count what was **claimed**, what the panel **approved**, or what was
-   **paid**? (They differ by every rejection.) And does the policy year start in
-   January, or per panel?
-2. **RM4.31 per patient** — is that per distinct patient **per batch**, per
-   **month**, or per claim (so a patient with three claims in one batch is
-   charged three times)?
-3. **Claim raised automatically?** — today a settled panel bill shows as
-   unclaimed and staff pick what goes into a batch. Do you want a claim row
-   created the moment the bill is settled, or is choosing better?
-4. **Employer company** — free text at the counter, or a real list per panel you
-   can report on? A list is more work, but it is the only way to answer "what did
-   we bill for Company X" — and it is where a per-employer payment term would
-   live (gap G-9, "VARY BASED ON COMPANY").
-5. **Fee tiers (G-8)** — one panel shows two different fee values across 2,268
-   claims. A tier table, or a per-claim fee override with a reason? The workbook
-   cannot say which it is.
+See §2a for the answers and what each one changed. Nothing is outstanding.
+
+Two things still need the clinic's own data rather than a decision:
+
+1. **Run `panel-fee-value-variance.ts` against the real claims** (imported, or
+   production) to settle G-8. The rule is built and tested; only the evidence is
+   missing.
+2. **Re-run `panel-fee-treatment-impact.ts` now that it is tenant-scoped.** Any
+   figure quoted from it before 3 November 2026 was the group total wearing a
+   clinic's name — see §2a.
 
 ---
 
 ## 6 · Top 5 backlog items
 
-1. **Seed the global default panel list, and classify by type (N-1).** The
-   model, the platform CRUD and the copy-at-provisioning all exist; there is
-   simply nothing to copy, so every new clinic starts with zero panels. Smallest
-   piece, largest first-run effect.
-2. **Setup wizard for an empty Panel module (N-2).** The one piece that makes
-   the other nine reachable by a clinic owner rather than by us.
-3. **Annual limit with a derived used-to-date figure (N-4).** The only brief
-   item that is both missing and genuinely hard, and the one most likely to be
-   got wrong by caching a number that drifts from the claims.
-4. **Counter: employer, relationship, last-used panel (N-5).** Closes the two
-   remaining Kuwick 1.0 regressions and removes re-typing at the busiest moment
-   of the day.
-5. **Batch-level fees — `PER_PATIENT` and `PERCENT_BATCH` (N-3).** Makes the
-   real workbook's `RM4.31/patient` and `10% of the monthly invoice` expressible,
-   and closes long-open gap G-7.
+Revised after the owner's answers and the first two pieces.
+
+1. **Re-run the fee-treatment impact report, and quote nothing from it until
+   you have.** It was tenant-blind until 3 November 2026 (§2a): on 525 tenants
+   it printed the group's 164 claims and RM1,952 overstatement once per clinic,
+   under each clinic's own name. D-112 says this report gates every prior panel
+   receivable figure, so this is the cheapest and highest-consequence item on
+   the list.
+2. **Counter: `PanelEmployer`, relationship, last-used panel (N-5).** Closes
+   the two remaining Kuwick 1.0 regressions, removes re-typing at the busiest
+   moment of the day, and — now that the employer is a real list — closes G-9
+   as well.
+3. **Annual limit, used-to-date from CLAIMED, per-panel policy year (N-4).**
+   The only brief item both missing and genuinely hard, and the one most likely
+   to be got wrong by caching a number that drifts from the claims.
+4. **Auto-raise the claim at settlement, default on (N-8).** The owner's answer
+   3, and the piece that removes a manual step from every panel visit.
+5. **Import the clinic's workbook, then run the G-8 variance report.** The rule
+   is built and tested; without the real claims, G-8 stays an open question that
+   cannot be closed by argument.

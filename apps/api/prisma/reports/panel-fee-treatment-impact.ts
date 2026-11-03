@@ -63,13 +63,30 @@ async function main() {
   const report: Record<string, unknown>[] = [];
 
   for (const tenant of tenants) {
-    // Row-level security is transaction-scoped, so the tenant context has to be
-    // set INSIDE the transaction that reads. Setting it on a pooled connection
-    // outside one silently returns nothing, which is exactly the failure this
-    // report would be worst at reporting.
+    // SCOPED TWICE, AND THE EXPLICIT ONE IS THE LOAD-BEARING HALF.
+    //
+    // The `set_config` below is the right thing to do and was, until
+    // 2026-11-03, the ONLY thing being done — which made this report wrong on
+    // precisely the connection it tells you to use. Row-level security does
+    // not bind a SUPERUSER or a role with BYPASSRLS, and `REPORT_DATABASE_URL`
+    // is the migration/owner role, which is both. So every tenant iteration
+    // read EVERY tenant's claims: measured on a database with 525 tenants, the
+    // report printed 525 rows carrying the identical 164 claims and the
+    // identical RM1,952 overstatement — the whole database repeated once per
+    // tenant, under 525 different clinic names.
+    //
+    // That is the worst possible failure for this particular report. Its own
+    // docstring says it must be run against production before any prior panel
+    // receivable figure is quoted, so a per-clinic overstatement that is
+    // actually the group total would have been quoted at a clinic.
+    //
+    // `where: { tenantId }` is therefore explicit and NOT a belt-and-braces
+    // nicety. The `set_config` stays so the report is also correct if somebody
+    // runs it as the application role.
     const lines = await prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe(`SELECT set_config('app.tenant_id', $1, true)`, tenant.id);
       return tx.claimBatchLine.findMany({
+        where: { tenantId: tenant.id },
         select: {
           id: true,
           claimedAmount: true,
