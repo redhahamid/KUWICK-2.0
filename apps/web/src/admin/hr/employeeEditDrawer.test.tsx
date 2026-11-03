@@ -60,6 +60,7 @@ vi.mock('../hooks/useAdmin', () => ({
   useSetClinicalAccess: () => ({ mutateAsync: clinicalMutate, isPending: false }),
   useEmployees: () => ({ data: [] }),
   useLegalEmployers: () => ({ data: EMPLOYERS }),
+  useLeavePolicies: () => ({ data: [{ id: 'lp-1', name: 'Standard leave', active: true }] }),
   useStatutoryClassifications: () => ({ data: versions, isLoading: false }),
   useRecordStatutoryClassification: () => ({ mutateAsync: standingMutate, isPending: false }),
 }));
@@ -371,5 +372,17 @@ describe('the rest day, on the employment tab', () => {
 
     await waitFor(() => expect(upsertMutate).toHaveBeenCalled());
     expect(standingMutate).not.toHaveBeenCalled();
+  });
+});
+
+/* THE LEAVE POLICY, picked on the employment tab (new-clinic UAT #2 re-check, item 78). */
+describe('the leave policy, on the employment tab', () => {
+  it('offers the clinic’s policies and saves the one picked', async () => {
+    open();
+    fireEvent.mouseDown(screen.getByLabelText('Leave policy'));
+    fireEvent.click(await screen.findByTitle('Standard leave'));
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(upsertMutate).toHaveBeenCalled());
+    expect(upsertMutate.mock.calls[0][0]).toMatchObject({ leavePolicyId: 'lp-1' });
   });
 });

@@ -18,6 +18,8 @@ const WRITE_PERMISSION: Record<string, Permission> = {
   'hr.newStaffDefaults': 'hr.employee.manage',
   // Set up payroll → Opening balances: the people who run payroll.
   'hr.setup.openingBalances': 'hr.payroll.run',
+  // Settings → Attendance & leave → part-year leave rules: whoever edits leave types.
+  'hr.leaveEntitlements': 'hr.employee.manage',
 };
 
 export function writePermissionFor(key: string): Permission {

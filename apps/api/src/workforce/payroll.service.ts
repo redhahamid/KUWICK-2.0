@@ -76,7 +76,7 @@ import { classifyDay, combinePricing, describePricedDay, priceOvertime } from '.
 import { clinicRatesOf, multipliersOf, pcbProjectionOf, resolvePayrollPolicy } from './payroll-policy-resolution';
 import { workforceCategoryOf } from './workforce-category';
 import { payWeeks } from './weekly-pay';
-import { leaveKinds, unpaidLeaveCodes } from '../hr/leave-types';
+import { LEAVE_RULES_SETTING, leaveKinds, leaveRulesOf, unpaidLeaveCodes } from '../hr/leave-types';
 import { CatalogueRow, ResolvedComponent, catalogueFor, checkOrdinaryRateBase } from './component-liability';
 import {
   FIRST_SCHEDULE_WAGE_CEILING_CENTS,
@@ -1555,7 +1555,18 @@ export class PayrollService {
             storedBalance !== null
               ? Number(storedBalance.entitledDays)
               : annualPolicy?.proRateOnJoin
-                ? proRateEntitlement(fullYear, year, employee.startDate, employee.endDate)
+                ? proRateEntitlement(
+                    fullYear,
+                    year,
+                    employee.startDate,
+                    employee.endDate,
+                    // The clinic's rounding, as on the balance the person saw (item 80).
+                    leaveRulesOf(
+                      (await tx.globalSetting.findUnique({ where: { tenantId_key: { tenantId: currentTenantId(), key: LEAVE_RULES_SETTING } } }))?.value,
+                    ).rounding === 'WHOLE'
+                      ? 1
+                      : 0.5,
+                  )
                 : fullYear;
 
           /*
@@ -2475,6 +2486,14 @@ export class PayrollService {
         );
         const bonusColumnCents = columnCents('EARNING', (code) => code === 'BONUS');
         const otherDeductionColumnCents = columnCents('DEDUCTION', () => true);
+
+        // The numbers the month's filings are addressed with (items 77, 82):
+        // EPF where this month contributes it, the income tax number always.
+        const missingNumbers = [
+          (payslip.statutory.epf.employeeCents ?? 0) + (payslip.statutory.epf.employerCents ?? 0) > 0 && !employee.epfNumber ? 'EPF number' : null,
+          !employee.taxNumber ? 'income tax number' : null,
+        ].filter((label): label is string => label !== null);
+        if (missingNumbers.length > 0) raise('FILING_NUMBER_MISSING', employee, { missing: missingNumbers.join(' or ') });
 
         await tx.payrollLine.create({
           data: {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { accountLabel, filingNumbersCheck, taxCategoryLabel } from './recordLabels';
+import { accountLabel, annualLeaveLabel, filingNumbersCheck, taxCategoryLabel } from './recordLabels';
 
 /* New-clinic UAT #2, 1 November 2026. Demo names only. */
 describe('the employee record and Approve wordings', () => {
@@ -16,11 +16,17 @@ describe('the employee record and Approve wordings', () => {
     expect(taxCategoryLabel({ pcbCategory: null, taxCategory: null })).toBeNull();
   });
 
-  it('warns before Approve, naming who is missing which number (item 77)', () => {
+  it('warns before Approve from the run’s own warnings, naming each person (items 77, 82)', () => {
     expect(filingNumbersCheck([])).toEqual({ ok: true, detail: 'Everyone’s numbers are on file.' });
-    expect(filingNumbersCheck([{ name: 'Demo Nurse', missing: ['EPF number', 'income tax number'] }])).toEqual({
+    expect(filingNumbersCheck([{ name: 'Demo Nurse', what: 'No EPF number or income tax number is on file for this employee.' }])).toEqual({
       ok: false,
-      detail: 'Demo Nurse: no EPF number or income tax number. The EPF and PCB filings will be missing their number.',
+      detail: 'Demo Nurse: No EPF number or income tax number is on file for this employee. The EPF and PCB filings will be missing their number.',
     });
+  });
+
+  it('says annual leave the way the Leave page works it out (item 78)', () => {
+    expect(annualLeaveLabel({ fullYear: 8, thisYear: 1.5, policyName: 'Standard leave' }, 'Standard leave')).toBe('8 days a year · 1.5 this year · Standard leave');
+    expect(annualLeaveLabel({ fullYear: 8, thisYear: 8, policyName: 'Standard leave' }, null)).toBe('8 days a year · Standard leave');
+    expect(annualLeaveLabel(null, null)).toBeNull();
   });
 });

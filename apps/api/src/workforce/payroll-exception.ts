@@ -244,6 +244,21 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     remediation: 'Record the bank name, account number and account name.',
     deepLink: (c) => `/admin/hr/employees/${c.staffId}?tab=bank`,
   },
+  /*
+   * A MEMBERSHIP NUMBER THE FILINGS NEED (new-clinic UAT #2, items 77, 82).
+   * A warning, never a block: the month can be paid, but the EPF or PCB
+   * listing will carry this person without their number.
+   */
+  FILING_NUMBER_MISSING: {
+    code: 'FILING_NUMBER_MISSING',
+    title: 'EPF or tax number missing',
+    severity: 'WARNING',
+    overridable: true,
+    cause: (c) => `No ${c.missing} is on file for this employee.`,
+    consequence: 'You can still approve, but the EPF and PCB filings will be missing their number.',
+    remediation: 'Record the number on their record, under Statutory, then work the month out again.',
+    deepLink: (c) => `/admin/hr/employees/${c.staffId}?tab=statutory&focus=standing`,
+  },
   NEGATIVE_NET: {
     code: 'NEGATIVE_NET',
     title: 'Net pay below zero',

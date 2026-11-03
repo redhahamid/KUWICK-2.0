@@ -52,6 +52,8 @@ change it in Settings.
    annual leave 8 days a year, pro-rated in the year they join).
    You see the new record with coloured dots for what is still missing.
    *Account: No login* means you did not give them a login.
+   To move somebody to another leave policy, press **Edit** on Employment
+   and choose **Leave policy**.
    **Probation until** is filled from your default; the Employees page
    reminds you a month before it ends. The **Review** step says whether
    payroll can pay them, using the same check payroll uses.
@@ -101,7 +103,11 @@ change it in Settings.
 ## 5. Leave
 
 1. **Settings → Attendance & leave → Leave types**: check days a year, paid or
-   unpaid, and whether a document is needed.
+   unpaid, and whether a document is needed. **Joining mid-year** says whether
+   a joiner gets their share of the year or the whole entitlement (compassionate
+   leave is given in full unless you change it), and **Round part-year leave
+   to** chooses half or whole days. Maternity leave is offered to women only,
+   paternity leave to men only.
 2. Leave taken before Kuwick: **HR → Leave → Import opening balances**.
    You see each person's balance updated.
 3. Requests arrive in **HR → Leave** under *Waiting for decision*. Open one and
@@ -134,7 +140,10 @@ change it in Settings.
    press **Import items (CSV)**.
    You see grey cells already filled from records (salary, unpaid leave, claims).
 3. After any change, press **Work the month out again**. Then open **Review**.
-   You see what blocks the month (red), what is worth a look (amber) and the totals.
+   You see what blocks the month (red), what is worth a look (amber), the totals,
+   and last month beside this one (gross, deductions, net, cost) with one line
+   per person whose pay changed and why. Anybody without an EPF or income tax
+   number is listed in amber.
 4. Fix each red item, usually a missing record, and press **Work the month out again**.
    A month earlier in the year with no payroll shows **Run <month> payroll →**.
 5. **Approve**: read the summary and press **Approve the month**. An amber

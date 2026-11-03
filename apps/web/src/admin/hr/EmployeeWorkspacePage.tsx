@@ -16,7 +16,7 @@ import { RecurringItemsPanel } from './RecurringItemsPanel';
 import { EpfBasisPanel } from './EpfBasisPanel';
 import { EmployeeTaxPanel } from './EmployeeTaxPanel';
 import { DAY_NAMES, StatutoryStandingManager } from './StatutoryStandingManager';
-import { accountLabel, taxCategoryLabel } from './recordLabels';
+import { accountLabel, annualLeaveLabel, taxCategoryLabel } from './recordLabels';
 import { EmployeeEditDrawer, type EditSection } from './EmployeeEditDrawer';
 import { MarkResignedModal } from './MarkResignedModal';
 import { DeleteEmployeeModal } from './DeleteEmployeeModal';
@@ -378,9 +378,8 @@ function EmploymentTab({ data, onEdit, onResign }: { data: EmployeeRecord; onEdi
           ['Position', employment.position],
           [
             'Annual leave',
-            data.leavePolicy
-              ? `${data.leavePolicy.annualLeaveDays !== null ? `${data.leavePolicy.annualLeaveDays} days · ` : ''}${data.leavePolicy.name}`
-              : null,
+            // The figure the Leave page and My Kuwick show (new-clinic UAT #2 re-check, item 78).
+            annualLeaveLabel(data.annualLeave, data.leavePolicy?.name ?? null),
           ],
           ['Branch', employment.clinicName ?? 'All branches'],
           ['Reports to', employment.manager],

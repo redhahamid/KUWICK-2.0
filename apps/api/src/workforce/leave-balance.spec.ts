@@ -72,6 +72,11 @@ describe('leave balance', () => {
   });
 
   describe('proRateEntitlement', () => {
+    it('rounds to whole days when the clinic chooses whole days (new-clinic UAT #2 re-check, item 80)', () => {
+      // 8 days for somebody who joined 15 October 2026: 78 days of 365 is 1.71.
+      expect(proRateEntitlement(8, 2026, '2026-10-15', null)).toBe(1.5);
+      expect(proRateEntitlement(8, 2026, '2026-10-15', null, 1)).toBe(2);
+    });
     it('gives a full year to somebody employed all year', () => {
       expect(proRateEntitlement(14, 2026, '2020-01-01', null)).toBe(14);
     });

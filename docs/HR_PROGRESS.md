@@ -6,6 +6,30 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 72 — 3 November 2026 — semakan semula UAT #2: tutup HR
+
+**Tiada migrasi.**
+
+- `[D]` **Polisi cuti** (78): medan *Leave policy* dalam *Edit employment*. Profil kini
+  menunjukkan angka yang sama dengan halaman Leave dan My Kuwick ("8 days a year ·
+  1.5 this year · Standard leave"). Semakan staging baharu *staff-defaults* memberi
+  polisi cuti dan nombor pekerja kepada staf sedia ada yang tiada (dry run dahulu;
+  tenant cawangan Hijraa tidak disentuh).
+- `[D]` **Cuti bersalin / paterniti** (79): bersalin untuk wanita sahaja, paterniti untuk
+  lelaki sahaja (jantina tidak direkod: kedua-duanya ditunjuk).
+- `[D]` **Pembundaran** (80): tetapan klinik `hr.leaveEntitlements` — setengah hari
+  (lalai) atau hari penuh; cuti ihsan diberi penuh, tidak pro-rata (lalai). Sama juga
+  untuk bayaran cuti semasa berhenti.
+- `[D]` **Review: bandingan bulan** (81): Oktober | November | Perubahan bagi kasar,
+  potongan, bersih, kos; satu baris sebab bagi setiap orang ("Joined 15 Oct, part
+  month in October").
+- `[D]` **Amaran no. KWSP / cukai** (82): kini amaran sebenar payroll
+  (`FILING_NUMBER_MISSING`), jadi muncul dalam Review *Needs action*, panel kanan dan
+  senarai semak Approve. Tidak menyekat.
+- `[D]` Persekitaran ujian tempatan dibina semula (mesin baharu). Ujian pelayar
+  `canvas-viewport` (kad invois 167 px berbanding had 160 px) gagal pada master tanpa
+  perubahan ini juga — `[A]` fon mesin baharu, bukan HR.
+
 ## Batch 71 — 1 November 2026 — UAT klinik baharu #2 (B, C, D)
 
 **Tiada migrasi.**

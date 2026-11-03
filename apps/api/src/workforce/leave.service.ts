@@ -8,7 +8,7 @@ import { computeLeaveBalance, leaveDays, proRateEntitlement } from './leave-bala
 import { UpsertLeavePolicyDto } from './dto/upsert-leave-policy.dto';
 import { AdjustLeaveBalanceDto } from './dto/adjust-leave-balance.dto';
 import { ImportOpeningBalancesDto } from './dto/import-opening-balances.dto';
-import { LeaveKind, LeaveType, leaveKinds, proRatesOnJoin, statutoryFloor, yearsOfServiceAt } from '../hr/leave-types';
+import { LEAVE_RULES_SETTING, LeaveKind, LeaveRules, LeaveType, leaveKinds, leaveRulesOf, offeredTo, proRatesOnJoin, statutoryFloor, yearsOfServiceAt } from '../hr/leave-types';
 
 /**
  * The three reads a balance is computed from, named so the single-person and
@@ -17,6 +17,7 @@ import { LeaveKind, LeaveType, leaveKinds, proRatesOnJoin, statutoryFloor, years
 type LeaveProfile = {
   startDate: Date | null;
   endDate: Date | null;
+  gender?: string | null;
   leavePolicy: {
     name: string;
     proRateOnJoin: boolean;
@@ -52,6 +53,14 @@ export class LeaveService {
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
     private readonly rawPrisma: PrismaService,
   ) {}
+
+  /** The clinic's part-year rules (`hr.leaveEntitlements`), Kuwick's where it set none. */
+  private async leaveRules(): Promise<LeaveRules> {
+    const setting = await this.prisma.globalSetting.findUnique({
+      where: { tenantId_key: { tenantId: currentTenantId(), key: LEAVE_RULES_SETTING } },
+    });
+    return leaveRulesOf(setting?.value);
+  }
 
   async listPolicies() {
     await requirePermission(this.rawPrisma, 'hr.view');
@@ -240,7 +249,7 @@ export class LeaveService {
     ]);
     const kinds = leaveKinds(await this.prisma.leaveTypeSetting.findMany({ orderBy: { sortOrder: 'asc' } }));
 
-    return this.balanceRow({ staffId, year, profile, stored, requests, kinds });
+    return this.balanceRow({ staffId, year, profile, stored, requests, kinds, rules: await this.leaveRules() });
   }
 
   /**
@@ -266,7 +275,7 @@ export class LeaveService {
     ]);
     const kinds = leaveKinds(await this.prisma.leaveTypeSetting.findMany({ orderBy: { sortOrder: 'asc' } }));
 
-    return this.balanceRow({ staffId, year, profile, stored, requests, kinds });
+    return this.balanceRow({ staffId, year, profile, stored, requests, kinds, rules: await this.leaveRules() });
   }
 
   /**
@@ -284,6 +293,7 @@ export class LeaveService {
     stored,
     requests,
     kinds,
+    rules,
   }: {
     staffId: string;
     year: number;
@@ -291,6 +301,7 @@ export class LeaveService {
     stored: StoredBalance[];
     requests: LeaveRequestRow[];
     kinds: LeaveKind[];
+    rules: LeaveRules;
   }) {
     const storedByType = new Map(stored.map((row) => [row.leaveType, row]));
     const kindOf = new Map(kinds.map((kind) => [kind.code, kind]));
@@ -304,7 +315,10 @@ export class LeaveService {
       : profile.leavePolicy
         ? profile.leavePolicy.entitlements.map((entitlement) => entitlement.leaveType)
         : kinds.filter((kind) => kind.active && kind.daysPerYear !== null).map((kind) => kind.code);
-    const types: LeaveType[] = [...new Set([...listed, ...stored.map((row) => row.leaveType), ...requests.map((row) => row.leaveType)])];
+    // Maternity for women, paternity for men (item 79): a type kept only by a
+    // stored row or a request still shows, because those days are real.
+    const offered = listed.filter((code) => offeredTo(kindOf.get(code)?.statutory, profile?.gender));
+    const types: LeaveType[] = [...new Set([...offered, ...stored.map((row) => row.leaveType), ...requests.map((row) => row.leaveType)])];
     const years = yearsOfServiceAt(profile?.startDate, year);
 
     return {
@@ -332,12 +346,16 @@ export class LeaveService {
         const storedRow = storedByType.get(leaveType);
         // The policy's days, else the type's; never below the Act for a statutory type (decision 6).
         const fullYear = Math.max(Number(entitlement?.daysPerYear ?? kind?.daysPerYear ?? 0), statutoryFloor(kind?.statutory, years));
-        const proRate = (profile?.leavePolicy ? profile.leavePolicy.proRateOnJoin : true) && proRatesOnJoin(kind?.statutory);
+        // The clinic's own list of types given in full (item 80), then the Act's.
+        const proRate =
+          (profile?.leavePolicy ? profile.leavePolicy.proRateOnJoin : true) &&
+          proRatesOnJoin(kind?.statutory) &&
+          !rules.notProRated.includes(leaveType);
         const fixed = storedRow?.entitledDays !== null && storedRow?.entitledDays !== undefined;
         const entitled = fixed
           ? Number(storedRow!.entitledDays)
           : proRate && profile
-            ? proRateEntitlement(fullYear, year, profile.startDate, profile.endDate)
+            ? proRateEntitlement(fullYear, year, profile.startDate, profile.endDate, rules.rounding === 'WHOLE' ? 1 : 0.5)
             : fullYear;
 
         const balance = computeLeaveBalance({
@@ -414,6 +432,7 @@ export class LeaveService {
     ]);
 
     const kinds = leaveKinds(await this.prisma.leaveTypeSetting.findMany({ orderBy: { sortOrder: 'asc' } }));
+    const rules = await this.leaveRules();
     const storedByStaff = new Map<string, StoredBalance[]>();
     for (const row of stored) storedByStaff.set(row.staffId, [...(storedByStaff.get(row.staffId) ?? []), row]);
     const requestsByStaff = new Map<string, LeaveRequestRow[]>();
@@ -431,6 +450,7 @@ export class LeaveService {
             stored: storedByStaff.get(profile.staffId) ?? [],
             requests: requestsByStaff.get(profile.staffId) ?? [],
             kinds,
+            rules,
           }),
         }))
         .sort((a, b) => a.name.localeCompare(b.name)),

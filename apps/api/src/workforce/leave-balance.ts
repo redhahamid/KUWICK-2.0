@@ -111,6 +111,8 @@ export function proRateEntitlement(
   year: number,
   startDate?: Date | string | null,
   endDate?: Date | string | null,
+  /** Rounded to the nearest half day unless the clinic rounds to whole days. */
+  step: 0.5 | 1 = 0.5,
 ): number {
   const yearStart = Date.UTC(year, 0, 1);
   const yearEnd = Date.UTC(year, 11, 31);
@@ -121,5 +123,5 @@ export function proRateEntitlement(
   const daysInYear = Math.floor((yearEnd - yearStart) / 86400000) + 1;
   const daysEmployed = Math.floor((to - from) / 86400000) + 1;
   const prorated = (fullYearDays * daysEmployed) / daysInYear;
-  return Math.round(prorated * 2) / 2;
+  return Math.round(prorated / step) * step;
 }

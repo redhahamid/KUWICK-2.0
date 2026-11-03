@@ -17,12 +17,19 @@ export function taxCategoryLabel(statutory: { pcbCategory?: string | null; taxCa
   return statutory.taxCategory ?? null;
 }
 
-/** The Approve step's warning about membership numbers the filings need. Never a block. */
-export function filingNumbersCheck(rows: { name: string; missing: string[] }[] | undefined): { ok: boolean; detail: string } {
-  const list = rows ?? [];
-  if (list.length === 0) return { ok: true, detail: 'Everyone’s numbers are on file.' };
+/** The Approve step's warning about membership numbers the filings need, from the run's own warnings. Never a block. */
+export function filingNumbersCheck(warnings: { name: string | null; what: string }[]): { ok: boolean; detail: string } {
+  if (warnings.length === 0) return { ok: true, detail: 'Everyone’s numbers are on file.' };
   return {
     ok: false,
-    detail: `${list.map((row) => `${row.name}: no ${row.missing.join(' or ')}`).join('. ')}. The EPF and PCB filings will be missing their number.`,
+    detail: `${warnings.map((row) => [row.name, row.what].filter(Boolean).join(': ')).join(' ')} The EPF and PCB filings will be missing their number.`,
   };
+}
+
+/** "8 days a year · 1.5 this year · Standard leave", the same figure the Leave page shows. */
+export function annualLeaveLabel(annual: { fullYear: number; thisYear: number; policyName: string | null } | null | undefined, policyName: string | null): string | null {
+  if (!annual) return policyName ? `No annual leave · ${policyName}` : null;
+  const days = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
+  const name = annual.policyName ?? policyName;
+  return [`${days(annual.fullYear)} a year`, annual.thisYear !== annual.fullYear ? `${annual.thisYear} this year` : null, name].filter(Boolean).join(' · ');
 }

@@ -1,3 +1,4 @@
+import { compareMonths } from './payroll-comparison';
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { computeInputStamps, diffInputStamps, storedInputStamps, type StampDb } from './payroll-input-stamps';
 import { byEmployeeName, compareByEmployeeName } from './employee-order';
@@ -675,7 +676,7 @@ export class PayrollJourneyService {
     // Employee No. on every paid row: the export leads with it (UAT, 10 October 2026).
     const lineProfiles = await this.prisma.employeeProfile.findMany({
       where: { staffId: { in: run.lines.map((line) => line.staffId) } },
-      select: { staffId: true, employeeNo: true, endDate: true, epfNumber: true, taxNumber: true },
+      select: { staffId: true, employeeNo: true, endDate: true },
     });
     const numberByStaff = new Map(lineProfiles.map((row) => [row.staffId, row.employeeNo]));
     // FINAL PAY (UAT, 12 October 2026): a line for somebody who left before the month.
@@ -1093,6 +1094,38 @@ export class PayrollJourneyService {
     });
 
     /*
+     * THE COMPARISON THE REVIEW STEP NAMES (item 81): the four totals beside
+     * the month before, and why each person's net pay moved.
+     */
+    const comparison = previousRun
+      ? await (async () => {
+          const lineFields = {
+            staffId: true,
+            grossPay: true,
+            netPay: true,
+            employerCost: true,
+            basicSalary: true,
+            overtimePay: true,
+            unpaidLeaveDeduction: true,
+            staff: { select: { fullName: true } },
+          } as const;
+          const previousLines = await this.prisma.payrollLine.findMany({ where: { payrollRunId: previousRun.id }, select: lineFields });
+          const asComparable = (line: (typeof previousLines)[number]) => ({ ...line, name: line.staff.fullName });
+          const ids = [...new Set([...run.lines.map((line) => line.staffId), ...previousLines.map((line) => line.staffId)])];
+          const dates = await this.prisma.employeeProfile.findMany({ where: { staffId: { in: ids } }, select: { staffId: true, startDate: true, endDate: true } });
+          return compareMonths({
+            previous: previousLines.map(asComparable),
+            current: run.lines.map((line) => ({ ...line, name: line.staff.fullName })),
+            employment: new Map(dates.map((row) => [row.staffId, { startDate: row.startDate, endDate: row.endDate }])),
+            previousMonth: previousRun.period,
+            currentMonth: period,
+            previousLabel: monthLabel(previousRun.period).split(' ')[0],
+            currentLabel: monthLabel(period).split(' ')[0],
+          });
+        })()
+      : null;
+
+    /*
      * WHY THE LEVY IS A DASH, said once for the run. Each dashed row carries
      * the engine's note; this is the employer-level answer beside them —
      * whether the company's HRD Corp class is unrecorded, dated after this
@@ -1193,22 +1226,8 @@ export class PayrollJourneyService {
               }
             : { ...gate, recordsChanged: false },
         attention,
-        /*
-         * MEMBERSHIP NUMBERS THE FILINGS NEED (new-clinic UAT #2, item 77): a
-         * warning before Approve, never a block. EPF is asked of anybody this
-         * month contributes EPF for; the income tax number of everybody, since
-         * the PCB listing and the year-end forms carry it.
-         */
-        filingNumbersMissing: run.lines
-          .map((line) => {
-            const profile = lineProfiles.find((row) => row.staffId === line.staffId);
-            const missing = [
-              Number(line.epfEmployee ?? 0) + Number(line.epfEmployer ?? 0) > 0 && !profile?.epfNumber ? 'EPF number' : null,
-              !profile?.taxNumber ? 'income tax number' : null,
-            ].filter((label): label is string => label !== null);
-            return { staffId: line.staffId, name: line.staff.fullName, missing };
-          })
-          .filter((row) => row.missing.length > 0),
+        /** This month beside the one before (new-clinic UAT #2 re-check, item 81); null on a first month. */
+        comparison,
         /** Null when this branch has no run for the month before. */
         previousRun: previousRun
           ? { runId: previousRun.id, period: previousRun.period.toISOString().slice(0, 7), periodLabel: monthLabel(previousRun.period), status: previousRun.status }

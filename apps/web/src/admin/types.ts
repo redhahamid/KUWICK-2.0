@@ -1608,6 +1608,8 @@ export interface EmployeeRecord {
     name: string;
     annualLeaveDays: number | null;
   } | null;
+  /** This year's annual leave, as the Leave page works it out. Absent from older servers. */
+  annualLeave?: { fullYear: number; thisYear: number; policyName: string | null } | null;
   attendance: {
     daysRecorded: number;
     daysWorked: number;
@@ -2947,8 +2949,13 @@ export interface PayrollJourney {
     }[];
     mustFix: number;
     worthALook: number;
-    /** People whose EPF or income tax number is not on file: a warning before Approve. Absent from older servers. */
-    filingNumbersMissing?: { staffId: string; name: string; missing: string[] }[];
+    /** This month beside the one before; null on a first month. Absent from older servers. */
+    comparison?: {
+      previousLabel: string;
+      currentLabel: string;
+      totals: { label: string; previous: string; current: string; change: string }[];
+      people: { staffId: string; name: string; previousNet: string | null; currentNet: string | null; change: string; reason: string }[];
+    } | null;
   };
   /**
    * STEP 6 — who is allowed to approve, and whether this reader is one of them.

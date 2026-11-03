@@ -1,11 +1,30 @@
 import { useState } from 'react';
-import { Alert, App, Input, InputNumber, Modal, Switch } from 'antd';
+import { Alert, App, Input, InputNumber, Modal, Select, Switch } from 'antd';
 import { ApiError } from '../../core/api-client';
 import { useCan } from '../../core/hooks/useCan';
+import { useGlobalSetting, useSetGlobalSetting } from '../../core/hooks/useGlobalSetting';
 import { useLeaveTypes, useSaveLeaveType, type LeaveTypeRow } from '../hooks/useAdmin';
 import { Panel, PanelHead, StatusChip } from './ui';
 
 type Draft = Partial<LeaveTypeRow> & { name: string };
+
+/**
+ * PART-YEAR LEAVE (new-clinic UAT #2 re-check, item 80): what a pro-rated
+ * figure is rounded to, and which types a joiner gets in full. The clinic's
+ * setting `hr.leaveEntitlements`; Kuwick's default rounds to half days and
+ * gives compassionate leave in full.
+ */
+export interface LeaveRules {
+  rounding: 'HALF' | 'WHOLE';
+  notProRated: string[];
+}
+export const KUWICK_LEAVE_RULES: LeaveRules = { rounding: 'HALF', notProRated: ['COMPASSIONATE'] };
+
+/** Whether a type is pro-rated for somebody joining mid-year: the Act fixes the statutory ones other than annual. */
+export function proRatedForJoiners(type: Pick<LeaveTypeRow, 'code' | 'statutory'>, rules: LeaveRules): boolean | 'FIXED' {
+  if (type.statutory && type.statutory !== 'ANNUAL') return 'FIXED';
+  return !rules.notProRated.includes(type.code);
+}
 
 const STATUTORY_WORD: Record<string, string> = {
   ANNUAL: 'Act: annual',
@@ -28,6 +47,11 @@ export function LeaveTypesPanel() {
   const canManage = useCan('hr.employee.manage');
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const saved = useGlobalSetting<Partial<LeaveRules>>('hr.leaveEntitlements').data;
+  const rules: LeaveRules = { ...KUWICK_LEAVE_RULES, ...(saved ?? {}) };
+  const saveRules = useSetGlobalSetting<LeaveRules>('hr.leaveEntitlements');
+  const setRules = (next: LeaveRules) =>
+    saveRules.mutate(next, { onSuccess: () => message.success('Saved.'), onError: (e: Error) => message.error(e.message) });
 
   const submit = async () => {
     if (!draft) return;
@@ -71,6 +95,7 @@ export function LeaveTypesPanel() {
             <th>Days a year</th>
             <th>Document</th>
             <th>Carry forward</th>
+            <th>Joining mid-year</th>
             <th />
           </tr>
         </thead>
@@ -94,6 +119,35 @@ export function LeaveTypesPanel() {
               <td>{type.documentRequired ? 'Needed' : '—'}</td>
               <td>{type.carryForwardCap === null ? 'None' : `Up to ${type.carryForwardCap} days`}</td>
               <td>
+                {(() => {
+                  const proRated = proRatedForJoiners(type, rules);
+                  if (proRated === 'FIXED') return <span className="hr-faint">In full (the Act)</span>;
+                  return canManage ? (
+                    <Select
+                      size="small"
+                      aria-label={`${type.name} when joining mid-year`}
+                      value={proRated ? 'PRO_RATED' : 'FULL'}
+                      disabled={saveRules.isPending}
+                      onChange={(value: string) =>
+                        setRules({
+                          ...rules,
+                          notProRated: value === 'FULL' ? [...new Set([...rules.notProRated, type.code])] : rules.notProRated.filter((code) => code !== type.code),
+                        })
+                      }
+                      options={[
+                        { value: 'PRO_RATED', label: 'Pro-rated' },
+                        { value: 'FULL', label: 'In full' },
+                      ]}
+                      style={{ width: 120 }}
+                    />
+                  ) : proRated ? (
+                    'Pro-rated'
+                  ) : (
+                    'In full'
+                  );
+                })()}
+              </td>
+              <td>
                 {canManage ? (
                   <button type="button" className="hr-btn hr-btn--sm hr-btn--ghost" onClick={() => setDraft({ ...type })}>
                     Edit
@@ -104,6 +158,24 @@ export function LeaveTypesPanel() {
           ))}
         </tbody>
       </table>
+      <div className="hr-kv hr-mt">
+        <span className="hr-kv__k">Round part-year leave to</span>
+        <span className="hr-kv__v">
+          <Select
+            size="small"
+            aria-label="Round part-year leave to"
+            disabled={!canManage || saveRules.isPending}
+            value={rules.rounding}
+            onChange={(value: 'HALF' | 'WHOLE') => setRules({ ...rules, rounding: value })}
+            options={[
+              { value: 'HALF', label: 'Half days' },
+              { value: 'WHOLE', label: 'Whole days' },
+            ]}
+            style={{ width: 130 }}
+          />{' '}
+          <span className="hr-small hr-muted">Somebody who joins mid-year gets their share of the year, rounded to this.</span>
+        </span>
+      </div>
 
       <Modal
         open={draft !== null}

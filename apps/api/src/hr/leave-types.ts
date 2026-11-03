@@ -61,6 +61,37 @@ export function yearsOfServiceAt(startDate: Date | null | undefined, year: numbe
   return Math.max(0, years);
 }
 
+/**
+ * WHO A TYPE IS FOR (new-clinic UAT #2 re-check, item 79): maternity leave is
+ * offered to women only and paternity leave to men only. A gender not on
+ * record offers both, rather than hiding something somebody is owed.
+ */
+export function offeredTo(statutory: string | null | undefined, gender: string | null | undefined): boolean {
+  if (statutory === 'PATERNITY') return gender !== 'FEMALE';
+  if (statutory === 'MATERNITY') return gender !== 'MALE';
+  return true;
+}
+
+/**
+ * THE CLINIC'S RULES FOR A PART-YEAR ENTITLEMENT (item 80), the setting
+ * `hr.leaveEntitlements`: what a pro-rated figure is rounded to, and which
+ * types are given in full whatever the start date. Kuwick's defaults: half
+ * days, and compassionate leave in full (three days are three days).
+ */
+export const LEAVE_RULES_SETTING = 'hr.leaveEntitlements';
+export interface LeaveRules {
+  rounding: 'HALF' | 'WHOLE';
+  notProRated: string[];
+}
+export const KUWICK_LEAVE_RULES: LeaveRules = { rounding: 'HALF', notProRated: ['COMPASSIONATE'] };
+export function leaveRulesOf(value: unknown): LeaveRules {
+  const saved = (value ?? {}) as Partial<LeaveRules>;
+  return {
+    rounding: saved.rounding === 'WHOLE' ? 'WHOLE' : 'HALF',
+    notProRated: Array.isArray(saved.notProRated) ? saved.notProRated.filter((code): code is string => typeof code === 'string') : KUWICK_LEAVE_RULES.notProRated,
+  };
+}
+
 /** Sick, hospitalisation, maternity and paternity are whole entitlements, not earned through the year. */
 export function proRatesOnJoin(statutory: string | null | undefined): boolean {
   return !statutory || statutory === 'ANNUAL';

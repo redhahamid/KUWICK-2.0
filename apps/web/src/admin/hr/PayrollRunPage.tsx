@@ -635,7 +635,7 @@ function ReviewStep({
         actions={<PayslipPreviewButton runId={runId} />}
         sub={
           data.review.previousRun
-            ? `Compared with ${dayjs(data.review.previousRun.period).format('MMMM')} in Reports.`
+            ? `With ${dayjs(data.review.previousRun.period).format('MMMM')} beside it, below.`
             : 'The first month on record for this branch, so there is no earlier month to compare with yet.'
         }
       />
@@ -657,6 +657,7 @@ function ReviewStep({
         </div>
         {!totals.addsUp && totals.discrepancy ? <div className="hr-notice hr-notice--attn" style={{ margin: '12px 0 0' }}>{totals.discrepancy}</div> : null}
       </div>
+      {data.review.comparison ? <MonthComparison comparison={data.review.comparison} /> : null}
 
       {/* THE ONE BUTTON THAT MOVES THE MONTH ON, and the reason when it will
           not. A disabled control with no explanation is a dead end. */}
@@ -677,6 +678,48 @@ function ReviewStep({
         </button>
       </div>
     </>
+  );
+}
+
+/**
+ * THIS MONTH BESIDE THE ONE BEFORE (new-clinic UAT #2 re-check, item 81): the
+ * four totals, and one line per person whose net pay moved, saying why.
+ */
+export function MonthComparison({ comparison }: { comparison: NonNullable<PayrollJourney['review']['comparison']> }) {
+  return (
+    <div className="hr-pad" data-testid="month-comparison">
+      <table className="hr-compare">
+        <thead>
+          <tr>
+            <th scope="col" />
+            <th scope="col">{comparison.previousLabel}</th>
+            <th scope="col">{comparison.currentLabel}</th>
+            <th scope="col">Change</th>
+          </tr>
+        </thead>
+        <tbody>
+          {comparison.totals.map((row) => (
+            <tr key={row.label}>
+              <th scope="row">{row.label}</th>
+              <td>{ringgit(row.previous)}</td>
+              <td>{ringgit(row.current)}</td>
+              <td>{row.change.startsWith('+') ? `+${ringgit(row.change.slice(1))}` : ringgit(row.change)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {comparison.people.length > 0 ? (
+        <ul className="hr-compare__people">
+          {comparison.people.map((person) => (
+            <li key={person.staffId}>
+              <b>{person.name}</b>: net {person.change.startsWith('+') ? `+${ringgit(person.change.slice(1))}` : ringgit(person.change)} · {person.reason}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="hr-small hr-muted">Nobody’s net pay changed.</p>
+      )}
+    </div>
   );
 }
 
@@ -766,7 +809,7 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
       // A warning, never a block (new-clinic UAT #2, item 77).
       key: 'numbers',
       title: 'EPF and income tax numbers on file',
-      ...filingNumbersCheck(data.review.filingNumbersMissing),
+      ...filingNumbersCheck(warnings.filter((w) => w.code === 'FILING_NUMBER_MISSING')),
       warnOnly: true,
     },
     {

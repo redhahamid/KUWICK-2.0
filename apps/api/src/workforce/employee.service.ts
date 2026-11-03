@@ -6,6 +6,7 @@ import { currentTenantId } from '../core/tenant-context';
 import { actorCan, requirePermission, requireScope, withAdminTx } from '../finance/admin-actor';
 import { diffOf, recordAudit } from '../finance/admin-audit';
 import { defaultLeavePolicyId, nextEmployeeNo } from './new-staff-defaults';
+import { LeaveService } from './leave.service';
 import { workforceCategoryOf } from './workforce-category';
 import { DoctorRatesDto } from './dto/doctor-rates.dto';
 import { UpsertEmployeeDto } from './dto/upsert-employee.dto';
@@ -38,6 +39,7 @@ export class EmployeeService {
   constructor(
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
     private readonly rawPrisma: PrismaService,
+    private readonly leave: LeaveService,
   ) {}
 
   async list(params: { clinicId?: string; status?: EmploymentStatus; search?: string } = {}) {
@@ -529,6 +531,15 @@ export class EmployeeService {
             })(),
           }
         : null,
+      /*
+       * ANNUAL LEAVE THIS YEAR, from the same computation the Leave page and
+       * My Kuwick read (new-clinic UAT #2 re-check, item 78), so the three
+       * cannot disagree: the year's figure and what this year comes to.
+       */
+      annualLeave: await this.leave.balancesFor(staffId).then((row) => {
+        const annual = row.balances.find((balance) => balance.leaveType === 'ANNUAL');
+        return annual ? { fullYear: annual.fullYearEntitlement, thisYear: annual.available, policyName: row.policyName } : null;
+      }),
       attendance: {
         daysRecorded: attendance.length,
         daysWorked: worked.length,

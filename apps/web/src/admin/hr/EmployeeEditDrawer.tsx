@@ -7,6 +7,7 @@ import {
   useSetClinicalAccess,
   useSetDoctorRates,
   useEmployees,
+  useLeavePolicies,
   useLegalEmployers,
   useRecordStatutoryClassification,
   useStatutoryClassifications,
@@ -128,6 +129,9 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
   const [employerReason, setEmployerReason] = useState('');
   const [notes, setNotes] = useState('');
   const [legalEmployerId, setLegalEmployerId] = useState<string | undefined>();
+  // Leave policy (new-clinic UAT #2 re-check, item 78): the clinic's policies, picked here.
+  const leavePolicies = useLeavePolicies();
+  const [leavePolicyId, setLeavePolicyId] = useState<string | undefined>();
   // A weekday, VARIES for an employee whose rest day is not fixed (s.59), or
   // ROSTER for one whose rest day the roster gives.
   const [restDay, setRestDay] = useState<RestDayChoice | undefined>();
@@ -165,6 +169,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
     setEcPhone(id.emergencyContactPhone ?? '');
     setEcRelation(id.emergencyContactRelation ?? '');
     setEmployeeNo(em.employeeNo ?? '');
+    setLeavePolicyId(data.leavePolicy?.id ?? undefined);
     setPosition(em.position ?? '');
     setJobTitleId(em.jobTitleId ?? undefined);
     setWorkDays(em.workDaysPerWeek ?? undefined);
@@ -284,6 +289,7 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
         department: blank(department),
         employmentType,
         managerStaffId,
+        ...(leavePolicyId ? { leavePolicyId } : {}),
         startDate: day(startDate),
         confirmedDate: day(confirmedDate),
         notes: blank(notes),
@@ -524,6 +530,18 @@ export function EmployeeEditDrawer({ staffId, data, section, onClose }: { staffI
               <div>
                 <label htmlFor="ed-no">Employee number</label>
                 <Input id="ed-no" value={employeeNo} onChange={(e) => setEmployeeNo(e.target.value)} />
+              </div>
+              <div>
+                <label htmlFor="ed-leave">Leave policy</label>
+                <Select
+                  id="ed-leave"
+                  value={leavePolicyId}
+                  onChange={setLeavePolicyId}
+                  placeholder="Choose a leave policy"
+                  style={{ width: '100%' }}
+                  options={(leavePolicies.data ?? []).filter((row) => row.active || row.id === leavePolicyId).map((row) => ({ value: row.id, label: row.name }))}
+                />
+                <div className="hr-form__help">The days a year each kind of leave gives. Policies are in Settings → Attendance &amp; leave.</div>
               </div>
               <div>
                 <label htmlFor="ed-type">Type</label>

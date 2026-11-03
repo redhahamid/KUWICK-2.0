@@ -3953,3 +3953,28 @@ textarea.hr-f {
   outline: 2px solid var(--hr-action);
   outline-offset: 2px;
 }
+
+/* This month beside the one before (new-clinic UAT #2 re-check, item 81). */
+.hr-compare {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.hr-compare th,
+.hr-compare td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--hr-line2);
+  text-align: right;
+}
+.hr-compare th[scope='row'],
+.hr-compare thead th:first-child {
+  text-align: left;
+  font-weight: 500;
+}
+.hr-compare__people {
+  margin: 12px 0 0;
+  padding-left: 18px;
+}
+.hr-compare__people li {
+  margin: 4px 0;
+}

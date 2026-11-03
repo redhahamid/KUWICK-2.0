@@ -56,6 +56,8 @@ seperti di skrin (Bahasa Inggeris).
    hari setahun, pro-rata pada tahun mula bekerja).
    Anda nampak rekod baharu dengan titik berwarna bagi maklumat yang belum lengkap.
    *Account: No login* bermaksud anda tidak memberi log masuk.
+   Untuk menukar polisi cuti seseorang, tekan **Edit** pada Employment dan
+   pilih **Leave policy**.
    **Probation until** diisi daripada tetapan klinik; halaman Employees
    mengingatkan anda sebulan sebelum tamat. Langkah **Review** menyatakan
    sama ada gaji boleh dibayar, menggunakan semakan yang sama dengan payroll.
@@ -105,7 +107,11 @@ seperti di skrin (Bahasa Inggeris).
 ## 5. Cuti
 
 1. **Settings → Attendance & leave → Leave types**: semak hari setahun,
-   bergaji atau tidak, dan sama ada dokumen diperlukan.
+   bergaji atau tidak, dan sama ada dokumen diperlukan. **Joining mid-year**
+   menentukan sama ada pekerja baharu mendapat bahagian tahunnya atau kelayakan
+   penuh (cuti ihsan diberi penuh melainkan anda ubah), dan **Round part-year
+   leave to** memilih setengah hari atau hari penuh. Cuti bersalin hanya untuk
+   wanita, cuti paterniti hanya untuk lelaki.
 2. Cuti yang diambil sebelum Kuwick: **HR → Leave → Import opening balances**.
    Anda nampak baki setiap orang dikemas kini.
 3. Permohonan masuk ke **HR → Leave** di bawah *Waiting for decision*. Buka
@@ -137,7 +143,10 @@ seperti di skrin (Bahasa Inggeris).
    **Import items (CSV)**.
    Anda nampak petak kelabu sudah diisi daripada rekod (gaji, cuti tanpa gaji, tuntutan).
 3. Selepas apa-apa perubahan, tekan **Work the month out again**. Kemudian buka **Review**.
-   Anda nampak apa yang menyekat bulan itu (merah), apa yang patut disemak (kuning) dan jumlah.
+   Anda nampak apa yang menyekat bulan itu (merah), apa yang patut disemak (kuning), jumlah,
+   dan bulan lepas di sebelah bulan ini (kasar, potongan, bersih, kos) dengan satu
+   baris bagi setiap orang yang gajinya berubah dan sebabnya. Sesiapa tanpa no.
+   KWSP atau no. cukai pendapatan disenaraikan dalam warna kuning.
 4. Betulkan setiap perkara merah, biasanya rekod yang tidak lengkap, dan tekan
    **Work the month out again**.
    Bulan lebih awal dalam tahun tanpa gaji menunjukkan **Run <month> payroll →**.

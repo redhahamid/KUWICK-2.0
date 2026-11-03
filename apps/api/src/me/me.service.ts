@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { AttendanceCorrectionStatus, LeaveStatus } from '@prisma/client';
-import { LEAVE_CODE, LeaveType, leaveKinds, unpaidLeaveCodes } from '../hr/leave-types';
+import { LEAVE_CODE, LeaveType, leaveKinds, offeredTo, unpaidLeaveCodes } from '../hr/leave-types';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentStaffId, currentTenantId } from '../core/tenant-context';
@@ -1152,6 +1152,7 @@ export class MeService {
     const actor = await this.me();
     const year = new Date().getUTCFullYear();
     const kinds = leaveKinds(await this.prisma.leaveTypeSetting.findMany({ orderBy: { sortOrder: 'asc' } }));
+    const gender = (await this.prisma.employeeProfile.findUnique({ where: { staffId: actor.id }, select: { gender: true } }))?.gender ?? null;
     const [row, unpaid] = await Promise.all([
       this.leaveService.balancesForSelf(actor.id, year),
       this.prisma.leaveRequest.findMany({
@@ -1172,8 +1173,9 @@ export class MeService {
       /** False for an account with no HR record: no leave to show (new-clinic UAT #2, item 53). */
       hasHrRecord: row.hasHrRecord,
       /** Every leave type the person can ask for, in the clinic's order (Section D). */
+      // Maternity for women, paternity for men (new-clinic UAT #2 re-check, item 79).
       types: kinds
-        .filter((kind) => kind.active)
+        .filter((kind) => kind.active && offeredTo(kind.statutory, gender))
         .map((kind) => ({ code: kind.code, name: kind.name, paid: kind.paid, documentRequired: kind.documentRequired })),
       balances: row.balances.map((balance) => ({
         leaveType: balance.leaveType,
