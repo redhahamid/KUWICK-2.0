@@ -529,7 +529,7 @@ export function LeavePage() {
           <>
             <div className="hr-kv2">
               <span className="hr-kv2__k">Type</span>
-              <span className="hr-kv2__v">{TYPE_LABEL(reviewing.leaveType)} leave</span>
+              <span className="hr-kv2__v">{TYPE_LABEL(reviewing.leaveType)}</span>
               <span className="hr-kv2__k">Dates</span>
               <span className="hr-kv2__v">
                 {dateRange(reviewing)} · {daysOf(reviewing)} {daysOf(reviewing) === 1 ? 'day' : 'days'}

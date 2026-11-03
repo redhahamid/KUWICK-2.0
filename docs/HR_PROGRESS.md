@@ -6,6 +6,37 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 74 — 3 November 2026 — panduan "Payroll A–Z" (BM dan EN) dengan tangkapan skrin sebenar
+
+**Tiada migrasi.**
+
+- `[D]` Skrip jalan-lalu `e2e/payroll-a-z.uat.ts` (bukan sebahagian CI; hanya `*.uat.ts`
+  melalui `playwright.uat.config.ts`): klinik demo kosong → wizard 8 langkah → 2 staf + lokum
+  ikut jam (tidak disimpan) → syif dan roster November → QR clock-in dari telefon (kamera
+  disimulasikan dengan gambar kod kiosk semasa), lewat, pembetulan, OT diluluskan → cuti
+  tahunan dan tanpa gaji → tuntutan perbatuan dan resit → gaji Oktober dan November,
+  slip gaji, senarai bayaran CSV, pemindahan direkod, pembantu caruman (KWSP, PERKESO,
+  LHDN, HRD) → Borang EA. Satu tangkapan setiap langkah; langkah yang gagal direkod dan
+  jalan diteruskan. Nama demo dan nombor rekaan sahaja.
+- `[D]` Larian penuh tempatan (klinik "Klinik Panduan L8"): 78 daripada 78 langkah lulus.
+- `[D]` **Pepijat dibaiki:** HR tidak dapat merekod clock-in untuk hari tanpa punch
+  (Attendance → Fix → Record the clock-in): simpan meminta "Why" tetapi borang itu tiada kotak
+  Why. Kini sebab hanya diminta bila punch sedia ada diubah. Ujian `recordPunch.test.tsx`
+  (gagal sebelum pembaikan, lulus selepas).
+- `[D]` **Perkataan dibaiki:** laci semakan cuti tertulis "Annual leave leave".
+- `[D]` Help dalam aplikasi: panduan baharu `payroll` (`/admin/hr/help/payroll`), pautan
+  "Payroll A–Z" di Help HR, dan butang **Help** pada halaman Payroll terus ke panduan itu.
+  Markdown Help kini menunjukkan gambar (`![…](img/…)`) dan tajuk `###`.
+- `[D]` `scripts/guide-pdf.mjs` membuat PDF panduan dengan Chromium.
+- `[D]` Aliran kerja sekali guna `guide-screenshots.yml`: buat "Klinik Panduan" di staging
+  (seperti konsol platform), tunggu staging pada komit ini, jalankan skrip, simpan gambar
+  sebagai artifak 3 hari. Kata laluan dibuat dalam runner, tidak dicetak; kata laluan pemilik
+  dikembalikan disulitkan kepada kunci awam yang diberi.
+- `[A]` PCB RM 0.00 untuk doktor RM 9,000 yang mula Oktober adalah betul mengikut kaedah
+  berkomputer HASiL (P = RM 15,030 selepas pelepasan; kerja dalam `breakdown.workings.pcb`).
+
+---
+
 ## Batch 73 — 3 November 2026 — "Standard leave" untuk staf Hijraa (arahan pemilik)
 
 **Tiada migrasi.**

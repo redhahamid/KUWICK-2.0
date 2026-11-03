@@ -3887,6 +3887,27 @@ textarea.hr-f {
   color: var(--hr-ink2);
   font-size: 14px;
 }
+.kw-help h3 {
+  font-size: 16px;
+  margin: 22px 0 6px;
+}
+/* A screenshot in a guide (Payroll A–Z, 3 November 2026): framed, never wider than the text. */
+.kw-help__shot {
+  margin: 8px 0 12px;
+}
+.kw-help__shot img {
+  display: block;
+  max-width: 100%;
+  max-height: 560px;
+  height: auto;
+  border: 1px solid var(--hr-line);
+  border-radius: 8px;
+}
+.kw-helpPage__guides {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 
 /* The wizard's steps pinned in the HR rail (new-clinic UAT #2, item 69). */
 .hr-setupRail {

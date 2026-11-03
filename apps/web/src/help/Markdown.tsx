@@ -4,6 +4,11 @@ import type { ReactNode } from 'react';
  * THE GUIDES' OWN SMALL MARKDOWN (testing, 15 October 2026): headings,
  * numbered steps with the lines under them, bullets, paragraphs and bold.
  * The guides in docs/guides use only this, so no library is needed.
+ *
+ * Pictures (Payroll A–Z guide, 3 November 2026): a line that is only
+ * `![what it shows](img/…)` is a screenshot. Its path is the one written in
+ * the guide, relative to docs/guides, so the same file reads on GitHub; the
+ * page turns it into the address the app serves it at.
  */
 function inline(text: string): ReactNode[] {
   return text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g).map((part, index) =>
@@ -15,7 +20,7 @@ export function slugOf(heading: string): string {
   return heading.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
-export function Markdown({ source }: { source: string }) {
+export function Markdown({ source, imageUrl = (path) => path }: { source: string; imageUrl?: (path: string) => string | undefined }) {
   const blocks: ReactNode[] = [];
   let list: { kind: 'ol' | 'ul'; items: string[][] } | null = null;
   let paragraph: string[] = [];
@@ -41,6 +46,20 @@ export function Markdown({ source }: { source: string }) {
 
   for (const raw of source.split('\n')) {
     const line = raw.trimEnd();
+    const picture = /^!\[([^\]]*)\]\(([^)\s]+)\)$/.exec(line.trim());
+    if (picture) {
+      flushParagraph();
+      flushList();
+      const src = imageUrl(picture[2]);
+      if (src) {
+        blocks.push(
+          <figure key={blocks.length} className="kw-help__shot">
+            <img src={src} alt={picture[1]} loading="lazy" />
+          </figure>,
+        );
+      }
+      continue;
+    }
     const numbered = /^\d+\.\s+(.*)$/.exec(line);
     const bullet = /^-\s+(.*)$/.exec(line);
     if (!line.trim()) {
@@ -52,7 +71,19 @@ export function Markdown({ source }: { source: string }) {
       flushList();
       const level = /^#+/.exec(line)![0].length;
       const text = line.slice(level).trim();
-      blocks.push(level === 1 ? <h1 key={blocks.length}>{text}</h1> : <h2 key={blocks.length} id={slugOf(text)}>{text}</h2>);
+      blocks.push(
+        level === 1 ? (
+          <h1 key={blocks.length}>{text}</h1>
+        ) : level === 2 ? (
+          <h2 key={blocks.length} id={slugOf(text)}>
+            {text}
+          </h2>
+        ) : (
+          <h3 key={blocks.length} id={slugOf(text)}>
+            {text}
+          </h3>
+        ),
+      );
     } else if (numbered || bullet) {
       flushParagraph();
       const kind = numbered ? 'ol' : 'ul';

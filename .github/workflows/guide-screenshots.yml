@@ -1,0 +1,164 @@
+# ONE-OFF: THE PAYROLL A–Z GUIDE'S SCREENSHOTS, FROM STAGING (owner's
+# request, 3 November 2026).
+#
+# Creates the empty demo clinic "Klinik Panduan" (fake company, fake EPF,
+# SOCSO and LHDN numbers, demo staff only) exactly as the platform console
+# makes a clinic, then walks it from the first login to a Borang EA through
+# the real staging screens (e2e/payroll-a-z.uat.ts) and keeps the pictures
+# as a 3-day artifact. It touches no other tenant. If "Klinik Panduan"
+# already exists the tenant step changes nothing and the walk stops at the
+# login, so it cannot run twice over the same clinic.
+#
+# Passwords: made here, at random, never printed and never an input. The
+# owner's is handed back encrypted to the public key given as the input, so
+# only whoever holds the private key can read it. Only SUPABASE_DATABASE_URL
+# is in the environment; the app role is never touched and the seed and
+# provisioning scripts never run.
+
+name: Payroll A–Z guide screenshots (one-off, manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type Klinik Panduan to create that demo clinic on staging and walk it'
+        type: string
+        required: true
+      public_key:
+        description: 'RSA public key (PEM, base64 on one line) the owner password is encrypted to'
+        type: string
+        required: true
+      expect_build:
+        description: 'Wait until the staging API reports this commit (first 7+ characters)'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: guide-screenshots
+  cancel-in-progress: false
+
+jobs:
+  walk:
+    name: Klinik Panduan, first login to Borang EA
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+      NODE_OPTIONS: '--dns-result-order=ipv4first'
+      WEB_URL: https://kuwick-web.onrender.com
+      API_URL: https://kuwick-api.onrender.com
+      OWNER_EMAIL: pemilik@klinikpanduan.kuwick.test
+      STAFF_EMAIL: jururawat@klinikpanduan.kuwick.test
+    steps:
+      - name: Refuse without the confirmation or the secret
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+          HAS_DB_URL: ${{ secrets.SUPABASE_DATABASE_URL != '' }}
+        run: |
+          [ "$CONFIRM" = "Klinik Panduan" ] || { echo "::error::Type Klinik Panduan to confirm."; exit 1; }
+          [ "$HAS_DB_URL" = "true" ] || { echo "::error::Repository secret SUPABASE_DATABASE_URL is not set."; exit 1; }
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Pin the Supabase pooler hostname to IPv4
+        # As in staging-checks.yml: runners have no routable IPv6.
+        env:
+          SUPABASE_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+        run: |
+          set +e
+          host="$(node -e 'process.stdout.write(new URL(process.env.SUPABASE_DATABASE_URL).hostname)')"
+          [ -n "$host" ] || { echo "::error::No hostname in SUPABASE_DATABASE_URL."; exit 1; }
+          ipv4s="$(node -e '
+            const dns = require("dns").promises;
+            const host = new URL(process.env.SUPABASE_DATABASE_URL).hostname;
+            (async () => {
+              for (let i = 0; i < 6; i++) {
+                try { const a = await dns.resolve4(host); if (a.length) { process.stdout.write(a.join(" ")); return; } } catch {}
+                try { const r = await dns.lookup(host, { family: 4, all: true }); if (r.length) { process.stdout.write(r.map((x) => x.address).join(" ")); return; } } catch {}
+                await new Promise((res) => setTimeout(res, 2000));
+              }
+              process.exit(3);
+            })();')"
+          [ -n "$ipv4s" ] || { echo "::error::'$host' has no IPv4 address from this runner."; exit 1; }
+          for ip in $ipv4s; do printf '%s %s\n' "$ip" "$host" | sudo tee -a /etc/hosts >/dev/null; done
+          echo "Pinned $host to $ipv4s"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate the Prisma client
+        working-directory: apps/api
+        run: npx prisma generate
+
+      - name: Install the browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Wait for staging to run this build
+        env:
+          EXPECT: ${{ inputs.expect_build }}
+        run: |
+          for i in $(seq 1 40); do
+            build="$(curl -fsS --max-time 60 "$API_URL/health" | node -e 'let s="";process.stdin.on("data",(d)=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s).build??""))}catch{}})')"
+            case "$build" in "$EXPECT"*) echo "API is on $build"; break ;; esac
+            echo "API reports '${build:-asleep}', waiting for $EXPECT…"; sleep 30
+          done
+          case "$build" in "$EXPECT"*) ;; *) echo "::error::Staging never reported $EXPECT."; exit 1 ;; esac
+          # The web app deploys beside it; give it a moment, then wake it.
+          sleep 120
+          curl -fsS --max-time 120 -o /dev/null "$WEB_URL/login" && echo "Web is up"
+
+      - name: Make the passwords (never printed)
+        run: |
+          OWNER_PW="$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-20)Aa1"
+          STAFF_PW="$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-20)Aa1"
+          echo "::add-mask::$OWNER_PW"
+          echo "::add-mask::$STAFF_PW"
+          {
+            echo "GUIDE_OWNER_PASSWORD=$OWNER_PW"
+            echo "GUIDE_STAFF_PASSWORD=$STAFF_PW"
+          } >> "$GITHUB_ENV"
+
+      - name: Create Klinik Panduan
+        working-directory: apps/api
+        run: |
+          PG_URL="${DATABASE_URL/sslmode=require/sslmode=no-verify}"
+          echo "::add-mask::$PG_URL"
+          HASH="$(node -e 'process.stdout.write(require("bcryptjs").hashSync(process.env.GUIDE_OWNER_PASSWORD, 10))')"
+          DATABASE_URL="$PG_URL" DEMO_TENANT_NAME="Klinik Panduan" DEMO_OWNER_EMAIL="$OWNER_EMAIL" \
+            DEMO_OWNER_PASSWORD_HASH="$HASH" DEMO_APPLY=true npx tsx prisma/create-demo-tenant.ts
+
+      - name: Walk it
+        env:
+          E2E_WEB_URL: ${{ env.WEB_URL }}
+          GUIDE_API_URL: ${{ env.API_URL }}
+          GUIDE_OUT: guide-out
+          GUIDE_OWNER_EMAIL: ${{ env.OWNER_EMAIL }}
+          GUIDE_STAFF_EMAIL: ${{ env.STAFF_EMAIL }}
+        run: npx playwright test --config playwright.uat.config.ts payroll-a-z
+
+      - name: The owner's password, encrypted to the given key
+        if: always()
+        env:
+          PUBLIC_KEY: ${{ inputs.public_key }}
+        run: |
+          echo "$PUBLIC_KEY" | base64 -d > /tmp/key.pem
+          mkdir -p guide-out
+          printf '%s\n%s\n' "$GUIDE_OWNER_PASSWORD" "$GUIDE_STAFF_PASSWORD" \
+            | openssl pkeyutl -encrypt -pubin -inkey /tmp/key.pem -pkeyopt rsa_padding_mode:oaep | base64 -w0 > guide-out/passwords.enc
+          rm -f /tmp/key.pem
+
+      - name: Keep the pictures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: payroll-a-z-shots
+          path: guide-out
+          retention-days: 3

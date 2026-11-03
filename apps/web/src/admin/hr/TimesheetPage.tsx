@@ -305,7 +305,11 @@ export function TimesheetPage() {
 
   const saveFix = async () => {
     if (!fixing) return;
-    if (why.trim().length < 5) {
+    // The reason is asked for when a punch is changed. A day with no punch
+    // shows no reason box (the new punch is marked "entered by HR"), so it
+    // must not be asked for there: it made the clock-in impossible to record
+    // (Payroll A–Z walk-through, 3 November 2026).
+    if (fixing.record && why.trim().length < 5) {
       message.error('Say why the record is being changed. The employee sees it too.');
       return;
     }

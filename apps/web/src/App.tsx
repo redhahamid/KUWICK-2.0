@@ -376,6 +376,7 @@ export function App() {
             <Route path="/admin/hr/reports" element={<PayrollReportsPage />} />
             <Route path="/admin/hr/reports/year-end" element={<EaFormsPage />} />
             <Route path="/admin/hr/help" element={<HelpPage guide="hr" />} />
+            <Route path="/admin/hr/help/payroll" element={<HelpPage guide="payroll" />} />
             {/*
               * SETTINGS IS ONE PLACE, UNDER HR. It used to be two: six cards
               * here, and a near-empty "HR & Attendance" category in Clinic

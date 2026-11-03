@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { GUIDES, type GuideKey, type GuideLanguage } from './guides';
+import { GUIDES, guidePicture, type GuideKey, type GuideLanguage } from './guides';
 import { Markdown } from './Markdown';
 
 const KEY = 'kuwick.help.language';
@@ -43,12 +43,22 @@ export function HelpPage({ guide }: { guide: GuideKey }) {
           ))}
         </span>
         {guide === 'hr' ? (
-          <Link to="/my/help" className="hr-linkButton">
-            {language === 'ms' ? 'Panduan staf (My Kuwick)' : 'Staff guide (My Kuwick)'}
+          <span className="kw-helpPage__guides">
+            {/* Payroll A–Z (3 November 2026): the whole month, step by step, with screenshots. */}
+            <Link to="/admin/hr/help/payroll" className="hr-btn hr-btn--sm">
+              {language === 'ms' ? 'Gaji A–Z (langkah demi langkah)' : 'Payroll A–Z (step by step)'}
+            </Link>
+            <Link to="/my/help" className="hr-linkButton">
+              {language === 'ms' ? 'Panduan staf (My Kuwick)' : 'Staff guide (My Kuwick)'}
+            </Link>
+          </span>
+        ) : guide === 'payroll' ? (
+          <Link to="/admin/hr/help" className="hr-linkButton">
+            {language === 'ms' ? '← Panduan pemilik / HR' : '← Owner / HR guide'}
           </Link>
         ) : null}
       </div>
-      <Markdown source={GUIDES[guide][language]} />
+      <Markdown source={GUIDES[guide][language]} imageUrl={guidePicture} />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { Alert } from 'antd';
 
@@ -27,6 +27,10 @@ export function HrPage({
   error?: string | null;
   children: ReactNode;
 }) {
+  // On the payroll pages Help opens the Payroll A–Z guide, the step-by-step
+  // month with screenshots (3 November 2026); everywhere else, the HR guide.
+  const { pathname } = useLocation();
+  const help = pathname.startsWith('/admin/hr/payroll') ? '/admin/hr/help/payroll' : '/admin/hr/help';
   return (
     <>
       {crumb ? <div className="hr-crumb">{crumb}</div> : null}
@@ -41,7 +45,7 @@ export function HrPage({
         <div className="hr-pageHead__actions">
           {actions}
           {/* Help on every HR page: the owner/HR guide (testing, 15 October 2026). */}
-          <Link to="/admin/hr/help" className="hr-btn hr-btn--ghost hr-helpLink">
+          <Link to={help} className="hr-btn hr-btn--ghost hr-helpLink">
             Help
           </Link>
         </div>
