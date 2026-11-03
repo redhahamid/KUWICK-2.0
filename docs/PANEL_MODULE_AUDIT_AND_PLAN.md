@@ -460,7 +460,7 @@ It accepts **CSV only**. The clinic's file is a 29-sheet workbook, so today they
 save-as-CSV per sheet. Accept `.xlsx` on the same endpoint, one sheet per panel,
 reusing every row rule in `claim-import-csv.ts` — only the reader changes.
 
-### N-10 · Portal passwords: decided NOT stored — **nothing to build** · S
+### N-10 · Portal passwords: decided NOT stored — **BUILT** (3 Nov 2026) · S
 
 Verified by grep across `apps/` and `docs/`: there is **no**
 `portalPassword`, `portalUsername` or equivalent anywhere. The competitor's
@@ -496,8 +496,8 @@ where an answer resized a piece.
 | **1a** | Panel on the Slate kit — the premium surface, per the owner's design instruction | — | **done** | M |
 | **2** | Setup wizard for an empty Panel module, with a start gate on the workspace | N-2 | **done** | M |
 | **2a** | The G-8 fee-variance report, which answers Q5 from data | — | **done** | S |
-| **3** | Portal-credential decision, schema comment, autofill guard | N-10 | next | S |
-| **4** | Counter: `PanelEmployer` list + relationship + last-used panel pre-fill (also closes G-9) | N-5 | | L |
+| **3** | Portal-credential decision, schema comment, autofill guard | N-10 | **done** | S |
+| **4** | Counter: `PanelEmployer` list + relationship + last-used panel pre-fill (also closes G-9) | N-5 | next | L |
 | **5** | Claim proof upload against the panel's checklist | N-7 | | S |
 | **6** | Plain-language status names + `autoRaiseClaimOnSettlement`, default on | N-8 | | M |
 | **7** | `PERCENT_BATCH` batch-level fee (closes G-7) | N-3 | | S |

@@ -462,6 +462,8 @@ export function PanelConfigPage() {
                 style={{ marginTop: 8 }}
                 placeholder="Why — the contract clause, the email, or the evidence"
                 value={draft.feeTermNote}
+                autoComplete="off"
+                aria-label="Why these terms"
                 onChange={(event) => setDraft({ ...draft, feeTermNote: event.target.value })}
               />
               <div className="kw-muted" style={{ fontSize: 11.5, marginTop: 4 }}>
@@ -556,11 +558,26 @@ export function PanelConfigPage() {
                   onChange={(value) => setDraft({ ...draft, submissionMethod: value ?? null })}
                   options={SUBMISSION_METHODS}
                 />
+                {/* N-10 — THE PORTAL ADDRESS, AND NOTHING ELSE.
+                    `autoComplete="off"` because a browser that has seen a
+                    panel portal login will happily offer the saved username
+                    and password into any form it recognises, and the saved
+                    password would then be one mis-click from being posted to
+                    Kuwick and stored in a column nobody decided to add.
+                    There is no password field here and there must not be one;
+                    `panel-no-portal-credentials.spec.ts` fails if one
+                    appears. */}
                 <Input
                   value={draft.portalUrl}
                   placeholder="https://portal.example.com"
+                  autoComplete="off"
+                  aria-label="Portal address"
                   onChange={(event) => setDraft({ ...draft, portalUrl: event.target.value })}
                 />
+                <div className="kw-muted" style={{ fontSize: 11.5 }}>
+                  The address only. Kuwick never stores a panel portal password — keep those in
+                  your password manager, where you can change them without asking us.
+                </div>
               </div>
             </div>
           </div>

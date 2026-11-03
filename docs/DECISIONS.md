@@ -2656,6 +2656,70 @@ guarded. The report fix is a correction, not a change of behaviour.
 
 ---
 
+## D-118 — Kuwick stores no panel portal credential, and a guard says so
+
+**Status: DECIDED** (owner instruction, 2026-11-03, citing a competitor's
+failure: "portal passwords must not be stored, or if stored, never shown again
+and protected from browser autofill")
+
+**There was nothing to fix, and that was the problem.** A grep across the
+schema, the API and the web app found no `portalPassword`, no `portalUsername`,
+nothing of the kind. Kuwick already held only `PanelClinic.portalUrl`. But that
+state was **absence, not a decision** — the next person to add `portalPassword`
+beside `portalUrl` would have been doing the obvious, helpful thing, and no
+test, comment or reviewer note would have stopped them.
+
+**Why these credentials are worse than most.** They belong to a THIRD PARTY's
+system — the panel's own portal — are shared across a clinic's staff, and are
+almost never rotated. One leak reaches every panel a clinic claims from, and
+Kuwick can revoke exactly none of them. Nothing in the workflow needs them
+either: D-031 established that every submission path ends in a human acting
+outside Kuwick, so the most Kuwick can usefully hold is the address.
+
+**The decision: no credential, in any form.** Not encrypted, not write-only,
+not "for convenience". Staff keep them in a password manager; Kuwick keeps the
+address. The clinic loses one click and gains the only guarantee worth having
+— there is nothing there to leak.
+
+**Browser autofill is the half that is easy to miss**, and the half the
+competitor also got wrong. Even with no field and no column, a browser that has
+seen a panel portal login will offer the saved username and password into any
+form it recognises. One mis-click and a third party's password is posted to
+Kuwick, into whichever field the browser chose. Every text input on the panel
+configuration screen now carries `autoComplete="off"`, and the screen says in
+plain words that Kuwick never stores a portal password — so the user knows not
+to type one even if their browser offers it.
+
+**Three guards, all negative-tested:**
+
+- `panel-no-portal-credentials.spec.ts` fails if a credential-shaped field
+  appears on `PanelClinic`, in any panel DTO, or anywhere in the panel module.
+  Verified: adding `portalPassword` to the schema fails it by name.
+- `panelNoCredentials.test.tsx` fails if any panel screen gains a
+  `type="password"` input or a credential-shaped identifier, and if any text
+  input on the configuration screen loses `autoComplete="off"`. Both halves
+  verified to fail when broken.
+- A `///` block on `portalUrl` in the schema states the rule where somebody
+  adding the field would be looking.
+
+**One thing the first guard got wrong, and what it taught.** It matched the
+WORD "password" anywhere, and immediately failed on the configuration screen's
+own sentence telling the user that Kuwick stores none — the screen doing
+exactly the right thing. A guard that forbids saying so would have been
+removed within a release, taking the guard against the field with it. It now
+matches a credential used as a NAME (an object key, an assignment, a prop).
+**The field is the risk; the sentence is the fix.**
+
+**If it is ever genuinely required**, the only acceptable shape is write-only
+(set, never read back), encrypted at rest, with an audit row per reveal — and
+that is a new decision, which means editing these guards on purpose rather
+than a column slipping through review.
+
+**Reversibility**: total. The change is a comment, an attribute and three
+tests; no schema or data change.
+
+---
+
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:
 
 - Doctor incentive formula: worked semantics now captured in full from Klinik Hijraa (`docs/PROPOSED_ADDENDUM_2026-08-01_klinik-hijraa-admin-reference.md`) — spec is no longer the blocker, building it is; still needs owner go-ahead to schedule (OQ#2, blocks 1c only)

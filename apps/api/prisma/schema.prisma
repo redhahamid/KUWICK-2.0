@@ -3026,6 +3026,28 @@ model PanelClinic {
   // actually pays are frequently different (a TPA administering an insurer's
   // scheme), and the cheque arrives from the second one.
   payerName              String?                @map("payer_name")
+  /// WHERE THE PANEL'S PORTAL IS — and the ONLY thing Kuwick holds about it.
+  ///
+  /// THERE IS NO PASSWORD COLUMN HERE, AND THERE MUST NOT BE ONE (N-10, owner
+  /// instruction 2026-11-03). A competitor stored clinic staff's panel portal
+  /// passwords; they were readable back, and the browser offered to autofill
+  /// them. These are credentials for a THIRD PARTY's system, shared across a
+  /// clinic's staff and almost never rotated, so one leak reaches every panel
+  /// a clinic claims from and Kuwick cannot revoke a single one of them.
+  ///
+  /// Staff keep them in a password manager. Kuwick keeps the address. The
+  /// clinic loses one click and gains the only guarantee worth having: there
+  /// is nothing here to leak.
+  ///
+  /// Absence alone was the protection until now — nobody had added the field,
+  /// and nothing stopped the next person. `panel-no-portal-credentials.spec.ts`
+  /// fails if a field matching password/secret/credential/token appears on this
+  /// model or in the panel DTOs, so adding one is a decision somebody has to
+  /// argue for rather than a line that slips through review.
+  ///
+  /// If it is ever genuinely required, the only acceptable shape is write-only
+  /// (set, never read back), encrypted at rest, with an audit row per reveal —
+  /// and that is a new decision, not a column added quietly.
   portalUrl              String?                @map("portal_url")
   submissionMethod       PanelSubmissionMethod? @map("submission_method")
   /// What staff must have in hand before this panel's claim can go out —
