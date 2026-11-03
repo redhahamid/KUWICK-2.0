@@ -4,8 +4,8 @@ import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { DataTable, money } from '../components/DataTable';
 import { usePanelConfigs, useUpdatePanelConfig } from '../hooks/useAdmin';
-import type { PanelConfigRow, PanelFeeTreatment } from '../types';
-import { FEE_TREATMENT_HINT, FEE_TREATMENT_LABEL } from '../types';
+import type { PanelConfigRow, PanelFeeTreatment, PanelType } from '../types';
+import { FEE_TREATMENT_HINT, FEE_TREATMENT_LABEL, PANEL_TYPE_HINT, PANEL_TYPE_LABEL } from '../types';
 
 /**
  * HOW A PANEL'S PAYMENT TERM READS BACK.
@@ -43,6 +43,10 @@ const TERM_ANCHORS = [
   { value: 'INVOICE_DATE', label: 'The invoice date' },
 ];
 
+const PANEL_TYPES = (['TPA', 'INSURER', 'CORPORATE', 'GOVERNMENT', 'OTHER'] as PanelType[]).map(
+  (value) => ({ value, label: PANEL_TYPE_LABEL[value] }),
+);
+
 const SUBMISSION_METHODS = ['PORTAL', 'EMAIL', 'COURIER', 'IN_PERSON', 'OTHER'].map((value) => ({
   value,
   label: value,
@@ -50,6 +54,7 @@ const SUBMISSION_METHODS = ['PORTAL', 'EMAIL', 'COURIER', 'IN_PERSON', 'OTHER'].
 
 /** The editable shape. Every field is nullable — NULL means nobody has said. */
 interface Draft {
+  panelType: PanelType | null;
   feeTreatment: PanelFeeTreatment;
   feeEffectiveFrom: string;
   feeTermNote: string;
@@ -65,6 +70,7 @@ interface Draft {
 
 function draftOf(row: PanelConfigRow): Draft {
   return {
+    panelType: row.panelType,
     feeTreatment: row.feeTreatment,
     feeEffectiveFrom: dayjs().format('YYYY-MM-DD'),
     feeTermNote: '',
@@ -96,6 +102,7 @@ export function PanelConfigPage() {
 
   const withoutPortal = data?.filter((panel) => panel.active && !panel.portalUrl) ?? [];
   const unresolvedFee = data?.filter((panel) => panel.active && panel.feeTreatmentUnresolved) ?? [];
+  const unclassified = data?.filter((panel) => panel.active && panel.panelType === null) ?? [];
   const withoutTerm = data?.filter(
     (panel) => panel.active && panel.paymentTermDays === null && !panel.paymentTermVariesByPayer,
   ) ?? [];
@@ -110,6 +117,7 @@ export function PanelConfigPage() {
     update.mutate(
       {
         id: editing.id,
+        panelType: draft.panelType ?? undefined,
         feeTreatment: draft.feeTreatment,
         feeEffectiveFrom: draft.feeEffectiveFrom,
         feeTermNote: draft.feeTermNote || undefined,
@@ -152,6 +160,14 @@ export function PanelConfigPage() {
         </AdminNotice>
       ) : null}
 
+      {unclassified.length > 0 ? (
+        <AdminNotice tone="info">
+          {unclassified.length} active panel(s) have no kind recorded. Saying whether a panel is an administrator, an
+          insurer, a company you bill direct or a government body changes none of your figures — it decides what this
+          screen asks you for. Kuwick does not guess it from the name.
+        </AdminNotice>
+      ) : null}
+
       {withoutTerm.length > 0 ? (
         <AdminNotice tone="warn">
           {withoutTerm.length} active panel(s) have no payment term, so no claim on them can ever be shown as overdue.
@@ -178,6 +194,19 @@ export function PanelConfigPage() {
           columns={[
             { title: 'Panel', dataIndex: 'name', key: 'name' },
             { title: 'Code', dataIndex: 'code', key: 'code' },
+            {
+              title: 'Kind',
+              dataIndex: 'panelType',
+              key: 'panelType',
+              render: (value: PanelType | null) =>
+                value ? (
+                  <Tooltip title={PANEL_TYPE_HINT[value]}>
+                    <span>{PANEL_TYPE_LABEL[value]}</span>
+                  </Tooltip>
+                ) : (
+                  <span className="kw-muted">not said</span>
+                ),
+            },
             {
               title: 'Payer',
               dataIndex: 'payerName',
@@ -388,6 +417,22 @@ export function PanelConfigPage() {
       >
         {draft ? (
           <div style={{ display: 'grid', gap: 14 }}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 12.5, marginBottom: 4 }}>What kind of panel is this?</div>
+              <Select
+                style={{ width: '100%' }}
+                placeholder="Nobody has said"
+                value={draft.panelType}
+                onChange={(value) => setDraft({ ...draft, panelType: value })}
+                options={PANEL_TYPES}
+              />
+              <div className="kw-muted" style={{ fontSize: 11.5, marginTop: 4 }}>
+                {draft.panelType
+                  ? PANEL_TYPE_HINT[draft.panelType]
+                  : 'Changes none of your figures — it decides which questions this screen asks you.'}
+              </div>
+            </div>
+
             <div>
               <div style={{ fontWeight: 600, fontSize: 12.5, marginBottom: 4 }}>How is their fee treated?</div>
               <Select

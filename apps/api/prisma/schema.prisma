@@ -653,10 +653,13 @@ model TenantSubscription {
 // (the owner's reference screens: "these serve as the initial default list
 // deployed to each clinic"). Deliberately outside RLS, like PlatformAdmin.
 model DefaultPanelClinic {
-  id        String   @id @default(uuid())
+  id        String     @id @default(uuid())
   name      String
   url       String?
-  active    Boolean  @default(true)
+  /// Carried into every new tenant's `PanelClinic` alongside the name and the
+  /// URL, so a clinic starts with its panels already classified.
+  panelType PanelType? @map("panel_type")
+  active    Boolean    @default(true)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -2917,6 +2920,34 @@ model GoodsReceivedNoteLine {
 // these; Panel Claims' PanelInvoice and HR's IncentiveResult (both target
 // design) will bill/total against it, never write to it.
 // Clinical Operations, Phase A1 (Queue End-to-End), extended Phase A8.
+/// WHAT KIND OF BODY A PANEL IS.
+///
+/// Four kinds behave differently in ways a clinic owner already knows, and
+/// which decide what the configuration screen should even ask:
+///
+///   TPA        — administers someone else's scheme. The payer is a different
+///                company (`payerName`), and the term may be set by the
+///                employer behind each claim (`paymentTermVariesByPayer`).
+///   INSURER    — carries the risk itself. Panel and payer are the same body.
+///   CORPORATE  — an employer the clinic bills directly. Never in the global
+///                default list: every clinic's corporate clients are its own.
+///   GOVERNMENT — a statutory or public body. Typically no portal and no fee.
+///
+/// It drives NO arithmetic. Nothing in the fee, the term or the bill split
+/// reads it, and that is deliberate: a classification that quietly changed
+/// money would be a second, invisible source of truth beside `PanelFeeTerm`.
+/// It groups screens and it decides which questions the setup wizard asks.
+///
+/// NULL means nobody has classified this panel. Reported, never guessed —
+/// the same convention as `feeTreatment = UNCONFIGURED`.
+enum PanelType {
+  TPA
+  INSURER
+  CORPORATE
+  GOVERNMENT
+  OTHER
+}
+
 // Panel/TPA catalog — audited against the live kuwick.com "Panel Clinics"
 // admin screen (26 pre-loaded TPA panels with pricing overrides/
 // exclusions) and Klinik Hijraa's "Panel Companies" section. limitAmount
@@ -2931,6 +2962,8 @@ model PanelClinic {
   tenantId        String             @map("tenant_id")
   name            String
   code            String?
+  /// See `PanelType`. NULL means unclassified, which screens report.
+  panelType       PanelType?         @map("panel_type")
   limitAmount     Decimal?           @map("limit_amount") @db.Decimal(10, 2)
   // Panel workbook upgrade (D-041) — the panel's own payment term; a
   // claim is overdue when days since submission exceed this, so aging is

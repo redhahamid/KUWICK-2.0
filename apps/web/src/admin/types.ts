@@ -635,10 +635,36 @@ export const FEE_TREATMENT_HINT: Record<PanelFeeTreatment, string> = {
     "Nobody has established the rule. The fee is applied in neither direction and every receivable on this panel excludes it.",
 };
 
+/** What kind of body a panel is. NULL means nobody has said. */
+export type PanelType =
+  | "TPA"
+  | "INSURER"
+  | "CORPORATE"
+  | "GOVERNMENT"
+  | "OTHER";
+
+/** Plain language for a clinic owner — never the enum name on screen. */
+export const PANEL_TYPE_LABEL: Record<PanelType, string> = {
+  TPA: "Administrator (TPA)",
+  INSURER: "Insurance company",
+  CORPORATE: "Company we bill direct",
+  GOVERNMENT: "Government body",
+  OTHER: "Other",
+};
+
+export const PANEL_TYPE_HINT: Record<PanelType, string> = {
+  TPA: "Runs someone else's scheme. The company that pays is usually a different one, and the payment term can be set by the employer behind each claim.",
+  INSURER: "Carries the cover itself, so the panel and the payer are the same company.",
+  CORPORATE: "An employer you bill directly for its own staff.",
+  GOVERNMENT: "A statutory or public body. Usually no portal and no admin fee.",
+  OTHER: "Does not fit the four above.",
+};
+
 export interface PanelConfigRow {
   id: string;
   name: string;
   code: string | null;
+  panelType: PanelType | null;
   payerName: string | null;
   active: boolean;
   portalUrl: string | null;
