@@ -6,6 +6,18 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 73 — 3 November 2026 — "Standard leave" untuk staf Hijraa (arahan pemilik)
+
+**Tiada migrasi.**
+
+- `[D]` Semakan staging *hijraa-leave-policy* (hanya tenant yang memegang cawangan
+  Hijraa): 28 orang tanpa polisi cuti, semuanya di KLINIK HIJRAA BANGI, diletakkan pada
+  "Standard leave" (dibuat daripada jenis cuti tenant; tenant itu hanya ada "Standard —
+  permanent staff" dengan 0 orang). Tiada perkara lain diubah.
+- `[D]` Senarai untuk HR (nama, tarikh mula, tahun khidmat, cuti tahunan) diberi dalam
+  sembang sahaja, tidak disimpan dalam repo. Log larian GitHub mengandungi nama.
+- `[D]` 19 daripada 28 bermula 1 Jan 2026 dalam rekod, jadi 0 tahun khidmat dan 8 hari.
+
 ## Batch 72 — 3 November 2026 — semakan semula UAT #2: tutup HR
 
 **Tiada migrasi.**
