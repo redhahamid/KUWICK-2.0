@@ -17,6 +17,7 @@ export function HrPage({
   actions,
   crumb,
   error,
+  helpTo = '/admin/hr/help',
   children,
 }: {
   title: ReactNode;
@@ -25,6 +26,15 @@ export function HrPage({
   /** "Settings / Payroll items" — drawn above the title, where the mockups put it. */
   crumb?: ReactNode;
   error?: string | null;
+  /**
+   * WHERE "HELP" GOES, or `null` for a page that has no guide yet.
+   *
+   * Defaulted to HR's guide because HR is every current caller. Panel reuses
+   * this kit (owner decision, 3 November 2026) and has no guide written, and a
+   * Help button landing on the HR guide from a panel claim screen is worse
+   * than no button: it reads as a wrong link rather than as a missing page.
+   */
+  helpTo?: string | null;
   children: ReactNode;
 }) {
   return (
@@ -41,9 +51,11 @@ export function HrPage({
         <div className="hr-pageHead__actions">
           {actions}
           {/* Help on every HR page: the owner/HR guide (testing, 15 October 2026). */}
-          <Link to="/admin/hr/help" className="hr-btn hr-btn--ghost hr-helpLink">
-            Help
-          </Link>
+          {helpTo ? (
+            <Link to={helpTo} className="hr-btn hr-btn--ghost hr-helpLink">
+              Help
+            </Link>
+          ) : null}
         </div>
       </div>
       {error ? <Alert type="error" showIcon message={error} style={{ marginBottom: 18 }} /> : null}

@@ -10,6 +10,8 @@ import { RecordRemittanceDto } from './dto/record-remittance.dto';
 import { UpsertPanelConfigDto } from './dto/upsert-panel-config.dto';
 import { ImportClaimsDto } from './dto/import-claims.dto';
 import { ClaimImportService } from './claim-import.service';
+import { PanelSetupService } from './panel-setup.service';
+import { SetupPanelsDto } from './dto/setup-panels.dto';
 import { OptionalDateParam, RequiredDateParam } from '../core/date-param.pipe';
 import { assertDateOrder } from '../core/query-dates';
 
@@ -19,7 +21,22 @@ export class PanelWorkspaceController {
     private readonly claims: ClaimWorkspaceService,
     private readonly config: PanelConfigService,
     private readonly imports: ClaimImportService,
+    private readonly setup: PanelSetupService,
   ) {}
+
+  // --- Setting the module up when it is empty (N-2) ------------------------
+
+  /** Whether this clinic has any panels, and what the platform can suggest. */
+  @Get('setup')
+  setupStatus() {
+    return this.setup.status();
+  }
+
+  /** Create the chosen panels, all or nothing. */
+  @Post('setup')
+  createPanels(@Body() dto: SetupPanelsDto) {
+    return this.setup.createMany(dto);
+  }
 
   // --- What has not been submitted -----------------------------------------
 

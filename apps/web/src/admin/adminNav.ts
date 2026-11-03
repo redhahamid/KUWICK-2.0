@@ -77,7 +77,10 @@ export const ADMIN_CATEGORIES: HubCategory[] = [
     key: 'panel',
     label: 'Panel',
     items: [
-      { path: '/admin/panel', label: 'Claim workspace' },
+      // `covers` so the setup wizard lights Claim workspace rather than
+      // nothing: it is reached FROM the workspace's empty state and goes back
+      // there, and a rail that lights nothing reads as "you are nowhere".
+      { path: '/admin/panel', label: 'Claim workspace', covers: ['/admin/panel/setup'] },
       { path: '/admin/panel/import', label: 'Import claims' },
       { path: '/admin/panel/configuration', label: 'Panel configuration' },
       { path: '/admin/panel/batches', label: 'Claim batches' },

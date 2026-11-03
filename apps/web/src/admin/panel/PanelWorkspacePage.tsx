@@ -12,6 +12,7 @@ import {
   usePanelAwaitingPayment,
   usePanelReconciliation,
   usePanelSubmissionQueue,
+  usePanelSetupStatus,
   usePanelWorkQueue,
   useRecordRemittance,
   useResubmitClaim,
@@ -25,6 +26,7 @@ import type {
 } from '../types';
 import { REJECTION_CATEGORY_LABEL } from '../types';
 import { canChargeToPatient, canRecordOutcome, canReclaim, canWriteOff } from './claimActions';
+import { PanelStartGate } from './PanelStartGate';
 
 const STATUS_COLOUR: Record<string, string> = {
   READY: 'blue',
@@ -72,6 +74,7 @@ export function PanelWorkspacePage() {
   const [includeResolved, setIncludeResolved] = useState(false);
   const work = usePanelWorkQueue({ includeResolved });
   const reconciliation = usePanelReconciliation({});
+  const setup = usePanelSetupStatus();
 
   const markSubmitted = useMarkBatchSubmitted();
   const adjudicate = useAdjudicateClaim();
@@ -195,6 +198,17 @@ export function PanelWorkspacePage() {
     }
     setAllocations(next);
   }
+
+  /*
+   * A CLINIC WITH NO PANELS SEES A WAY IN, NOT AN EMPTY SCREEN (N-2).
+   *
+   * Gated on the SERVER'S answer, never on these tables being empty: a failed
+   * request would otherwise read as "you have no panels" and send somebody
+   * into a wizard that then refuses every name as a duplicate. While the
+   * question is still in flight, and if it fails, the workspace renders as it
+   * always did.
+   */
+  if (setup.data?.needsSetup) return <PanelStartGate />;
 
   return (
     <AdminShell

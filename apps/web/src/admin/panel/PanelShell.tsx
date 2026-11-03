@@ -75,14 +75,20 @@ export function PanelShell() {
    * reached by hand still lights the entry that owns it.
    */
   const activePath = useMemo(() => {
-    const exact = allItems.find((item) => item.path === location.pathname);
-    if (exact) return exact.path;
-    return allItems
+    // `covers` as well as `path`, the same as HR's rail: an absorbed URL
+    // lights the entry that owns it. The setup wizard is reached from the
+    // workspace's empty state and returns there, so it lights the workspace.
+    const all = allItems.flatMap((item) =>
+      [item.path, ...(item.covers ?? [])].map((path) => ({ path, owner: item.path })),
+    );
+    const exact = all.find((entry) => entry.path === location.pathname);
+    if (exact) return exact.owner;
+    return all
       .filter(
-        (item) =>
-          location.pathname === item.path || location.pathname.startsWith(`${item.path}/`),
+        (entry) =>
+          location.pathname === entry.path || location.pathname.startsWith(`${entry.path}/`),
       )
-      .sort((a, b) => b.path.length - a.path.length)[0]?.path;
+      .sort((a, b) => b.path.length - a.path.length)[0]?.owner;
   }, [allItems, location.pathname]);
 
   /*

@@ -660,6 +660,41 @@ export const PANEL_TYPE_HINT: Record<PanelType, string> = {
   OTHER: "Does not fit the four above.",
 };
 
+/** N-2 — whether the Panel module has been set up, and what to offer. */
+export interface PanelSetupStatus {
+  /** The clinic has no ACTIVE panel, so it lands on a blank claim workspace. */
+  needsSetup: boolean;
+  panels: {
+    id: string;
+    name: string;
+    panelType: PanelType | null;
+    active: boolean;
+    /** Shown so the wizard can say what is still unanswered rather than
+        implying a panel is finished because it exists. */
+    hasTerm: boolean;
+    feeSettled: boolean;
+  }[];
+  /** The platform's starter list, minus panels the clinic already has. */
+  suggestions: { name: string; portalUrl: string | null; panelType: PanelType | null }[];
+}
+
+/**
+ * One panel as the wizard will send it. Everything but the name is optional —
+ * an unanswered term stays NULL and an unanswered fee stays "not established",
+ * both of which the panel screens already chase.
+ */
+export interface PanelSetupDraft {
+  name: string;
+  panelType?: PanelType;
+  portalUrl?: string;
+  paymentTermDays?: number;
+  paymentTermUnit?: "CALENDAR_DAYS" | "WORKING_DAYS";
+  paymentTermAnchor?: "SERVICE_DATE" | "SUBMISSION_DATE" | "INVOICE_DATE";
+  feeTreatment?: PanelFeeTreatment;
+  claimFeeType?: "PERCENT" | "AMOUNT";
+  claimFeeValue?: number;
+}
+
 export interface PanelConfigRow {
   id: string;
   name: string;
