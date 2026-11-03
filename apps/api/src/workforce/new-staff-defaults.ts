@@ -31,7 +31,15 @@ export const STANDARD_LEAVE_POLICY = 'Standard leave';
 export async function defaultLeavePolicyId(tx: AdminTx, tenantId: string = currentTenantId()): Promise<string> {
   const active = await tx.leavePolicy.findFirst({ where: { tenantId, active: true }, orderBy: { createdAt: 'asc' }, select: { id: true } });
   if (active) return active.id;
-  // One the clinic switched off keeps its name; it is not made again.
+  return standardLeavePolicyId(tx, tenantId);
+}
+
+/**
+ * "STANDARD LEAVE" ITSELF: the clinic's policy of that name, made from its
+ * leave types if it has none. One the clinic switched off keeps its name and
+ * is not made again.
+ */
+export async function standardLeavePolicyId(tx: AdminTx, tenantId: string = currentTenantId()): Promise<string> {
   const named = await tx.leavePolicy.findFirst({ where: { tenantId, name: STANDARD_LEAVE_POLICY }, select: { id: true } });
   if (named) return named.id;
   const kinds = leaveKinds(await tx.leaveTypeSetting.findMany({ where: { tenantId }, orderBy: { sortOrder: 'asc' } }));
