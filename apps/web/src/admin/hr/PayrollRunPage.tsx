@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { RecordsChangedBanner } from './RecordsChangedBanner';
-import { filingNumbersCheck } from './recordLabels';
+import { filingNumbersCheck, monthNotEndedCheck } from './recordLabels';
+import { clinicDayjs } from '../../clinical/clinicTime';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { App, Grid, Input, Modal } from 'antd';
 import dayjs from 'dayjs';
@@ -808,8 +809,18 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
     {
       // A warning, never a block (new-clinic UAT #2, item 77).
       key: 'numbers',
-      title: 'EPF and income tax numbers on file',
-      ...filingNumbersCheck(warnings.filter((w) => w.code === 'FILING_NUMBER_MISSING')),
+      title: 'EPF and income tax numbers',
+      ...filingNumbersCheck(
+        warnings.filter((w) => w.code === 'FILING_NUMBER_MISSING'),
+        data.review.attention.filter((item) => item.code === 'FILING_NUMBER_MISSING' && item.overridden),
+      ),
+      warnOnly: true,
+    },
+    {
+      // A warning, never a block (Payroll A–Z guide, issue 8).
+      key: 'ended',
+      title: 'The month is over',
+      ...monthNotEndedCheck(data.run.period, clinicDayjs(new Date()).format('YYYY-MM-DD')),
       warnOnly: true,
     },
     {
@@ -973,6 +984,8 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
                       : `Record your approval of ${data.run.periodLabel} payroll?`,
                     content: !approval.completesTheRun
                       ? `This clinic requires ${approval.required} approvals. Nothing locks until a second person approves it.`
+                      : !monthNotEndedCheck(data.run.period, clinicDayjs(new Date()).format('YYYY-MM-DD')).ok
+                        ? `${data.run.periodLabel} has not ended yet. ${monthNotEndedCheck(data.run.period, clinicDayjs(new Date()).format('YYYY-MM-DD')).detail}`
                       : provisional
                         ? 'The statutory rates behind these figures have not been verified. This month will be locked and marked PROVISIONAL — it must not be used to pay staff or file a return.'
                         : 'The figures will be locked. A correction afterwards is a recorded adjustment.',

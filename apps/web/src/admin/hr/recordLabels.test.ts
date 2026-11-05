@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { accountLabel, annualLeaveLabel, filingNumbersCheck, taxCategoryLabel } from './recordLabels';
+import { accountLabel, annualLeaveLabel, filingNumbersCheck, monthNotEndedCheck, taxCategoryLabel } from './recordLabels';
 
 /* New-clinic UAT #2, 1 November 2026. Demo names only. */
 describe('the employee record and Approve wordings', () => {
@@ -29,4 +29,21 @@ describe('the employee record and Approve wordings', () => {
     expect(annualLeaveLabel({ fullYear: 8, thisYear: 8, policyName: 'Standard leave' }, null)).toBe('8 days a year · Standard leave');
     expect(annualLeaveLabel(null, null)).toBeNull();
   });
+
+  it('says "acknowledged", never "on file", when a missing number was acknowledged (Payroll A–Z guide, issue 5)', () => {
+    const missing = { name: 'Demo Nurse', what: 'No income tax number is on file for this employee.' };
+    const check = filingNumbersCheck([], [missing]);
+    expect(check.ok).toBe(true);
+    expect(check.detail).toMatch(/^Missing, acknowledged: Demo Nurse/);
+    expect(check.detail).not.toMatch(/Everyone/);
+  });
+
+  it('warns, never blocks, when the month has not ended (Payroll A–Z guide, issue 8)', () => {
+    expect(monthNotEndedCheck('2026-11', '2026-11-03')).toMatchObject({ ok: false });
+    expect(monthNotEndedCheck('2026-11', '2026-11-03').detail).toMatch(/^28 days of this month are still to come/);
+    expect(monthNotEndedCheck('2026-11', '2026-11-30').detail).toMatch(/^1 day of this month is still to come/);
+    expect(monthNotEndedCheck('2026-11', '2026-12-01')).toEqual({ ok: true, detail: 'The month is over.' });
+    expect(monthNotEndedCheck('2026-02', '2026-03-01').ok).toBe(true);
+  });
 });
+

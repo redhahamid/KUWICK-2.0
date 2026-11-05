@@ -90,6 +90,20 @@ describe('paying a month on its pay dates', () => {
     expect(recordMutate.mock.calls[0][0]).toMatchObject({ runId: 'run-1', payDate: '2026-11-15', reference: 'IBG-1115' });
   });
 
+  it('takes the button away as soon as a transfer is recorded, before the status comes back (Payroll A–Z guide, issue 11)', async () => {
+    recordMutate.mockReset();
+    recordMutate.mockImplementation((_input, options: { onSuccess: () => void }) => options.onSuccess());
+    const batches = [batch('2026-11-15', { totalCents: 42_000 })];
+    mount({ runStatus: 'APPROVED', runPaidAt: null, mayPrepare: true, schedule: [{ payDate: '2026-11-15', totalCents: 42_000, people: 1 }], salaryDate: null, batches, batch: batches[0] });
+    fireEvent.click(screen.getByRole('button', { name: 'Record the transfer' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByPlaceholderText(/IBG-/), { target: { value: 'IBG-1115' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Record it' }));
+    // The served status still says GENERATED: the screen must not offer the same transfer again.
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Record the transfer' })).toBeNull());
+    expect(screen.getByText('Transfer recorded.')).toBeTruthy();
+  });
+
   it('looks as it always did for a month paid on one date', () => {
     const only = batch(null);
     mount({ runStatus: 'APPROVED', runPaidAt: null, mayPrepare: true, schedule: [{ payDate: null, totalCents: 100_000, people: 1 }], salaryDate: null, batches: [only], batch: only });

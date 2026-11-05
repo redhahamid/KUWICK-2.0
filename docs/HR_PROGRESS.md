@@ -6,6 +6,34 @@ Setiap kenyataan: `[D]` diperhatikan dalam kod atau DB, `[A]` andaian.
 
 ---
 
+## Batch 75 — 5 November 2026 — lima pembaikan dari panduan Payroll A–Z; semakan lokum
+
+**Tiada migrasi.**
+
+- `[D]` Isu 4: wizard *Pay rules* "Approved by" kini dari peraturan sebenar (`approvedByLabel`):
+  pengecualian pemilik disebut; klinik satu pelulus: "The owner alone (nobody else can approve yet)".
+- `[D]` Isu 5: senarai semak Approve "EPF and income tax numbers" berkata "Missing, acknowledged: …"
+  bila nombor yang tiada sudah diakui, bukan "Everyone's numbers are on file".
+- `[D]` Isu 8: baris amaran "The month is over" (tidak menyekat) dan ayat dalam dialog Approve bila
+  bulan belum tamat (tarikh klinik).
+- `[D]` Isu 11: butang *Record the transfer* (dan *Regenerate*) hilang sebaik rekod berjaya, sebelum
+  status dimuat semula.
+- `[D]` Isu 12: "Loading…" (bukan "Not on the employee list", "No approved month on record",
+  "No … payroll to compare with", "Rules in force: loading") semasa data dimuatkan.
+- `[D]` Ujian: `approvedByLabel.test.ts`, `loadingNames.test.tsx`, tambahan dalam
+  `recordLabels.test.ts` dan `paymentPanel.test.tsx`. HR web: 63 fail, 409 ujian lulus.
+- `[D]` Lokum: dua laluan wujud. (A) "Locum hours" (`LOCUM_FEE`) dalam gaji untuk doktor PEKERJA,
+  jam melebihi minggu biasa dari roster/kehadiran (`weekly-pay.ts`); ujian integrasi
+  `weekly-pay` dan `roster-publish-locums` lulus (6/6). (B) *Locum sessions* untuk KONTRAKTOR,
+  dibayar oleh Finance, tidak boleh masuk gaji (kekangan DB) — tetapi tiada API atau skrin untuk
+  menetapkan `engagement = CONTRACTOR`, jadi (B) belum boleh dicapai.
+- `[D]` `LOCUM_FEE` dalam katalog: PCB ya; KWSP, PERKESO, SIP, HRD tidak. `[A]` Untuk pekerja,
+  sama ada bayaran ini "gaji" bagi KWSP/PERKESO perlu disahkan juruaudit.
+- `[D]` Semakan baca-sahaja staging `hijraa-locum-start-dates`: LOCUM_FEE Jan–Sep dan senarai staf
+  bermula 1 Jan 2026 (nama dalam log; log dipadam selepas dibaca).
+
+---
+
 ## Batch 74 — 3 November 2026 — panduan "Payroll A–Z" (BM dan EN) dengan tangkapan skrin sebenar
 
 **Tiada migrasi.**

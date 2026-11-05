@@ -205,7 +205,8 @@ export function TimesheetPage() {
       }
       byStaff.set(shift.staffId, {
         staffId: shift.staffId,
-        name: nameOf.get(shift.staffId) ?? 'Not on the employee list',
+        // While the staff list is still on its way the name is unknown, not missing (Payroll A–Z guide, issue 12).
+        name: nameOf.get(shift.staffId) ?? (employees.data ? 'Not on the employee list' : 'Loading…'),
         record: null,
         shiftStart: shift.startsAt,
         shiftEnd: shift.endsAt,
@@ -242,7 +243,7 @@ export function TimesheetPage() {
       row.onDuty = onDutyNow(row.record, day, row.shiftEnd);
     }
     return [...byStaff.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [today.data, roster.data, leave.data, nameOf, day]);
+  }, [today.data, roster.data, leave.data, nameOf, employees.data, day]);
 
   // EXCEPTIONS ONLY (UAT, 14 October 2026): "HR sees exceptions only: late,
   // left early, missed scan, scan without shift", and every PIN or
@@ -591,7 +592,7 @@ export function TimesheetPage() {
                 <b>Rules in force:</b>{' '}
                 {rules
                   ? `${rules.lateGraceMinutes}-min grace · OT counts after ${rules.overtimeMinimumMinutes} min past shift, ${rules.overtimeRoundingMinutes > 0 ? `rounded down to ${rules.overtimeRoundingMinutes} min` : 'not rounded'} · needs approval before payroll`
-                  : 'loading'}
+                  : 'Loading…'}
                 {rules?.geofenceLat !== null && rules?.geofenceLat !== undefined
                   ? ` · portal punches judged within ${rules.geofenceRadiusMetres} m of the branch`
                   : ''}

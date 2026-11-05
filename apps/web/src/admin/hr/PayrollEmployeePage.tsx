@@ -418,6 +418,9 @@ export function PayrollEmployeePage() {
                         </StatusChip>
                       ) : null}
                     </>
+                  ) : !variance.data && !variance.isError ? (
+                    // Still loading: say so, never "no payroll" (Payroll A–Z guide, issue 12).
+                    <span className="hr-muted">Loading…</span>
                   ) : (
                     <span className="hr-muted">No {previousMonth} payroll to compare with</span>
                   )}
@@ -525,6 +528,8 @@ export function PayrollEmployeePage() {
                   </div>
                 ) : null}
                 </>
+              ) : !ytd.data && !ytd.isError ? (
+                <div className="hr-panelNote">Loading…</div>
               ) : (
                 <div className="hr-panelNote">No approved month on record for {taxYear} yet. The year to date fills in as months are approved.</div>
               )}

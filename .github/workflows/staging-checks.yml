@@ -35,7 +35,7 @@ on:
       task:
         description: 'What to run'
         type: choice
-        options: [bonus-report, demo-bonus-fix, booking-check, health, staff-defaults, hijraa-leave-policy]
+        options: [bonus-report, demo-bonus-fix, booking-check, health, staff-defaults, hijraa-leave-policy, hijraa-locum-start-dates]
         required: true
       apply:
         description: 'Write (demo-bonus-fix, staff-defaults, hijraa-leave-policy) or book and cancel (booking-check). Unticked changes nothing.'
@@ -198,4 +198,5 @@ jobs:
             health)         DATABASE_URL="$PG_DATABASE_URL" npx tsx prisma/staging-health.ts ;;
             staff-defaults) DATABASE_URL="$PG_DATABASE_URL" BACKFILL_APPLY="$APPLY" npx tsx prisma/staff-defaults-backfill.ts ;;
             hijraa-leave-policy) DATABASE_URL="$PG_DATABASE_URL" HIJRAA_APPLY="$APPLY" npx tsx prisma/hijraa-leave-policy.ts ;;
+            hijraa-locum-start-dates) DATABASE_URL="$PG_DATABASE_URL" npx tsx prisma/hijraa-locum-start-dates.ts ;;
           esac

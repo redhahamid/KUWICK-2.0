@@ -38,6 +38,13 @@ export function PaymentPanel({ runId }: { runId: string }) {
   const query = usePaymentStatus(runId);
   const prepare = usePreparePayment();
   const record = useRecordPaymentPaid();
+  /*
+   * Listings recorded on this screen, before the status comes back. On a slow
+   * server the button stayed for a moment after a successful record, and
+   * pressing it again was refused "already recorded as paid" (Payroll A–Z
+   * guide, issue 11).
+   */
+  const [justRecorded, setJustRecorded] = useState<string[]>([]);
   const choose = useChoosePayDate();
   // The date picker can report one choice twice (typed, then Enter): it is asked for once.
   const asked = useRef<string | null>(null);
@@ -135,7 +142,7 @@ export function PaymentPanel({ runId }: { runId: string }) {
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-          {data.mayPrepare && batch.status !== 'RECORDED_PAID' ? (
+          {data.mayPrepare && batch.status !== 'RECORDED_PAID' && !justRecorded.includes(batch.id) ? (
             <>
               <Button loading={busy === batch.id} onClick={() => void download(batch)}>
                 Download instruction listing (CSV)
@@ -147,7 +154,10 @@ export function PaymentPanel({ runId }: { runId: string }) {
               </Tooltip>
             </>
           ) : null}
-          {batch.status !== 'RECORDED_PAID' ? (
+          {batch.status !== 'RECORDED_PAID' && justRecorded.includes(batch.id) ? (
+            <span className="kw-muted" style={{ alignSelf: 'center' }}>Transfer recorded.</span>
+          ) : null}
+          {batch.status !== 'RECORDED_PAID' && !justRecorded.includes(batch.id) ? (
             <Button
               type="primary"
               onClick={() => {
@@ -346,6 +356,8 @@ export function PaymentPanel({ runId }: { runId: string }) {
             },
             {
               onSuccess: () => {
+                const done = recording?.id;
+                if (done) setJustRecorded((ids) => [...ids, done]);
                 message.success(
                   others === 0
                     ? 'Recorded. The month now shows as paid.'

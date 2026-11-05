@@ -31,11 +31,27 @@ export interface SetupStep {
 export const OPENING_BALANCES_SETTING = 'hr.setup.openingBalances';
 export type OpeningBalancesAnswer = { answer: 'NONE' | 'IMPORTED'; year: number };
 
-const APPROVED_BY: Record<string, string> = {
-  STANDARD: 'One approver',
-  MAKER_CHECKER: 'Somebody other than the preparer',
-  DUAL_APPROVAL: 'Two approvers',
-};
+/**
+ * WHO APPROVES, in a few words, the same rule the server enforces
+ * (payroll-approval-rule.ts). The owner's exemption is part of the rule, so it
+ * is said here too: a one-person clinic read "Somebody other than the
+ * preparer" and then approved alone (Payroll A–Z guide, issue 4).
+ */
+export function approvedByLabel(policy: { mode: string; allowOwnerSelfApproval: boolean; approvers?: { total: number } }): string {
+  const ownerAlone = policy.allowOwnerSelfApproval && policy.mode !== 'STANDARD';
+  const onlyOne = (policy.approvers?.total ?? 2) <= 1;
+  switch (policy.mode) {
+    case 'STANDARD':
+      return 'One approver, who may be the person who ran it';
+    case 'MAKER_CHECKER':
+      if (ownerAlone && onlyOne) return 'The owner alone (nobody else can approve yet)';
+      return ownerAlone ? 'Somebody other than the person who ran it; the owner may approve their own' : 'Somebody other than the person who ran it';
+    case 'DUAL_APPROVAL':
+      return ownerAlone ? 'Two people, not the person who ran it; the owner may approve their own' : 'Two people, not the person who ran it';
+    default:
+      return policy.mode;
+  }
+}
 
 /** The bank account is its own step; everything else the Company page calls missing is the first step. */
 const BANK_MISSING = 'Bank account for payment';
@@ -189,7 +205,7 @@ export function useHrSetup() {
       { label: 'Overtime worked out on', value: overtimeOn },
       {
         label: 'Approved by',
-        value: approval.data ? (APPROVED_BY[approval.data.mode] ?? approval.data.mode) : 'One approver',
+        value: approval.data ? approvedByLabel(approval.data) : 'One approver',
       },
     ],
     // Every pay date, one row each, then what is in use when there are fewer than three dates.
