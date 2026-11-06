@@ -2720,6 +2720,106 @@ tests; no schema or data change.
 
 ---
 
+## D-119 — The employer behind a panel is a row, not free text: G-9 closed
+
+**Status: DECIDED** (owner answer, 2026-11-03: "Employer company: a real list
+per panel, with quick-add at the counter. This is also where a per-employer
+payment term lives (G-9).")
+
+**The owner's reason was reporting; the bigger one turned out to be money.**
+Free text cannot answer "what did we bill for Company X" — that is true and it
+is why the question was asked. But the same field closes **G-9**, open since
+the workbook audit: one panel states its payment term as `VARY BASED ON
+COMPANY`, and Kuwick could record only THAT it varies. `resolveTermWindow`
+therefore refused to compute a due date for any claim on that panel. The
+refusal was right — inventing one would have had staff chase a panel that was
+not late — but it left a whole panel's receivable with nothing to chase it by.
+With the company recorded, its own term can be too.
+
+**Proved end to end, not asserted.** The same claim on a VARY BASED ON COMPANY
+panel has NO due date while the company is unknown, and a due date of
+2026-04-01 once the company's 90-day term is recorded.
+
+**THE TERM GOVERNS AS A WHOLE, never field by field.** An employer with 20 days
+and no unit reads as 20 CALENDAR days; it does NOT inherit the panel's
+working-day rule. Half-inheriting assembles a due date from two different
+contracts — unexplainable to a person and unarguable with a panel — and since
+working days run about half again as long, it would be out by weeks. The case
+easiest to get wrong is also pinned: a company that IS known but whose term is
+NOT still resolves to no due date, rather than quietly falling back to the
+panel's indicative number. Knowing which company it is does not tell you what
+they agreed.
+
+**Scoped to one panel, not to the tenant.** The same company reached through
+two TPAs is two agreements, with two terms and two sets of claim numbers.
+Merging them would give one due date to two contracts, so both are allowed and
+a test says so.
+
+**Why a list earns its extra work over free text.** "Contoh Sdn Bhd", "CONTOH
+SDN BHD" and "contoh  sdn  bhd" are one company and three strings. As free text
+they are three rows in every report, three terms to configure, and a
+per-employer due date that depends on how somebody typed it that morning. The
+unique index alone would admit all three — only case and inner spacing differ —
+so the service compares them itself.
+
+**The counter remembers what was used.** Kuwick 1.0 did and 2.0 did not, which
+is a regression nobody logged: the card number, the employer and the
+relationship were keyed again at every visit, from a card the patient has to
+find in their wallet. `Patient.lastPanel*` is written at visit creation and
+pre-fills the counter.
+
+It is **a suggestion, never a commitment**: the visit still starts
+`PENDING_VERIFICATION` and staff still press Verify, so a lapsed panel is
+caught by the same step that catches one typed wrongly. A self-pay visit does
+NOT blank the memory — a patient coming in self-pay has not stopped being on
+their panel. A remembered panel since switched off is reported and NAMED on
+screen rather than dropped, because a blank form lets somebody conclude the
+patient was always self-pay. `panel.autoSelectLastPanel` is a clinic setting,
+default ON (1.0's behaviour); turning it off stops the pre-selecting and keeps
+the memory.
+
+**The subtle failure, and the one worth the guard.** A pre-fill re-applied on
+every render fights the person: switching to Cash because THIS visit is
+self-pay snaps back to Panel, and the visit is registered against a panel they
+said it was not on. That is a wrong bill, not an annoyance. It is applied once,
+and a test proves nothing snaps back and no panel field leaks into a self-pay
+request.
+
+**The pair is checked, because two valid ids can be a wrong pair.** An employer
+from a DIFFERENT panel would apply another agreement's term to this claim, and
+nothing about the request would look invalid. `resolvePanelEmployer` refuses it
+and writes neither the visit nor the patient's memory. An employer deactivated
+*after* the patient arrived is still accepted: deactivating a company means
+"stop offering it at the counter", not "refuse the visit in front of you".
+
+**`panelRelationship` is not defaulted to SELF.** A wrongly-recorded SELF is a
+claim rejected for a member mismatch; a blank is a question somebody can still
+answer.
+
+**Not snapshotted onto the visit, unlike the benefit terms beside it.** Those
+are frozen at verification (D-092) because they decide how the bill splits
+between panel and patient. An employer decides when the PANEL pays the CLINIC —
+not a bill-split input — and it is already frozen where it matters:
+`ClaimBatchLine.dueDate`, stamped at submission. Renegotiating a term does not
+move a submitted claim's due date, for the same reason it does not move its fee
+treatment (D-112). Tested.
+
+**The batch-level overdue figure deliberately stays the PANEL's term.** A batch
+can hold claims for several employers with different terms, so there is no one
+date a batch is late on and picking any employer's would be arbitrary. The
+authoritative per-claim date is the line's.
+
+**Two pre-existing things recorded rather than quietly changed**:
+`CreateVisitDto.staffId` is required although `CreateVisitInput` treats it as
+optional (D-082); and a `Form.Item` without `name` wires no label to its
+control, so the counter's new controls carry `aria-label`s.
+
+**Reversibility**: high. One new table, two nullable visit columns, four
+nullable patient columns, and a pure function. Removing the employer picker
+leaves every claim on the panel's own term, which is exactly today's behaviour.
+
+---
+
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:
 
 - Doctor incentive formula: worked semantics now captured in full from Klinik Hijraa (`docs/PROPOSED_ADDENDUM_2026-08-01_klinik-hijraa-admin-reference.md`) — spec is no longer the blocker, building it is; still needs owner go-ahead to schedule (OQ#2, blocks 1c only)

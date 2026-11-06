@@ -506,7 +506,7 @@ Named honestly, each with the evidence that produced it.
 | **G-6** | ~~**Rejection reason as a taxonomy.**~~ **RESOLVED** | §8.3 — five recurring causes, all free text today. | **Done.** `ClaimRejectionCategory` beside the free text, with the breakdown by amount on the dashboard: "what did exhausted member limits cost us this year" is now answerable. |
 | **G-7** | **Fee on a consolidated monthly invoice.** | §4 — one panel charges 10% of the monthly invoice, not per claim. | A third `claimFeeType`, applied at batch level. |
 | **G-8** | **Fee tiers.** | §4.2 — one panel shows two fee values across 2,268 claims. | Either a tier table, or a per-claim override with a reason. Ask the owner which; the sheet cannot say. |
-| **G-9** | **Term that varies by the corporate client behind a TPA.** *(partly addressed)* | §3 — one panel is explicitly `VARY BASED ON COMPANY`. | `paymentTermVariesByPayer` records THAT it varies, so no due date is invented for that panel. Modelling the sub-payer itself is still outstanding. Low volume; not urgent. |
+| **G-9** | ~~**Term that varies by the corporate client behind a TPA.**~~ **RESOLVED** | §3 — one panel is explicitly `VARY BASED ON COMPANY`. | **Done** (2026-11-06, with N-5). `PanelEmployer` models the company behind the claim, scoped to one panel because the same company through two TPAs is two agreements. Its own term governs as a WHOLE (`payment-terms.effectiveTerm`), never field by field. A claim on that panel went from permanently unresolved — and therefore unchaseable — to a real due date. A company that is known but whose term is NOT still resolves to no date, rather than falling back to the panel's indicative number. See D-119. |
 | **G-10** | ~~**Rejection rate as a KPI.**~~ **RESOLVED** | §9 item 6 — the clinic already computes excess receivable ÷ total claimed. | **Done.** On the panel dashboard, NULL rather than 0% where nothing has been claimed, plus a count of rejections nobody has categorised. |
 | **G-11** | **Per-scheme split within one panel** (fee-for-service vs managed care). | §5 — one panel splits its monthly counts into two schemes. | A scheme dimension on the claim, or accept two panel records. |
 | **G-12** | ~~**Panel claim import.**~~ **RESOLVED** | 7,146 open and historical rows, 30% unpaid, live money. | **Done.** `POST /panel-workspace/import/claims` with a dry run that reports claimed / fee / expected / received / outstanding BEFORE anything is written, so the totals can be checked against the workbook's own TOTAL row. All-or-nothing, idempotent, every row traceable to its import. An imported claim carries no invoice, and a database CHECK states exactly when that is allowed. See [`MIGRATION_AND_IMPORT_SAFETY.md`](./MIGRATION_AND_IMPORT_SAFETY.md) and D-115. |
@@ -544,14 +544,18 @@ better than needing a monthly export to find it (G-13).
 **Nine of the thirteen gaps in §12 are now closed, and one is partly closed.**
 G-1 (fee direction), G-2 (term shapes), G-3 (computed overdue), G-4 (the
 re-claim deadline), G-5 (rejected → patient), G-6 (the rejection taxonomy),
-G-10 (the rejection-rate KPI), G-12 (the importer) and G-13 (billed vs claimed)
-are implemented, tested and visible on screen; G-9 records that a term varies
-without yet modelling the sub-payer.
+G-9 (a term that varies by the company behind a TPA), G-10 (the rejection-rate
+KPI), G-12 (the importer) and G-13 (billed vs claimed) are implemented, tested
+and visible on screen.
 
 **Three remain, and none of them is a blocker.** G-7 (a fee on a consolidated
 monthly invoice), G-8 (fee tiers) and G-11 (per-scheme split) are each one panel
-out of twenty-nine and need an owner decision more than they need code. G-9 is
-half-done and low volume.
+out of twenty-nine. G-7 needs code and is specified. G-8's answer is now
+COMPUTED rather than argued — `prisma/reports/panel-fee-value-variance.ts`
+reports whether the panel's two fee values split by date (existing
+`PanelFeeTerm` history, no feature) or overlap (a per-claim override), and it
+needs the clinic's own claims to run against. G-11 needs an owner decision more
+than it needs code.
 
 **G-12, the importer, is built** — which means the panel workbook can now be
 retired, in the sequence set out in

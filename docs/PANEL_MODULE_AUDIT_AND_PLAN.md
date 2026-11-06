@@ -320,7 +320,7 @@ rejected matters just as much — a claim the panel refused never touched the
 member's limit, and counting it would exhaust an entitlement the member still
 has.
 
-### N-5 · Counter: employer, relationship, and panel memory — **MISSING** · M
+### N-5 · Counter: employer, relationship, and panel memory — **BUILT** (6 Nov 2026) · L
 
 Three small things, one piece, because they are all pre-fill at the same moment.
 
@@ -497,8 +497,8 @@ where an answer resized a piece.
 | **2** | Setup wizard for an empty Panel module, with a start gate on the workspace | N-2 | **done** | M |
 | **2a** | The G-8 fee-variance report, which answers Q5 from data | — | **done** | S |
 | **3** | Portal-credential decision, schema comment, autofill guard | N-10 | **done** | S |
-| **4** | Counter: `PanelEmployer` list + relationship + last-used panel pre-fill (also closes G-9) | N-5 | next | L |
-| **5** | Claim proof upload against the panel's checklist | N-7 | | S |
+| **4** | Counter: `PanelEmployer` list + relationship + last-used panel pre-fill (also closes G-9) | N-5 | **done** — and **G-9 closed** | L |
+| **5** | Claim proof upload against the panel's checklist | N-7 | next | S |
 | **6** | Plain-language status names + `autoRaiseClaimOnSettlement`, default on | N-8 | | M |
 | **7** | `PERCENT_BATCH` batch-level fee (closes G-7) | N-3 | | S |
 | **8** | Annual limit, used-to-date from CLAIMED, per-panel policy year | N-4 | | L |
