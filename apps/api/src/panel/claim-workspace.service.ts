@@ -21,7 +21,12 @@ import { WriteOffClaimDto } from './dto/write-off-claim.dto';
 import { RecordRemittanceDto } from './dto/record-remittance.dto';
 import { ResubmitClaimDto } from './dto/resubmit-claim.dto';
 import { ChargeToPatientDto } from './dto/charge-to-patient.dto';
-import { resolveResubmissionWindow, resolveTermWindow } from './payment-terms';
+import {
+  effectiveTerm,
+  employerTermOf,
+  resolveResubmissionWindow,
+  resolveTermWindow,
+} from './payment-terms';
 
 /**
  * The claim states where a re-claim is still the route out, and therefore the
@@ -255,7 +260,35 @@ export class ClaimWorkspaceService {
               claimStatus: true,
               createdAt: true,
               legacyServiceDate: true,
-              invoice: { select: { paidAt: true, createdAt: true } },
+              invoice: {
+                select: {
+                  paidAt: true,
+                  createdAt: true,
+                  /**
+                   * N-5 / G-9 — THE EMPLOYER BEHIND THIS CLAIM, and its own
+                   * payment term where it has one. Read per line because two
+                   * claims in one batch can be for two different companies,
+                   * with two different terms.
+                   *
+                   * An IMPORTED claim has no invoice and therefore no employer,
+                   * so it falls back to the panel's term — which is correct:
+                   * the workbook it came from did not record a company either.
+                   */
+                  visit: {
+                    select: {
+                      panelEmployer: {
+                        select: {
+                          name: true,
+                          paymentTermDays: true,
+                          paymentTermMaxDays: true,
+                          paymentTermUnit: true,
+                          paymentTermAnchor: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
             },
           },
           panelClinic: {
@@ -283,7 +316,7 @@ export class ClaimWorkspaceService {
       // to no date at all, so the claim is never called overdue on a rule
       // nobody has configured. See panel/payment-terms.ts.
       const panel = batch.panelClinic;
-      const term = {
+      const panelTerm = {
         nominalDays: panel.paymentTermDays,
         maxDays: panel.paymentTermMaxDays,
         unit: panel.paymentTermUnit,
@@ -310,6 +343,11 @@ export class ClaimWorkspaceService {
         const serviceDate = line.invoice
           ? line.invoice.paidAt ?? line.invoice.createdAt
           : line.legacyServiceDate ?? line.createdAt;
+        // N-5 / G-9 — the EMPLOYER's term governs where one is recorded, and
+        // this is the case the feature exists for: a panel whose term is
+        // "VARY BASED ON COMPANY" resolves to a real due date once the company
+        // is known, instead of to no date at all.
+        const { term } = effectiveTerm(panelTerm, employerTermOf(line.invoice?.visit?.panelEmployer));
         const window = resolveTermWindow(term, {
           submittedAt,
           serviceDate,

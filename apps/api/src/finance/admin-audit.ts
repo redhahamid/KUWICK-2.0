@@ -72,6 +72,14 @@ export type AuditAction =
    */
   | 'panel.created'
   /**
+   * AN EMPLOYER BEHIND A PANEL, created or changed (N-5 / G-9). Its own actions
+   * because an employer's payment term decides when that company's claims are
+   * called overdue: changing it moves due dates on claims nobody edited, which
+   * is precisely the kind of act this table exists to attribute.
+   */
+  | 'panel.employerCreated'
+  | 'panel.employerUpdated'
+  /**
    * The fee treatment changed and unsent claims were re-stamped with it. Kept
    * as its own action because it silently changes the arithmetic on claims
    * nobody edited, and "who changed our receivable and when" is exactly the

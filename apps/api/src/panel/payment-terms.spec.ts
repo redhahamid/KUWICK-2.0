@@ -2,6 +2,7 @@ import {
   addCalendarDays,
   addWorkingDays,
   daysPastDue,
+  effectiveTerm,
   isOverdue,
   resolveResubmissionWindow,
   resolveTermWindow,
@@ -140,5 +141,117 @@ describe('resolveResubmissionWindow', () => {
   it('says it does not know rather than inventing a deadline', () => {
     expect(resolveResubmissionWindow(null, d('2026-01-01'), d('2026-02-01')).resolved).toBe(false);
     expect(resolveResubmissionWindow(60, null, d('2026-02-01')).reason).toMatch(/original service date/i);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// WHICH TERM GOVERNS — the panel's, or the employer's behind it (G-9).
+// ---------------------------------------------------------------------------
+describe('effectiveTerm', () => {
+  it('uses the panel when there is no employer', () => {
+    const panel = { nominalDays: 30 };
+    expect(effectiveTerm(panel, null)).toEqual({ term: panel, source: 'PANEL' });
+    expect(effectiveTerm(panel, undefined)).toEqual({ term: panel, source: 'PANEL' });
+  });
+
+  /**
+   * An employer row with no term is the normal case: the list exists so claims
+   * can be grouped by company, and most companies simply take the panel's term.
+   * That is why the field is nullable rather than defaulted.
+   */
+  it('uses the panel when the employer has no term of its own', () => {
+    const panel = { nominalDays: 30, unit: 'WORKING_DAYS' as const };
+    expect(effectiveTerm(panel, { nominalDays: null })).toEqual({ term: panel, source: 'PANEL' });
+    expect(effectiveTerm(panel, {})).toEqual({ term: panel, source: 'PANEL' });
+  });
+
+  it("uses the employer's term over the panel's, and says whose it was", () => {
+    const result = effectiveTerm({ nominalDays: 30 }, { nominalDays: 90 });
+    expect(result.source).toBe('EMPLOYER');
+    expect(result.term.nominalDays).toBe(90);
+  });
+
+  /**
+   * THE RULE THAT MATTERS. An employer term governs as a WHOLE: 20 days with no
+   * unit is 20 CALENDAR days, not 20 of the panel's working days. A due date
+   * assembled from two contracts is one nobody can explain, and — since
+   * working days run about half again as long — it would be out by weeks.
+   */
+  it('does not let an employer term half-inherit the panel\u2019s shape', () => {
+    const { term } = effectiveTerm(
+      { nominalDays: 30, maxDays: 60, unit: 'WORKING_DAYS', anchor: 'INVOICE_DATE' },
+      { nominalDays: 20 },
+    );
+    expect(term).toEqual({
+      nominalDays: 20,
+      maxDays: null,
+      unit: null,
+      anchor: null,
+      variesByPayer: false,
+    });
+    // And NULL unit/anchor read as the same defaults a panel gets, so the
+    // window is 20 calendar days from submission — not 20 working days from
+    // the invoice date.
+    const window = resolveTermWindow(term, {
+      submittedAt: d('2026-01-01'),
+      invoiceDate: d('2025-12-01'),
+    });
+    expect(window.unit).toBe('CALENDAR_DAYS');
+    expect(window.anchor).toBe('SUBMISSION_DATE');
+    expect(window.dueBy?.toISOString().slice(0, 10)).toBe('2026-01-21');
+  });
+
+  it('carries the employer\u2019s own unit, anchor and far edge when it has them', () => {
+    const { term } = effectiveTerm(
+      { nominalDays: 30 },
+      { nominalDays: 20, maxDays: 40, unit: 'WORKING_DAYS', anchor: 'SERVICE_DATE' },
+    );
+    const window = resolveTermWindow(term, { serviceDate: d('2026-01-01') });
+    expect(window.resolved).toBe(true);
+    expect(window.unit).toBe('WORKING_DAYS');
+    expect(window.anchor).toBe('SERVICE_DATE');
+    // Chased from the near edge, late only at the far one.
+    expect(window.chaseFrom!.getTime()).toBeLessThan(window.dueBy!.getTime());
+  });
+
+  /**
+   * G-9 ITSELF, END TO END. The panel says VARY BASED ON COMPANY. Before the
+   * employer was recorded, every claim on it was permanently unresolved and
+   * therefore never chaseable. With the company's term recorded, the claim gets
+   * a real due date and can be overdue like any other.
+   */
+  describe('a panel whose term varies by company', () => {
+    const varying = { nominalDays: 30, variesByPayer: true };
+
+    it('still refuses to invent a due date when the company is unknown', () => {
+      const { term, source } = effectiveTerm(varying, null);
+      expect(source).toBe('PANEL');
+      const window = resolveTermWindow(term, { submittedAt: d('2026-01-01') });
+      expect(window.resolved).toBe(false);
+      expect(window.reason).toContain('employer behind each claim');
+      expect(isOverdue(window, d('2027-01-01'), false)).toBe(false);
+    });
+
+    it('resolves once the company and its term are recorded', () => {
+      const { term, source } = effectiveTerm(varying, { nominalDays: 90 });
+      expect(source).toBe('EMPLOYER');
+      const window = resolveTermWindow(term, { submittedAt: d('2026-01-01') });
+      expect(window.resolved).toBe(true);
+      expect(window.dueBy?.toISOString().slice(0, 10)).toBe('2026-04-01');
+      // Not late on day 89, late on day 91.
+      expect(isOverdue(window, d('2026-03-30'), false)).toBe(false);
+      expect(isOverdue(window, d('2026-04-02'), false)).toBe(true);
+      expect(daysPastDue(window, d('2026-04-11'))).toBe(10);
+    });
+
+    it('stays unresolved when the company is recorded but its term is not', () => {
+      // Knowing WHICH company it is does not tell us what they agreed. This is
+      // the case that would be easiest to get wrong by falling back to the
+      // panel's own indicative number.
+      const { term } = effectiveTerm(varying, { nominalDays: null, code: undefined } as never);
+      const window = resolveTermWindow(term, { submittedAt: d('2026-01-01') });
+      expect(window.resolved).toBe(false);
+    });
   });
 });

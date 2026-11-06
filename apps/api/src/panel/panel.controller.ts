@@ -12,6 +12,8 @@ import { ImportClaimsDto } from './dto/import-claims.dto';
 import { ClaimImportService } from './claim-import.service';
 import { PanelSetupService } from './panel-setup.service';
 import { SetupPanelsDto } from './dto/setup-panels.dto';
+import { PanelEmployerService } from './panel-employer.service';
+import { CreatePanelEmployerDto, UpdatePanelEmployerDto } from './dto/panel-employer.dto';
 import { OptionalDateParam, RequiredDateParam } from '../core/date-param.pipe';
 import { assertDateOrder } from '../core/query-dates';
 
@@ -22,7 +24,34 @@ export class PanelWorkspaceController {
     private readonly config: PanelConfigService,
     private readonly imports: ClaimImportService,
     private readonly setup: PanelSetupService,
+    private readonly employers: PanelEmployerService,
   ) {}
+
+  // --- The employers behind a panel (N-5; closes G-9) ----------------------
+  //
+  // Nested under the panel because an employer belongs to one: the same company
+  // reached through two TPAs is two agreements with two terms.
+
+  @Get('panels/:panelClinicId/employers')
+  listEmployers(
+    @Param('panelClinicId') panelClinicId: string,
+    @Query('includeInactive') includeInactive?: string,
+  ) {
+    return this.employers.list(panelClinicId, includeInactive === 'true');
+  }
+
+  @Post('panels/:panelClinicId/employers')
+  createEmployer(
+    @Param('panelClinicId') panelClinicId: string,
+    @Body() dto: CreatePanelEmployerDto,
+  ) {
+    return this.employers.create(panelClinicId, dto);
+  }
+
+  @Patch('employers/:id')
+  updateEmployer(@Param('id') id: string, @Body() dto: UpdatePanelEmployerDto) {
+    return this.employers.update(id, dto);
+  }
 
   // --- Setting the module up when it is empty (N-2) ------------------------
 

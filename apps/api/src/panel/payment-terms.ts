@@ -52,6 +52,103 @@ export interface PanelTerm {
   variesByPayer?: boolean | null;
 }
 
+/**
+ * AN EMPLOYER'S OWN TERM (N-5, closes G-9), exactly as `PanelEmployer` stores
+ * it. No `variesByPayer`: the employer IS the payer, so there is nothing
+ * further down for the term to vary by.
+ */
+export interface EmployerTerm {
+  nominalDays?: number | null;
+  maxDays?: number | null;
+  unit?: TermUnit | null;
+  anchor?: TermAnchor | null;
+}
+
+/** Whose agreement the term that governed came from. */
+export type TermSource = 'PANEL' | 'EMPLOYER';
+
+/**
+ * A `PanelEmployer` row, as the database spells it.
+ *
+ * Structural, not a Prisma type: this module takes plain inputs and knows
+ * nothing about Prisma (see the module note), and a row carrying extra columns
+ * satisfies it.
+ */
+export interface EmployerTermRow {
+  paymentTermDays: number | null;
+  paymentTermMaxDays: number | null;
+  paymentTermUnit: TermUnit | null;
+  paymentTermAnchor: TermAnchor | null;
+}
+
+/**
+ * Map an employer row onto a term.
+ *
+ * It exists so the mapping lives in ONE place. The panel's equivalent mapping
+ * is written out at each of its call sites, and those sites have already
+ * drifted once in this module's history — a term field added to the schema and
+ * mapped in one caller but not the other produces two different due dates for
+ * the same claim, which is the single worst failure available here.
+ */
+export function employerTermOf(row?: EmployerTermRow | null): EmployerTerm | null {
+  if (!row) return null;
+  return {
+    nominalDays: row.paymentTermDays,
+    maxDays: row.paymentTermMaxDays,
+    unit: row.paymentTermUnit,
+    anchor: row.paymentTermAnchor,
+  };
+}
+
+/**
+ * WHICH TERM GOVERNS THIS CLAIM — the panel's, or the employer's behind it.
+ *
+ * G-9 is the reason this exists. One panel in the clinic's workbook states its
+ * term as `VARY BASED ON COMPANY`, and until the employer was a recorded fact
+ * Kuwick could only honour that by refusing to compute a due date at all
+ * (`variesByPayer`). That was right — inventing one would have had staff chase
+ * a panel that was not late — but it left a whole panel's receivable with
+ * nothing to chase it by. Now the company is recorded, so its term can be too.
+ *
+ * TWO RULES, AND THE SECOND IS THE ONE THAT MATTERS.
+ *
+ * 1. AN EMPLOYER TERM WINS over the panel's, including over a panel with a
+ *    perfectly good term of its own. If somebody has recorded that Company X
+ *    pays in 90 days, that is the agreement this claim is under.
+ *
+ * 2. IT WINS AS A WHOLE, never field by field. An employer with 20 days and no
+ *    unit does NOT inherit the panel's working-day rule: it reads as 20
+ *    calendar days, the same default a panel with no unit gets. Half-inheriting
+ *    produces a due date assembled from two different contracts, which nobody
+ *    can explain and nobody can argue with a panel about.
+ *
+ * An employer with no `nominalDays` has no term, so the panel's governs —
+ * which is what every employer means until somebody says otherwise, and is
+ * why the field is nullable rather than defaulted.
+ */
+export function effectiveTerm(
+  panel: PanelTerm,
+  employer?: EmployerTerm | null,
+): { term: PanelTerm; source: TermSource } {
+  if (employer && employer.nominalDays !== null && employer.nominalDays !== undefined) {
+    return {
+      term: {
+        nominalDays: employer.nominalDays,
+        maxDays: employer.maxDays ?? null,
+        unit: employer.unit ?? null,
+        anchor: employer.anchor ?? null,
+        // The employer's term is the payer's term. Carrying the panel's
+        // `variesByPayer` through would make the one case this feature exists
+        // for — a VARY BASED ON COMPANY panel whose company IS known —
+        // resolve to "unknown" forever.
+        variesByPayer: false,
+      },
+      source: 'EMPLOYER',
+    };
+  }
+  return { term: panel, source: 'PANEL' };
+}
+
 /** The dates a claim's term actually resolves to. */
 export interface TermWindow {
   /** When the clinic may start chasing. NULL when the term is unusable. */

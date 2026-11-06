@@ -6,7 +6,7 @@ import { CreateClaimBatchDto } from './dto/create-claim-batch.dto';
 import { SubmitClaimBatchDto } from './dto/submit-claim-batch.dto';
 import { RecordClaimLinePaymentDto } from './dto/record-claim-line-payment.dto';
 import { computeClaimBalance, rollUpClaims } from '../finance/financial-invariants';
-import { isOverdue, resolveTermWindow } from '../panel/payment-terms';
+import { effectiveTerm, employerTermOf, isOverdue, resolveTermWindow } from '../panel/payment-terms';
 import { fromCents } from '../finance/money';
 
 const BATCH_INCLUDE = { lines: { include: { invoice: true } } } as const;
@@ -256,6 +256,13 @@ export class ClaimBatchService {
       // a range is late only past its far edge, working days skip weekends, and
       // a term that varies by the employer behind the claim resolves to no date
       // at all rather than a guessed one. See panel/payment-terms.ts (G-2, G-3).
+      //
+      // THIS ONE IS THE PANEL'S TERM, DELIBERATELY. A batch can hold claims for
+      // several employers with different terms (N-5 / G-9), so there is no one
+      // date a batch is late on, and picking any employer's would be arbitrary.
+      // The authoritative per-claim date is `ClaimBatchLine.dueDate`, stamped at
+      // submission from the EMPLOYER's term where there is one, and the claim
+      // listing resolves the same way per row.
       const window = resolveTermWindow(
         {
           nominalDays: batch.panelClinic.paymentTermDays,
@@ -300,7 +307,7 @@ export class ClaimBatchService {
       throw new NotFoundException('Panel not found');
     }
     const termDays = panel.paymentTermDays ?? null;
-    const term = {
+    const panelTerm = {
       nominalDays: panel.paymentTermDays,
       maxDays: panel.paymentTermMaxDays,
       unit: panel.paymentTermUnit,
@@ -314,7 +321,14 @@ export class ClaimBatchService {
         where: { claimBatch: { panelClinicId } },
         include: {
           claimBatch: true,
-          invoice: { include: { visit: { include: { patient: true } } } },
+          invoice: {
+            include: {
+              // `panelEmployer` for N-5 / G-9: a claim's term can be the
+              // EMPLOYER's rather than the panel's, and two claims in this
+              // list can be for two different companies.
+              visit: { include: { patient: true, panelEmployer: true } },
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -351,6 +365,12 @@ export class ClaimBatchService {
         receivedAmount: line.paidAmount,
       });
       const submittedAt = line.claimBatch.submittedAt;
+      // N-5 / G-9 — whose agreement this claim is under. An imported claim has
+      // no invoice and so no employer, and takes the panel's term.
+      const { term, source: termSource } = effectiveTerm(
+        panelTerm,
+        employerTermOf(line.invoice?.visit?.panelEmployer),
+      );
       const lineWindow = resolveTermWindow(term, {
         submittedAt,
         serviceDate,
@@ -393,6 +413,17 @@ export class ClaimBatchService {
         paymentTermDays: termDays,
         dueBy: lineWindow.dueBy,
         termUnresolvedReason: lineWindow.reason,
+        /**
+         * N-5 / G-9 — WHOSE AGREEMENT THIS DUE DATE CAME FROM.
+         *
+         * Reported rather than left implicit. On a panel whose term varies by
+         * company, two claims sitting side by side can have due dates weeks
+         * apart and both be right; a screen that shows the dates without
+         * saying whose term produced them reads as a bug. `employerName` is
+         * what a person needs to go and check the agreement.
+         */
+        termSource,
+        employerName: line.invoice?.visit?.panelEmployer?.name ?? null,
         overdue:
           isOverdue(lineWindow, now, false) &&
           line.status !== ClaimLineStatus.PAID &&

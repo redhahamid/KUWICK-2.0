@@ -311,6 +311,7 @@ model Tenant {
   formTemplates               FormTemplate[]
   panelPriceOverrides         PanelPriceOverride[]
   panelExclusions             PanelExclusion[]
+  panelEmployers              PanelEmployer[]
   claimBatches                ClaimBatch[]
   claimBatchLines             ClaimBatchLine[]
   leaveRequests               LeaveRequest[]
@@ -3079,6 +3080,7 @@ model PanelClinic {
   visits             Visit[]
   priceOverrides     PanelPriceOverride[]
   exclusions         PanelExclusion[]
+  employers          PanelEmployer[]
   claimBatches       ClaimBatch[]
   claimImportBatches ClaimImportBatch[]
 
@@ -3187,6 +3189,79 @@ model PanelExclusion {
   @@map("panel_exclusions")
 }
 
+/// WHO THE MEMBER IS TO THE PERSON COVERED (N-5, owner answer 2026-11-03).
+///
+/// A panel visit is frequently not the member's own: a child on a parent's
+/// scheme, a spouse on a corporate plan. Staff know this at the counter and had
+/// nowhere to record it, so a claim the panel later queried could not be
+/// answered from Kuwick at all.
+///
+/// NULL means nobody said. It is NOT defaulted to SELF: a wrongly-recorded SELF
+/// is a claim rejected for a member mismatch, and a blank is a question
+/// somebody can still answer.
+enum PanelRelationship {
+  SELF
+  SPOUSE
+  CHILD
+  PARENT
+  OTHER
+}
+
+/// AN EMPLOYER BEHIND A PANEL (N-5, owner answer 2026-11-03; closes G-9).
+///
+/// The owner asked for "a real list per panel, with quick-add at the counter"
+/// rather than free text, and gave the reason: free text cannot answer "what
+/// did we bill for Company X". The second reason is G-9.
+///
+/// **G-9, WHICH THIS CLOSES.** One panel in the clinic's workbook states its
+/// payment term as `VARY BASED ON COMPANY`. Until now Kuwick could record only
+/// THAT it varies (`PanelClinic.paymentTermVariesByPayer`), so no claim on that
+/// panel could ever be given a due date or called overdue — correct, but it
+/// left a whole panel's receivable unchaseable. With the company recorded, its
+/// own term can be too, and the claim gets a real due date. See
+/// `payment-terms.effectiveTerm`.
+///
+/// SCOPED TO ONE PANEL, not to the tenant. The same company reached through two
+/// TPAs is two agreements, with two terms and two sets of claim numbers, and
+/// merging them would produce one due date for two contracts.
+///
+/// THE TERM IS ALL-OR-NOTHING. When `paymentTermDays` is set the employer's term
+/// governs as a WHOLE — its own unit, anchor and far edge. A term half-inherited
+/// from the panel ("20 days, but the panel's working-day rule") produces a due
+/// date nobody can explain and nobody can argue with a panel about.
+model PanelEmployer {
+  id            String  @id @default(uuid())
+  tenantId      String  @map("tenant_id")
+  panelClinicId String  @map("panel_clinic_id")
+  name          String
+  /// The employer code the panel uses, where there is one. A portal asks for
+  /// it, so it is worth not making staff remember it.
+  code          String?
+
+  /// G-9. NULL means this employer takes the panel's own term, which is what
+  /// every employer means until somebody says otherwise. Set, it governs.
+  paymentTermDays    Int?             @map("payment_term_days")
+  paymentTermMaxDays Int?             @map("payment_term_max_days")
+  paymentTermUnit    PanelTermUnit?   @map("payment_term_unit")
+  paymentTermAnchor  PanelTermAnchor? @map("payment_term_anchor")
+
+  notes     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  panelClinic PanelClinic @relation(fields: [panelClinicId], references: [id])
+  visits      Visit[]
+
+  /// Case-sensitive at the database level; `PanelEmployerService` compares
+  /// names case- and space-insensitively before writing, so "Contoh Sdn Bhd"
+  /// and "contoh  sdn bhd" cannot both be created.
+  @@unique([tenantId, panelClinicId, name])
+  @@index([tenantId, panelClinicId, active])
+  @@map("panel_employers")
+}
+
 model Visit {
   id                  String               @id @default(uuid())
   tenantId            String               @map("tenant_id")
@@ -3284,6 +3359,21 @@ model Visit {
 
   // Override audit — who changed the working terms away from what was
   // verified, when, and the mandatory reason.
+  /// N-5 — WHO IS PAYING BEHIND THE PANEL, AND WHO THE PATIENT IS TO THEM.
+  ///
+  /// The employer is a real row (`PanelEmployer`), not free text, so "what did
+  /// we bill for Company X" has an answer and so a per-employer payment term
+  /// has somewhere to live (G-9).
+  ///
+  /// NOT snapshotted, unlike the benefit terms beside it. Those are frozen at
+  /// verification (D-092) because they decide how THIS bill splits between
+  /// panel and patient. An employer decides when the PANEL pays the CLINIC,
+  /// which is not a bill-split input and is already frozen where it matters —
+  /// `ClaimBatchLine.dueDate`, stamped at submission.
+  panelEmployerId   String?            @map("panel_employer_id")
+  /// NULL means nobody said; deliberately not defaulted to SELF.
+  panelRelationship PanelRelationship? @map("panel_relationship")
+
   panelBenefitOverrideReason      String?   @map("panel_benefit_override_reason")
   panelBenefitOverriddenAt        DateTime? @map("panel_benefit_overridden_at")
   panelBenefitOverriddenByStaffId String?   @map("panel_benefit_overridden_by_staff_id")
@@ -3301,6 +3391,7 @@ model Visit {
   panelVerifiedByStaff          Staff?               @relation("VisitPanelVerifiedBy", fields: [panelVerifiedByStaffId], references: [id])
   panelBenefitOverriddenByStaff Staff?               @relation("VisitPanelBenefitOverriddenBy", fields: [panelBenefitOverriddenByStaffId], references: [id])
   panelClinic                   PanelClinic?         @relation(fields: [panelClinicId], references: [id])
+  panelEmployer                 PanelEmployer?       @relation(fields: [panelEmployerId], references: [id])
   queueTicket                   QueueTicket?
   clinicalNotes                 ClinicalNote[]
   observations                  VisitObservation[]
