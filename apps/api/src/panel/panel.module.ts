@@ -6,6 +6,7 @@ import { PanelConfigService } from './panel-config.service';
 import { ClaimImportService } from './claim-import.service';
 import { PanelSetupService } from './panel-setup.service';
 import { PanelEmployerService } from './panel-employer.service';
+import { PanelCounterService } from './panel-counter.service';
 
 /**
  * WAVE 3 of the admin programme.
@@ -29,6 +30,7 @@ import { PanelEmployerService } from './panel-employer.service';
     ClaimImportService,
     PanelSetupService,
     PanelEmployerService,
+    PanelCounterService,
   ],
   exports: [ClaimWorkspaceService],
 })

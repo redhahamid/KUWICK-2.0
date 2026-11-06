@@ -705,10 +705,38 @@ model Patient {
   emergencyContactName  String?               @map("emergency_contact_name")
   emergencyContactPhone String?               @map("emergency_contact_phone")
   deletedAt             DateTime?             @map("deleted_at")
+  // ---------------------------------------------------------------------
+  // N-5 — THE PANEL THIS PATIENT CAME IN ON LAST.
+  //
+  // Kuwick 1.0 remembered this and 2.0 did not, which is a regression
+  // nobody logged: a panel patient's card, employer and relationship were
+  // re-typed at every visit, at the busiest moment of the day, from a card
+  // the patient has to find in their wallet again.
+  //
+  // A SUGGESTION, NEVER A COMMITMENT. These pre-fill the counter and
+  // nothing else. The visit still stores PENDING_VERIFICATION, staff still
+  // press Verify, and the benefit terms are still snapshotted onto the
+  // visit (D-092). A remembered panel that has since lapsed is caught by
+  // the same verification step that catches a wrong one typed by hand.
+  //
+  // Written at visit creation from what was actually used. Deliberately NOT
+  // a history: "the last one" is the whole question the counter asks, and a
+  // table of every panel a patient ever used would be read for its last row
+  // and nothing else.
+  // ---------------------------------------------------------------------
+  lastPanelClinicId        String?            @map("last_panel_clinic_id")
+  lastPanelEmployerId      String?            @map("last_panel_employer_id")
+  /// The membership or card number, as last used. Free text because it is
+  /// whatever the panel prints on the card.
+  lastPanelMemberReference String?            @map("last_panel_member_reference")
+  lastPanelRelationship    PanelRelationship? @map("last_panel_relationship")
+
   createdAt             DateTime              @default(now()) @map("created_at")
   updatedAt             DateTime              @updatedAt @map("updated_at")
 
   tenant              Tenant                  @relation(fields: [tenantId], references: [id])
+  lastPanelClinic          PanelClinic?       @relation("PatientLastPanelClinic", fields: [lastPanelClinicId], references: [id])
+  lastPanelEmployer        PanelEmployer?     @relation("PatientLastPanelEmployer", fields: [lastPanelEmployerId], references: [id])
   appointments        Appointment[]
   appointmentSeries   AppointmentSeries[]
   waitlistEntries     WaitlistEntry[]
@@ -3083,6 +3111,7 @@ model PanelClinic {
   employers          PanelEmployer[]
   claimBatches       ClaimBatch[]
   claimImportBatches ClaimImportBatch[]
+  lastUsedByPatients Patient[]            @relation("PatientLastPanelClinic")
 
   @@index([tenantId])
   @@map("panel_clinics")
@@ -3253,6 +3282,7 @@ model PanelEmployer {
   tenant      Tenant      @relation(fields: [tenantId], references: [id])
   panelClinic PanelClinic @relation(fields: [panelClinicId], references: [id])
   visits      Visit[]
+  lastUsedByPatients Patient[] @relation("PatientLastPanelEmployer")
 
   /// Case-sensitive at the database level; `PanelEmployerService` compares
   /// names case- and space-insensitively before writing, so "Contoh Sdn Bhd"

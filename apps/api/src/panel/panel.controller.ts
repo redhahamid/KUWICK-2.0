@@ -14,6 +14,8 @@ import { PanelSetupService } from './panel-setup.service';
 import { SetupPanelsDto } from './dto/setup-panels.dto';
 import { PanelEmployerService } from './panel-employer.service';
 import { CreatePanelEmployerDto, UpdatePanelEmployerDto } from './dto/panel-employer.dto';
+import { PanelCounterService } from './panel-counter.service';
+import { SetAutoSelectDto } from './dto/set-auto-select.dto';
 import { OptionalDateParam, RequiredDateParam } from '../core/date-param.pipe';
 import { assertDateOrder } from '../core/query-dates';
 
@@ -25,7 +27,26 @@ export class PanelWorkspaceController {
     private readonly imports: ClaimImportService,
     private readonly setup: PanelSetupService,
     private readonly employers: PanelEmployerService,
+    private readonly counter: PanelCounterService,
   ) {}
+
+  // --- What the counter already knows (N-5) --------------------------------
+
+  /** The panel, employer, card number and relationship last used, if any. */
+  @Get('counter-prefill/:patientId')
+  counterPrefill(@Param('patientId') patientId: string) {
+    return this.counter.prefillFor(patientId);
+  }
+
+  @Get('settings')
+  panelSettings() {
+    return this.counter.settings();
+  }
+
+  @Patch('settings/auto-select')
+  setAutoSelect(@Body() dto: SetAutoSelectDto) {
+    return this.counter.setAutoSelect(dto.enabled);
+  }
 
   // --- The employers behind a panel (N-5; closes G-9) ----------------------
   //

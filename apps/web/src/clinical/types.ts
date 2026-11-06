@@ -300,6 +300,11 @@ export interface AddToQueueDto {
   billingType: string;
   queueType?: QueueType;
   panelClinicId?: string;
+  /** N-5 — the employer behind the panel. Must belong to `panelClinicId`. */
+  panelEmployerId?: string;
+  panelRelationship?: PanelRelationship;
+  /** The membership or card number, as printed on the patient's card. */
+  panelMemberReference?: string;
   presentingComplaint?: string;
 }
 
@@ -1485,4 +1490,48 @@ export interface VisitCompletionResult {
 export interface CompleteVisitDto {
   note?: string;
   correlationId?: string;
+}
+
+/** N-5 — who the patient is to the person covered. */
+export type PanelRelationship = "SELF" | "SPOUSE" | "CHILD" | "PARENT" | "OTHER";
+
+/** Plain language for the counter — never the enum name on screen. */
+export const PANEL_RELATIONSHIP_LABEL: Record<PanelRelationship, string> = {
+  SELF: "The patient",
+  SPOUSE: "Spouse",
+  CHILD: "Child",
+  PARENT: "Parent",
+  OTHER: "Someone else",
+};
+
+/** N-5 — an employer behind a panel (closes G-9). */
+export interface PanelEmployer {
+  id: string;
+  name: string;
+  code: string | null;
+  active: boolean;
+  paymentTermDays: number | null;
+  paymentTermMaxDays: number | null;
+  paymentTermUnit: "CALENDAR_DAYS" | "WORKING_DAYS" | null;
+  paymentTermAnchor: "SERVICE_DATE" | "SUBMISSION_DATE" | "INVOICE_DATE" | null;
+  /** This employer's own term governs its claims, not the panel's. */
+  hasOwnTerm: boolean;
+  notes: string | null;
+  visits: number;
+}
+
+/** N-5 — what the counter already knows about a patient's panel. */
+export interface CounterPrefill {
+  /** The clinic setting. Default on, which is what Kuwick 1.0 did. */
+  autoSelectLastPanel: boolean;
+  /** NULL when this patient has never been registered on a panel. */
+  panelClinicId: string | null;
+  panelName: string | null;
+  /** FALSE when the remembered panel has since been turned off. */
+  panelActive: boolean | null;
+  employerId: string | null;
+  employerName: string | null;
+  employerActive: boolean | null;
+  memberReference: string | null;
+  relationship: PanelRelationship | null;
 }

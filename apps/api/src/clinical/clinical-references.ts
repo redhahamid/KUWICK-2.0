@@ -127,3 +127,43 @@ export async function resolveService(tx: ClinicalTx, serviceId: string) {
   }
   return service;
 }
+
+/**
+ * N-5 — THE EMPLOYER BEHIND A PANEL VISIT, resolved rather than trusted.
+ *
+ * THE CHECK THAT MATTERS is that the employer belongs to the panel chosen for
+ * this visit. Two ids that each exist can still be a wrong pair, and this pair
+ * decides money: since G-9 an employer carries its own payment term, so an
+ * employer from a DIFFERENT panel would apply a different agreement's term to
+ * this claim. The due date would be wrong, every figure derived from it would
+ * be wrong, and nothing about the request would look invalid.
+ *
+ * An employer sent without a panel is refused for the same reason: there is no
+ * panel for it to belong to, so the pair cannot be checked at all.
+ *
+ * An INACTIVE employer is still accepted. Deactivating a company means "stop
+ * offering it at the counter", not "refuse the visit in front of you" — and the
+ * front desk may be registering a patient whose employer was retired this
+ * morning. The picker stops offering it; this does not stop the visit.
+ */
+export async function resolvePanelEmployer(
+  tx: ClinicalTx,
+  input: { panelClinicId?: string; panelEmployerId?: string },
+) {
+  if (!input.panelEmployerId) return null;
+  if (!input.panelClinicId) {
+    throw new BadRequestException(
+      'An employer belongs to a panel, so a panel has to be chosen before one can be recorded.',
+    );
+  }
+  const employer = await tx.panelEmployer.findUnique({ where: { id: input.panelEmployerId } });
+  if (!employer) {
+    throw new NotFoundException('Employer not found');
+  }
+  if (employer.panelClinicId !== input.panelClinicId) {
+    throw new BadRequestException(
+      `"${employer.name}" is an employer of a different panel. Each panel keeps its own list, because the same company reached through two panels is two agreements.`,
+    );
+  }
+  return employer;
+}

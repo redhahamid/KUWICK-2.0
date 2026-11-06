@@ -6,7 +6,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, Staff, VisitClassification } from '@prisma/client';
+import { PanelRelationship, Prisma, Staff, VisitClassification } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
@@ -14,8 +14,9 @@ import { ClinicalTx, assertMayTouchVisit, requireActor, withTenantTx } from './c
 import { assertCanPerformBilling } from './clinical-authorization';
 import {
   resolveActiveStaffForClinic,
-  resolveEligibleAttendingDoctor,
   resolveClinicForActor,
+  resolveEligibleAttendingDoctor,
+  resolvePanelEmployer,
   resolvePatient,
 } from './clinical-references';
 
@@ -33,6 +34,10 @@ export interface CreateVisitInput {
   staffId?: string;
   billingType: string;
   panelClinicId?: string;
+  /** N-5 — the employer behind the panel. Must belong to `panelClinicId`. */
+  panelEmployerId?: string;
+  panelRelationship?: PanelRelationship;
+  panelMemberReference?: string;
   presentingComplaint?: string;
 }
 
@@ -201,8 +206,40 @@ export class VisitService {
             ? await resolveEligibleAttendingDoctor(tx, input.staffId, clinic.id)
             : null;
           const billingType = await this.resolveBillingType(tx, input);
+          const employer = await resolvePanelEmployer(tx, input);
 
           const visitNumber = await this.allocateVisitNumber(tx);
+
+          /*
+           * N-5 — REMEMBER WHAT WAS USED, so the next visit does not re-type it.
+           *
+           * Kuwick 1.0 remembered the panel and 2.0 did not, which meant a
+           * panel patient's card, employer and relationship were keyed again at
+           * every visit, at the counter, from a card the patient has to find in
+           * their wallet.
+           *
+           * In the SAME transaction as the visit, so the two cannot disagree
+           * about what was used. It is only ever a pre-fill: the visit still
+           * starts PENDING_VERIFICATION, and a panel that has since lapsed is
+           * caught by the same Verify step that catches a wrong one typed by
+           * hand.
+           *
+           * Only written for a PANEL visit. A patient who comes in self-pay has
+           * not stopped being on their panel, and blanking the memory would make
+           * the counter forget it for no reason.
+           */
+          if (input.panelClinicId) {
+            await tx.patient.update({
+              where: { id: patient.id },
+              data: {
+                lastPanelClinicId: input.panelClinicId,
+                lastPanelEmployerId: employer?.id ?? null,
+                lastPanelMemberReference: input.panelMemberReference?.trim() || null,
+                lastPanelRelationship: input.panelRelationship ?? null,
+              },
+            });
+          }
+
           return tx.visit.create({
             data: {
               tenantId: currentTenantId(),
@@ -216,6 +253,15 @@ export class VisitService {
               registeredByStaffId: actor.id,
               billingType,
               panelClinicId: input.panelClinicId,
+              // N-5 — who is paying behind the panel, and who the patient is
+              // to the member. `employer` is the RESOLVED row, checked above
+              // to belong to this panel: an employer from another panel is
+              // another agreement, and its payment term would be applied to
+              // this claim (G-9) — a wrong due date reached through two
+              // ids that each look valid.
+              panelEmployerId: employer?.id ?? null,
+              panelRelationship: input.panelRelationship ?? null,
+              panelMemberReference: input.panelMemberReference?.trim() || null,
               // G4.5d3c-3b1a (D-092) — selecting a panel is not verifying it.
               // A panel visit starts PENDING_VERIFICATION; only an explicit,
               // attributed staff action moves it on. No panel, no state.

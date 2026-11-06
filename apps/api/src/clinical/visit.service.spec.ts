@@ -22,7 +22,13 @@ function createService(options: { allocations?: number[] } = {}) {
         active: true, clinicId: 'clinic-1', userId: 'user-1',
       }),
     },
-    patient: { findUnique: jest.fn().mockResolvedValue({ id: 'patient-1', name: 'Test Patient' }) },
+    patient: {
+      findUnique: jest.fn().mockResolvedValue({ id: 'patient-1', name: 'Test Patient' }),
+      // N-5 — a panel visit also remembers what it came in on, so the counter
+      // does not ask for the card, the employer and the relationship again.
+      update: jest.fn().mockResolvedValue({ id: 'patient-1' }),
+    },
+    panelEmployer: { findUnique: jest.fn().mockResolvedValue(null) },
     clinic: {
       findUnique: jest.fn().mockResolvedValue({ id: 'clinic-1', name: 'Main' }),
       count: jest.fn().mockResolvedValue(1),
@@ -191,6 +197,88 @@ describe('VisitService.create — billing type', () => {
     expect(tx.visit.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ panelVerificationStatus: 'PENDING_VERIFICATION' }),
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // N-5 — WHAT THE COUNTER REMEMBERS.
+  //
+  // Kuwick 1.0 remembered the panel a patient came in on and 2.0 did not, so
+  // the card number, the employer and the relationship were keyed again at
+  // every visit. These pin where that memory is written and, just as
+  // importantly, where it is NOT.
+  // -------------------------------------------------------------------------
+  it('remembers the panel, employer, card and relationship on the patient', async () => {
+    const { service, tx } = createService();
+    tx.panelClinic.findUnique.mockResolvedValue({ id: 'panel-1', name: 'AIA' });
+    tx.panelEmployer.findUnique.mockResolvedValue({
+      id: 'emp-1',
+      name: 'Contoh Sdn Bhd',
+      panelClinicId: 'panel-1',
+    });
+
+    await withTenant(() =>
+      service.create({
+        ...BASE,
+        panelClinicId: 'panel-1',
+        panelEmployerId: 'emp-1',
+        panelRelationship: 'CHILD',
+        panelMemberReference: ' MC-1 ',
+      }),
+    );
+
+    expect(tx.patient.update).toHaveBeenCalledWith({
+      where: { id: 'patient-1' },
+      data: {
+        lastPanelClinicId: 'panel-1',
+        lastPanelEmployerId: 'emp-1',
+        lastPanelMemberReference: 'MC-1',
+        lastPanelRelationship: 'CHILD',
+      },
+    });
+    // And the visit carries the same facts, trimmed the same way.
+    expect(tx.visit.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        panelEmployerId: 'emp-1',
+        panelRelationship: 'CHILD',
+        panelMemberReference: 'MC-1',
+      }),
+    });
+  });
+
+  /**
+   * A patient coming in self-pay has not stopped being on their panel.
+   * Blanking the memory would make the counter forget it for no reason, and
+   * the card would be re-typed next time.
+   */
+  it('does not touch the remembered panel on a cash visit', async () => {
+    const { service, tx } = createService();
+    await withTenant(() => service.create(BASE));
+    expect(tx.patient.update).not.toHaveBeenCalled();
+  });
+
+  /**
+   * THE MONEY BUG THIS REFUSAL EXISTS FOR. Two ids that each exist can still be
+   * a wrong pair, and since G-9 an employer carries its own payment term — so
+   * an employer from a different panel would apply another agreement's term to
+   * this claim. Nothing about the request would look invalid.
+   */
+  it('refuses an employer belonging to a different panel, and writes nothing', async () => {
+    const { service, tx } = createService();
+    tx.panelClinic.findUnique.mockResolvedValue({ id: 'panel-1', name: 'AIA' });
+    tx.panelEmployer.findUnique.mockResolvedValue({
+      id: 'emp-9',
+      name: 'Contoh Lain',
+      panelClinicId: 'panel-OTHER',
+    });
+
+    await expect(
+      withTenant(() =>
+        service.create({ ...BASE, panelClinicId: 'panel-1', panelEmployerId: 'emp-9' }),
+      ),
+    ).rejects.toThrow(/different panel/);
+
+    expect(tx.visit.create).not.toHaveBeenCalled();
+    expect(tx.patient.update).not.toHaveBeenCalled();
   });
 
   it('a cash visit carries no verification state at all', async () => {
